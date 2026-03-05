@@ -58,7 +58,7 @@ const StateDetail = ({ abbreviation }: StateDetailProps) => {
           </p>
         ) : status !== "closed" ? (
           <p className="text-center text-muted-foreground font-body text-sm mb-4">
-            {label}: {formatDate(status === "open" ? season.seasonClose : season.seasonOpen)}
+            {label}: {formatDate(season.seasonOpen)}
           </p>
         ) : null}
 
