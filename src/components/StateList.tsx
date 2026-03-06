@@ -1,40 +1,52 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Star } from "lucide-react";
-import { duckSeasons } from "@/data/seasonData";
-import { getSeasonStatus, getStatusColor, getCompactCountdown, formatDate, getCountdownTarget, sortByNextEvent } from "@/lib/seasonUtils";
+import type { Species } from "@/data/types";
+import { speciesConfig } from "@/data/speciesConfig";
+import { getSeasonsForSpecies, getPrimarySeasonForState } from "@/data/seasons";
+import { getSeasonStatus, getStatusColor, getCompactCountdown, formatDate, getCountdownTarget, sortByNextEvent, getSeasonTypeLabel } from "@/lib/seasonUtils";
 
 interface StateListProps {
+  species: Species;
   onSelectState: (abbr: string) => void;
   selectedState: string | null;
   favorites?: string[];
-  onToggleFavorite?: (abbr: string) => void;
+  onToggleFavorite?: (species: Species, abbr: string) => void;
 }
 
-const StateList = ({ onSelectState, selectedState, favorites = [], onToggleFavorite }: StateListProps) => {
+const StateList = ({ species, onSelectState, selectedState, favorites = [], onToggleFavorite }: StateListProps) => {
   const [showAll, setShowAll] = useState(false);
+  const config = speciesConfig[species];
 
+  // Deduplicate to one primary season per state, then sort
   const sorted = useMemo(() => {
-    const base = sortByNextEvent(duckSeasons);
+    const all = getSeasonsForSpecies(species);
+    const seen = new Set<string>();
+    const primary = all.filter(s => {
+      if (seen.has(s.abbreviation)) return false;
+      seen.add(s.abbreviation);
+      return true;
+    }).map(s => getPrimarySeasonForState(species, s.abbreviation)!);
+    const base = sortByNextEvent(primary);
     if (favorites.length === 0) return base;
     const favSet = new Set(favorites);
-    const favs = base.filter((s) => favSet.has(s.abbreviation));
-    const rest = base.filter((s) => !favSet.has(s.abbreviation));
+    const favs = base.filter(s => favSet.has(s.abbreviation));
+    const rest = base.filter(s => !favSet.has(s.abbreviation));
     return [...favs, ...rest];
-  }, [favorites]);
+  }, [species, favorites]);
+
   const visible = showAll ? sorted : sorted.slice(0, 10);
   const favSet = useMemo(() => new Set(favorites), [favorites]);
 
   return (
     <div className="max-w-2xl mx-auto px-4 mt-12 mb-16">
-      <h2 className="text-2xl font-display font-bold text-gradient-gold text-center mb-6">
-        🗓️ All States — Next Openers First
+      <h2 className="text-2xl font-display font-bold text-center mb-6" style={{ color: config.colors.selected }}>
+        {config.emoji} All {config.label} States — Next Openers First
       </h2>
       <div className="space-y-2">
         {visible.map((season, i) => {
           const status = getSeasonStatus(season);
           const color = getStatusColor(status);
-          const { target } = getCountdownTarget(season);
           const isSelected = season.abbreviation === selectedState;
           const isFav = favSet.has(season.abbreviation);
           const isLastFav = isFav && favorites.length > 0 && i === favorites.length - 1 && i < visible.length - 1;
@@ -58,7 +70,7 @@ const StateList = ({ onSelectState, selectedState, favorites = [], onToggleFavor
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onToggleFavorite(season.abbreviation);
+                        onToggleFavorite(species, season.abbreviation);
                       }}
                       className="flex-shrink-0 p-0.5"
                       aria-label={isFav ? `Remove ${season.state} from favorites` : `Add ${season.state} to favorites`}
@@ -80,7 +92,9 @@ const StateList = ({ onSelectState, selectedState, favorites = [], onToggleFavor
                     <span className="font-display font-semibold text-sm text-foreground">
                       {season.state}
                     </span>
-                    <span className="text-xs text-muted-foreground ml-2">{season.flyway}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {season.flyway || getSeasonTypeLabel(season.seasonType)}
+                    </span>
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-3">
@@ -88,7 +102,10 @@ const StateList = ({ onSelectState, selectedState, favorites = [], onToggleFavor
                     {getCompactCountdown(season)}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {formatDate(status === "open" ? season.seasonClose : season.seasonOpen)} · Bag: {season.bagLimit}
+                    {status === "open"
+                      ? formatDate(season.dates[season.dates.length - 1].close)
+                      : formatDate(season.dates[0].open)
+                    } · Bag: {season.bagLimit}
                   </div>
                 </div>
               </motion.button>

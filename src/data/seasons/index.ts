@@ -1,0 +1,56 @@
+import type { Species, HuntingSeason } from "../types";
+import { duckSeasons } from "./duck";
+import { gooseSeasons } from "./goose";
+import { deerSeasons } from "./deer";
+import { turkeySeasons } from "./turkey";
+import { doveSeasons } from "./dove";
+
+const allSeasons: HuntingSeason[] = [
+  ...duckSeasons,
+  ...gooseSeasons,
+  ...deerSeasons,
+  ...turkeySeasons,
+  ...doveSeasons,
+];
+
+const bySpecies = new Map<Species, HuntingSeason[]>();
+for (const s of allSeasons) {
+  const arr = bySpecies.get(s.species) || [];
+  arr.push(s);
+  bySpecies.set(s.species, arr);
+}
+
+export function getSeasonsForSpecies(species: Species): HuntingSeason[] {
+  return bySpecies.get(species) || [];
+}
+
+export function getSeasonsByState(species: Species, abbr: string): HuntingSeason[] {
+  return getSeasonsForSpecies(species).filter(s => s.abbreviation === abbr);
+}
+
+export function getStatesForSpecies(species: Species): Set<string> {
+  const seasons = getSeasonsForSpecies(species);
+  return new Set(seasons.map(s => s.abbreviation));
+}
+
+export function getPrimarySeasonForState(species: Species, abbr: string): HuntingSeason | undefined {
+  const seasons = getSeasonsByState(species, abbr);
+  if (seasons.length === 0) return undefined;
+  // Prefer "regular" for duck/goose/dove, "rifle" for deer, "spring" for turkey
+  const preferred: Record<Species, string> = {
+    duck: "regular", goose: "regular", deer: "rifle", turkey: "spring", dove: "regular",
+  };
+  return seasons.find(s => s.seasonType === preferred[species]) || seasons[0];
+}
+
+export function getAllSpeciesForState(abbr: string): Species[] {
+  const result: Species[] = [];
+  for (const [species, seasons] of bySpecies) {
+    if (seasons.some(s => s.abbreviation === abbr)) {
+      result.push(species);
+    }
+  }
+  return result;
+}
+
+export { allSeasons };

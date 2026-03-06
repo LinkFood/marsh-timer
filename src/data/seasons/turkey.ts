@@ -1,0 +1,19 @@
+import type { HuntingSeason } from "../types";
+
+export const turkeySeasons: HuntingSeason[] = [
+  { species: "turkey", state: "Missouri", abbreviation: "MO", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-20", close: "2026-05-10" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Kansas", abbreviation: "KS", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-16", close: "2026-05-31" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Nebraska", abbreviation: "NE", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-18", close: "2026-05-31" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Wisconsin", abbreviation: "WI", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-15", close: "2026-05-27" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Pennsylvania", abbreviation: "PA", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-25", close: "2026-05-23" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "New York", abbreviation: "NY", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-05-01", close: "2026-05-31" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Alabama", abbreviation: "AL", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-03-21", close: "2026-04-30" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Mississippi", abbreviation: "MS", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-03-15", close: "2026-05-01" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Virginia", abbreviation: "VA", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-12", close: "2026-05-16" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Tennessee", abbreviation: "TN", seasonType: "spring", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2026-04-05", close: "2026-05-10" }], bagLimit: 2, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Missouri", abbreviation: "MO", seasonType: "fall", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2025-10-01", close: "2025-10-31" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Wisconsin", abbreviation: "WI", seasonType: "fall", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2025-10-18", close: "2025-11-16" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Pennsylvania", abbreviation: "PA", seasonType: "fall", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2025-10-25", close: "2025-11-22" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "New York", abbreviation: "NY", seasonType: "fall", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2025-10-18", close: "2025-11-15" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+  { species: "turkey", state: "Virginia", abbreviation: "VA", seasonType: "fall", zone: "Statewide", zoneSlug: "statewide", dates: [{ open: "2025-10-11", close: "2025-11-08" }], bagLimit: 1, weapon: "Shotgun", verified: false, seasonYear: "2025-2026" },
+];

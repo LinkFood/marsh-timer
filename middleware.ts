@@ -1,5 +1,9 @@
 import { next } from '@vercel/edge';
 
+const speciesLabels: Record<string, string> = {
+  duck: "Duck", goose: "Goose", deer: "Deer", turkey: "Turkey", dove: "Dove",
+};
+
 const states: Record<string, { name: string; seasonOpen: string; bagLimit: number; flyway: string }> = {
   AL: { name: "Alabama", seasonOpen: "Nov 22, 2025", bagLimit: 6, flyway: "Mississippi" },
   AK: { name: "Alaska", seasonOpen: "Sep 6, 2025", bagLimit: 7, flyway: "Pacific" },
@@ -53,33 +57,65 @@ const states: Record<string, { name: string; seasonOpen: string; bagLimit: numbe
   WY: { name: "Wyoming", seasonOpen: "Sep 27, 2025", bagLimit: 6, flyway: "Central" },
 };
 
+const validSpecies = new Set(["duck", "goose", "deer", "turkey", "dove"]);
+
+async function injectOgTags(request: Request, title: string, description: string, ogUrl: string) {
+  const indexResponse = await fetch(new URL('/index.html', request.url));
+  const html = await indexResponse.text();
+
+  const modifiedHtml = html
+    .replace(/<title>.*?<\/title>/, `<title>${title}</title>`)
+    .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${description}" />`)
+    .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${title}" />`)
+    .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${description}" />`)
+    .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${ogUrl}" />`)
+    .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${title}" />`)
+    .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${description}" />`);
+
+  return new Response(modifiedHtml, {
+    headers: { 'content-type': 'text/html; charset=utf-8' },
+  });
+}
+
 export default async function middleware(request: Request) {
   const url = new URL(request.url);
-  const path = url.pathname.slice(1).toUpperCase();
+  const segments = url.pathname.slice(1).split('/').filter(Boolean);
 
-  if (path.length === 2 && states[path]) {
-    const state = states[path];
-    const title = `${state.name} Duck Season | Duck Countdown`;
-    const description = `${state.name} duck season opens ${state.seasonOpen}. ${state.flyway} Flyway. Bag limit: ${state.bagLimit}. Free countdown timer.`;
-    const ogUrl = `https://duckcountdown.com/${path}`;
+  // Legacy redirect: /TX → /duck/TX (301)
+  if (segments.length === 1 && segments[0].length === 2) {
+    const abbr = segments[0].toUpperCase();
+    if (states[abbr]) {
+      return new Response(null, {
+        status: 301,
+        headers: { Location: `/duck/${abbr}` },
+      });
+    }
+  }
 
-    const indexResponse = await fetch(new URL('/index.html', request.url));
-    const html = await indexResponse.text();
+  // /:species — species landing page
+  if (segments.length === 1 && validSpecies.has(segments[0].toLowerCase())) {
+    const species = segments[0].toLowerCase();
+    const label = speciesLabels[species] || species;
+    const title = `${label} Season Countdown | Duck Countdown`;
+    const description = `${label} hunting season countdown timers for all 50 states. See what's open, what's coming, and never miss an opener.`;
+    const ogUrl = `https://duckcountdown.com/${species}`;
+    return injectOgTags(request, title, description, ogUrl);
+  }
 
-    const modifiedHtml = html
-      .replace(/<title>.*?<\/title>/, `<title>${title}</title>`)
-      .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${description}" />`)
-      .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${title}" />`)
-      .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${description}" />`)
-      .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${ogUrl}" />`)
-      .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${title}" />`)
-      .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${description}" />`);
-
-    return new Response(modifiedHtml, {
-      headers: {
-        'content-type': 'text/html; charset=utf-8',
-      },
-    });
+  // /:species/:stateAbbr — species + state page
+  if (segments.length === 2 && validSpecies.has(segments[0].toLowerCase())) {
+    const species = segments[0].toLowerCase();
+    const abbr = segments[1].toUpperCase();
+    const state = states[abbr];
+    if (state) {
+      const label = speciesLabels[species] || species;
+      const title = `${state.name} ${label} Season | Duck Countdown`;
+      const description = species === "duck"
+        ? `${state.name} duck season opens ${state.seasonOpen}. ${state.flyway} Flyway. Bag limit: ${state.bagLimit}. Free countdown timer.`
+        : `${state.name} ${label.toLowerCase()} hunting season dates, countdown timers, and regulations. Free on Duck Countdown.`;
+      const ogUrl = `https://duckcountdown.com/${species}/${abbr}`;
+      return injectOgTags(request, title, description, ogUrl);
+    }
   }
 
   return next();

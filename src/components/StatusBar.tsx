@@ -1,19 +1,30 @@
 import { motion } from "framer-motion";
-import { duckSeasons } from "@/data/seasonData";
+import type { Species } from "@/data/types";
+import { speciesConfig } from "@/data/speciesConfig";
+import { getSeasonsForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
 import { useMemo } from "react";
 
-const StatusBar = () => {
+interface StatusBarProps {
+  species: Species;
+}
+
+const StatusBar = ({ species }: StatusBarProps) => {
   const { openCount, soonCount } = useMemo(() => {
     const now = new Date();
     let open = 0, soon = 0;
-    duckSeasons.forEach(s => {
+    const seen = new Set<string>();
+    for (const s of getSeasonsForSpecies(species)) {
+      if (seen.has(s.abbreviation)) continue;
+      seen.add(s.abbreviation);
       const st = getSeasonStatus(s, now);
       if (st === "open") open++;
       if (st === "soon") soon++;
-    });
+    }
     return { openCount: open, soonCount: soon };
-  }, []);
+  }, [species]);
+
+  const config = speciesConfig[species];
 
   return (
     <motion.div

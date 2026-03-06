@@ -2,38 +2,37 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import * as d3 from "d3";
 import * as topojson from "topojson-client";
-import { duckSeasons, fipsToAbbr } from "@/data/seasonData";
-import { getSeasonStatus, getStatusColor, getStatusLabel, formatDate, getCompactCountdown, SeasonStatus } from "@/lib/seasonUtils";
+import type { Species } from "@/data/types";
+import { speciesConfig } from "@/data/speciesConfig";
+import { fipsToAbbr } from "@/data/fips";
+import { getPrimarySeasonForState, getStatesForSpecies } from "@/data/seasons";
+import { getSeasonStatus, getStatusColor, getStatusLabel, getDateDisplay, getCompactCountdown, SeasonStatus } from "@/lib/seasonUtils";
 import type { Topology, GeometryCollection } from "topojson-specification";
 
 interface USMapProps {
+  species: Species;
   selectedState: string | null;
   onSelectState: (abbr: string) => void;
 }
 
-const seasonByAbbr = new Map(duckSeasons.map(s => [s.abbreviation, s]));
-
-const STATUS_COLORS: Record<SeasonStatus | "selected", string> = {
-  open: "#22c55e",
-  soon: "#f59e0b",
-  upcoming: "#2d5a2d",
-  closed: "#1a2e1a",
-  selected: "#f5c842",
-};
-
-const USMap = ({ selectedState, onSelectState }: USMapProps) => {
+const USMap = ({ species, selectedState, onSelectState }: USMapProps) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const dataRef = useRef<{ topology: Topology | null }>({ topology: null });
 
+  const config = speciesConfig[species];
+  const statesWithData = getStatesForSpecies(species);
+
   const getStateColor = useCallback((abbr: string) => {
-    if (abbr === selectedState) return STATUS_COLORS.selected;
-    const season = seasonByAbbr.get(abbr);
-    if (!season) return STATUS_COLORS.closed;
-    return getStatusColor(getSeasonStatus(season));
-  }, [selectedState]);
+    if (abbr === selectedState) return config.colors.selected;
+    if (!statesWithData.has(abbr)) return config.colors.closed;
+    const season = getPrimarySeasonForState(species, abbr);
+    if (!season) return config.colors.closed;
+    const status = getSeasonStatus(season);
+    return config.colors[status];
+  }, [selectedState, species, config, statesWithData]);
 
   useEffect(() => {
     const svg = d3.select(svgRef.current);
@@ -49,9 +48,7 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
         const path = d3.geoPath().projection(projection);
 
         svg.selectAll("*").remove();
-
         const g = svg.append("g");
-
         const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
         const paths = g.selectAll<SVGPathElement, any>("path")
@@ -61,13 +58,14 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
           .attr("fill", d => {
             const fips = String(d.id).padStart(2, "0");
             const abbr = fipsToAbbr[fips];
-            return abbr ? getStateColor(abbr) : STATUS_COLORS.closed;
+            return abbr ? getStateColor(abbr) : config.colors.closed;
           })
           .attr("stroke", "#0a1a0a")
           .attr("stroke-width", 0.5)
           .attr("cursor", d => {
             const fips = String(d.id).padStart(2, "0");
-            return seasonByAbbr.has(fipsToAbbr[fips]) ? "pointer" : "default";
+            const abbr = fipsToAbbr[fips];
+            return statesWithData.has(abbr) ? "pointer" : "default";
           });
 
         if (!isTouchDevice) {
@@ -75,7 +73,7 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
             .on("mouseenter", function(event, d) {
               const fips = String(d.id).padStart(2, "0");
               const abbr = fipsToAbbr[fips];
-              const season = seasonByAbbr.get(abbr);
+              const season = getPrimarySeasonForState(species, abbr);
               if (!season) return;
 
               d3.select(this).attr("fill", d3.color(getStateColor(abbr))?.brighter(0.5)?.toString() || getStateColor(abbr));
@@ -84,14 +82,14 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
               tooltip
                 .style("opacity", "1")
                 .html(`
-                  <div class="font-display text-sm font-bold" style="color: #f5c842">${season.state}</div>
+                  <div class="font-display text-sm font-bold" style="color: ${config.colors.selected}">${season.state}</div>
                   <div class="flex items-center gap-1 mt-1">
                     <span class="w-2 h-2 rounded-full" style="background: ${getStatusColor(status)}"></span>
                     <span class="text-xs" style="color: ${getStatusColor(status)}">${getStatusLabel(status)}</span>
                   </div>
-                  <div class="text-xs mt-1 opacity-80">${formatDate(season.seasonOpen)} — ${formatDate(season.seasonClose)}</div>
+                  <div class="text-xs mt-1 opacity-80">${getDateDisplay(season)}</div>
                   <div class="text-xs mt-0.5 opacity-80">${getCompactCountdown(season)}</div>
-                  <div class="text-xs mt-0.5 opacity-60">${season.flyway} Flyway · Bag: ${season.bagLimit}</div>
+                  <div class="text-xs mt-0.5 opacity-60">${season.flyway ? season.flyway + " Flyway · " : ""}Bag: ${season.bagLimit}</div>
                 `);
             })
             .on("mousemove", function(event) {
@@ -106,16 +104,16 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
             .on("mouseleave", function(_, d) {
               const fips = String(d.id).padStart(2, "0");
               const abbr = fipsToAbbr[fips];
-              d3.select(this).attr("fill", abbr ? getStateColor(abbr) : STATUS_COLORS.closed);
+              d3.select(this).attr("fill", abbr ? getStateColor(abbr) : config.colors.closed);
               tooltip.style("opacity", "0");
             });
         }
 
         paths.on("click", function(_, d) {
-            const fips = String(d.id).padStart(2, "0");
-            const abbr = fipsToAbbr[fips];
-            if (seasonByAbbr.has(abbr)) onSelectState(abbr);
-          });
+          const fips = String(d.id).padStart(2, "0");
+          const abbr = fipsToAbbr[fips];
+          if (statesWithData.has(abbr)) onSelectState(abbr);
+        });
 
         // State labels
         g.selectAll<SVGTextElement, any>("text")
@@ -138,15 +136,15 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
           .text(d => {
             const fips = String(d.id).padStart(2, "0");
             const abbr = fipsToAbbr[fips];
-            return seasonByAbbr.has(abbr) ? abbr : "";
+            return statesWithData.has(abbr) ? abbr : "";
           });
 
         setLoaded(true);
       })
       .catch(() => setError(true));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [species]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update colors when selection changes
+  // Update colors when selection or species changes
   useEffect(() => {
     if (!loaded || !svgRef.current) return;
     d3.select(svgRef.current)
@@ -154,9 +152,9 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
       .attr("fill", d => {
         const fips = String(d.id).padStart(2, "0");
         const abbr = fipsToAbbr[fips];
-        return abbr ? getStateColor(abbr) : STATUS_COLORS.closed;
+        return abbr ? getStateColor(abbr) : config.colors.closed;
       });
-  }, [selectedState, getStateColor, loaded]);
+  }, [selectedState, getStateColor, loaded, config]);
 
   if (error) {
     return (
@@ -165,6 +163,15 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
       </div>
     );
   }
+
+  // Build legend from species colors
+  const legendItems: [string, string][] = [
+    ["Open Now", config.colors.open],
+    ["< 30 Days", config.colors.soon],
+    ["Upcoming", config.colors.upcoming],
+    ["Closed / No Data", config.colors.closed],
+    ["Selected", config.colors.selected],
+  ];
 
   return (
     <motion.div
@@ -187,13 +194,7 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
 
       {/* Legend */}
       <div className="flex flex-wrap justify-center gap-4 mt-4 text-xs font-body text-muted-foreground">
-        {([
-          ["Open Now", STATUS_COLORS.open],
-          ["< 30 Days", STATUS_COLORS.soon],
-          ["Upcoming", STATUS_COLORS.upcoming],
-          ["Closed", STATUS_COLORS.closed],
-          ["Selected", STATUS_COLORS.selected],
-        ] as [string, string][]).map(([label, color]) => (
+        {legendItems.map(([label, color]) => (
           <div key={label} className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-sm" style={{ background: color }} />
             <span>{label}</span>

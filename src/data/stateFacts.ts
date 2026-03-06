@@ -1,4 +1,6 @@
-export const stateFacts: Record<string, string[]> = {
+import type { Species } from "./types";
+
+const duckFacts: Record<string, string[]> = {
   "Alabama": [
     "The Mobile-Tensaw Delta is one of the most productive waterfowl areas in the Southeast.",
     "Alabama's Black Belt region attracts large flights of mallards and wood ducks.",
@@ -249,4 +251,12 @@ export const stateFacts: Record<string, string[]> = {
     "The North Platte River corridor near Casper attracts large flights of mallards, gadwall, and teal during migration.",
     "Wyoming spans both the Central and Pacific flyways, offering diverse hunting opportunities from prairie potholes to mountain reservoirs."
   ],
+};
+
+export const stateFacts: Record<Species, Record<string, string[]>> = {
+  duck: duckFacts,
+  goose: {},
+  deer: {},
+  turkey: {},
+  dove: {},
 };

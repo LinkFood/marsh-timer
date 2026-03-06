@@ -1,23 +1,35 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { duckSeasons } from "@/data/seasonData";
+import type { Species } from "@/data/types";
+import { getSeasonsForSpecies } from "@/data/seasons";
 
 interface SearchBarProps {
+  species: Species;
   onSelectState: (abbr: string) => void;
 }
 
-const SearchBar = ({ onSelectState }: SearchBarProps) => {
+const SearchBar = ({ species, onSelectState }: SearchBarProps) => {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+
+  const seasons = useMemo(() => {
+    const all = getSeasonsForSpecies(species);
+    const seen = new Set<string>();
+    return all.filter(s => {
+      if (seen.has(s.abbreviation)) return false;
+      seen.add(s.abbreviation);
+      return true;
+    });
+  }, [species]);
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return duckSeasons.filter(
+    return seasons.filter(
       s => s.state.toLowerCase().includes(q) || s.abbreviation.toLowerCase() === q
     ).slice(0, 6);
-  }, [query]);
+  }, [query, seasons]);
 
   const showDropdown = focused && results.length > 0;
 

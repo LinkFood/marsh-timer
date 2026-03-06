@@ -1,10 +1,11 @@
 # Duck Countdown — CLAUDE.md
 
-Fun, free site for duck hunters. Interactive US map with countdown timers to every state's duck season. Mobile-first. Shareable. No accounts, no paywall.
+Multi-species hunting season countdown platform. Interactive US map with countdown timers for Duck, Goose, Deer, Turkey, and Dove seasons across all 50 states. Mobile-first. Shareable. No accounts, no paywall.
 
 **Domain:** duckcountdown.com
 **Repo:** github.com/LinkFood/marsh-timer
 **Hosting:** Vercel (static deploy + Edge Middleware for OG tags)
+**Brand:** "DUCK COUNTDOWN" stays the brand regardless of selected species.
 
 ## Stack
 
@@ -14,7 +15,7 @@ Fun, free site for duck hunters. Interactive US map with countdown timers to eve
 | Styling | Tailwind CSS |
 | Map | D3 + TopoJSON (US Atlas CDN) |
 | Animation | Framer Motion |
-| Routing | React Router 6 (`/` + `/:stateAbbr`) |
+| Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`) |
 | Icons | Lucide React |
 | Fonts | Playfair Display (headings), Lora (body) |
 | OG Tags | Vercel Edge Middleware (`middleware.ts`) |
@@ -24,67 +25,111 @@ Fun, free site for duck hunters. Interactive US map with countdown timers to eve
 ```
 src/
   components/
-    Header.tsx          # Title + tagline
-    StatusBar.tsx       # "X States Open" / "Y Opening Soon" pills
-    SearchBar.tsx       # State search with autocomplete
-    USMap.tsx           # D3 interactive map (touch-aware, color-coded)
-    StateDetail.tsx     # Selected state panel (countdown, facts, share, favorite, regulations)
-    CountdownTimer.tsx  # Days/hours/min/sec display
-    StateList.tsx       # Sorted list with favorites at top
-    FavoritesBar.tsx    # Horizontal pills of favorited states above map
-    Footer.tsx          # Disclaimer
+    Header.tsx            # Title + tagline (static, species-agnostic)
+    SpeciesSelector.tsx   # Horizontal toggle bar: Duck | Goose | Deer | Turkey | Dove
+    StatusBar.tsx         # "X States Open" / "Y Opening Soon" (species-filtered)
+    SearchBar.tsx         # State search with autocomplete (species-filtered)
+    USMap.tsx             # D3 interactive map (species-aware colors, no-data states)
+    StateDetail.tsx       # State panel: season type tabs, split dates, verification badge, cross-species nav
+    CountdownTimer.tsx    # Days/hours/min/sec display
+    StateList.tsx         # Sorted list with favorites at top (species-filtered)
+    FavoritesBar.tsx      # Horizontal pills (species-qualified: "duck:TX")
+    Footer.tsx            # Disclaimer
   pages/
-    Index.tsx           # Main page layout + routing + favorites wiring
-    NotFound.tsx        # Themed 404
+    Index.tsx             # Main page: parses species from URL, wires everything
+    NotFound.tsx          # Themed 404
   data/
-    seasonData.ts       # DuckSeason[] — all 50 state season dates + bag limits
-    stateFacts.ts       # Fun facts per state (3 each, all 50 states)
-    regulationLinks.ts  # Links to official state wildlife agency regulation pages
+    types.ts              # Species, SeasonType, HuntingSeason, DateRange interfaces
+    speciesConfig.ts      # Per-species metadata: colors, emoji, season types
+    fips.ts               # FIPS <-> abbreviation maps for D3
+    seasons/
+      duck.ts             # 50 states, regular season
+      goose.ts            # 10 states: regular + light goose conservation order
+      deer.ts             # 10 states: archery + rifle + muzzleloader
+      turkey.ts           # 10 states: spring + fall
+      dove.ts             # 10 states: regular + special white-wing (TX)
+      index.ts            # Merge helpers: getSeasonsForSpecies, getPrimarySeasonForState, etc.
+    stateFacts.ts         # Record<Species, Record<StateName, string[]>>
+    regulationLinks.ts    # Record<Species, Record<Abbr, string>>
   lib/
-    seasonUtils.ts      # Status calc, countdown, sorting
+    seasonUtils.ts        # Status calc, countdown, sorting (works with dates[] arrays)
   hooks/
-    useFavorites.ts     # localStorage favorites (max 5 states)
-middleware.ts           # Vercel Edge Middleware — injects state-specific OG meta tags
-vercel.json             # SPA rewrites for client-side routing
+    useFavorites.ts       # localStorage favorites, species-qualified ("duck:TX"), migrates legacy
+middleware.ts             # Vercel Edge Middleware: species-aware OG tags, /TX -> /duck/TX 301
+vercel.json               # SPA rewrites
 public/
-  sitemap.xml           # All 50 state routes
-  robots.txt            # Sitemap reference
+  sitemap.xml             # Species-prefixed URLs
+  robots.txt              # Sitemap reference
 ```
-
-## Features
-
-- **50-state coverage** — All states with 2025-2026 season data
-- **State routes** — Deep links: `/TX`, `/CA`, etc. (case-insensitive)
-- **Favorites** — Star up to 5 states, persisted in localStorage
-- **Web Share API** — Native share on mobile, clipboard fallback on desktop
-- **OG meta tags** — State-specific previews when sharing links (via Edge Middleware)
-- **Regulation links** — Direct links to each state's official waterfowl regulations
-- **Touch-optimized map** — No tooltips on touch devices, tap-to-select
-- **Accessibility** — `prefers-reduced-motion` disables grain overlay
 
 ## Data Model
 
 ```typescript
-interface DuckSeason {
-  state: string;          // "Alabama"
-  abbreviation: string;   // "AL"
-  zone: string;           // "South Zone"
-  flyway: string;         // "Mississippi" | "Pacific" | "Atlantic" | "Central"
-  bagLimit: number;       // Daily bag limit (6-7)
-  seasonOpen: string;     // ISO date "2025-11-22"
-  seasonClose: string;    // ISO date "2026-01-30"
-  notes?: string;         // Split season info, special notes
+type Species = "duck" | "goose" | "deer" | "turkey" | "dove";
+
+interface HuntingSeason {
+  species: Species;
+  state: string;           // "Texas"
+  abbreviation: string;    // "TX"
+  seasonType: SeasonType;  // "regular", "archery", "rifle", etc.
+  zone: string;            // "South Zone", "Statewide"
+  zoneSlug: string;        // "south-zone", "statewide"
+  dates: DateRange[];      // Array handles split seasons (e.g., AR duck = 3 segments)
+  bagLimit: number;
+  flyway?: string;         // Waterfowl only
+  weapon?: string;         // "Bow", "Rifle", "Shotgun"
+  notes?: string;
+  verified: boolean;       // Manually verified against state regs?
+  sourceUrl?: string;      // Link to official regulation page
+  seasonYear: string;      // "2025-2026"
 }
 ```
 
-**Season statuses:** open, soon (<30 days), upcoming (30-90 days), closed
-**Map colors:** Green (open), Amber (soon), Dark green (upcoming), Dark gray (closed), Gold (selected)
+**Key design decisions:**
+- `dates: DateRange[]` solves split seasons
+- `verified: boolean` — unverified data shows yellow warning badge
+- Per-species data files prevent merge conflicts
+- Species-first URLs: `/duck/TX` not `/TX/duck`
 
-## Season Data
+## Routing
 
-All season data lives in `src/data/seasonData.ts`. Hardcoded for 2025-2026.
-Middleware duplicates state names/dates in a lightweight map for OG tags — update both when season changes.
-Data changes annually — each state publishes new dates/limits, usually by summer.
+```
+/                    -> Home (defaults to duck)
+/duck                -> Duck map
+/deer                -> Deer map
+/duck/TX             -> Texas duck seasons
+/deer/TX             -> Texas deer seasons
+/TX                  -> Legacy redirect -> /duck/TX (301 in middleware)
+```
+
+## Features
+
+- **5 species** — Duck (50 states), Goose (10), Deer (10), Turkey (10), Dove (10)
+- **Species selector** — Horizontal toggle with open-state counts
+- **Season type tabs** — Archery/Rifle/Muzzleloader for deer, Spring/Fall for turkey, etc.
+- **Split season dates** — Shows all date ranges, countdown targets the next one
+- **Verification badges** — Green check (verified) or yellow warning (unverified)
+- **Cross-species nav** — "Also in Texas: Deer, Turkey" links in state detail
+- **Per-species map colors** — Each species has its own color palette
+- **Species-qualified favorites** — "duck:TX" format, migrates legacy "TX" format
+- **Legacy URL support** — `/TX` 301s to `/duck/TX`
+- **Species-aware OG tags** — Title/description change per species in middleware
+
+## Season Statuses
+
+open, soon (<30 days), upcoming (30-90 days), closed
+
+## Data Coverage (2025-2026)
+
+| Species | States | Season Types | Verified |
+|---------|--------|--------------|----------|
+| Duck | 50 | regular | 0/50 |
+| Goose | 10 | regular, conservation order | 0/10 |
+| Deer | 10 | archery, rifle, muzzleloader | 0/10 |
+| Turkey | 10 | spring, fall | 0/10 |
+| Dove | 10 | regular, white-wing | 0/10 |
+
+All data is `verified: false`. Verification against official state regulation pages is the priority.
 
 ## Build & Dev
 
@@ -95,18 +140,12 @@ npm run preview   # Serve production build locally
 npm run test      # Vitest
 ```
 
-## Design
-
-- Dark theme: deep green/black backgrounds with gold/green accents
-- Hunting/marsh aesthetic with grain overlay (disabled on reduced-motion)
-- Serif typography (Playfair + Lora)
-- Animations: fade-in headers, slide-up details, cascading list rows
-- Mobile-first: responsive grid, touch-friendly map, 44px+ touch targets
-
 ## Rules
 
 - Mobile-first. Every feature must work well on phones.
 - Keep it simple. No accounts, no backend.
 - Season data accuracy matters more than features. Wrong dates = useless site.
 - Shareable. Every interaction should be easy to screenshot or share via link/text.
-- When updating season data, also update the middleware.ts state map.
+- When updating season data, also update the middleware.ts state map for OG tags.
+- When adding a new species or state, update the sitemap.xml.
+- Brand stays "DUCK COUNTDOWN" regardless of species selected.

@@ -1,19 +1,17 @@
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { duckSeasons } from "@/data/seasonData";
+import type { Species } from "@/data/types";
+import { getPrimarySeasonForState } from "@/data/seasons";
 import { getSeasonStatus, getStatusColor, getCompactCountdown } from "@/lib/seasonUtils";
 
 interface FavoritesBarProps {
-  onSelectState: (abbr: string) => void;
+  species: Species;
   favorites: string[];
-  onToggleFavorite: (abbr: string) => void;
+  onSelectState: (abbr: string) => void;
+  onToggleFavorite: (species: Species, abbr: string) => void;
 }
 
-const seasonByAbbr = Object.fromEntries(
-  duckSeasons.map((s) => [s.abbreviation, s])
-);
-
-const FavoritesBar = ({ onSelectState, favorites, onToggleFavorite }: FavoritesBarProps) => {
+const FavoritesBar = ({ species, favorites, onSelectState, onToggleFavorite }: FavoritesBarProps) => {
   if (favorites.length === 0) return null;
 
   return (
@@ -21,7 +19,7 @@ const FavoritesBar = ({ onSelectState, favorites, onToggleFavorite }: FavoritesB
       <div className="flex flex-wrap gap-2 justify-center">
         <AnimatePresence mode="popLayout">
           {favorites.map((abbr) => {
-            const season = seasonByAbbr[abbr];
+            const season = getPrimarySeasonForState(species, abbr);
             if (!season) return null;
 
             const status = getSeasonStatus(season);
@@ -48,7 +46,7 @@ const FavoritesBar = ({ onSelectState, favorites, onToggleFavorite }: FavoritesB
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onToggleFavorite(abbr);
+                    onToggleFavorite(species, abbr);
                   }}
                   className="ml-0.5 p-0.5 rounded-full hover:bg-destructive/20 transition-colors text-muted-foreground hover:text-destructive"
                   aria-label={`Remove ${season.state} from favorites`}

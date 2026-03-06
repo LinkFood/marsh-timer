@@ -1,4 +1,7 @@
-export const regulationLinks: Record<string, string> = {
+import type { Species } from "./types";
+
+// Duck and goose share waterfowl regulation pages
+const waterfowlLinks: Record<string, string> = {
   "AL": "https://www.outdooralabama.com/hunting/migratory-birds",
   "AK": "https://www.adfg.alaska.gov/index.cfm?adfg=waterfowl.main",
   "AZ": "https://www.azgfd.com/hunting/regulations/",
@@ -49,4 +52,12 @@ export const regulationLinks: Record<string, string> = {
   "WV": "https://wvdnr.gov/hunting/migratory-bird-hunting/",
   "WI": "https://dnr.wisconsin.gov/topic/hunt/waterfowl",
   "WY": "https://wgfd.wyo.gov/Regulations/Game-Birds-Waterfowl/Late-Migratory-Game-Bird-Hunting-Seasons",
+};
+
+export const regulationLinks: Record<Species, Record<string, string>> = {
+  duck: waterfowlLinks,
+  goose: waterfowlLinks,
+  deer: {},
+  turkey: {},
+  dove: {},
 };
