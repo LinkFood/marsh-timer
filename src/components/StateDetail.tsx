@@ -8,6 +8,7 @@ import { regulationLinks } from "@/data/regulationLinks";
 import { stateFacts } from "@/data/stateFacts";
 import { getSeasonStatus, getCountdownTarget, getStatusColor, getStatusLabel, getDateDisplay, formatDate, getSeasonTypeLabel, SeasonStatus } from "@/lib/seasonUtils";
 import CountdownTimer from "./CountdownTimer";
+import EBirdSightings from "./EBirdSightings";
 
 interface StateDetailProps {
   species: Species;
@@ -187,6 +188,9 @@ const StateDetail = ({ species, abbreviation, onDeselect, isFavorite, onToggleFa
         {/* Facts */}
         {facts.length > 0 && <FactRotator facts={facts} />}
 
+        {/* eBird sightings */}
+        <EBirdSightings species={species} stateAbbr={abbreviation} />
+
         {/* Cross-species nav */}
         {otherSpecies.length > 0 && onSwitchSpecies && (
           <div className="flex flex-wrap items-center justify-center gap-2 mb-6 text-sm">
@@ -215,6 +219,17 @@ const StateDetail = ({ species, abbreviation, onDeselect, isFavorite, onToggleFa
             >
               <ExternalLink size={16} />
               Official Regulations
+            </a>
+          )}
+          {(species === "duck" || species === "goose" || species === "dove") && (
+            <a
+              href={`https://dashboard.birdcast.info/region/US-${abbreviation}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-lg font-body text-sm font-semibold bg-secondary/50 text-muted-foreground border border-border hover:bg-secondary hover:text-foreground transition-colors min-h-[44px]"
+            >
+              <ExternalLink size={16} />
+              Migration Forecast
             </a>
           )}
         </div>
