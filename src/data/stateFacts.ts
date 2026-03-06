@@ -9,6 +9,11 @@ export const stateFacts: Record<string, string[]> = {
     "The Yukon-Kuskokwim Delta is the largest wetland complex in North America.",
     "Emperor geese and spectacled eiders are unique species found in Alaska's flyways."
   ],
+  "Arizona": [
+    "The Lower Colorado River and Gila River valleys are Arizona's top waterfowl hunting corridors.",
+    "Cibola NWR on the Arizona-California border hosts large concentrations of wintering pintails and wigeon.",
+    "Arizona's desert reservoirs and stock tanks attract surprising numbers of teal, shovelers, and ring-necked ducks."
+  ],
   "Arkansas": [
     "Stuttgart, AR is known as the 'Duck Hunting Capital of the World.'",
     "The flooded timber of Bayou Meto WMA offers legendary mallard hunting.",
@@ -24,6 +29,16 @@ export const stateFacts: Record<string, string[]> = {
     "Colorado's eastern plains host significant flights of mallards and teal.",
     "High altitude reservoirs offer unique late-season diving duck opportunities."
   ],
+  "Connecticut": [
+    "The Connecticut River estuary is the largest tidal wetland complex in New England.",
+    "Long Island Sound's coastal marshes attract significant flights of black ducks, bufflehead, and mergansers.",
+    "The Great Meadows along the Connecticut River provide important staging habitat for wood ducks and teal."
+  ],
+  "Delaware": [
+    "Bombay Hook NWR on Delaware Bay is one of the premier waterfowl hunting destinations on the East Coast.",
+    "Despite being the second-smallest state, Delaware's coastal marshes support massive concentrations of wintering waterfowl.",
+    "The Delaware Bay shoreline is a critical Atlantic Flyway corridor for black ducks, pintails, and diving ducks."
+  ],
   "Florida": [
     "Florida's mottled duck is a unique non-migratory species found year-round.",
     "Lake Okeechobee and the St. Johns River are premier waterfowl destinations.",
@@ -33,6 +48,11 @@ export const stateFacts: Record<string, string[]> = {
     "The Altamaha River delta is Georgia's top waterfowl hunting destination.",
     "Georgia's coastal marshes attract significant numbers of wintering teal and pintails.",
     "Rum Creek WMA offers managed duck hunting opportunities in central Georgia."
+  ],
+  "Hawaii": [
+    "The endangered koloa maoli (Hawaiian duck) is the only endemic duck species in Hawaii and is fully protected from hunting.",
+    "Hawaii's waterfowl hunting is limited to migratory species like northern pintails and shovelers that winter on the islands.",
+    "The wetlands of Kauai and the North Shore of Oahu provide the best waterfowl habitat in the Hawaiian Islands."
   ],
   "Idaho": [
     "The Snake River Plain hosts massive concentrations of mallards and wigeon.",
@@ -69,10 +89,20 @@ export const stateFacts: Record<string, string[]> = {
     "The coastal marshes south of I-10 are the epicenter of Gulf Coast duck hunting.",
     "Pintails, gadwall, and teal dominate Louisiana's harvest each year."
   ],
+  "Maine": [
+    "Merrymeeting Bay is one of the most significant tidal waterfowl staging areas in the Northeast.",
+    "Maine's rugged coastline supports excellent sea duck hunting for eiders, scoters, and long-tailed ducks.",
+    "The Scarborough Marsh and Weskeag Marsh are premier public-access waterfowl hunting spots in southern Maine."
+  ],
   "Maryland": [
     "The Chesapeake Bay is the Atlantic Flyway's most important wintering area for canvasbacks.",
     "Blackwater NWR on the Eastern Shore provides world-class waterfowl hunting.",
     "Maryland's layout boat hunting for diving ducks is a regional tradition."
+  ],
+  "Massachusetts": [
+    "The Parker River NWR on Plum Island is one of the most popular waterfowl hunting areas in New England.",
+    "Cape Cod and the Islands support strong populations of sea ducks including eiders and scoters.",
+    "The Great Marshes of Barnstable provide exceptional black duck and teal hunting along the Atlantic Flyway."
   ],
   "Michigan": [
     "Saginaw Bay is Michigan's #1 waterfowl hunting destination.",
@@ -104,6 +134,21 @@ export const stateFacts: Record<string, string[]> = {
     "The Platte River corridor is one of the Central Flyway's most important habitats.",
     "Nebraska's sandhill lakes provide unique late-season diving duck opportunities."
   ],
+  "New Hampshire": [
+    "Great Bay estuary is New Hampshire's premier waterfowl hunting destination and a critical Atlantic Flyway stopover.",
+    "Lake Umbagog NWR on the Maine border provides excellent wood duck and black duck hunting in remote northern habitat.",
+    "The seacoast's tidal marshes around Hampton and Rye attract strong flights of black ducks, bufflehead, and mergansers."
+  ],
+  "New Jersey": [
+    "The Edwin B. Forsythe NWR (Brigantine) is one of the most important Atlantic Flyway waterfowl refuges.",
+    "New Jersey's Delaware Bay marshes host massive concentrations of black ducks, the highest densities on the East Coast.",
+    "The Meadowlands and Great Swamp provide surprisingly productive waterfowl hunting within sight of the NYC skyline."
+  ],
+  "New Mexico": [
+    "Bosque del Apache NWR along the Rio Grande hosts one of the most spectacular waterfowl concentrations in the Southwest.",
+    "The Pecos River valley and playa lakes of eastern New Mexico are key Central Flyway staging areas for teal and pintails.",
+    "New Mexico's high-desert reservoirs attract significant numbers of diving ducks including redheads and canvasbacks."
+  ],
   "Nevada": [
     "Stillwater NWR near Fallon is one of the most important wetlands in the Great Basin.",
     "Ruby Lake NWR provides excellent hunting in Nevada's remote interior.",
@@ -129,6 +174,11 @@ export const stateFacts: Record<string, string[]> = {
     "Mosquito Creek and Killbuck Marsh attract strong flights of puddle ducks.",
     "Ohio sits at a critical junction of the Mississippi and Atlantic flyways."
   ],
+  "Pennsylvania": [
+    "Pymatuning Reservoir on the Ohio border is Pennsylvania's top waterfowl destination with massive fall flights of diving ducks.",
+    "The Middle Creek WMA in Lebanon County hosts tens of thousands of snow geese and tundra swans each spring.",
+    "Presque Isle State Park on Lake Erie provides excellent late-season hunting for canvasbacks, redheads, and scaup."
+  ],
   "Oklahoma": [
     "Salt Plains NWR is a major Central Flyway staging area.",
     "Oklahoma's western playas attract significant numbers of green-winged teal.",
@@ -138,6 +188,11 @@ export const stateFacts: Record<string, string[]> = {
     "The Klamath Basin hosts one of the largest concentrations of waterfowl in North America.",
     "Summer Lake and Malheur NWR are premier Pacific Flyway hunting destinations.",
     "Oregon's Willamette Valley provides excellent hunting for pintails and wigeon."
+  ],
+  "Rhode Island": [
+    "Narragansett Bay and the coastal salt ponds provide excellent sea duck and black duck hunting.",
+    "The Great Swamp Management Area in South Kingstown is Rhode Island's top public waterfowl hunting spot.",
+    "Rhode Island has one of the latest duck season closing dates in the Atlantic Flyway, extending into early February."
   ],
   "South Carolina": [
     "The ACE Basin is one of the largest undeveloped estuaries on the East Coast.",
@@ -164,6 +219,11 @@ export const stateFacts: Record<string, string[]> = {
     "The Great Salt Lake marshes host millions of ducks during fall migration.",
     "Utah's cinnamon teal population is one of the highest in the Pacific Flyway."
   ],
+  "Vermont": [
+    "Lake Champlain's Dead Creek WMA hosts large concentrations of snow geese and provides excellent duck hunting.",
+    "The Missisquoi NWR on Lake Champlain is Vermont's premier managed waterfowl hunting area.",
+    "Vermont's beaver ponds and mountain streams produce strong local flights of wood ducks and black ducks."
+  ],
   "Virginia": [
     "Back Bay NWR offers excellent hunting for Atlantic Flyway waterfowl.",
     "The Chesapeake Bay's Virginia shore is prime habitat for canvasbacks and redheads.",
@@ -174,9 +234,19 @@ export const stateFacts: Record<string, string[]> = {
     "Puget Sound provides excellent sea duck hunting opportunities.",
     "Ridgefield NWR along the Columbia River hosts large concentrations of wintering ducks."
   ],
+  "West Virginia": [
+    "The Ohio River floodplain and its backwater sloughs are West Virginia's top waterfowl hunting areas.",
+    "McClintic WMA near Point Pleasant offers managed duck hunting with flooded impoundments.",
+    "West Virginia's mountain reservoirs attract late-season flights of ring-necked ducks, goldeneyes, and buffleheads."
+  ],
   "Wisconsin": [
     "Horicon Marsh is the largest freshwater cattail marsh in the United States.",
     "The Mississippi River pools near La Crosse offer excellent diving duck hunting.",
     "Wisconsin's northern forests produce strong flights of wood ducks and ring-necked ducks."
+  ],
+  "Wyoming": [
+    "Ocean Lake and Boysen Reservoir in the Wind River Basin are Wyoming's most productive waterfowl areas.",
+    "The North Platte River corridor near Casper attracts large flights of mallards, gadwall, and teal during migration.",
+    "Wyoming spans both the Central and Pacific flyways, offering diverse hunting opportunities from prairie potholes to mountain reservoirs."
   ],
 };

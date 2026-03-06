@@ -52,7 +52,9 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
 
         const g = svg.append("g");
 
-        g.selectAll<SVGPathElement, any>("path")
+        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        const paths = g.selectAll<SVGPathElement, any>("path")
           .data(states.features)
           .join("path")
           .attr("d", path as any)
@@ -66,45 +68,50 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
           .attr("cursor", d => {
             const fips = String(d.id).padStart(2, "0");
             return seasonByAbbr.has(fipsToAbbr[fips]) ? "pointer" : "default";
-          })
-          .on("mouseenter", function(event, d) {
-            const fips = String(d.id).padStart(2, "0");
-            const abbr = fipsToAbbr[fips];
-            const season = seasonByAbbr.get(abbr);
-            if (!season) return;
+          });
 
-            d3.select(this).attr("fill", d3.color(getStateColor(abbr))?.brighter(0.5)?.toString() || getStateColor(abbr));
+        if (!isTouchDevice) {
+          paths
+            .on("mouseenter", function(event, d) {
+              const fips = String(d.id).padStart(2, "0");
+              const abbr = fipsToAbbr[fips];
+              const season = seasonByAbbr.get(abbr);
+              if (!season) return;
 
-            const status = getSeasonStatus(season);
-            tooltip
-              .style("opacity", "1")
-              .html(`
-                <div class="font-display text-sm font-bold" style="color: #f5c842">${season.state}</div>
-                <div class="flex items-center gap-1 mt-1">
-                  <span class="w-2 h-2 rounded-full" style="background: ${getStatusColor(status)}"></span>
-                  <span class="text-xs" style="color: ${getStatusColor(status)}">${getStatusLabel(status)}</span>
-                </div>
-                <div class="text-xs mt-1 opacity-80">${formatDate(season.seasonOpen)} — ${formatDate(season.seasonClose)}</div>
-                <div class="text-xs mt-0.5 opacity-80">${getCompactCountdown(season)}</div>
-                <div class="text-xs mt-0.5 opacity-60">${season.flyway} Flyway · Bag: ${season.bagLimit}</div>
-              `);
-          })
-          .on("mousemove", function(event) {
-            const svgRect = svgRef.current?.getBoundingClientRect();
-            if (!svgRect) return;
-            const x = event.clientX - svgRect.left;
-            const y = event.clientY - svgRect.top;
-            tooltip
-              .style("left", `${x + 12}px`)
-              .style("top", `${y - 10}px`);
-          })
-          .on("mouseleave", function(_, d) {
-            const fips = String(d.id).padStart(2, "0");
-            const abbr = fipsToAbbr[fips];
-            d3.select(this).attr("fill", abbr ? getStateColor(abbr) : STATUS_COLORS.closed);
-            tooltip.style("opacity", "0");
-          })
-          .on("click", function(_, d) {
+              d3.select(this).attr("fill", d3.color(getStateColor(abbr))?.brighter(0.5)?.toString() || getStateColor(abbr));
+
+              const status = getSeasonStatus(season);
+              tooltip
+                .style("opacity", "1")
+                .html(`
+                  <div class="font-display text-sm font-bold" style="color: #f5c842">${season.state}</div>
+                  <div class="flex items-center gap-1 mt-1">
+                    <span class="w-2 h-2 rounded-full" style="background: ${getStatusColor(status)}"></span>
+                    <span class="text-xs" style="color: ${getStatusColor(status)}">${getStatusLabel(status)}</span>
+                  </div>
+                  <div class="text-xs mt-1 opacity-80">${formatDate(season.seasonOpen)} — ${formatDate(season.seasonClose)}</div>
+                  <div class="text-xs mt-0.5 opacity-80">${getCompactCountdown(season)}</div>
+                  <div class="text-xs mt-0.5 opacity-60">${season.flyway} Flyway · Bag: ${season.bagLimit}</div>
+                `);
+            })
+            .on("mousemove", function(event) {
+              const svgRect = svgRef.current?.getBoundingClientRect();
+              if (!svgRect) return;
+              const x = event.clientX - svgRect.left;
+              const y = event.clientY - svgRect.top;
+              tooltip
+                .style("left", `${x + 12}px`)
+                .style("top", `${y - 10}px`);
+            })
+            .on("mouseleave", function(_, d) {
+              const fips = String(d.id).padStart(2, "0");
+              const abbr = fipsToAbbr[fips];
+              d3.select(this).attr("fill", abbr ? getStateColor(abbr) : STATUS_COLORS.closed);
+              tooltip.style("opacity", "0");
+            });
+        }
+
+        paths.on("click", function(_, d) {
             const fips = String(d.id).padStart(2, "0");
             const abbr = fipsToAbbr[fips];
             if (seasonByAbbr.has(abbr)) onSelectState(abbr);
@@ -170,7 +177,7 @@ const USMap = ({ selectedState, onSelectState }: USMapProps) => {
         ref={svgRef}
         viewBox="0 0 960 600"
         className="w-full h-auto"
-        style={{ maxHeight: "70vh" }}
+        style={{ maxHeight: "70vh", touchAction: "manipulation" }}
       />
       <div
         ref={tooltipRef}
