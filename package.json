@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "validate-data": "node scripts/validate-data.mjs",
+    "generate-sitemap": "node scripts/generate-sitemap.mjs",
+    "import-csv": "node scripts/import-csv.mjs"
   },
   "dependencies": {
     "@types/d3": "7",

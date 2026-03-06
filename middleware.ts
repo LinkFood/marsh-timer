@@ -59,11 +59,15 @@ const states: Record<string, { name: string; seasonOpen: string; bagLimit: numbe
 
 const validSpecies = new Set(["duck", "goose", "deer", "turkey", "dove"]);
 
-async function injectOgTags(request: Request, title: string, description: string, ogUrl: string) {
+function buildJsonLd(type: string, data: Record<string, unknown>) {
+  return `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": type, ...data })}</script>`;
+}
+
+async function injectOgTags(request: Request, title: string, description: string, ogUrl: string, jsonLd?: string) {
   const indexResponse = await fetch(new URL('/index.html', request.url));
   const html = await indexResponse.text();
 
-  const modifiedHtml = html
+  let modifiedHtml = html
     .replace(/<title>.*?<\/title>/, `<title>${title}</title>`)
     .replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${description}" />`)
     .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${title}" />`)
@@ -71,6 +75,10 @@ async function injectOgTags(request: Request, title: string, description: string
     .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${ogUrl}" />`)
     .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${title}" />`)
     .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${description}" />`);
+
+  if (jsonLd) {
+    modifiedHtml = modifiedHtml.replace('</head>', `${jsonLd}\n</head>`);
+  }
 
   return new Response(modifiedHtml, {
     headers: { 'content-type': 'text/html; charset=utf-8' },
@@ -99,7 +107,13 @@ export default async function middleware(request: Request) {
     const title = `${label} Season Countdown | Duck Countdown`;
     const description = `${label} hunting season countdown timers for all 50 states. See what's open, what's coming, and never miss an opener.`;
     const ogUrl = `https://duckcountdown.com/${species}`;
-    return injectOgTags(request, title, description, ogUrl);
+    const jsonLd = buildJsonLd("WebPage", {
+      name: title,
+      description,
+      url: ogUrl,
+      isPartOf: { "@type": "WebSite", name: "Duck Countdown", url: "https://duckcountdown.com" },
+    });
+    return injectOgTags(request, title, description, ogUrl, jsonLd);
   }
 
   // /:species/:stateAbbr — species + state page
@@ -114,7 +128,15 @@ export default async function middleware(request: Request) {
         ? `${state.name} duck season opens ${state.seasonOpen}. ${state.flyway} Flyway. Bag limit: ${state.bagLimit}. Free countdown timer.`
         : `${state.name} ${label.toLowerCase()} hunting season dates, countdown timers, and regulations. Free on Duck Countdown.`;
       const ogUrl = `https://duckcountdown.com/${species}/${abbr}`;
-      return injectOgTags(request, title, description, ogUrl);
+      const jsonLd = buildJsonLd("SportsEvent", {
+        name: `${state.name} ${label} Hunting Season 2025-2026`,
+        description,
+        url: ogUrl,
+        location: { "@type": "Place", name: state.name, address: { "@type": "PostalAddress", addressRegion: abbr, addressCountry: "US" } },
+        organizer: { "@type": "GovernmentOrganization", name: `${state.name} Wildlife Agency` },
+        ...(species === "duck" ? { startDate: state.seasonOpen } : {}),
+      });
+      return injectOgTags(request, title, description, ogUrl, jsonLd);
     }
   }
 
