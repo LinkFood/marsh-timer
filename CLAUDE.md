@@ -149,3 +149,29 @@ npm run test      # Vitest
 - When updating season data, also update the middleware.ts state map for OG tags.
 - When adding a new species or state, update the sitemap.xml.
 - Brand stays "DUCK COUNTDOWN" regardless of species selected.
+
+## Future: Migration Data APIs
+
+Live migration data is the killer feature that would make DuckCountdown genuinely more useful than anything else out there for hunters. The integration path: eBird for live sightings, BirdCast for radar overlays, USFWS for flyway boundaries.
+
+### Tier 1 — Realistic Integration Targets
+
+| Source | What It Provides | API? | Auth? |
+|--------|-----------------|------|-------|
+| **eBird** (Cornell Lab) | Real-time bird sighting data — hotspots, recent observations, species locations with GPS coordinates. Could power "mallards reported in your county this week" on the map. | Yes, REST API | Free, API key required |
+| **BirdCast** (Cornell + Colorado State) | Forecast migration maps (predicted intensity/timing) + live radar-based maps showing real-time nocturnal migration activity at county/state level. "Birds moving tonight" overlay potential. | Dashboard + data feeds | Free |
+| **USFWS Flyway Boundaries** | Official flyway boundary shapefiles via ArcGIS REST API. Draw flyway overlays on the D3 map. | ArcGIS REST endpoint | Free, no auth |
+| **USFWS Waterfowl Survey** | Annual population estimates for 19 duck species from the Breeding Population and Habitat Survey (May/June). This is the data that sets hunting regulations. Published as annual status reports. | PDF reports, some data feeds | Free |
+
+### Tier 2 — Watch List (No Public API Yet)
+
+| Source | What It Provides | Why It Matters |
+|--------|-----------------|----------------|
+| **Ducks Unlimited Migration Map** | Real-time waterfowl concentration reports from DU biologists, field editors, and hunters. | Most hunter-specific data out there. If they ever open an API, it's perfect for a hunt reports feature. |
+| **Migration Station** | Aggregated real waterfowl count data from WMAs and refuges, updated Oct-Jan. Answers "where are the ducks?" | Great data, no API. Worth monitoring for changes. |
+| **Movebank** (Max Planck Institute) | Animal tracking database. Powers the Audubon Bird Migration Explorer (458 species, migratory routes across Americas). | Research-grade, deep data. More academic than practical for hunters but the route visualization data is rich. |
+
+### Integration Priority
+1. USFWS flyway boundary GeoJSON → map overlay (easiest, most visual impact)
+2. eBird API → live sightings by county on state detail pages
+3. BirdCast → "birds moving tonight" radar overlay on the map
