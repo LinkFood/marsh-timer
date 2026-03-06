@@ -43,11 +43,11 @@ src/
     speciesConfig.ts      # Per-species metadata: colors, emoji, season types
     fips.ts               # FIPS <-> abbreviation maps for D3
     seasons/
-      duck.ts             # 50 states, regular season
-      goose.ts            # 10 states: regular + light goose conservation order
-      deer.ts             # 10 states: archery + rifle + muzzleloader
-      turkey.ts           # 10 states: spring + fall
-      dove.ts             # 10 states: regular + special white-wing (TX)
+      duck.ts             # 50 states, 104 entries (regular + early-teal, zone-level)
+      goose.ts            # 49 states, 87 entries (regular + light goose conservation order)
+      deer.ts             # 50 states, 144 entries (archery + rifle + muzzleloader)
+      turkey.ts           # 49 states, 93 entries (spring + fall)
+      dove.ts             # 44 states, 54 entries (regular + special white-wing)
       index.ts            # Merge helpers: getSeasonsForSpecies, getPrimarySeasonForState, etc.
     stateFacts.ts         # Record<Species, Record<StateName, string[]>>
     regulationLinks.ts    # Record<Species, Record<Abbr, string>>
@@ -121,15 +121,16 @@ open, soon (<30 days), upcoming (30-90 days), closed
 
 ## Data Coverage (2025-2026)
 
-| Species | States | Season Types | Verified |
-|---------|--------|--------------|----------|
-| Duck | 50 | regular | 0/50 |
-| Goose | 10 | regular, conservation order | 0/10 |
-| Deer | 10 | archery, rifle, muzzleloader | 0/10 |
-| Turkey | 10 | spring, fall | 0/10 |
-| Dove | 10 | regular, white-wing | 0/10 |
+| Species | Entries | States | Season Types | Verified |
+|---------|---------|--------|--------------|----------|
+| Duck | 104 | 50 | regular, early-teal | 91/104 |
+| Goose | 87 | 49 | regular, light-goose-conservation | 31/87 |
+| Deer | 144 | 50 | archery, rifle, muzzleloader | 36/144 |
+| Turkey | 93 | 49 | spring, fall | 49/93 |
+| Dove | 54 | 44 | regular, special-white-wing | 14/54 |
 
-All data is `verified: false`. Verification against official state regulation pages is the priority.
+Missing states: Goose=HI (no season), Turkey=AK (no season), Dove=AK/HI/ME/MA/NY/VT (no season).
+Data sourced from state DNR websites via CSV import. Unverified entries show yellow warning badge.
 
 ## Build & Dev
 
