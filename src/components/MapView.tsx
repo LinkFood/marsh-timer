@@ -1297,7 +1297,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     return () => { map.off('zoom', onZoom); };
   }, [mapMode]);
 
-  // Update county GeoJSON data when it loads
+  // Create/update county source + layers when GeoJSON loads (async, usually after map init)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current || !countyGeoJSON) return;
@@ -1305,8 +1305,35 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const source = map.getSource("counties") as mapboxgl.GeoJSONSource | undefined;
     if (source) {
       source.setData(countyGeoJSON);
+    } else {
+      // Source doesn't exist yet — create it + layers
+      map.addSource("counties", { type: "geojson", data: countyGeoJSON });
+
+      map.addLayer({
+        id: "county-fill",
+        type: "fill",
+        source: "counties",
+        paint: {
+          "fill-color": "rgba(255,255,255,0.03)",
+          "fill-opacity": 0,
+        },
+        minzoom: 5,
+        layout: { visibility: (mapMode === 'scout' || mapMode === 'intel') ? "visible" : "none" },
+      }, map.getLayer("states-fill") ? "states-fill" : undefined);
+
+      map.addLayer({
+        id: "county-line",
+        type: "line",
+        source: "counties",
+        paint: {
+          "line-color": "rgba(255,255,255,0.5)",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.2, 8, 0.6, 10, 1],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.3, 8, 0.6],
+        },
+        minzoom: 5,
+      });
     }
-  }, [countyGeoJSON]);
+  }, [countyGeoJSON, mapMode]);
 
   // Handle satellite style toggle
   useEffect(() => {
