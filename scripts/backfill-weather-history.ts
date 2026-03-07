@@ -46,6 +46,8 @@ function msToMph(ms: number): number {
   return ms * 2.237;
 }
 
+const START_STATE = process.env.START_STATE || null;
+
 async function fetchWeatherHistory(
   lat: number,
   lng: number,
@@ -71,11 +73,18 @@ async function fetchWeatherHistory(
     timezone: "America/Chicago",
   });
 
-  const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
-  if (!res.ok) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
+    if (res.ok) return res.json();
+    if (res.status === 429 && attempt < 2) {
+      const wait = (attempt + 1) * 65000; // wait 65s, then 130s
+      console.log(`    Rate limited, waiting ${Math.round(wait / 1000)}s...`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
     throw new Error(`Open-Meteo error: ${res.status} ${await res.text()}`);
   }
-  return res.json();
+  throw new Error("Open-Meteo: exhausted retries");
 }
 
 function isDuckSeasonMonth(date: string): boolean {
@@ -149,18 +158,23 @@ async function main() {
 
   let total = 0;
   const states = Object.entries(STATE_COORDS);
+  let startFound = !START_STATE;
 
   for (let i = 0; i < states.length; i++) {
     const [abbr, [lat, lng]] = states[i];
+    if (!startFound) {
+      if (abbr === START_STATE) startFound = true;
+      else continue;
+    }
     try {
       const count = await backfillState(abbr, lat, lng);
       total += count;
     } catch (err) {
       console.error(`  FAILED ${abbr}: ${err}`);
     }
-    // Be polite to Open-Meteo
+    // 3s between states to respect Open-Meteo rate limits
     if (i < states.length - 1) {
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 3000));
     }
   }
 

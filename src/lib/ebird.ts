@@ -2,6 +2,7 @@ import type { Species } from "@/data/types";
 
 const API_KEY = import.meta.env.VITE_EBIRD_API_KEY as string | undefined;
 const BASE = "https://api.ebird.org/v2";
+// eBird API key loaded from VITE_EBIRD_API_KEY env var
 
 const SPECIES_CODES: Partial<Record<Species, string[]>> = {
   duck: ["mallar3", "gnwtea", "bnwtea", "norsho", "amewid", "norpin", "wodduc", "redhea", "canbac", "lessca"],

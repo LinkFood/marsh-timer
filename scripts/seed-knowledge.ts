@@ -29,18 +29,27 @@ async function fetchTable(table: string, select: string): Promise<any[]> {
   return res.json();
 }
 
-async function generateEmbedding(text: string): Promise<number[]> {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ text, input_type: "document" }),
-  });
-  if (!res.ok) {
+async function generateEmbedding(text: string, retries = 3): Promise<number[]> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ text, input_type: "document" }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.embedding;
+    }
+    if (res.status >= 500 && attempt < retries - 1) {
+      const wait = (attempt + 1) * 5000;
+      console.log(`    Retry ${attempt + 1}/${retries} after ${wait / 1000}s (${res.status})...`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
     const err = await res.text();
     throw new Error(`Embedding failed: ${res.status} ${err}`);
   }
-  const data = await res.json();
-  return data.embedding;
+  throw new Error("Embedding failed: exhausted retries");
 }
 
 async function upsertKnowledge(entry: {
