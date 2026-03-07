@@ -43,46 +43,31 @@ const STATES = [
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
 ];
 
-// Duck season months and sample days (every 3 days to reduce API calls)
+// Duck season months — sample every 7 days (key migration dates are weekly patterns anyway)
 function getDatesToFetch(year: number): { y: number; m: number; d: number }[] {
   const dates: { y: number; m: number; d: number }[] = [];
   // Sept-Dec of the year
   for (const m of [9, 10, 11, 12]) {
     const daysInMonth = new Date(year, m, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d += 3) {
+    for (let d = 1; d <= daysInMonth; d += 7) {
       dates.push({ y: year, m, d });
     }
   }
   // Jan-Feb of next year
   for (const m of [1, 2]) {
     const daysInMonth = new Date(year + 1, m, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d += 3) {
+    for (let d = 1; d <= daysInMonth; d += 7) {
       dates.push({ y: year + 1, m, d });
     }
   }
   return dates;
 }
 
-let requestCount = 0;
-let windowStart = Date.now();
+// Steady drip: 200 req/hr = 1 every 18s. We use 19s to stay safe.
+const DELAY_MS = 19000;
 
 async function rateLimitedFetch(url: string): Promise<Response> {
-  // Reset window every hour
-  if (Date.now() - windowStart > 3600000) {
-    requestCount = 0;
-    windowStart = Date.now();
-  }
-
-  // If approaching rate limit, wait
-  if (requestCount >= 190) {
-    const waitMs = 3600000 - (Date.now() - windowStart) + 5000;
-    console.log(`  Rate limit approaching, waiting ${Math.round(waitMs / 1000)}s...`);
-    await new Promise((r) => setTimeout(r, waitMs));
-    requestCount = 0;
-    windowStart = Date.now();
-  }
-
-  requestCount++;
+  await new Promise((r) => setTimeout(r, DELAY_MS));
   return fetch(url, {
     headers: { "X-eBirdApiToken": EBIRD_KEY! },
   });
@@ -99,11 +84,8 @@ async function fetchDayObservations(
   const res = await rateLimitedFetch(url);
   if (!res.ok) {
     if (res.status === 429) {
-      // Rate limited — wait and retry once
-      console.log(`  429 rate limited, waiting 60s...`);
-      await new Promise((r) => setTimeout(r, 60000));
-      requestCount = 0;
-      windowStart = Date.now();
+      console.log(`  429 rate limited, waiting 120s...`);
+      await new Promise((r) => setTimeout(r, 120000));
       const retry = await rateLimitedFetch(url);
       if (!retry.ok) return { sightingCount: 0, locationCount: 0, locations: [] };
       const data = await retry.json();
@@ -171,9 +153,6 @@ async function main() {
             });
             yearCount++;
           }
-
-          // Small delay between requests
-          await new Promise((r) => setTimeout(r, 200));
         } catch (err) {
           console.error(`  Error ${stateAbbr} ${dateStr}: ${err}`);
         }

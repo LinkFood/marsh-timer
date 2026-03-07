@@ -24,6 +24,7 @@ export type MapMode = 'default' | 'scout' | 'weather' | 'terrain' | 'intel';
 
 export interface MapOverlays {
   wetlands: boolean;
+  waterBodies: boolean;
   landCover: boolean;
   contours: boolean;
   waterways: boolean;
@@ -35,10 +36,10 @@ export interface MapOverlays {
 // Mode -> layer mapping
 const MODE_LAYERS: Record<MapMode, Partial<MapOverlays> & { radar?: boolean; tempHeatmap?: boolean; windArrows?: boolean }> = {
   default: {},
-  scout: { wetlands: true, waterways: true, parks: true, trails: true },
+  scout: { wetlands: true, waterBodies: true, waterways: true, parks: true, trails: true },
   weather: { radar: true, tempHeatmap: true, windArrows: true },
   terrain: { landCover: true, contours: true },
-  intel: { wetlands: true, waterways: true, radar: true, tempHeatmap: true, windArrows: true },
+  intel: { wetlands: true, waterBodies: true, waterways: true, radar: true, tempHeatmap: true, windArrows: true },
 };
 
 function tempToColor(tempF: number): string {
@@ -227,7 +228,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     sightingsGeoJSON = null,
     onMoveEnd,
     weatherCache,
-    overlays = { wetlands: false, landCover: false, contours: false, waterways: false, agriculture: false, parks: false, trails: false },
+    overlays = { wetlands: false, waterBodies: false, landCover: false, contours: false, waterways: false, agriculture: false, parks: false, trails: false },
     onElevation,
     mapMode = 'default',
   },
@@ -451,6 +452,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         }, 'states-fill');
       }
 
+      // Water bodies — lakes, ponds, reservoirs (streets-v8 water layer)
+      if (!map.getLayer('water-fill')) {
+        map.addLayer({
+          id: 'water-fill',
+          type: 'fill',
+          source: 'streets-v8',
+          'source-layer': 'water',
+          paint: {
+            'fill-color': 'rgba(30, 100, 200, 0.5)',
+            'fill-outline-color': 'rgba(59, 130, 246, 0.7)',
+          },
+          minzoom: 7,
+          layout: { visibility: 'none' },
+        }, 'states-fill');
+      }
+
       // Agriculture (streets-v8 landuse layer)
       if (!map.getLayer('agriculture-fill')) {
         map.addLayer({
@@ -529,6 +546,31 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           },
           minzoom: 10,
           layout: { visibility: 'none' },
+        });
+      }
+
+      // Waterway labels (streets-v8 waterway layer — river/stream names)
+      if (!map.getLayer('waterway-labels')) {
+        map.addLayer({
+          id: 'waterway-labels',
+          type: 'symbol',
+          source: 'streets-v8',
+          'source-layer': 'waterway',
+          filter: ['in', ['get', 'class'], ['literal', ['river', 'canal', 'stream']]],
+          layout: {
+            'symbol-placement': 'line',
+            'text-field': ['get', 'name'],
+            'text-size': ['match', ['get', 'class'], 'river', 11, 'canal', 10, 9],
+            'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+            'text-max-angle': 30,
+            visibility: 'none',
+          },
+          paint: {
+            'text-color': 'rgba(100, 180, 255, 0.9)',
+            'text-halo-color': 'rgba(0, 0, 0, 0.8)',
+            'text-halo-width': 1.5,
+          },
+          minzoom: 10,
         });
       }
 
@@ -1006,11 +1048,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     const layerMap: Record<string, boolean> = {
       'wetland-fill': overlays.wetlands,
+      'water-fill': overlays.waterBodies,
       'landcover-fill': overlays.landCover,
       'contour-lines': overlays.contours,
       'contour-labels': overlays.contours,
       'waterway-lines': overlays.waterways,
       'waterway-intermittent': overlays.waterways,
+      'waterway-labels': overlays.waterways,
       'agriculture-fill': overlays.agriculture,
       'parks-fill': overlays.parks,
       'trails-lines': overlays.trails,
@@ -1035,11 +1079,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     // Apply overlay visibility from mode
     const layerMap: Record<string, boolean> = {
       'wetland-fill': !!modeConfig.wetlands,
+      'water-fill': !!modeConfig.waterBodies,
       'landcover-fill': !!modeConfig.landCover,
       'contour-lines': !!modeConfig.contours,
       'contour-labels': !!modeConfig.contours,
       'waterway-lines': !!modeConfig.waterways,
       'waterway-intermittent': !!modeConfig.waterways,
+      'waterway-labels': !!modeConfig.waterways,
       'agriculture-fill': !!modeConfig.agriculture,
       'parks-fill': !!modeConfig.parks,
       'trails-lines': !!modeConfig.trails,
@@ -1105,11 +1151,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     const onZoom = () => {
       const zoom = map.getZoom();
-      // Auto-show waterways at zoom 8+ in scout/intel modes
+      // Auto-show waterways + water bodies at zoom 7+ in scout/intel modes
       if (mapMode === 'scout' || mapMode === 'intel') {
-        if (map.getLayer('waterway-lines')) {
-          map.setLayoutProperty('waterway-lines', 'visibility', zoom >= 7 ? 'visible' : 'none');
-        }
+        const vis = zoom >= 7 ? 'visible' : 'none';
+        if (map.getLayer('waterway-lines')) map.setLayoutProperty('waterway-lines', 'visibility', vis);
+        if (map.getLayer('water-fill')) map.setLayoutProperty('water-fill', 'visibility', vis);
       }
     };
 
