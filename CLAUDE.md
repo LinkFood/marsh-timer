@@ -30,28 +30,31 @@ Hunting OS — "Google for Hunting." Interactive Mapbox GL map with AI chat brai
 ```
 src/
   components/
-    MapView.tsx           # Mapbox GL: satellite, 3D terrain, globe projection, state fills, county boundaries, flyways, mode-driven overlays (wetlands, waterways, contours, temp heatmap, wind arrows, radar)
+    MapView.tsx           # Mapbox GL: satellite, 3D terrain, globe projection, state fills, county boundaries, flyways, mode-driven overlays (wetlands, waterways, contours, temp heatmap, convergence heatmap, wind arrows, radar)
     HeaderBar.tsx         # Brand + species pills + search + UserMenu
-    BottomPanel.tsx       # Collapsible: card row + HuntChat split layout
+    Sidebar.tsx           # Desktop left sidebar (340px expanded / 48px collapsed) with Intel/Chat/Alerts tabs
+    MobileSheet.tsx       # Mobile bottom sheet with drag-snap (peek/half/full)
     NationalView.tsx      # Horizontal scroll state cards (open/soon/closed) + off-season intel (next season countdown, weather alerts, scouting conditions)
     StateView.tsx         # State detail: season tabs, facts, regulation links
     ZoneView.tsx          # Zone detail for drilled-in state
     MapPresets.tsx         # Map mode selector (Default/Scout/Weather/Terrain/Intel) + utility toggles (3D, Satellite, Flyways) + zoom/geolocate
+    HotspotRanking.tsx    # "Where to Hunt Today" — top 10 states by convergence score
+    ScoutReport.tsx       # Daily AI scout brief with collapsible sections
     LiveTicker.tsx        # Scrolling ticker below header
     UserMenu.tsx          # Avatar dropdown (sign in / sign out)
-    HuntChat.tsx          # Chat container: 50/50 desktop split, stacked mobile
+    HuntChat.tsx          # Chat container: full-width in sidebar tab
     ChatInput.tsx         # Chat input with auth gate
     ChatMessage.tsx       # User/assistant message bubbles with card embedding
-    ChatContextPanel.tsx  # Right panel: state seasons context
-    MapPopup.tsx          # Hover popup: state name, season status, dates (HTML string gen)
+    MapPopup.tsx          # Hover popup: state name, season status, dates, convergence score (HTML string gen)
     HuntAlerts.tsx        # Proactive weather alerts: national scroll strip + state banner
     cards/
+      ConvergenceCard.tsx # Hunt score breakdown: 0-100 with 4 component bars + national rank
       WeatherCard.tsx     # 3-day forecast, wind, precip
       SeasonCard.tsx      # Season status, dates, bag limit
       SolunarCard.tsx     # Moon phase, feeding times, rating
       AlertCard.tsx       # Season alerts, countdowns
   pages/
-    Index.tsx             # Main page: map + header + bottom panel + controls
+    Index.tsx             # Main page: map + header + sidebar (desktop) / mobile sheet + controls
     Auth.tsx              # Google OAuth sign-in page
     NotFound.tsx          # Themed 404
   data/
@@ -69,12 +72,16 @@ src/
   hooks/
     useAuth.ts            # Session, user, profile, signIn, signOut
     useChat.ts            # Messages, sendMessage, loading, conversation persistence
-    useHuntContext.ts     # Aggregated season context for chat panel
+    useHuntContext.ts     # Aggregated season context for chat
     useFavorites.ts       # localStorage favorites, species-qualified
     useRadarTiles.ts      # RainViewer radar tile URL, 5-min refresh
     useEBirdMapSightings.ts # Geo sightings → GeoJSON FeatureCollection, recency-tagged
     useHuntAlerts.ts      # Proactive weather alerts from hunt-alerts edge function, hourly refresh
     useNationalWeather.ts # Bulk Open-Meteo current weather for all 50 states
+    useConvergenceScores.ts # Convergence scores for all 50 states, 30-min refresh
+    useScoutReport.ts     # Latest daily scout brief from hunt_intel_briefs, 60-min refresh
+    useConvergenceAlerts.ts # Convergence score spike alerts, 30-min refresh
+    useSolunar.ts         # Solunar data via hunt-solunar edge function (TanStack Query)
     useIsMobile.ts        # Responsive breakpoint detection
 supabase/
   functions/
@@ -143,7 +150,13 @@ interface HuntingSeason {
 ## Features
 
 - **5 species** — Duck (50 states), Goose (10), Deer (10), Turkey (10), Dove (10)
-- **Species selector** — Horizontal toggle with open-state counts
+- **Species selector** — Horizontal toggle in header
+- **Left sidebar (desktop)** — Tabbed Intel/Chat/Alerts, collapsible to 48px icon strip
+- **Mobile bottom sheet** — Drag-snap (peek 15% / half 45% / full 90%)
+- **Convergence heatmap** — Intel mode colors states gray→blue→yellow→orange→red by hunt score (0-100)
+- **Hotspot ranking** — "Where to Hunt Today" top 10 states by convergence score
+- **Scout report** — Daily AI-generated brief with collapsible sections
+- **Convergence card** — Per-state score breakdown (weather/solunar/migration/pattern) + national rank
 - **Season type tabs** — Archery/Rifle/Muzzleloader for deer, Spring/Fall for turkey, etc.
 - **Split season dates** — Shows all date ranges, countdown targets the next one
 - **Verification badges** — Green check (verified) or yellow warning (unverified)
@@ -199,7 +212,11 @@ npm run test      # Vitest
 | hunt_migration_history | eBird sighting density per state/species/day (5 years) |
 | hunt_weather_history | Daily weather aggregates per state (5 years, Open-Meteo archive) |
 | hunt_user_locations | Saved hunting spots (future) |
-| hunt_intel_briefs | AI-generated hunt briefs (future) |
+| hunt_intel_briefs | AI-generated daily scout reports |
+| hunt_convergence_scores | Hunt score 0-100 per state per day (weather+solunar+migration+pattern) |
+| hunt_convergence_alerts | Score spike alerts when convergence jumps significantly |
+| hunt_solunar_precomputed | 365-day precomputed solunar data (Meeus lunar math) |
+| hunt_nws_alerts | Filtered NWS severe weather alerts |
 
 All tables have RLS. Service role bypasses for edge functions.
 
@@ -213,6 +230,14 @@ All tables have RLS. Service role bypasses for edge functions.
 | hunt-weather | Open-Meteo 3-day forecast with cache |
 | hunt-solunar | Solunar + sunrise/sunset with cache |
 | hunt-alerts | Proactive weather alerts: bulk Open-Meteo forecast for 50 states → filter interesting conditions → vector search historical patterns → scored alerts with severity |
+| hunt-weather-watchdog | Daily 50-state Open-Meteo forecast + hunting events + embed (cron 0 6 * * *) |
+| hunt-nws-monitor | NWS filtered alerts every 3 hours (cron 0 */3 * * *) |
+| hunt-nasa-power | NASA POWER satellite data → weather history (cron 30/33 6 * * *) |
+| hunt-solunar-precompute | Meeus lunar math → 365-day solunar calendar (cron weekly) |
+| hunt-migration-monitor | eBird spike detection across 5 batches (cron 0-20/5 7 * * *) |
+| hunt-convergence-engine | 4-component scoring → 0-100 per state per day (cron 0 8 * * *) |
+| hunt-scout-report | Daily AI scout brief from convergence data (cron 0 9 * * *) |
+| hunt-convergence-alerts | Score spike detection + notifications (cron 15 8 * * *) |
 
 All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
 
@@ -235,14 +260,18 @@ All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84
 
 | Feature | Source | Implementation |
 |---------|--------|----------------|
+| Convergence heatmap | `hunt_convergence_scores` table | `useConvergenceScores.ts` → MapView intel mode fills states gray→blue→yellow→orange→red by 0-100 score |
+| Hotspot ranking | `hunt_convergence_scores` table | `useConvergenceScores.ts` → `HotspotRanking.tsx` top 10 states in sidebar Intel tab |
+| Scout report | `hunt_intel_briefs` table | `useScoutReport.ts` → `ScoutReport.tsx` collapsible daily brief in sidebar Intel tab |
+| Convergence card | `hunt_convergence_scores` table | `ConvergenceCard.tsx` — 4 component bars + rank when state selected |
 | Weather radar overlay | RainViewer API (free, no auth) | `useRadarTiles.ts` → raster layer, 5-min refresh, CloudRain toggle |
 | 3D camera drill-in | Mapbox GL | pitch 45, bearing -15 on state select, fog at distance |
-| State info popups | Local season data | `MapPopup.tsx` → hover popup with status dot + dates (desktop) |
+| State info popups | Local season data + convergence | `MapPopup.tsx` → hover popup with status dot + dates + hunt score (desktop) |
 | eBird live sightings | eBird Geo API (`VITE_EBIRD_API_KEY`) | `useEBirdMapSightings.ts` → circle markers, green/amber/dim by recency, zoom 6+ |
 | Proactive weather alerts | Open-Meteo bulk + hunt_knowledge vectors | `hunt-alerts` edge fn → `useHuntAlerts.ts` → `HuntAlerts.tsx` (national scroll strip + state banner) |
-| Map overlay layers | Mapbox streets-v8 + terrain-v2 tilesets | `LayersPanel.tsx` → wetlands, waterways, contours, land cover, agriculture, parks, trails |
-| Elevation HUD | Mapbox `queryTerrainElevation` | Client-side, shows ft when 3D on + zoom > 8 |
-| Location search | Mapbox Geocoding API v5 | `HeaderBar.tsx` → zip/address/city → flyTo with 3D terrain pitch |
+| Map overlay layers | Mapbox streets-v8 + terrain-v2 tilesets | Mode-driven: wetlands, waterways, contours, land cover, agriculture, parks, trails |
+| Elevation HUD | Mapbox `queryTerrainElevation` | Client-side, shows ft when 3D on + zoom > 8, shifts right when sidebar expanded |
+| Location search | Mapbox Geocoding API v5 | `HeaderBar.tsx` → zip/address/city → flyTo zoom 15 with 3D terrain pitch |
 
 ## Data Pipeline (The Moat)
 
