@@ -4,6 +4,7 @@ import type { Species } from "@/data/types";
 import NationalView from "./NationalView";
 import StateView from "./StateView";
 import ZoneView from "./ZoneView";
+import HuntChat from "./HuntChat";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -162,15 +163,13 @@ export default function BottomPanel({
   if (!isMobile) {
     return (
       <div
-        className={`fixed bottom-0 left-0 right-0 z-20 map-overlay-panel border-t border-border/50 transition-all duration-300 ease-out`}
-        style={{
-          height: desktopExpanded ? "45dvh" : "auto",
-        }}
+        className="fixed bottom-0 left-0 right-0 z-20 map-overlay-panel border-t border-border/50 transition-all duration-300 ease-out"
+        style={{ height: desktopExpanded ? "50dvh" : "auto" }}
       >
         {/* Summary bar / toggle */}
         <button
           onClick={() => setDesktopExpanded((e) => !e)}
-          className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-body text-muted-foreground hover:text-foreground transition-colors"
+          className="w-full flex items-center justify-between px-4 py-2 text-xs font-body text-muted-foreground hover:text-foreground transition-colors"
         >
           <span className="font-semibold uppercase tracking-wider">
             {summaryText}
@@ -181,10 +180,16 @@ export default function BottomPanel({
           />
         </button>
 
-        {/* Content */}
         {desktopExpanded && (
-          <div className="overflow-y-auto scrollbar-hide px-4 pb-6" style={{ height: "calc(45dvh - 40px)" }}>
-            {content}
+          <div className="flex flex-col" style={{ height: "calc(50dvh - 36px)" }}>
+            {/* Compact card row */}
+            <div className="shrink-0 overflow-x-auto scrollbar-hide px-4 pb-2">
+              {content}
+            </div>
+            {/* Chat area */}
+            <div className="flex-1 min-h-0 border-t border-border/30">
+              <HuntChat species={species} stateAbbr={stateAbbr} isMobile={false} />
+            </div>
           </div>
         )}
       </div>
@@ -227,6 +232,11 @@ export default function BottomPanel({
         style={{ height: `calc(${SNAP_FULL * 100}dvh - 3.5rem)` }}
       >
         {content}
+
+        {/* Chat */}
+        <div className="border-t border-border/30 mt-4" style={{ minHeight: '300px' }}>
+          <HuntChat species={species} stateAbbr={stateAbbr} isMobile={true} />
+        </div>
       </div>
     </div>
   );

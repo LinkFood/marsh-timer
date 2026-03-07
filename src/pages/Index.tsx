@@ -93,8 +93,8 @@ const Index = () => {
   );
   const [zoneSlug, setZoneSlug] = useState<string | null>(parsed.zoneSlug);
   const [showFlyways, setShowFlyways] = useState(false);
-  const [isSatellite, setIsSatellite] = useState(false);
-  const [show3D, setShow3D] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(true);
+  const [show3D, setShow3D] = useState(true);
 
   // Derive drill level
   const level: DrillLevel = useMemo(() => {

@@ -360,6 +360,15 @@ verify_jwt = false
 [functions.hunt-solunar]
 verify_jwt = false
 
+[functions.hunt-dispatcher]
+verify_jwt = false
+
+[functions.hunt-search]
+verify_jwt = false
+
+[functions.hunt-generate-embedding]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

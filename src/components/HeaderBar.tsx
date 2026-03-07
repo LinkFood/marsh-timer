@@ -4,6 +4,7 @@ import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
+import UserMenu from './UserMenu';
 
 interface HeaderBarProps {
   species: Species;
@@ -125,8 +126,10 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
           })}
         </div>
 
-        {/* Right: Search */}
-        <div ref={searchContainerRef} className="relative shrink-0">
+        {/* Right: User + Search */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <UserMenu />
+          <div ref={searchContainerRef} className="relative">
           {!searchOpen ? (
             <button
               onClick={() => setSearchOpen(true)}
@@ -173,6 +176,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
     </header>

@@ -175,6 +175,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const pulseFrameRef = useRef<number>(0);
   const statesGeoRef = useRef<FeatureCollection | null>(null);
   const loadedRef = useRef(false);
+  const flyingRef = useRef(false);
   const selectedStateRef = useRef(selectedState);
   const prevStyleRef = useRef<string>("dark");
 
@@ -194,6 +195,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         if (!map) return;
         const centroid = centroidsRef.current.get(abbr);
         if (centroid) {
+          flyingRef.current = true;
+          map.once('moveend', () => { flyingRef.current = false; });
           map.flyTo({ center: centroid, zoom: STATE_ZOOM, duration: 1000 });
         }
       },
@@ -207,7 +210,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       },
       resetView: () => {
         const map = mapRef.current;
-        if (map) map.flyTo({ center: US_CENTER, zoom: US_ZOOM, duration: 1000 });
+        if (!map) return;
+        flyingRef.current = true;
+        map.once('moveend', () => { flyingRef.current = false; });
+        map.flyTo({ center: US_CENTER, zoom: US_ZOOM, duration: 1000 });
       },
     }),
     [],
@@ -308,6 +314,26 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             visibility:
               showFlyways && isFlywaySpecies(species) ? "visible" : "none",
           },
+        });
+      }
+
+      // County boundaries (visible at state zoom)
+      if (!map.getLayer('county-boundaries')) {
+        map.addLayer({
+          id: 'county-boundaries',
+          type: 'line',
+          source: {
+            type: 'vector',
+            url: 'mapbox://mapbox.mapbox-streets-v8',
+          },
+          'source-layer': 'admin',
+          filter: ['all', ['==', 'admin_level', 4], ['==', 'iso_3166_1', 'US']],
+          paint: {
+            'line-color': '#ffffff',
+            'line-width': 0.3,
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.5, 0, 5.5, 0.4],
+          },
+          minzoom: 4.5,
         });
       }
 
@@ -432,6 +458,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // Zoom out detection for drill up
     map.on("zoomend", () => {
+      if (flyingRef.current) return;
       const zoom = map.getZoom();
       if (zoom < DRILL_UP_ZOOM_THRESHOLD && selectedStateRef.current) {
         onDrillUp();
@@ -505,9 +532,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (selectedState) {
       const centroid = centroidsRef.current.get(selectedState);
       if (centroid) {
+        flyingRef.current = true;
+        map.once('moveend', () => { flyingRef.current = false; });
         map.flyTo({ center: centroid, zoom: STATE_ZOOM, duration: 1000 });
       }
     } else {
+      flyingRef.current = true;
+      map.once('moveend', () => { flyingRef.current = false; });
       map.flyTo({ center: US_CENTER, zoom: US_ZOOM, duration: 1000 });
     }
   }, [selectedState]);
