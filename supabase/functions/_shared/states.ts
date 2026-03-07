@@ -1,0 +1,61 @@
+// Shared state centroids, abbreviations, and name mappings for all 50 US states.
+// Extracted from hunt-alerts/index.ts for reuse across monitoring functions.
+
+export const STATE_CENTROIDS: Record<string, { name: string; lat: number; lng: number }> = {
+  AL: { name: "Alabama", lat: 32.807, lng: -86.791 },
+  AK: { name: "Alaska", lat: 63.589, lng: -154.493 },
+  AZ: { name: "Arizona", lat: 34.049, lng: -111.094 },
+  AR: { name: "Arkansas", lat: 34.970, lng: -92.373 },
+  CA: { name: "California", lat: 36.116, lng: -119.682 },
+  CO: { name: "Colorado", lat: 39.060, lng: -105.311 },
+  CT: { name: "Connecticut", lat: 41.598, lng: -72.755 },
+  DE: { name: "Delaware", lat: 39.319, lng: -75.507 },
+  FL: { name: "Florida", lat: 27.766, lng: -81.687 },
+  GA: { name: "Georgia", lat: 33.041, lng: -83.643 },
+  HI: { name: "Hawaii", lat: 21.094, lng: -157.498 },
+  ID: { name: "Idaho", lat: 44.240, lng: -114.479 },
+  IL: { name: "Illinois", lat: 40.349, lng: -88.986 },
+  IN: { name: "Indiana", lat: 39.849, lng: -86.258 },
+  IA: { name: "Iowa", lat: 42.012, lng: -93.211 },
+  KS: { name: "Kansas", lat: 38.527, lng: -96.726 },
+  KY: { name: "Kentucky", lat: 37.668, lng: -84.670 },
+  LA: { name: "Louisiana", lat: 31.170, lng: -91.868 },
+  ME: { name: "Maine", lat: 44.694, lng: -69.382 },
+  MD: { name: "Maryland", lat: 39.064, lng: -76.802 },
+  MA: { name: "Massachusetts", lat: 42.230, lng: -71.530 },
+  MI: { name: "Michigan", lat: 43.327, lng: -84.536 },
+  MN: { name: "Minnesota", lat: 45.694, lng: -93.900 },
+  MS: { name: "Mississippi", lat: 32.742, lng: -89.679 },
+  MO: { name: "Missouri", lat: 38.456, lng: -92.288 },
+  MT: { name: "Montana", lat: 46.922, lng: -110.454 },
+  NE: { name: "Nebraska", lat: 41.125, lng: -98.268 },
+  NV: { name: "Nevada", lat: 38.314, lng: -117.055 },
+  NH: { name: "New Hampshire", lat: 43.452, lng: -71.564 },
+  NJ: { name: "New Jersey", lat: 40.299, lng: -74.521 },
+  NM: { name: "New Mexico", lat: 34.841, lng: -106.248 },
+  NY: { name: "New York", lat: 42.166, lng: -74.948 },
+  NC: { name: "North Carolina", lat: 35.630, lng: -79.806 },
+  ND: { name: "North Dakota", lat: 47.529, lng: -99.784 },
+  OH: { name: "Ohio", lat: 40.389, lng: -82.765 },
+  OK: { name: "Oklahoma", lat: 35.565, lng: -96.929 },
+  OR: { name: "Oregon", lat: 44.572, lng: -122.071 },
+  PA: { name: "Pennsylvania", lat: 40.591, lng: -77.210 },
+  RI: { name: "Rhode Island", lat: 41.681, lng: -71.512 },
+  SC: { name: "South Carolina", lat: 33.857, lng: -80.945 },
+  SD: { name: "South Dakota", lat: 44.300, lng: -99.439 },
+  TN: { name: "Tennessee", lat: 35.748, lng: -86.692 },
+  TX: { name: "Texas", lat: 31.054, lng: -97.563 },
+  UT: { name: "Utah", lat: 40.150, lng: -111.862 },
+  VT: { name: "Vermont", lat: 44.046, lng: -72.711 },
+  VA: { name: "Virginia", lat: 37.769, lng: -78.170 },
+  WA: { name: "Washington", lat: 47.401, lng: -121.490 },
+  WV: { name: "West Virginia", lat: 38.491, lng: -80.954 },
+  WI: { name: "Wisconsin", lat: 44.269, lng: -89.617 },
+  WY: { name: "Wyoming", lat: 42.756, lng: -107.302 },
+};
+
+export const STATE_ABBRS: string[] = Object.keys(STATE_CENTROIDS);
+
+export const STATE_NAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_CENTROIDS).map(([abbr, { name }]) => [abbr, name])
+);

@@ -372,6 +372,24 @@ verify_jwt = false
 [functions.hunt-alerts]
 verify_jwt = false
 
+[functions.hunt-weather-watchdog]
+verify_jwt = false
+
+[functions.hunt-nws-monitor]
+verify_jwt = false
+
+[functions.hunt-nasa-power]
+verify_jwt = false
+
+[functions.hunt-solunar-precompute]
+verify_jwt = false
+
+[functions.hunt-migration-monitor]
+verify_jwt = false
+
+[functions.hunt-forum-ingest]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
