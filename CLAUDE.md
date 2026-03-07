@@ -43,6 +43,7 @@ src/
     ChatInput.tsx         # Chat input with auth gate
     ChatMessage.tsx       # User/assistant message bubbles with card embedding
     ChatContextPanel.tsx  # Right panel: state seasons context
+    MapPopup.tsx          # Hover popup: state name, season status, dates (HTML string gen)
     cards/
       WeatherCard.tsx     # 3-day forecast, wind, precip
       SeasonCard.tsx      # Season status, dates, bag limit
@@ -63,12 +64,14 @@ src/
   lib/
     seasonUtils.ts        # Status calc, countdown, sorting
     supabase.ts           # Supabase client (conditional on env vars)
-    ebird.ts              # eBird API helpers
+    ebird.ts              # eBird API helpers (fetchRecentSightings, fetchGeoSightings)
   hooks/
     useAuth.ts            # Session, user, profile, signIn, signOut
     useChat.ts            # Messages, sendMessage, loading, conversation persistence
     useHuntContext.ts     # Aggregated season context for chat panel
     useFavorites.ts       # localStorage favorites, species-qualified
+    useRadarTiles.ts      # RainViewer radar tile URL, 5-min refresh
+    useEBirdMapSightings.ts # Geo sightings → GeoJSON FeatureCollection, recency-tagged
     useIsMobile.ts        # Responsive breakpoint detection
 supabase/
   functions/
@@ -189,6 +192,8 @@ npm run test      # Vitest
 | hunt_user_settings | User prefs, daily_query_count, tier |
 | hunt_conversations | Chat history (user_id, session_id, role, content) |
 | hunt_tasks | Token/cost tracking per query |
+| hunt_migration_history | eBird sighting density per state/species/day (5 years) |
+| hunt_weather_history | Daily weather aggregates per state (5 years, Open-Meteo archive) |
 | hunt_user_locations | Saved hunting spots (future) |
 | hunt_intel_briefs | AI-generated hunt briefs (future) |
 
@@ -198,7 +203,7 @@ All tables have RLS. Service role bypasses for edge functions.
 
 | Function | Purpose |
 |----------|---------|
-| hunt-dispatcher | Intent classification (Haiku) → route to handler → respond with text + cards |
+| hunt-dispatcher | Intent classification (Haiku) → route to handler → respond with text + cards. Weather handler includes live pattern matching via vector search. Search handler uses hybrid vector + keyword. |
 | hunt-search | Hybrid search: vector (hunt_knowledge RPC) + keyword (seasons/facts) |
 | hunt-generate-embedding | Voyage AI voyage-3-lite (512-dim) |
 | hunt-weather | Open-Meteo 3-day forecast with cache |
@@ -221,28 +226,50 @@ All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84
 - Shared module change → redeploy every function that imports it.
 - Migration push requires `migration repair --status reverted` for JAC's migrations first.
 
-## Future: Migration Data APIs
+## Map Intelligence Layer
 
-Live migration data is the killer feature that would make DuckCountdown genuinely more useful than anything else out there for hunters. The integration path: eBird for live sightings, BirdCast for radar overlays, USFWS for flyway boundaries.
+| Feature | Source | Implementation |
+|---------|--------|----------------|
+| Weather radar overlay | RainViewer API (free, no auth) | `useRadarTiles.ts` → raster layer, 5-min refresh, CloudRain toggle |
+| 3D camera drill-in | Mapbox GL | pitch 45, bearing -15 on state select, fog at distance |
+| State info popups | Local season data | `MapPopup.tsx` → hover popup with status dot + dates (desktop) |
+| eBird live sightings | eBird Geo API (`VITE_EBIRD_API_KEY`) | `useEBirdMapSightings.ts` → circle markers, green/amber/dim by recency, zoom 6+ |
 
-### Tier 1 — Realistic Integration Targets
+## Data Pipeline (The Moat)
 
-| Source | What It Provides | API? | Auth? |
-|--------|-----------------|------|-------|
-| **eBird** (Cornell Lab) | Real-time bird sighting data — hotspots, recent observations, species locations with GPS coordinates. Could power "mallards reported in your county this week" on the map. | Yes, REST API | Free, API key required |
-| **BirdCast** (Cornell + Colorado State) | Forecast migration maps (predicted intensity/timing) + live radar-based maps showing real-time nocturnal migration activity at county/state level. "Birds moving tonight" overlay potential. | Dashboard + data feeds | Free |
-| **USFWS Flyway Boundaries** | Official flyway boundary shapefiles via ArcGIS REST API. Draw flyway overlays on the D3 map. | ArcGIS REST endpoint | Free, no auth |
-| **USFWS Waterfowl Survey** | Annual population estimates for 19 duck species from the Breeding Population and Habitat Survey (May/June). This is the data that sets hunting regulations. Published as annual status reports. | PDF reports, some data feeds | Free |
+```
+eBird Historical (5 years) + Open-Meteo Archive (5 years)
+  → hunt_migration_history + hunt_weather_history (45,300 rows)
+  → Claude Sonnet pattern extraction (scripts/extract-patterns.ts)
+  → Voyage AI embedding → hunt_knowledge
+  → User asks weather question → vector search finds matching patterns
+  → Claude responds with data-backed insights
+```
 
-### Tier 2 — Watch List (No Public API Yet)
+### Scripts
 
-| Source | What It Provides | Why It Matters |
-|--------|-----------------|----------------|
-| **Ducks Unlimited Migration Map** | Real-time waterfowl concentration reports from DU biologists, field editors, and hunters. | Most hunter-specific data out there. If they ever open an API, it's perfect for a hunt reports feature. |
-| **Migration Station** | Aggregated real waterfowl count data from WMAs and refuges, updated Oct-Jan. Answers "where are the ducks?" | Great data, no API. Worth monitoring for changes. |
-| **Movebank** (Max Planck Institute) | Animal tracking database. Powers the Audubon Bird Migration Explorer (458 species, migratory routes across Americas). | Research-grade, deep data. More academic than practical for hunters but the route visualization data is rich. |
+| Script | What it does | How to run |
+|--------|-------------|------------|
+| `scripts/seed-knowledge.ts` | Embed state facts + reg links → hunt_knowledge | `SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/seed-knowledge.ts` |
+| `scripts/backfill-weather-history.ts` | 5 years Open-Meteo archive → hunt_weather_history | `SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-weather-history.ts` (supports `START_STATE=TX`) |
+| `scripts/backfill-ebird-history.ts` | 5 years eBird observations → hunt_migration_history | `EBIRD_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-ebird-history.ts` (200 req/hr, supports `START_STATE`, `YEAR`) |
+| `scripts/extract-patterns.ts` | Cross-reference migration+weather → Sonnet pattern extraction → embed | `ANTHROPIC_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/extract-patterns.ts` (run after both backfills) |
 
-### Integration Priority
-1. USFWS flyway boundary GeoJSON → map overlay (easiest, most visual impact)
-2. eBird API → live sightings by county on state detail pages
-3. BirdCast → "birds moving tonight" radar overlay on the map
+## Future Data Sources
+
+### Tier 1 — Integrated or In Progress
+
+| Source | Status |
+|--------|--------|
+| **eBird** (Cornell Lab) | Live sightings on map + historical backfill running |
+| **RainViewer** | Live radar overlay on map |
+| **Open-Meteo** | Live forecast via hunt-weather + 5-year archive backfilled |
+
+### Tier 2 — Watch List
+
+| Source | What It Provides |
+|--------|-----------------|
+| **BirdCast** (Cornell + Colorado State) | Forecast migration intensity + live radar-based nocturnal migration |
+| **USFWS Waterfowl Survey** | Annual population estimates (sets regulations) |
+| **Ducks Unlimited Migration Map** | Real-time waterfowl concentration reports (no API yet) |
+| **Migration Station** | WMA/refuge waterfowl counts Oct-Jan (no API yet) |
