@@ -30,13 +30,13 @@ Hunting OS — "Google for Hunting." Interactive Mapbox GL map with AI chat brai
 ```
 src/
   components/
-    MapView.tsx           # Mapbox GL: satellite, 3D terrain, state fills, county boundaries, flyways
+    MapView.tsx           # Mapbox GL: satellite, 3D terrain, globe projection, state fills, county boundaries, flyways, mode-driven overlays (wetlands, waterways, contours, temp heatmap, wind arrows, radar)
     HeaderBar.tsx         # Brand + species pills + search + UserMenu
     BottomPanel.tsx       # Collapsible: card row + HuntChat split layout
-    NationalView.tsx      # Horizontal scroll state cards (open/soon/closed)
+    NationalView.tsx      # Horizontal scroll state cards (open/soon/closed) + off-season intel (next season countdown, weather alerts, scouting conditions)
     StateView.tsx         # State detail: season tabs, facts, regulation links
     ZoneView.tsx          # Zone detail for drilled-in state
-    MapControls.tsx       # Zoom, geolocate, satellite, 3D, flyway toggles
+    MapPresets.tsx         # Map mode selector (Default/Scout/Weather/Terrain/Intel) + utility toggles (3D, Satellite, Flyways) + zoom/geolocate
     LiveTicker.tsx        # Scrolling ticker below header
     UserMenu.tsx          # Avatar dropdown (sign in / sign out)
     HuntChat.tsx          # Chat container: 50/50 desktop split, stacked mobile
@@ -45,7 +45,6 @@ src/
     ChatContextPanel.tsx  # Right panel: state seasons context
     MapPopup.tsx          # Hover popup: state name, season status, dates (HTML string gen)
     HuntAlerts.tsx        # Proactive weather alerts: national scroll strip + state banner
-    LayersPanel.tsx       # Map overlay toggles: wetlands, waterways, contours, agriculture, parks, trails
     cards/
       WeatherCard.tsx     # 3-day forecast, wind, precip
       SeasonCard.tsx      # Season status, dates, bag limit

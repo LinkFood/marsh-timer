@@ -24,6 +24,7 @@ interface BottomPanelProps {
   onToggleFavorite: (species: Species, abbr: string) => void;
   isFavorite: boolean;
   alerts: HuntAlert[];
+  weatherSnapshot?: Map<string, { temp: number; wind: number }>;
 }
 
 type SnapIndex = 0 | 1 | 2;
@@ -48,6 +49,7 @@ export default function BottomPanel({
   onToggleFavorite,
   isFavorite,
   alerts,
+  weatherSnapshot,
 }: BottomPanelProps) {
   const [currentSnap, setCurrentSnap] = useState<SnapIndex>(1);
   const [translateY, setTranslateY] = useState<number | null>(null);
@@ -125,6 +127,8 @@ export default function BottomPanel({
               onSelectState={onSelectState}
               favorites={favorites}
               onToggleFavorite={onToggleFavorite}
+              alerts={alerts}
+              weatherSnapshot={weatherSnapshot}
             />
           </>
         );

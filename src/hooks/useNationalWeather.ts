@@ -13,8 +13,16 @@ const STATE_COORDS: Record<string, [number, number]> = {
   VA:[37.8,-78.2],WA:[47.8,-120.7],WV:[38.6,-80.6],WI:[43.8,-88.8],WY:[43.1,-107.6],
 };
 
+export interface StateWeather {
+  temp: number;
+  wind: number;
+  windDir: number;
+  pressure: number;
+  precip: number;
+}
+
 export function useNationalWeather() {
-  const [cache, setCache] = useState<Map<string, { temp: number; wind: number }>>(new Map());
+  const [cache, setCache] = useState<Map<string, StateWeather>>(new Map());
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -28,12 +36,12 @@ export function useNationalWeather() {
 
       try {
         const res = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`
+          `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&temperature_unit=fahrenheit&wind_speed_unit=mph`
         );
         if (!res.ok) return;
         const data = await res.json();
 
-        const newCache = new Map<string, { temp: number; wind: number }>();
+        const newCache = new Map<string, StateWeather>();
 
         if (Array.isArray(data)) {
           data.forEach((d: any, i: number) => {
@@ -41,6 +49,9 @@ export function useNationalWeather() {
               newCache.set(states[i][0], {
                 temp: d.current.temperature_2m,
                 wind: d.current.wind_speed_10m,
+                windDir: d.current.wind_direction_10m ?? 0,
+                pressure: d.current.pressure_msl ?? 1013,
+                precip: d.current.precipitation ?? 0,
               });
             }
           });
@@ -48,6 +59,9 @@ export function useNationalWeather() {
           newCache.set(states[0][0], {
             temp: data.current.temperature_2m,
             wind: data.current.wind_speed_10m,
+            windDir: data.current.wind_direction_10m ?? 0,
+            pressure: data.current.pressure_msl ?? 1013,
+            precip: data.current.precipitation ?? 0,
           });
         }
 

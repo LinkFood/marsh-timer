@@ -7,11 +7,10 @@ import { isFlywaySpecies } from "@/data/flyways";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
-import type { MapViewRef, MapOverlays } from "@/components/MapView";
+import type { MapViewRef, MapMode } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
 import BottomPanel from "@/components/BottomPanel";
-import MapControls from "@/components/MapControls";
-import LayersPanel from "@/components/LayersPanel";
+import MapPresets from "@/components/MapPresets";
 import { useRadarTiles } from "@/hooks/useRadarTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
@@ -55,7 +54,6 @@ const Index = () => {
         };
 
       const zone = third?.toLowerCase() || null;
-      // Validate zone slug if present
       let validZone: string | null = null;
       if (zone && validAbbr) {
         const seasons = getSeasonsByState(lower as Species, validAbbr);
@@ -72,7 +70,6 @@ const Index = () => {
       };
     }
 
-    // Legacy: /:stateAbbr (2-letter) -> redirect to /duck/:stateAbbr
     const upper = first.toUpperCase();
     if (upper.length === 2 && getStatesForSpecies("duck").has(upper)) {
       return {
@@ -99,17 +96,7 @@ const Index = () => {
   const [showFlyways, setShowFlyways] = useState(false);
   const [isSatellite, setIsSatellite] = useState(true);
   const [show3D, setShow3D] = useState(true);
-  const [showRadar, setShowRadar] = useState(false);
-  const [showLayers, setShowLayers] = useState(false);
-  const [overlays, setOverlays] = useState<MapOverlays>({
-    wetlands: false,
-    landCover: false,
-    contours: false,
-    waterways: false,
-    agriculture: false,
-    parks: false,
-    trails: false,
-  });
+  const [mapMode, setMapMode] = useState<MapMode>('default');
   const [elevation, setElevation] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);
@@ -175,11 +162,9 @@ const Index = () => {
 
   const handleBack = useCallback(() => {
     if (zoneSlug) {
-      // Zone -> State
       setZoneSlug(null);
       navigate(`/${species}/${selectedState}`, { replace: true });
     } else if (selectedState) {
-      // State -> National
       setSelectedState(null);
       setZoneSlug(null);
       navigate(`/${species}`, { replace: true });
@@ -187,7 +172,6 @@ const Index = () => {
   }, [navigate, species, selectedState, zoneSlug]);
 
   const handleDrillUp = useCallback(() => {
-    // Called by map when user zooms out past threshold
     if (selectedState) {
       setSelectedState(null);
       setZoneSlug(null);
@@ -210,19 +194,13 @@ const Index = () => {
     [navigate, selectedState],
   );
 
-  const handleToggleOverlay = useCallback((key: keyof MapOverlays) => {
-    setOverlays(prev => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
   const handleSearchLocation = useCallback(
     (lng: number, lat: number, stateAbbr: string | null) => {
-      // If we know the state, set it for the panel
       if (stateAbbr && getStatesForSpecies(species).has(stateAbbr)) {
         setSelectedState(stateAbbr);
         setZoneSlug(null);
         navigate(`/${species}/${stateAbbr}`, { replace: true });
       }
-      // Fly to the exact coordinates at high zoom with terrain
       mapRef.current?.flyToCoords(lng, lat);
     },
     [navigate, species],
@@ -233,9 +211,7 @@ const Index = () => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        // Fly to user's location
         mapRef.current?.flyToCoords(longitude, latitude);
-        // Try to reverse-geocode to determine state
         const token = import.meta.env.VITE_MAPBOX_TOKEN;
         if (token) {
           fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&types=region&limit=1`)
@@ -276,13 +252,13 @@ const Index = () => {
         isSatellite={isSatellite}
         show3D={show3D}
         isMobile={isMobile}
-        showRadar={showRadar}
+        showRadar={mapMode === 'weather' || mapMode === 'intel'}
         radarTileUrl={radarTileUrl}
         sightingsGeoJSON={sightingsGeoJSON}
         weatherCache={weatherCache}
-        overlays={overlays}
         onElevation={setElevation}
         onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+        mapMode={mapMode}
       />
 
       {/* Header */}
@@ -308,32 +284,23 @@ const Index = () => {
         onToggleFavorite={toggleFavorite}
         isFavorite={selectedState ? isFavorite(species, selectedState) : false}
         alerts={alerts}
+        weatherSnapshot={weatherCache}
       />
 
-      {/* Map Controls */}
-      <MapControls
-        onGeolocate={handleGeolocate}
+      {/* Map Mode Presets */}
+      <MapPresets
+        mode={mapMode}
+        onSetMode={setMapMode}
         onZoomIn={() => mapRef.current?.zoomIn()}
         onZoomOut={() => mapRef.current?.zoomOut()}
+        onGeolocate={handleGeolocate}
+        show3D={show3D}
+        onToggle3D={() => setShow3D((s) => !s)}
+        isSatellite={isSatellite}
+        onToggleSatellite={() => setIsSatellite((s) => !s)}
         showFlyways={showFlyways}
         onToggleFlyways={() => setShowFlyways((f) => !f)}
         showFlywayOption={isFlywaySpecies(species)}
-        onToggleSatellite={() => setIsSatellite((s) => !s)}
-        isSatellite={isSatellite}
-        show3D={show3D}
-        onToggle3D={() => setShow3D((s) => !s)}
-        showRadar={showRadar}
-        onToggleRadar={() => setShowRadar((r) => !r)}
-        showLayers={showLayers}
-        onToggleLayers={() => setShowLayers((l) => !l)}
-      />
-
-      {/* Layers Panel */}
-      <LayersPanel
-        overlays={overlays}
-        onToggle={handleToggleOverlay}
-        isOpen={showLayers}
-        onClose={() => setShowLayers(false)}
       />
 
       {/* Elevation HUD */}

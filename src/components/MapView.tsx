@@ -20,6 +20,8 @@ import type { FeatureCollection, Feature, Geometry, Position } from "geojson";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
+export type MapMode = 'default' | 'scout' | 'weather' | 'terrain' | 'intel';
+
 export interface MapOverlays {
   wetlands: boolean;
   landCover: boolean;
@@ -28,6 +30,27 @@ export interface MapOverlays {
   agriculture: boolean;
   parks: boolean;
   trails: boolean;
+}
+
+// Mode -> layer mapping
+const MODE_LAYERS: Record<MapMode, Partial<MapOverlays> & { radar?: boolean; tempHeatmap?: boolean; windArrows?: boolean }> = {
+  default: {},
+  scout: { wetlands: true, waterways: true, parks: true, trails: true },
+  weather: { radar: true, tempHeatmap: true, windArrows: true },
+  terrain: { landCover: true, contours: true },
+  intel: { wetlands: true, waterways: true, radar: true, tempHeatmap: true, windArrows: true },
+};
+
+function tempToColor(tempF: number): string {
+  // Blue (cold) -> Cyan -> Green -> Yellow -> Orange -> Red (hot)
+  if (tempF <= 0) return 'rgba(59, 130, 246, 0.6)';   // blue
+  if (tempF <= 20) return 'rgba(56, 189, 248, 0.55)';  // light blue
+  if (tempF <= 32) return 'rgba(34, 211, 238, 0.5)';   // cyan
+  if (tempF <= 45) return 'rgba(52, 211, 153, 0.45)';  // green
+  if (tempF <= 60) return 'rgba(163, 230, 53, 0.45)';  // lime
+  if (tempF <= 75) return 'rgba(250, 204, 21, 0.5)';   // yellow
+  if (tempF <= 85) return 'rgba(251, 146, 60, 0.55)';  // orange
+  return 'rgba(239, 68, 68, 0.6)';                      // red
 }
 
 export interface MapViewProps {
@@ -43,9 +66,10 @@ export interface MapViewProps {
   radarTileUrl?: string | null;
   sightingsGeoJSON?: FeatureCollection | null;
   onMoveEnd?: (center: [number, number], zoom: number) => void;
-  weatherCache?: Map<string, { temp: number; wind: number }>;
+  weatherCache?: Map<string, { temp: number; wind: number; windDir: number; pressure: number; precip: number }>;
   overlays?: MapOverlays;
   onElevation?: (elevation: number | null) => void;
+  mapMode?: MapMode;
 }
 
 export interface MapViewRef {
@@ -205,6 +229,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     weatherCache,
     overlays = { wetlands: false, landCover: false, contours: false, waterways: false, agriculture: false, parks: false, trails: false },
     onElevation,
+    mapMode = 'default',
   },
   ref,
 ) {
@@ -591,7 +616,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         );
       }
 
-      // County boundaries (visible at state zoom)
+      // County boundaries (visible at state zoom, more prominent)
       if (!map.getLayer('county-boundaries')) {
         map.addLayer({
           id: 'county-boundaries',
@@ -600,11 +625,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           'source-layer': 'admin',
           filter: ['all', ['==', 'admin_level', 4], ['==', 'iso_3166_1', 'US']],
           paint: {
-            'line-color': 'rgba(255,255,255,0.6)',
-            'line-width': 0.5,
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0, 7, 0.5],
+            'line-color': 'rgba(255,255,255,0.7)',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.8, 10, 1.2],
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 6, 0.4, 8, 0.7],
           },
-          minzoom: 5,
+          minzoom: 4,
         });
       }
 
@@ -683,6 +708,32 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Wind arrows source (populated by weather data)
+      if (!map.getSource("wind-arrows")) {
+        map.addSource("wind-arrows", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("wind-arrow-layer")) {
+        map.addLayer({
+          id: "wind-arrow-layer",
+          type: "symbol",
+          source: "wind-arrows",
+          layout: {
+            "icon-image": "wind-arrow",
+            "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.4, 6, 0.7],
+            "icon-rotate": ["get", "windDir"],
+            "icon-rotation-alignment": "map",
+            "icon-allow-overlap": true,
+            visibility: "none",
+          },
+          paint: {
+            "icon-opacity": 0.7,
+          },
+        });
+      }
+
       loadedRef.current = true;
     },
     [species, selectedState, showFlyways, statesWithData, showRadar, radarTileUrl, sightingsGeoJSON],
@@ -699,6 +750,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       center: US_CENTER,
       zoom: US_ZOOM,
       scrollZoom: !isMobile,
+      projection: 'globe' as any,
     });
 
     map.touchZoomRotate.enable();
@@ -706,6 +758,25 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     prevStyleRef.current = isSatellite ? "satellite" : "dark";
 
     map.on("load", async () => {
+      // Create wind arrow icon (simple triangle pointing up, rotated by windDir)
+      const arrowSize = 32;
+      const canvas = document.createElement("canvas");
+      canvas.width = arrowSize;
+      canvas.height = arrowSize;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(arrowSize / 2, 4);
+      ctx.lineTo(arrowSize / 2 + 8, arrowSize - 6);
+      ctx.lineTo(arrowSize / 2, arrowSize - 10);
+      ctx.lineTo(arrowSize / 2 - 8, arrowSize - 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      map.addImage("wind-arrow", { width: arrowSize, height: arrowSize, data: ctx.getImageData(0, 0, arrowSize, arrowSize).data } as any);
+
       const response = await fetch(TOPO_URL);
       const topoData = (await response.json()) as Topology;
 
@@ -951,6 +1022,100 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
     }
   }, [overlays]);
+
+  // Mode-driven layer activation + temperature heatmap + wind arrows
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const modeConfig = MODE_LAYERS[mapMode];
+    const showTempHeatmap = !!modeConfig.tempHeatmap;
+    const showWindArrows = !!modeConfig.windArrows;
+
+    // Apply overlay visibility from mode
+    const layerMap: Record<string, boolean> = {
+      'wetland-fill': !!modeConfig.wetlands,
+      'landcover-fill': !!modeConfig.landCover,
+      'contour-lines': !!modeConfig.contours,
+      'contour-labels': !!modeConfig.contours,
+      'waterway-lines': !!modeConfig.waterways,
+      'waterway-intermittent': !!modeConfig.waterways,
+      'agriculture-fill': !!modeConfig.agriculture,
+      'parks-fill': !!modeConfig.parks,
+      'trails-lines': !!modeConfig.trails,
+      'wind-arrow-layer': showWindArrows,
+    };
+
+    for (const [layerId, visible] of Object.entries(layerMap)) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+      }
+    }
+
+    // Radar from mode
+    if (map.getLayer("radar-overlay")) {
+      const radarOn = !!modeConfig.radar && !!radarTileUrl;
+      map.setLayoutProperty("radar-overlay", "visibility", radarOn ? "visible" : "none");
+    }
+
+    // Temperature heatmap: override state fill colors with temp-based gradient
+    if (showTempHeatmap && weatherCache && weatherCache.size > 0 && map.getLayer("states-fill")) {
+      const entries: (string | string)[] = [];
+      for (const [abbr, w] of weatherCache) {
+        entries.push(abbr, tempToColor(w.temp));
+      }
+      if (entries.length > 0) {
+        map.setPaintProperty("states-fill", "fill-color", [
+          "match", ["get", "abbr"],
+          ...entries,
+          "rgba(100,100,100,0.2)",
+        ] as mapboxgl.Expression);
+        map.setPaintProperty("states-fill", "fill-opacity", 0.65);
+      }
+    } else if (map.getLayer("states-fill")) {
+      // Restore normal species-based fill
+      map.setPaintProperty("states-fill", "fill-color", buildFillExpression(species, selectedState));
+      map.setPaintProperty("states-fill", "fill-opacity", 0.5);
+    }
+
+    // Wind arrows: update GeoJSON with current weather data
+    if (showWindArrows && weatherCache && weatherCache.size > 0) {
+      const features: Feature[] = [];
+      for (const [abbr, w] of weatherCache) {
+        const centroid = centroidsRef.current.get(abbr);
+        if (centroid && w.wind > 3) { // Only show arrows for wind > 3mph
+          features.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: centroid },
+            properties: { abbr, windDir: w.windDir, windSpeed: w.wind },
+          });
+        }
+      }
+      const source = map.getSource("wind-arrows") as mapboxgl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData({ type: "FeatureCollection", features });
+      }
+    }
+  }, [mapMode, weatherCache, radarTileUrl, species, selectedState]);
+
+  // Auto-activate layers on zoom (county boundaries + waterways always show when zoomed in)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const onZoom = () => {
+      const zoom = map.getZoom();
+      // Auto-show waterways at zoom 8+ in scout/intel modes
+      if (mapMode === 'scout' || mapMode === 'intel') {
+        if (map.getLayer('waterway-lines')) {
+          map.setLayoutProperty('waterway-lines', 'visibility', zoom >= 7 ? 'visible' : 'none');
+        }
+      }
+    };
+
+    map.on('zoom', onZoom);
+    return () => { map.off('zoom', onZoom); };
+  }, [mapMode]);
 
   // Handle satellite style toggle
   useEffect(() => {
