@@ -665,7 +665,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             type: "raster",
             tiles: [url],
             tileSize: 256,
-            maxzoom: 12,
+            maxzoom: id === "radar" ? 6 : 12,
           });
         }
         const layerId = `${id}-overlay`;
@@ -1079,7 +1079,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         source.setTiles([url]);
       } else {
         // Source doesn't exist yet — add it + layer
-        map.addSource(id, { type: "raster", tiles: [url], tileSize: 256, maxzoom: 12 });
+        map.addSource(id, { type: "raster", tiles: [url], tileSize: 256, maxzoom: id === "radar" ? 6 : 12 });
         const layerId = `${id}-overlay`;
         if (!map.getLayer(layerId)) {
           map.addLayer({
