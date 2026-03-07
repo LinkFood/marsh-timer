@@ -44,6 +44,8 @@ src/
     ChatMessage.tsx       # User/assistant message bubbles with card embedding
     ChatContextPanel.tsx  # Right panel: state seasons context
     MapPopup.tsx          # Hover popup: state name, season status, dates (HTML string gen)
+    HuntAlerts.tsx        # Proactive weather alerts: national scroll strip + state banner
+    LayersPanel.tsx       # Map overlay toggles: wetlands, waterways, contours, agriculture, parks, trails
     cards/
       WeatherCard.tsx     # 3-day forecast, wind, precip
       SeasonCard.tsx      # Season status, dates, bag limit
@@ -72,6 +74,8 @@ src/
     useFavorites.ts       # localStorage favorites, species-qualified
     useRadarTiles.ts      # RainViewer radar tile URL, 5-min refresh
     useEBirdMapSightings.ts # Geo sightings → GeoJSON FeatureCollection, recency-tagged
+    useHuntAlerts.ts      # Proactive weather alerts from hunt-alerts edge function, hourly refresh
+    useNationalWeather.ts # Bulk Open-Meteo current weather for all 50 states
     useIsMobile.ts        # Responsive breakpoint detection
 supabase/
   functions/
@@ -87,6 +91,7 @@ supabase/
     hunt-generate-embedding/ # Voyage AI 512-dim embedding
     hunt-weather/         # Open-Meteo weather with cache
     hunt-solunar/         # Solunar + sunrise with cache
+    hunt-alerts/          # Proactive weather alerts: bulk forecast → filter interesting → vector search patterns
   migrations/             # SQL migrations
   config.toml             # Function configs (all verify_jwt = false)
 scripts/
@@ -208,6 +213,7 @@ All tables have RLS. Service role bypasses for edge functions.
 | hunt-generate-embedding | Voyage AI voyage-3-lite (512-dim) |
 | hunt-weather | Open-Meteo 3-day forecast with cache |
 | hunt-solunar | Solunar + sunrise/sunset with cache |
+| hunt-alerts | Proactive weather alerts: bulk Open-Meteo forecast for 50 states → filter interesting conditions → vector search historical patterns → scored alerts with severity |
 
 All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
 
@@ -234,6 +240,10 @@ All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84
 | 3D camera drill-in | Mapbox GL | pitch 45, bearing -15 on state select, fog at distance |
 | State info popups | Local season data | `MapPopup.tsx` → hover popup with status dot + dates (desktop) |
 | eBird live sightings | eBird Geo API (`VITE_EBIRD_API_KEY`) | `useEBirdMapSightings.ts` → circle markers, green/amber/dim by recency, zoom 6+ |
+| Proactive weather alerts | Open-Meteo bulk + hunt_knowledge vectors | `hunt-alerts` edge fn → `useHuntAlerts.ts` → `HuntAlerts.tsx` (national scroll strip + state banner) |
+| Map overlay layers | Mapbox streets-v8 + terrain-v2 tilesets | `LayersPanel.tsx` → wetlands, waterways, contours, land cover, agriculture, parks, trails |
+| Elevation HUD | Mapbox `queryTerrainElevation` | Client-side, shows ft when 3D on + zoom > 8 |
+| Location search | Mapbox Geocoding API v5 | `HeaderBar.tsx` → zip/address/city → flyTo with 3D terrain pitch |
 
 ## Data Pipeline (The Moat)
 

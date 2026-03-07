@@ -1,10 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Species } from "@/data/types";
+import type { HuntAlert } from "@/hooks/useHuntAlerts";
 import NationalView from "./NationalView";
 import StateView from "./StateView";
 import ZoneView from "./ZoneView";
 import HuntChat from "./HuntChat";
+import HuntAlerts from "./HuntAlerts";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -21,6 +23,7 @@ interface BottomPanelProps {
   favorites: string[];
   onToggleFavorite: (species: Species, abbr: string) => void;
   isFavorite: boolean;
+  alerts: HuntAlert[];
 }
 
 type SnapIndex = 0 | 1 | 2;
@@ -44,6 +47,7 @@ export default function BottomPanel({
   favorites,
   onToggleFavorite,
   isFavorite,
+  alerts,
 }: BottomPanelProps) {
   const [currentSnap, setCurrentSnap] = useState<SnapIndex>(1);
   const [translateY, setTranslateY] = useState<number | null>(null);
@@ -114,25 +118,31 @@ export default function BottomPanel({
     switch (level) {
       case "national":
         return (
-          <NationalView
-            species={species}
-            onSelectState={onSelectState}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-          />
+          <>
+            <HuntAlerts alerts={alerts} stateAbbr={null} onSelectState={onSelectState} />
+            <NationalView
+              species={species}
+              onSelectState={onSelectState}
+              favorites={favorites}
+              onToggleFavorite={onToggleFavorite}
+            />
+          </>
         );
       case "state":
         if (!stateAbbr) return null;
         return (
-          <StateView
-            species={species}
-            abbreviation={stateAbbr}
-            onBack={onBack}
-            onSelectZone={onSelectZone}
-            onSwitchSpecies={onSwitchSpecies}
-            isFavorite={isFavorite}
-            onToggleFavorite={onToggleFavorite}
-          />
+          <>
+            <HuntAlerts alerts={alerts} stateAbbr={stateAbbr} onSelectState={onSelectState} />
+            <StateView
+              species={species}
+              abbreviation={stateAbbr}
+              onBack={onBack}
+              onSelectZone={onSelectZone}
+              onSwitchSpecies={onSwitchSpecies}
+              isFavorite={isFavorite}
+              onToggleFavorite={onToggleFavorite}
+            />
+          </>
         );
       case "zone":
         if (!stateAbbr || !zoneSlug) return null;

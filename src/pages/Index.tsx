@@ -15,6 +15,7 @@ import LayersPanel from "@/components/LayersPanel";
 import { useRadarTiles } from "@/hooks/useRadarTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
+import { useHuntAlerts } from "@/hooks/useHuntAlerts";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -115,6 +116,7 @@ const Index = () => {
   const radarTileUrl = useRadarTiles();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
+  const { alerts } = useHuntAlerts();
 
   // Derive drill level
   const level: DrillLevel = useMemo(() => {
@@ -305,6 +307,7 @@ const Index = () => {
         favorites={speciesFavorites}
         onToggleFavorite={toggleFavorite}
         isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+        alerts={alerts}
       />
 
       {/* Map Controls */}

@@ -97,20 +97,8 @@ function formatDataForClaude(stateName: string, data: { withMigration: any[]; we
   return `State: ${stateName}\nDuck season weather data (${data.weatherOnly.length} days, Sept-Feb over 5 years, NO migration sighting data yet):\n\n${rows.join("\n")}`;
 }
 
-async function extractPatterns(stateName: string, dataText: string): Promise<string[]> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": ANTHROPIC_KEY!,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [{
-        role: "user",
-        content: `You are a waterfowl migration analyst. Analyze this historical duck sighting + weather data for ${stateName} and extract actionable hunting intelligence patterns.
+async function extractPatterns(stateName: string, dataText: string, weatherOnly: boolean): Promise<string[]> {
+  const migrationPrompt = `You are a waterfowl migration analyst. Analyze this historical duck sighting + weather data for ${stateName} and extract actionable hunting intelligence patterns.
 
 ${dataText}
 
@@ -123,7 +111,34 @@ Format: Return ONLY a JSON array of pattern strings. Each string should be 1-2 s
 
 Example: ["In Arkansas, when barometric pressure drops 3+ mb with north winds over 15 mph in November, mallard sighting density increases 3x within 24 hours.", "Peak duck activity in Arkansas consistently occurs in the second and third weeks of December, with an average of 450+ sightings per observation day."]
 
-Return ONLY the JSON array, no other text.`,
+Return ONLY the JSON array, no other text.`;
+
+  const weatherOnlyPrompt = `You are a waterfowl hunting weather analyst. Analyze this historical weather data for ${stateName} during duck season months (Sept-Feb). Based on your knowledge of how waterfowl respond to weather, extract patterns that hunters should know about.
+
+${dataText}
+
+Extract 5-8 specific, actionable patterns. Focus on:
+- Cold front patterns and timing (pressure drops, temp crashes, wind shifts)
+- Typical weather windows that experienced hunters target
+- Month-by-month weather progression and what it means for duck movement
+- Wind direction patterns and what they signal
+
+Format: Return ONLY a JSON array of pattern strings. Each string should be 1-2 sentences.
+Return ONLY the JSON array, no other text.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": ANTHROPIC_KEY!,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [{
+        role: "user",
+        content: weatherOnly ? weatherOnlyPrompt : migrationPrompt,
       }],
     }),
   });
@@ -148,6 +163,32 @@ Return ONLY the JSON array, no other text.`,
 }
 
 async function generateEmbedding(text: string): Promise<number[]> {
+  if (VOYAGE_KEY) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${VOYAGE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "voyage-3-lite",
+          input: [text],
+          input_type: "document",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.data[0].embedding;
+      }
+      if (res.status === 429 && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 30000));
+        continue;
+      }
+      throw new Error(`Voyage error: ${res.status}`);
+    }
+  }
+  // Fallback to edge function
   const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
     method: "POST",
     headers: supaHeaders,
@@ -190,27 +231,31 @@ async function main() {
     console.log(`\n${stateName} (${stateAbbr}):`);
 
     const data = await fetchJoinedData(stateAbbr);
-    if (data.length < 10) {
-      console.log(`  Skipping — only ${data.length} data points`);
+    const totalPoints = data.withMigration.length + data.weatherOnly.length;
+    if (totalPoints < 10) {
+      console.log(`  Skipping — only ${totalPoints} data points`);
       continue;
     }
 
     const dataText = formatDataForClaude(stateName, data);
-    console.log(`  ${data.length} joined data points, extracting patterns...`);
+    const mode = data.withMigration.length > 0 ? "migration+weather" : "weather-only";
+    console.log(`  ${totalPoints} data points (${mode}), extracting patterns...`);
 
     try {
-      const patterns = await extractPatterns(stateName, dataText);
+      const weatherOnly = data.withMigration.length === 0;
+      const patterns = await extractPatterns(stateName, dataText, weatherOnly);
       console.log(`  Got ${patterns.length} patterns`);
 
+      const contentType = data.withMigration.length > 0 ? "weather-pattern" : "weather-insight";
       for (const pattern of patterns) {
         const title = `Weather-migration pattern: ${stateName}`;
-        const richText = `${title} | weather-pattern | duck, ${stateName.toLowerCase()}, weather, migration | ${pattern}`;
+        const richText = `${title} | ${contentType} | duck, ${stateName.toLowerCase()}, weather, migration | ${pattern}`;
 
         const embedding = await generateEmbedding(richText);
         await upsertKnowledge({
           title,
           content: pattern,
-          content_type: "weather-pattern",
+          content_type: contentType,
           tags: ["duck", stateName.toLowerCase(), "weather", "migration", "pattern"],
           embedding,
         });
