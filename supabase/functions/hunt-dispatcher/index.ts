@@ -232,11 +232,35 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   const wind = hourly?.wind_speed_10m?.[currentHour];
   const precip = hourly?.precipitation?.[currentHour];
 
+  // Search hunt_knowledge for weather-migration pattern insights
+  let patternInsight = '';
+  try {
+    const conditionStr = `${state.name} duck hunting weather: ${temp}°F, wind ${wind} mph, precipitation ${precip}mm`;
+    const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
+    const searchRes = await fetch(searchUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ query: conditionStr, state_abbr: stateAbbr, limit: 3 }),
+    });
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      const patterns = (searchData.vector || [])
+        .filter((v: { similarity: number; content_type?: string }) => v.similarity > 0.5)
+        .map((v: { content: string }) => v.content);
+      if (patterns.length > 0) {
+        patternInsight = `\n\nHistorical patterns:\n${patterns.join('\n')}`;
+      }
+    }
+  } catch { /* pattern matching is best-effort */ }
+
   // Build 3-day summary via Claude
   const weatherSummary = await callClaude({
     model: CLAUDE_MODELS.haiku,
-    system: 'You are a hunting weather expert. Give a brief, practical hunting weather summary. Focus on wind, temperature changes, and precipitation that affect hunting. 2-3 sentences max.',
-    messages: [{ role: 'user', content: `Weather data for ${state.name}: Current temp ${temp}°F, wind ${wind} mph, precip ${precip}mm. Full hourly data available for 3 days. Query: ${query}` }],
+    system: 'You are a hunting weather expert. Give a brief, practical hunting weather summary. Focus on wind, temperature changes, and precipitation that affect hunting. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.',
+    messages: [{ role: 'user', content: `Weather data for ${state.name}: Current temp ${temp}°F, wind ${wind} mph, precip ${precip}mm. Full hourly data available for 3 days.${patternInsight}\n\nQuery: ${query}` }],
     max_tokens: 200,
   });
 
@@ -366,29 +390,53 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
 }
 
 async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, query: string) {
-  // Keyword search across seasons and facts
-  const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+  // Hybrid search: vector via hunt-search + keyword fallback
+  let vectorContext = '';
+  try {
+    const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
+    const searchRes = await fetch(searchUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ query, limit: 8 }),
+    });
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      const vectorHits = (searchData.vector || [])
+        .filter((v: { similarity: number }) => v.similarity > 0.3)
+        .map((v: { title: string; content: string; similarity: number }) => `[${v.title}] ${v.content}`);
+      const factHits = (searchData.keywords?.facts || [])
+        .map((f: { species_id: string; state_name: string; facts: string[] }) => `${f.species_id} ${f.state_name}: ${f.facts.join('; ')}`);
+      const seasonHits = (searchData.keywords?.seasons || [])
+        .map((s: { species_id: string; state_name: string; season_type: string; notes: string }) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || ''}`);
+      vectorContext = [...vectorHits, ...factHits, ...seasonHits].join('\n');
+    }
+  } catch { /* fall through to keyword only */ }
 
-  const [seasonsResult, factsResult] = await Promise.all([
-    supabase.from('hunt_seasons')
-      .select('species_id, state_abbr, state_name, season_type, zone, notes')
-      .or(`notes.ilike.%${escapedQuery}%,state_name.ilike.%${escapedQuery}%`)
-      .limit(5),
-    supabase.from('hunt_state_facts')
-      .select('species_id, state_name, facts')
-      .limit(5),
-  ]);
-
-  // Generate response via Claude with search results as context
-  const searchContext = [
-    ...(seasonsResult.data || []).map((s: Record<string, unknown>) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || 'No notes'}`),
-    ...(factsResult.data || []).map((f: Record<string, unknown>) => `${f.species_id} ${f.state_name}: ${(f.facts as string[]).join('; ')}`),
-  ].join('\n');
+  // Keyword fallback if vector search failed
+  if (!vectorContext) {
+    const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+    const [seasonsResult, factsResult] = await Promise.all([
+      supabase.from('hunt_seasons')
+        .select('species_id, state_abbr, state_name, season_type, zone, notes')
+        .or(`notes.ilike.%${escapedQuery}%,state_name.ilike.%${escapedQuery}%`)
+        .limit(5),
+      supabase.from('hunt_state_facts')
+        .select('species_id, state_name, facts')
+        .limit(5),
+    ]);
+    vectorContext = [
+      ...(seasonsResult.data || []).map((s: Record<string, unknown>) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || 'No notes'}`),
+      ...(factsResult.data || []).map((f: Record<string, unknown>) => `${f.species_id} ${f.state_name}: ${(f.facts as string[]).join('; ')}`),
+    ].join('\n');
+  }
 
   const searchResponse = await callClaude({
     model: CLAUDE_MODELS.haiku,
-    system: `You are a hunting knowledge expert. Answer based on the provided context. If the context doesn't have enough info, give your best general hunting knowledge answer. Be concise.`,
-    messages: [{ role: 'user', content: `Context:\n${searchContext}\n\nQuestion: ${query}` }],
+    system: `You are a hunting knowledge expert. Answer based on the provided context. Reference specific data and patterns when available. If the context doesn't have enough info, give your best general hunting knowledge answer. Be concise but informative.`,
+    messages: [{ role: 'user', content: `Context:\n${vectorContext}\n\nQuestion: ${query}` }],
     max_tokens: 300,
   });
 

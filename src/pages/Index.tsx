@@ -11,6 +11,8 @@ import type { MapViewRef } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
 import BottomPanel from "@/components/BottomPanel";
 import MapControls from "@/components/MapControls";
+import { useRadarTiles } from "@/hooks/useRadarTiles";
+import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -94,6 +96,11 @@ const Index = () => {
   const [showFlyways, setShowFlyways] = useState(false);
   const [isSatellite, setIsSatellite] = useState(true);
   const [show3D, setShow3D] = useState(true);
+  const [showRadar, setShowRadar] = useState(false);
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  const [mapZoom, setMapZoom] = useState(3.5);
+  const radarTileUrl = useRadarTiles();
+  const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
 
   // Derive drill level
   const level: DrillLevel = useMemo(() => {
@@ -221,6 +228,10 @@ const Index = () => {
         isSatellite={isSatellite}
         show3D={show3D}
         isMobile={isMobile}
+        showRadar={showRadar}
+        radarTileUrl={radarTileUrl}
+        sightingsGeoJSON={sightingsGeoJSON}
+        onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
       />
 
       {/* Header */}
@@ -258,6 +269,8 @@ const Index = () => {
         isSatellite={isSatellite}
         show3D={show3D}
         onToggle3D={() => setShow3D((s) => !s)}
+        showRadar={showRadar}
+        onToggleRadar={() => setShowRadar((r) => !r)}
       />
 
       {/* Grain overlay */}

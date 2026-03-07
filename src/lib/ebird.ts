@@ -44,6 +44,36 @@ export async function fetchRecentSightings(species: Species, stateAbbr: string):
   }
 }
 
+export interface EBirdGeoSighting {
+  comName: string;
+  locName: string;
+  obsDt: string;
+  howMany: number | null;
+  speciesCode: string;
+  lat: number;
+  lng: number;
+}
+
+export async function fetchGeoSightings(species: Species, lat: number, lng: number): Promise<EBirdGeoSighting[]> {
+  if (!API_KEY || !SPECIES_CODES[species]) return [];
+
+  const url = `${BASE}/data/obs/geo/recent?lat=${lat}&lng=${lng}&dist=50&back=7&maxResults=100`;
+
+  try {
+    const res = await fetch(url, {
+      headers: { "X-eBirdApiToken": API_KEY },
+    });
+    if (!res.ok) return [];
+
+    const data: EBirdGeoSighting[] = await res.json();
+    const validCodes = new Set(SPECIES_CODES[species]);
+
+    return data.filter(d => validCodes.has(d.speciesCode));
+  } catch {
+    return [];
+  }
+}
+
 export function getEBirdRegionUrl(stateAbbr: string): string {
   return `https://ebird.org/region/US-${stateAbbr}`;
 }

@@ -14,6 +14,7 @@ import { speciesConfig } from "@/data/speciesConfig";
 import { fipsToAbbr } from "@/data/fips";
 import { getPrimarySeasonForState, getStatesForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
+import { getPopupHTML } from "@/components/MapPopup";
 import { stateFlyways, FLYWAY_COLORS, isFlywaySpecies } from "@/data/flyways";
 import type { FeatureCollection, Feature, Geometry, Position } from "geojson";
 
@@ -28,6 +29,10 @@ export interface MapViewProps {
   isSatellite: boolean;
   show3D: boolean;
   isMobile?: boolean;
+  showRadar?: boolean;
+  radarTileUrl?: string | null;
+  sightingsGeoJSON?: FeatureCollection | null;
+  onMoveEnd?: (center: [number, number], zoom: number) => void;
 }
 
 export interface MapViewRef {
@@ -62,6 +67,19 @@ function extractCoordinates(geometry: Geometry): Position[] {
   if ("coordinates" in geometry) walk(geometry.coordinates);
   return coords;
 }
+
+const STATE_NAMES: Record<string, string> = {
+  AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",
+  CO:"Colorado",CT:"Connecticut",DE:"Delaware",FL:"Florida",GA:"Georgia",
+  HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",
+  KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",
+  MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",
+  MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",
+  NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",
+  OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",
+  SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",
+  VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming",
+};
 
 function computeCentroid(feature: Feature): [number, number] | null {
   const coords = extractCoordinates(feature.geometry);
@@ -166,6 +184,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     isSatellite,
     show3D,
     isMobile = false,
+    showRadar = false,
+    radarTileUrl = null,
+    sightingsGeoJSON = null,
+    onMoveEnd,
   },
   ref,
 ) {
@@ -176,6 +198,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const statesGeoRef = useRef<FeatureCollection | null>(null);
   const loadedRef = useRef(false);
   const flyingRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const selectedStateRef = useRef(selectedState);
   const prevStyleRef = useRef<string>("dark");
 
@@ -197,7 +220,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         if (centroid) {
           flyingRef.current = true;
           map.once('moveend', () => { flyingRef.current = false; });
-          map.flyTo({ center: centroid, zoom: STATE_ZOOM, duration: 1000 });
+          map.flyTo({ center: centroid, zoom: STATE_ZOOM, pitch: 45, bearing: -15, duration: 1500 });
         }
       },
       zoomIn: () => {
@@ -213,7 +236,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         if (!map) return;
         flyingRef.current = true;
         map.once('moveend', () => { flyingRef.current = false; });
-        map.flyTo({ center: US_CENTER, zoom: US_ZOOM, duration: 1000 });
+        map.flyTo({ center: US_CENTER, zoom: US_ZOOM, pitch: 0, bearing: 0, duration: 1200 });
       },
     }),
     [],
@@ -317,6 +340,27 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Radar overlay
+      if (!map.getSource("radar")) {
+        map.addSource("radar", {
+          type: "raster",
+          tiles: [radarTileUrl || ""],
+          tileSize: 256,
+        });
+      }
+      if (!map.getLayer("radar-overlay")) {
+        map.addLayer(
+          {
+            id: "radar-overlay",
+            type: "raster",
+            source: "radar",
+            paint: { "raster-opacity": 0.6 },
+            layout: { visibility: showRadar && radarTileUrl ? "visible" : "none" },
+          },
+          "states-fill",
+        );
+      }
+
       // County boundaries (visible at state zoom)
       if (!map.getLayer('county-boundaries')) {
         map.addLayer({
@@ -382,9 +426,39 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // eBird sighting markers
+      if (!map.getSource("ebird-sightings")) {
+        map.addSource("ebird-sightings", {
+          type: "geojson",
+          data: sightingsGeoJSON || { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("ebird-dots")) {
+        map.addLayer({
+          id: "ebird-dots",
+          type: "circle",
+          source: "ebird-sightings",
+          minzoom: 6,
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 10, 6],
+            "circle-color": [
+              "match",
+              ["get", "recency"],
+              "today", "#10b981",
+              "recent", "#f59e0b",
+              "old", "#64748b",
+              "#64748b",
+            ],
+            "circle-opacity": 0.8,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(0,0,0,0.3)",
+          },
+        });
+      }
+
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData],
+    [species, selectedState, showFlyways, statesWithData, showRadar, radarTileUrl, sightingsGeoJSON],
   );
 
   const initMap = useCallback(() => {
@@ -442,18 +516,35 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       onSelectState(abbr);
     });
 
-    // Cursor
+    // Cursor + popup
     map.on("mouseenter", "states-fill", (e) => {
       if (e.features?.[0]?.properties?.abbr) {
         const abbr = e.features[0].properties.abbr;
         if (statesWithData.has(abbr)) {
           map.getCanvas().style.cursor = "pointer";
+
+          // Show popup at centroid
+          const centroid = centroidsRef.current.get(abbr);
+          if (centroid && !isMobile) {
+            popupRef.current?.remove();
+            popupRef.current = new mapboxgl.Popup({
+              closeButton: false,
+              closeOnClick: false,
+              className: "hunt-popup",
+              offset: 10,
+            })
+              .setLngLat(centroid)
+              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species))
+              .addTo(map);
+          }
         }
       }
     });
 
     map.on("mouseleave", "states-fill", () => {
       map.getCanvas().style.cursor = "";
+      popupRef.current?.remove();
+      popupRef.current = null;
     });
 
     // Zoom out detection for drill up
@@ -463,6 +554,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (zoom < DRILL_UP_ZOOM_THRESHOLD && selectedStateRef.current) {
         onDrillUp();
       }
+    });
+
+    map.on("moveend", () => {
+      const center = map.getCenter();
+      const zoom = map.getZoom();
+      onMoveEnd?.([center.lng, center.lat], zoom);
     });
   }, [isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -488,6 +585,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     return () => {
       cancelAnimationFrame(pulseFrameRef.current);
+      popupRef.current?.remove();
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -534,12 +632,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (centroid) {
         flyingRef.current = true;
         map.once('moveend', () => { flyingRef.current = false; });
-        map.flyTo({ center: centroid, zoom: STATE_ZOOM, duration: 1000 });
+        map.flyTo({ center: centroid, zoom: STATE_ZOOM, pitch: 45, bearing: -15, duration: 1500 });
       }
     } else {
       flyingRef.current = true;
       map.once('moveend', () => { flyingRef.current = false; });
-      map.flyTo({ center: US_CENTER, zoom: US_ZOOM, duration: 1000 });
+      map.flyTo({ center: US_CENTER, zoom: US_ZOOM, pitch: 0, bearing: 0, duration: 1200 });
     }
   }, [selectedState]);
 
@@ -557,6 +655,42 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       );
     }
   }, [showFlyways, species]);
+
+  // Toggle radar overlay visibility
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    if (map.getLayer("radar-overlay")) {
+      map.setLayoutProperty(
+        "radar-overlay",
+        "visibility",
+        showRadar && radarTileUrl ? "visible" : "none",
+      );
+    }
+  }, [showRadar, radarTileUrl]);
+
+  // Update radar tile URL
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !radarTileUrl) return;
+
+    const source = map.getSource("radar") as mapboxgl.RasterTileSource | undefined;
+    if (source) {
+      source.setTiles([radarTileUrl]);
+    }
+  }, [radarTileUrl]);
+
+  // Update eBird sightings data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const source = map.getSource("ebird-sightings") as mapboxgl.GeoJSONSource | undefined;
+    if (source && sightingsGeoJSON) {
+      source.setData(sightingsGeoJSON);
+    }
+  }, [sightingsGeoJSON]);
 
   // Handle satellite style toggle
   useEffect(() => {
@@ -629,10 +763,18 @@ function addTerrain(map: mapboxgl.Map) {
       },
     });
   }
+
+  map.setFog({
+    range: [0.8, 8],
+    color: '#0a1628',
+    'horizon-blend': 0.05,
+    'star-intensity': 0.15,
+  });
 }
 
 function removeTerrain(map: mapboxgl.Map) {
   map.setTerrain(null);
+  map.setFog(null);
   if (map.getLayer("sky")) {
     map.removeLayer("sky");
   }

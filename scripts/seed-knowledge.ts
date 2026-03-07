@@ -1,114 +1,154 @@
-// Run with: deno run --allow-net --allow-env scripts/seed-knowledge.ts
-// Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VOYAGE_API_KEY env vars
+/**
+ * Seed hunt_knowledge with state facts + regulation links
+ * Embeds each via hunt-generate-embedding edge function
+ *
+ * Usage:
+ *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/seed-knowledge.ts
+ */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.84.0';
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const VOYAGE_KEY = Deno.env.get('VOYAGE_API_KEY')!;
+if (!SERVICE_KEY) {
+  console.error("SUPABASE_SERVICE_ROLE_KEY required");
+  process.exit(1);
+}
 
-const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+const headers = {
+  Authorization: `Bearer ${SERVICE_KEY}`,
+  apikey: SERVICE_KEY,
+  "Content-Type": "application/json",
+};
 
-async function embed(text: string): Promise<number[] | null> {
-  const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-    method: 'POST',
+async function fetchTable(table: string, select: string): Promise<any[]> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?select=${select}`,
+    { headers },
+  );
+  if (!res.ok) throw new Error(`Failed to fetch ${table}: ${res.status}`);
+  return res.json();
+}
+
+async function generateEmbedding(text: string): Promise<number[]> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ text, input_type: "document" }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Embedding failed: ${res.status} ${err}`);
+  }
+  const data = await res.json();
+  return data.embedding;
+}
+
+async function upsertKnowledge(entry: {
+  title: string;
+  content: string;
+  content_type: string;
+  tags: string[];
+  embedding: number[];
+}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${VOYAGE_KEY}`,
-      'Content-Type': 'application/json',
+      ...headers,
+      Prefer: "resolution=merge-duplicates",
     },
     body: JSON.stringify({
-      model: 'voyage-3-lite',
-      input: [text],
-      input_type: 'document',
+      title: entry.title,
+      content: entry.content,
+      content_type: entry.content_type,
+      tags: entry.tags,
+      embedding: JSON.stringify(entry.embedding),
     }),
   });
-
   if (!res.ok) {
-    console.error('Embed error:', res.status, await res.text());
-    return null;
+    const err = await res.text();
+    console.error(`Upsert failed for "${entry.title}": ${err}`);
   }
-
-  const data = await res.json();
-  return data.data?.[0]?.embedding || null;
 }
 
 async function seedFacts() {
-  console.log('Fetching state facts...');
-  const { data: facts } = await supabase.from('hunt_state_facts').select('*');
-  if (!facts) { console.log('No facts found'); return; }
-
+  console.log("Fetching state facts...");
+  const facts = await fetchTable("hunt_state_facts", "species_id,state_name,facts");
   console.log(`Found ${facts.length} fact entries`);
-  let inserted = 0;
 
-  // Batch in groups of 20 (Voyage timeout limit)
-  for (let i = 0; i < facts.length; i++) {
-    const fact = facts[i];
-    const factsText = (fact.facts as string[]).join('. ');
-    const richText = `${fact.species_id} hunting in ${fact.state_name} | facts | ${factsText}`;
+  let count = 0;
+  for (const row of facts) {
+    const factArray = row.facts as string[];
+    for (const fact of factArray) {
+      const title = `${row.species_id} fact: ${row.state_name}`;
+      const richText = `${title} | ${row.species_id} | ${row.state_name} | ${fact}`;
 
-    const embedding = await embed(richText);
-    if (!embedding) {
-      console.warn(`Skipping ${fact.species_id} ${fact.state_name} — embed failed`);
-      continue;
-    }
-
-    const { error } = await supabase.from('hunt_knowledge').upsert({
-      title: `${fact.species_id} hunting facts: ${fact.state_name}`,
-      content: factsText,
-      content_type: 'fact',
-      tags: [fact.species_id, fact.state_name.toLowerCase()],
-      embedding,
-    }, { onConflict: 'title' });
-
-    if (error) console.warn(`Insert error for ${fact.state_name}:`, error.message);
-    else inserted++;
-
-    // Rate limit: small delay between embeds
-    if (i % 10 === 9) {
-      console.log(`Progress: ${i + 1}/${facts.length}`);
-      await new Promise(r => setTimeout(r, 500));
+      try {
+        const embedding = await generateEmbedding(richText);
+        await upsertKnowledge({
+          title,
+          content: fact,
+          content_type: "fact",
+          tags: [row.species_id, row.state_name.toLowerCase()],
+          embedding,
+        });
+        count++;
+        if (count % 20 === 0) {
+          console.log(`  Embedded ${count} facts...`);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      } catch (err) {
+        console.error(`  Error embedding fact for ${row.state_name}: ${err}`);
+      }
     }
   }
-
-  console.log(`Seeded ${inserted} knowledge entries from facts`);
+  console.log(`Seeded ${count} facts`);
+  return count;
 }
 
-async function seedRegulationSummaries() {
-  console.log('Fetching regulation links...');
-  const { data: regs } = await supabase.from('hunt_regulation_links').select('*');
-  if (!regs) { console.log('No regulation links found'); return; }
+async function seedRegLinks() {
+  console.log("Fetching regulation links...");
+  const links = await fetchTable(
+    "hunt_regulation_links",
+    "species_id,state_abbr,url",
+  );
+  console.log(`Found ${links.length} regulation links`);
 
-  console.log(`Found ${regs.length} regulation entries`);
-  let inserted = 0;
+  let count = 0;
+  for (const row of links) {
+    const title = `${row.species_id} regulations: ${row.state_abbr}`;
+    const content = `Official ${row.species_id} hunting regulations for ${row.state_abbr}: ${row.url}`;
+    const richText = `${title} | regulation link | ${row.species_id}, ${row.state_abbr} | ${content}`;
 
-  for (let i = 0; i < regs.length; i++) {
-    const reg = regs[i];
-    const richText = `${reg.species_id} hunting regulations ${reg.state_abbr} | regulation | Official state regulation link: ${reg.url}`;
-
-    const embedding = await embed(richText);
-    if (!embedding) continue;
-
-    const { error } = await supabase.from('hunt_knowledge').upsert({
-      title: `${reg.species_id} regulations: ${reg.state_abbr}`,
-      content: `Official ${reg.species_id} hunting regulations for ${reg.state_abbr}: ${reg.url}`,
-      content_type: 'regulation',
-      tags: [reg.species_id, reg.state_abbr.toLowerCase(), 'regulation'],
-      embedding,
-    }, { onConflict: 'title' });
-
-    if (error) console.warn(`Insert error for ${reg.state_abbr}:`, error.message);
-    else inserted++;
-
-    if (i % 10 === 9) {
-      console.log(`Progress: ${i + 1}/${regs.length}`);
-      await new Promise(r => setTimeout(r, 500));
+    try {
+      const embedding = await generateEmbedding(richText);
+      await upsertKnowledge({
+        title,
+        content,
+        content_type: "regulation",
+        tags: [row.species_id, row.state_abbr.toLowerCase(), "regulation"],
+        embedding,
+      });
+      count++;
+      if (count % 20 === 0) {
+        console.log(`  Embedded ${count} links...`);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    } catch (err) {
+      console.error(`  Error embedding link for ${row.state_abbr}: ${err}`);
     }
   }
-
-  console.log(`Seeded ${inserted} regulation knowledge entries`);
+  console.log(`Seeded ${count} regulation links`);
+  return count;
 }
 
-console.log('=== Seeding hunt_knowledge ===');
-await seedFacts();
-await seedRegulationSummaries();
-console.log('=== Done ===');
+async function main() {
+  console.log("=== Seeding hunt_knowledge ===");
+  const factCount = await seedFacts();
+  const linkCount = await seedRegLinks();
+  console.log(`\nDone! Total: ${factCount} facts + ${linkCount} links = ${factCount + linkCount} entries`);
+}
+
+main().catch((err) => {
+  console.error("Fatal:", err);
+  process.exit(1);
+});
