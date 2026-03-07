@@ -18,7 +18,7 @@ export default function UserMenu() {
   if (!user) {
     return (
       <button
-        onClick={signIn}
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); signIn(); }}
         className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-body font-semibold text-muted-foreground hover:text-foreground transition-colors border border-border/50 hover:border-border"
       >
         <User size={14} />
