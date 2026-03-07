@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { ExternalLink, Star, ShieldCheck, AlertTriangle, Brain, ChevronRight } from "lucide-react";
+import { ExternalLink, Star, ShieldCheck, AlertTriangle, Brain, ChevronRight, CalendarPlus } from "lucide-react";
 import type { Species, HuntingSeason } from "@/data/types";
 import { speciesConfig } from "@/data/speciesConfig";
 import { getSeasonsByState, getPrimarySeasonForState, getAllSpeciesForState } from "@/data/seasons";
@@ -15,6 +15,7 @@ import {
   type SeasonStatus,
 } from "@/lib/seasonUtils";
 import { useStateIntel } from "@/hooks/useStateIntel";
+import { downloadICS } from "@/lib/icsExport";
 import CountdownTimer from "./CountdownTimer";
 import EBirdSightings from "./EBirdSightings";
 import WeatherBrief from "./WeatherBrief";
@@ -309,6 +310,13 @@ export default function StateView({
       {/* Actions */}
       <div className="space-y-2">
         <ShareButton season={season} status={status} config={config} />
+        <button
+          onClick={() => downloadICS(seasons, `${species}-${abbreviation}-seasons.ics`)}
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg font-body text-xs font-semibold bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors min-h-[44px]"
+        >
+          <CalendarPlus size={14} />
+          Add to Calendar
+        </button>
         {regLink && (
           <a
             href={regLink}
