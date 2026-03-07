@@ -1,10 +1,10 @@
 # Duck Countdown — CLAUDE.md
 
-Multi-species hunting season countdown platform. Interactive US map with countdown timers for Duck, Goose, Deer, Turkey, and Dove seasons across all 50 states. Mobile-first. Shareable. No accounts, no paywall.
+Hunting OS — "Google for Hunting." Interactive Mapbox GL map with AI chat brain, auth, embedding pipeline, and season data for Duck, Goose, Deer, Turkey, and Dove across all 50 states.
 
 **Domain:** duckcountdown.com
 **Repo:** github.com/LinkFood/marsh-timer
-**Hosting:** Vercel (static deploy + Edge Middleware for OG tags)
+**Hosting:** Vercel (frontend) + Supabase `rvhyotvklfowklzjahdd` (backend, shared with JAC Agent OS)
 **Brand:** "DUCK COUNTDOWN" stays the brand regardless of selected species.
 
 ## Stack
@@ -13,53 +13,84 @@ Multi-species hunting season countdown platform. Interactive US map with countdo
 |-------|------|
 | Framework | React 18, TypeScript, Vite |
 | Styling | Tailwind CSS |
-| Map | D3 + TopoJSON (US Atlas CDN) |
+| Map | Mapbox GL JS (satellite-streets-v12, 3D terrain) |
 | Animation | Framer Motion |
-| Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`) |
+| Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`, `/auth`) |
 | Icons | Lucide React |
 | Fonts | Playfair Display (headings), Lora (body) |
 | OG Tags | Vercel Edge Middleware (`middleware.ts`) |
+| Auth | Supabase Auth (Google OAuth) |
+| AI | Claude Haiku 4.5 (intent classification, responses) |
+| Embeddings | Voyage AI voyage-3-lite (512-dim) |
+| DB | Supabase Postgres + pgvector (512-dim HNSW) |
+| Edge Functions | Deno (Supabase Edge Functions) |
 
 ## Project Structure
 
 ```
 src/
   components/
-    Header.tsx            # Title + tagline (static, species-agnostic)
-    SpeciesSelector.tsx   # Horizontal toggle bar: Duck | Goose | Deer | Turkey | Dove
-    StatusBar.tsx         # "X States Open" / "Y Opening Soon" (species-filtered)
-    SearchBar.tsx         # State search with autocomplete (species-filtered)
-    USMap.tsx             # D3 interactive map (species-aware colors, no-data states)
-    StateDetail.tsx       # State panel: season type tabs, split dates, verification badge, cross-species nav
-    CountdownTimer.tsx    # Days/hours/min/sec display
-    StateList.tsx         # Sorted list with favorites at top (species-filtered)
-    FavoritesBar.tsx      # Horizontal pills (species-qualified: "duck:TX")
-    Footer.tsx            # Disclaimer
+    MapView.tsx           # Mapbox GL: satellite, 3D terrain, state fills, county boundaries, flyways
+    HeaderBar.tsx         # Brand + species pills + search + UserMenu
+    BottomPanel.tsx       # Collapsible: card row + HuntChat split layout
+    NationalView.tsx      # Horizontal scroll state cards (open/soon/closed)
+    StateView.tsx         # State detail: season tabs, facts, regulation links
+    ZoneView.tsx          # Zone detail for drilled-in state
+    MapControls.tsx       # Zoom, geolocate, satellite, 3D, flyway toggles
+    LiveTicker.tsx        # Scrolling ticker below header
+    UserMenu.tsx          # Avatar dropdown (sign in / sign out)
+    HuntChat.tsx          # Chat container: 50/50 desktop split, stacked mobile
+    ChatInput.tsx         # Chat input with auth gate
+    ChatMessage.tsx       # User/assistant message bubbles with card embedding
+    ChatContextPanel.tsx  # Right panel: state seasons context
+    cards/
+      WeatherCard.tsx     # 3-day forecast, wind, precip
+      SeasonCard.tsx      # Season status, dates, bag limit
+      SolunarCard.tsx     # Moon phase, feeding times, rating
+      AlertCard.tsx       # Season alerts, countdowns
   pages/
-    Index.tsx             # Main page: parses species from URL, wires everything
+    Index.tsx             # Main page: map + header + bottom panel + controls
+    Auth.tsx              # Google OAuth sign-in page
     NotFound.tsx          # Themed 404
   data/
     types.ts              # Species, SeasonType, HuntingSeason, DateRange interfaces
     speciesConfig.ts      # Per-species metadata: colors, emoji, season types
-    fips.ts               # FIPS <-> abbreviation maps for D3
-    seasons/
-      duck.ts             # 50 states, 104 entries (regular + early-teal, zone-level)
-      goose.ts            # 49 states, 87 entries (regular + light goose conservation order)
-      deer.ts             # 50 states, 144 entries (archery + rifle + muzzleloader)
-      turkey.ts           # 49 states, 93 entries (spring + fall)
-      dove.ts             # 44 states, 54 entries (regular + special white-wing)
-      index.ts            # Merge helpers: getSeasonsForSpecies, getPrimarySeasonForState, etc.
-    stateFacts.ts         # Record<Species, Record<StateName, string[]>>
-    regulationLinks.ts    # Record<Species, Record<Abbr, string>>
+    fips.ts               # FIPS <-> abbreviation maps
+    flyways.ts            # State-to-flyway mapping, flyway colors
+    seasons/              # Per-species static data (duck, goose, deer, turkey, dove)
+    stateFacts.ts         # 576 facts across all species
+    regulationLinks.ts    # State DNR URLs per species
   lib/
-    seasonUtils.ts        # Status calc, countdown, sorting (works with dates[] arrays)
+    seasonUtils.ts        # Status calc, countdown, sorting
+    supabase.ts           # Supabase client (conditional on env vars)
+    ebird.ts              # eBird API helpers
   hooks/
-    useFavorites.ts       # localStorage favorites, species-qualified ("duck:TX"), migrates legacy
-middleware.ts             # Vercel Edge Middleware: species-aware OG tags, /TX -> /duck/TX 301
-vercel.json               # SPA rewrites
-public/
-  sitemap.xml             # Species-prefixed URLs
-  robots.txt              # Sitemap reference
+    useAuth.ts            # Session, user, profile, signIn, signOut
+    useChat.ts            # Messages, sendMessage, loading, conversation persistence
+    useHuntContext.ts     # Aggregated season context for chat panel
+    useFavorites.ts       # localStorage favorites, species-qualified
+    useIsMobile.ts        # Responsive breakpoint detection
+supabase/
+  functions/
+    _shared/
+      cors.ts             # CORS (duckcountdown.com origins)
+      response.ts         # successResponse / errorResponse helpers
+      supabase.ts         # createSupabaseClient (service role)
+      auth.ts             # extractUserId, createServiceClient, isServiceRoleRequest
+      anthropic.ts        # callClaude, parseToolUse, calculateCost
+      rateLimit.ts        # Daily query rate limiting
+    hunt-dispatcher/      # THE BRAIN: intent classify + route (Haiku)
+    hunt-search/          # Hybrid vector + keyword search
+    hunt-generate-embedding/ # Voyage AI 512-dim embedding
+    hunt-weather/         # Open-Meteo weather with cache
+    hunt-solunar/         # Solunar + sunrise with cache
+  migrations/             # SQL migrations
+  config.toml             # Function configs (all verify_jwt = false)
+scripts/
+  seed-knowledge.ts       # Embed state facts + regs into hunt_knowledge
+middleware.ts             # Vercel Edge Middleware: OG tags, legacy redirects
+docs/
+  SETUP-{1-7}*.md         # Setup guides for Google OAuth, Supabase config, testing
 ```
 
 ## Data Model
@@ -141,15 +172,54 @@ npm run preview   # Serve production build locally
 npm run test      # Vitest
 ```
 
+## Database Tables (hunt_ prefix, shared Supabase project)
+
+| Table | Purpose |
+|-------|---------|
+| hunt_species | Reference: species id, label, emoji, colors |
+| hunt_states | Reference: abbreviation, name, fips, centroid, flyway |
+| hunt_seasons | Season data: species, state, type, zone, dates, bag limit, verified |
+| hunt_zones | Zone-to-county FIPS mapping |
+| hunt_state_facts | 3 facts per species/state |
+| hunt_regulation_links | State DNR URLs per species |
+| hunt_weather_cache | Cached Open-Meteo forecasts |
+| hunt_solunar_cache | Cached solunar/sunrise data |
+| hunt_knowledge | Vector embeddings (512-dim) for semantic search |
+| hunt_profiles | User profiles (auto-created on signup) |
+| hunt_user_settings | User prefs, daily_query_count, tier |
+| hunt_conversations | Chat history (user_id, session_id, role, content) |
+| hunt_tasks | Token/cost tracking per query |
+| hunt_user_locations | Saved hunting spots (future) |
+| hunt_intel_briefs | AI-generated hunt briefs (future) |
+
+All tables have RLS. Service role bypasses for edge functions.
+
+## Edge Functions
+
+| Function | Purpose |
+|----------|---------|
+| hunt-dispatcher | Intent classification (Haiku) → route to handler → respond with text + cards |
+| hunt-search | Hybrid search: vector (hunt_knowledge RPC) + keyword (seasons/facts) |
+| hunt-generate-embedding | Voyage AI voyage-3-lite (512-dim) |
+| hunt-weather | Open-Meteo 3-day forecast with cache |
+| hunt-solunar | Solunar + sunrise/sunset with cache |
+
+All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
+
 ## Rules
 
 - Mobile-first. Every feature must work well on phones.
-- Keep it simple. No accounts, no backend.
 - Season data accuracy matters more than features. Wrong dates = useless site.
 - Shareable. Every interaction should be easy to screenshot or share via link/text.
 - When updating season data, also update the middleware.ts state map for OG tags.
 - When adding a new species or state, update the sitemap.xml.
 - Brand stays "DUCK COUNTDOWN" regardless of species selected.
+- All hunt_ tables share Supabase project with JAC Agent OS — never touch JAC tables.
+- Pin supabase-js to @2.84.0 in edge functions — unpinned @2 crashes Deno isolates.
+- Never retry 4xx errors — only retry 5xx and network errors.
+- Use `extensions.vector(512)` with `SET search_path = public, extensions` for vector ops.
+- Shared module change → redeploy every function that imports it.
+- Migration push requires `migration repair --status reverted` for JAC's migrations first.
 
 ## Future: Migration Data APIs
 
