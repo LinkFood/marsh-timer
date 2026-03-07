@@ -9,7 +9,6 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
 import type { MapViewRef } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
-import LiveTicker from "@/components/LiveTicker";
 import BottomPanel from "@/components/BottomPanel";
 import MapControls from "@/components/MapControls";
 
@@ -230,11 +229,6 @@ const Index = () => {
         onSelectSpecies={handleSelectSpecies}
         onSearch={handleSelectState}
       />
-
-      {/* Ticker below header */}
-      <div className="fixed top-12 left-0 right-0 z-20 map-overlay-panel border-b border-border/30 py-1">
-        <LiveTicker species={species} />
-      </div>
 
       {/* Bottom Panel */}
       <BottomPanel

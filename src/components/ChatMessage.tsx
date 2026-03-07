@@ -31,8 +31,8 @@ export default function ChatMessage({ message }: ChatMessageProps) {
       <div
         className={`max-w-[85%] rounded-lg px-3 py-2 text-xs font-body ${
           isUser
-            ? 'bg-primary/20 text-foreground'
-            : 'bg-secondary/50 text-foreground border border-border/30'
+            ? 'bg-cyan-400/10 text-white/90'
+            : 'bg-white/[0.03] text-white/80 border border-white/[0.06]'
         }`}
       >
         <p className="whitespace-pre-wrap">{message.content}</p>
@@ -41,7 +41,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             {message.cards.map((card, i) => renderCard(card, i))}
           </div>
         )}
-        <p className="text-[9px] text-muted-foreground mt-1">
+        <p className="text-[10px] text-white/20 mt-1">
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </p>
       </div>

@@ -8,7 +8,7 @@ interface ChatContextPanelProps {
 export default function ChatContextPanel({ context }: ChatContextPanelProps) {
   if (!context.stateAbbr || context.seasons.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground font-body text-xs p-4">
+      <div className="flex items-center justify-center h-full text-white/40 font-body text-xs p-4">
         <p className="text-center">Select a state on the map to see season details and context here.</p>
       </div>
     );
@@ -16,7 +16,7 @@ export default function ChatContextPanel({ context }: ChatContextPanelProps) {
 
   return (
     <div className="p-3 space-y-2 overflow-y-auto scrollbar-hide h-full">
-      <h3 className="text-[10px] font-body font-semibold text-muted-foreground uppercase tracking-wider">
+      <h3 className="text-[10px] font-body font-semibold text-white/40 uppercase tracking-wider">
         {context.stateAbbr} — {context.species} Seasons
       </h3>
       {context.seasons.map((s, i) => (

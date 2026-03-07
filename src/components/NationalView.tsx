@@ -61,6 +61,17 @@ export default function NationalView({
     return { open, soon, closed };
   }, [sorted]);
 
+  // Compact line when all seasons are closed
+  if (counts.open === 0 && counts.soon === 0) {
+    return (
+      <div className="flex items-center gap-2 px-1 py-1">
+        <span className="text-[10px] uppercase tracking-widest text-white/30">
+          All {sorted.length} seasons closed
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Summary stats */}
@@ -71,7 +82,7 @@ export default function NationalView({
         {counts.soon > 0 && (
           <span className="text-yellow-500">{counts.soon} Opening Soon</span>
         )}
-        <span className="text-muted-foreground">{counts.closed} Closed</span>
+        <span className="text-white/40">{counts.closed} Closed</span>
       </div>
 
       {/* Horizontal scroll cards */}
@@ -86,7 +97,7 @@ export default function NationalView({
             <button
               key={season.abbreviation}
               onClick={() => onSelectState(season.abbreviation)}
-              className="flex-shrink-0 w-[120px] rounded-lg border border-border/50 bg-secondary/50 p-2.5 text-left transition-colors hover:bg-secondary/80 active:bg-secondary"
+              className="flex-shrink-0 w-[120px] rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5 text-left transition-colors hover:bg-white/[0.06] active:bg-white/[0.08]"
             >
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5">
@@ -94,7 +105,7 @@ export default function NationalView({
                     className={`w-2 h-2 rounded-full flex-shrink-0 ${status === "open" ? "animate-pulse" : ""}`}
                     style={{ background: color }}
                   />
-                  <span className="font-display font-bold text-xs text-foreground truncate">
+                  <span className="font-display font-bold text-xs text-white/90 truncate">
                     {season.abbreviation}
                   </span>
                 </div>
@@ -109,7 +120,7 @@ export default function NationalView({
                   />
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground font-body truncate">
+              <p className="text-[10px] text-white/40 font-body truncate">
                 {season.state}
               </p>
               <p

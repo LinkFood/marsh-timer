@@ -163,31 +163,31 @@ export default function BottomPanel({
   if (!isMobile) {
     return (
       <div
-        className="fixed bottom-0 left-0 right-0 z-20 map-overlay-panel border-t border-border/50 transition-all duration-300 ease-out"
-        style={{ height: desktopExpanded ? "50dvh" : "auto" }}
+        className="fixed bottom-0 left-0 right-0 z-20 glass-panel border-t border-white/[0.06] transition-all duration-300 ease-out"
+        style={{ height: desktopExpanded ? '280px' : '48px' }}
       >
         {/* Summary bar / toggle */}
         <button
           onClick={() => setDesktopExpanded((e) => !e)}
-          className="w-full flex items-center justify-between px-4 py-2 text-xs font-body text-muted-foreground hover:text-foreground transition-colors"
+          className="w-full flex items-center justify-between px-4 h-12 text-xs font-medium text-white/50 hover:text-white/70 transition-colors"
         >
-          <span className="font-semibold uppercase tracking-wider">
+          <span className="uppercase tracking-widest text-[10px]">
             {summaryText}
           </span>
           <ChevronDown
-            size={16}
+            size={14}
             className={`transition-transform duration-200 ${desktopExpanded ? "" : "rotate-180"}`}
           />
         </button>
 
         {desktopExpanded && (
-          <div className="flex flex-col" style={{ height: "calc(50dvh - 36px)" }}>
-            {/* Compact card row */}
-            <div className="shrink-0 overflow-x-auto scrollbar-hide px-4 pb-2">
+          <div className="flex flex-col" style={{ height: 'calc(280px - 48px)' }}>
+            {/* Content area */}
+            <div className="shrink-0 overflow-x-auto scrollbar-hide px-4 pb-2 max-h-[120px]">
               {content}
             </div>
             {/* Chat area */}
-            <div className="flex-1 min-h-0 border-t border-border/30">
+            <div className="flex-1 min-h-0 border-t border-white/[0.06]">
               <HuntChat species={species} stateAbbr={stateAbbr} isMobile={false} />
             </div>
           </div>
@@ -199,7 +199,7 @@ export default function BottomPanel({
   // Mobile: draggable bottom sheet
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-20 rounded-t-2xl map-overlay-panel border-t border-border/50"
+      className="fixed bottom-0 left-0 right-0 z-20 rounded-t-2xl glass-panel border-t border-white/[0.06]"
       style={{
         height: "100dvh",
         transform: `translateY(${activeTranslateY}dvh)`,
@@ -217,11 +217,11 @@ export default function BottomPanel({
         onTouchEnd={handleTouchEnd}
       >
         <div className="flex justify-center py-2.5">
-          <div className="w-10 h-1 rounded-full bg-gray-500" />
+          <div className="w-10 h-1 rounded-full bg-white/20" />
         </div>
 
         {/* Summary bar (visible at peek) */}
-        <div className="px-4 pb-2 text-xs font-body text-muted-foreground font-semibold uppercase tracking-wider">
+        <div className="px-4 pb-2 text-xs font-body text-white/50 font-semibold uppercase tracking-wider">
           {summaryText}
         </div>
       </div>
@@ -234,7 +234,7 @@ export default function BottomPanel({
         {content}
 
         {/* Chat */}
-        <div className="border-t border-border/30 mt-4" style={{ minHeight: '300px' }}>
+        <div className="border-t border-white/[0.06] mt-4" style={{ minHeight: '300px' }}>
           <HuntChat species={species} stateAbbr={stateAbbr} isMobile={true} />
         </div>
       </div>

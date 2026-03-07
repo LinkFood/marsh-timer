@@ -40,7 +40,7 @@ export interface MapViewRef {
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const US_CENTER: [number, number] = [-98.5, 39.8];
 const US_ZOOM = 3.5;
-const STATE_ZOOM = 5.5;
+const STATE_ZOOM = 7;
 const DRILL_UP_ZOOM_THRESHOLD = 4;
 
 function extractCoordinates(geometry: Geometry): Position[] {
@@ -277,7 +277,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           id: "states-line",
           type: "line",
           source: "states",
-          paint: { "line-color": "#0a1a0a", "line-width": 0.5 },
+          paint: { "line-color": "rgba(255,255,255,0.15)", "line-width": 0.8 },
         });
       }
 
@@ -290,8 +290,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           filter: ["==", ["get", "abbr"], selectedState || ""],
           paint: {
             "line-color": speciesConfig[species].colors.selected,
-            "line-width": 3,
-            "line-opacity": 0.9,
+            "line-width": 2,
+            "line-opacity": 0.7,
           },
         });
       }
@@ -329,11 +329,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           'source-layer': 'admin',
           filter: ['all', ['==', 'admin_level', 4], ['==', 'iso_3166_1', 'US']],
           paint: {
-            'line-color': '#ffffff',
-            'line-width': 0.3,
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 4.5, 0, 5.5, 0.4],
+            'line-color': 'rgba(255,255,255,0.6)',
+            'line-width': 0.5,
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0, 7, 0.5],
           },
-          minzoom: 4.5,
+          minzoom: 5,
         });
       }
 
@@ -375,9 +375,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-allow-overlap": true,
           },
           paint: {
-            "text-color": "#d4d4d4",
-            "text-halo-color": "#000000",
-            "text-halo-width": 1,
+            "text-color": "#ffffff",
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1.5,
           },
         });
       }

@@ -82,16 +82,15 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
   }, [searchOpen]);
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-30 h-12 map-overlay-panel border-b border-border/50">
+    <header className="fixed top-0 left-0 right-0 z-30 h-12 glass-panel border-b border-white/[0.06]">
       <div className="h-full max-w-7xl mx-auto px-3 flex items-center justify-between gap-2">
         {/* Left: Brand */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-base">🦆</span>
-          <span className="font-display text-sm font-bold tracking-wide text-foreground hidden sm:inline">
+        <div className="flex items-center shrink-0">
+          <span className="font-display text-sm font-bold tracking-widest text-white/90 hidden sm:inline">
             DUCK COUNTDOWN
           </span>
-          <span className="font-display text-sm font-bold tracking-wide text-foreground sm:hidden">
-            DCD
+          <span className="font-display text-sm font-bold tracking-widest text-white/90 sm:hidden">
+            DC
           </span>
         </div>
 
@@ -105,19 +104,15 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
               <button
                 key={sp}
                 onClick={() => onSelectSpecies(sp)}
-                className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full text-xs font-body font-semibold transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium tracking-wide uppercase transition-all ${
                   isActive
-                    ? "bg-primary/20 text-primary border border-primary/30"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "text-cyan-400 border-b-2 border-cyan-400"
+                    : "text-white/50 hover:text-white/80"
                 }`}
               >
-                <span className="text-xs sm:text-sm">{config.emoji}</span>
-                <span className="hidden sm:inline text-xs">{config.label}</span>
+                {config.label}
                 {count > 0 && (
-                  <span
-                    className="text-[9px] font-bold px-1 py-px rounded-full"
-                    style={{ background: `${config.colors.open}20`, color: config.colors.open }}
-                  >
+                  <span className="ml-1.5 text-[9px] font-bold text-emerald-400">
                     {count}
                   </span>
                 )}
@@ -147,7 +142,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
                   placeholder="Search state..."
                   value={query}
                   onChange={e => setQuery(e.target.value)}
-                  className="w-48 sm:w-64 pl-3 pr-8 py-1.5 rounded-full bg-secondary border border-border text-foreground placeholder:text-muted-foreground font-body text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="w-48 sm:w-64 pl-3 pr-8 py-1.5 rounded-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-foreground font-body text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/30"
                 />
                 <button
                   onClick={() => { setSearchOpen(false); setQuery(""); }}
@@ -157,7 +152,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
                 </button>
               </div>
               {results.length > 0 && (
-                <div className="absolute top-full right-0 mt-2 w-48 sm:w-64 bg-card border border-border rounded-lg shadow-xl overflow-hidden z-50">
+                <div className="absolute top-full right-0 mt-2 w-48 sm:w-64 glass-panel rounded-lg shadow-xl overflow-hidden z-50">
                   {results.map(s => (
                     <button
                       key={s.abbreviation}
