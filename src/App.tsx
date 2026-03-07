@@ -8,6 +8,7 @@ const App = () => (
       <Route path="/" element={<Index />} />
       <Route path="/:first" element={<Index />} />
       <Route path="/:first/:second" element={<Index />} />
+      <Route path="/:first/:second/:third" element={<Index />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>

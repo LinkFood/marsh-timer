@@ -1,13 +1,17 @@
 import { useState } from "react";
-import { Crosshair, Layers, Navigation, HelpCircle } from "lucide-react";
+import { Crosshair, Layers, Navigation, HelpCircle, Plus, Minus, Mountain } from "lucide-react";
 
 interface MapControlsProps {
   onGeolocate: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
   showFlyways: boolean;
   onToggleFlyways: () => void;
   showFlywayOption: boolean;
-  onToggleSatellite: () => void;
   isSatellite: boolean;
+  onToggleSatellite: () => void;
+  show3D: boolean;
+  onToggle3D: () => void;
 }
 
 const legendItems = [
@@ -19,11 +23,15 @@ const legendItems = [
 
 export default function MapControls({
   onGeolocate,
+  onZoomIn,
+  onZoomOut,
   showFlyways,
   onToggleFlyways,
   showFlywayOption,
   onToggleSatellite,
   isSatellite,
+  show3D,
+  onToggle3D,
 }: MapControlsProps) {
   const [legendOpen, setLegendOpen] = useState(false);
 
@@ -36,6 +44,23 @@ export default function MapControls({
     <div className="fixed bottom-6 right-4 z-20 flex flex-col items-end gap-2 sm:bottom-6 max-sm:bottom-20">
       {/* Control buttons */}
       <div className="flex flex-col gap-2">
+        {/* Zoom controls */}
+        <button
+          onClick={onZoomIn}
+          className={`${btnBase} ${inactiveClass}`}
+          aria-label="Zoom in"
+        >
+          <Plus size={20} />
+        </button>
+
+        <button
+          onClick={onZoomOut}
+          className={`${btnBase} ${inactiveClass}`}
+          aria-label="Zoom out"
+        >
+          <Minus size={20} />
+        </button>
+
         <button
           onClick={onGeolocate}
           className={`${btnBase} ${inactiveClass}`}
@@ -50,6 +75,14 @@ export default function MapControls({
           aria-label="Toggle satellite view"
         >
           <Layers size={20} />
+        </button>
+
+        <button
+          onClick={onToggle3D}
+          className={`${btnBase} ${show3D ? activeClass : inactiveClass}`}
+          aria-label="Toggle 3D terrain"
+        >
+          <Mountain size={20} />
         </button>
 
         {showFlywayOption && (

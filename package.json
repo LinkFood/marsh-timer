@@ -16,6 +16,8 @@
     "import-csv": "node scripts/import-csv.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.84.0",
+    "@tanstack/react-query": "^5.90.21",
     "@vercel/edge": "^1.2.2",
     "framer-motion": "11",
     "lucide-react": "^0.462.0",
