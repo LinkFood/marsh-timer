@@ -11,6 +11,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const VOYAGE_KEY = process.env.VOYAGE_API_KEY;
 
 if (!SERVICE_KEY) { console.error("SUPABASE_SERVICE_ROLE_KEY required"); process.exit(1); }
 if (!ANTHROPIC_KEY) { console.error("ANTHROPIC_API_KEY required"); process.exit(1); }
@@ -42,46 +43,58 @@ const STATE_NAMES: Record<string, string> = {
   VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming",
 };
 
-async function fetchJoinedData(stateAbbr: string): Promise<any[]> {
+async function fetchJoinedData(stateAbbr: string): Promise<{ withMigration: any[]; weatherOnly: any[] }> {
   // Fetch migration data
   const migRes = await fetch(
     `${SUPABASE_URL}/rest/v1/hunt_migration_history?state_abbr=eq.${stateAbbr}&species=eq.duck&select=date,sighting_count,location_count&order=date`,
     { headers: supaHeaders },
   );
-  if (!migRes.ok) return [];
-  const migData = await migRes.json();
+  const migData = migRes.ok ? await migRes.json() : [];
 
-  if (migData.length === 0) return [];
-
-  // Fetch weather for same state
+  // Fetch weather
   const wxRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/hunt_weather_history?state_abbr=eq.${stateAbbr}&select=date,temp_high_f,temp_low_f,temp_avg_f,wind_speed_avg_mph,wind_speed_max_mph,wind_direction_dominant,pressure_avg_msl,pressure_change_12h,precipitation_total_mm,cloud_cover_avg&order=date`,
+    `${SUPABASE_URL}/rest/v1/hunt_weather_history?state_abbr=eq.${stateAbbr}&select=date,temp_high_f,temp_low_f,temp_avg_f,wind_speed_avg_mph,wind_speed_max_mph,wind_direction_dominant,pressure_avg_msl,pressure_change_12h,precipitation_total_mm,cloud_cover_avg&order=date&limit=1000`,
     { headers: supaHeaders },
   );
-  if (!wxRes.ok) return [];
-  const wxData = await wxRes.json();
+  const wxData = wxRes.ok ? await wxRes.json() : [];
 
-  // Join on date
-  const wxMap = new Map(wxData.map((w: any) => [w.date, w]));
-  return migData
-    .filter((m: any) => wxMap.has(m.date))
-    .map((m: any) => ({ ...m, weather: wxMap.get(m.date) }));
+  if (migData.length > 0) {
+    // Join mode
+    const wxMap = new Map(wxData.map((w: any) => [w.date, w]));
+    const joined = migData
+      .filter((m: any) => wxMap.has(m.date))
+      .map((m: any) => ({ ...m, weather: wxMap.get(m.date) }));
+    return { withMigration: joined, weatherOnly: [] };
+  }
+
+  // Weather-only mode
+  return { withMigration: [], weatherOnly: wxData };
 }
 
-function formatDataForClaude(stateName: string, data: any[]): string {
-  if (data.length === 0) return "";
+function formatDataForClaude(stateName: string, data: { withMigration: any[]; weatherOnly: any[] }): string {
+  if (data.withMigration.length > 0) {
+    const sample = data.withMigration.length > 200
+      ? data.withMigration.filter((_, i) => i % Math.ceil(data.withMigration.length / 200) === 0)
+      : data.withMigration;
 
-  // Sample up to 200 rows to keep context manageable
-  const sample = data.length > 200
-    ? data.filter((_, i) => i % Math.ceil(data.length / 200) === 0)
-    : data;
+    const rows = sample.map((d) => {
+      const w = d.weather;
+      return `${d.date}: ${d.sighting_count} sightings at ${d.location_count} locations | ${w.temp_avg_f}F (${w.temp_low_f}-${w.temp_high_f}) | wind ${w.wind_speed_avg_mph}mph max ${w.wind_speed_max_mph}mph dir ${w.wind_direction_dominant} | pressure ${w.pressure_avg_msl}mb change ${w.pressure_change_12h}mb | precip ${w.precipitation_total_mm}mm | cloud ${w.cloud_cover_avg}%`;
+    });
 
-  const rows = sample.map((d) => {
-    const w = d.weather;
-    return `${d.date}: ${d.sighting_count} sightings at ${d.location_count} locations | ${w.temp_avg_f}F (${w.temp_low_f}-${w.temp_high_f}) | wind ${w.wind_speed_avg_mph}mph max ${w.wind_speed_max_mph}mph dir ${w.wind_direction_dominant} | pressure ${w.pressure_avg_msl}mb change ${w.pressure_change_12h}mb | precip ${w.precipitation_total_mm}mm | cloud ${w.cloud_cover_avg}%`;
-  });
+    return `State: ${stateName}\nDuck season weather + migration data (${data.withMigration.length} days with sightings, Sept-Feb over 5 years):\n\n${rows.join("\n")}`;
+  }
 
-  return `State: ${stateName}\nDuck season data (${data.length} observation days over 5 years, Sept-Feb):\n\n${rows.join("\n")}`;
+  // Weather-only mode
+  const sample = data.weatherOnly.length > 200
+    ? data.weatherOnly.filter((_, i) => i % Math.ceil(data.weatherOnly.length / 200) === 0)
+    : data.weatherOnly;
+
+  const rows = sample.map((w) =>
+    `${w.date}: ${w.temp_avg_f}F (${w.temp_low_f}-${w.temp_high_f}) | wind ${w.wind_speed_avg_mph}mph max ${w.wind_speed_max_mph}mph dir ${w.wind_direction_dominant} | pressure ${w.pressure_avg_msl}mb change ${w.pressure_change_12h}mb | precip ${w.precipitation_total_mm}mm | cloud ${w.cloud_cover_avg}%`
+  );
+
+  return `State: ${stateName}\nDuck season weather data (${data.weatherOnly.length} days, Sept-Feb over 5 years, NO migration sighting data yet):\n\n${rows.join("\n")}`;
 }
 
 async function extractPatterns(stateName: string, dataText: string): Promise<string[]> {

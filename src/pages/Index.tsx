@@ -13,6 +13,7 @@ import BottomPanel from "@/components/BottomPanel";
 import MapControls from "@/components/MapControls";
 import { useRadarTiles } from "@/hooks/useRadarTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
+import { useNationalWeather } from "@/hooks/useNationalWeather";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -101,6 +102,7 @@ const Index = () => {
   const [mapZoom, setMapZoom] = useState(3.5);
   const radarTileUrl = useRadarTiles();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
+  const weatherCache = useNationalWeather();
 
   // Derive drill level
   const level: DrillLevel = useMemo(() => {
@@ -231,6 +233,7 @@ const Index = () => {
         showRadar={showRadar}
         radarTileUrl={radarTileUrl}
         sightingsGeoJSON={sightingsGeoJSON}
+        weatherCache={weatherCache}
         onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
       />
 

@@ -33,6 +33,7 @@ export interface MapViewProps {
   radarTileUrl?: string | null;
   sightingsGeoJSON?: FeatureCollection | null;
   onMoveEnd?: (center: [number, number], zoom: number) => void;
+  weatherCache?: Map<string, { temp: number; wind: number }>;
 }
 
 export interface MapViewRef {
@@ -188,6 +189,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     radarTileUrl = null,
     sightingsGeoJSON = null,
     onMoveEnd,
+    weatherCache,
   },
   ref,
 ) {
@@ -201,8 +203,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const selectedStateRef = useRef(selectedState);
   const prevStyleRef = useRef<string>("dark");
+  const weatherCacheRef = useRef(weatherCache);
 
   selectedStateRef.current = selectedState;
+  weatherCacheRef.current = weatherCache;
 
   const statesWithData = useMemo(
     () => getStatesForSpecies(species),
@@ -534,7 +538,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               offset: 10,
             })
               .setLngLat(centroid)
-              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species))
+              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr)))
               .addTo(map);
           }
         }

@@ -2,6 +2,11 @@ import type { Species } from "@/data/types";
 import { getPrimarySeasonForState } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
 
+export interface PopupWeather {
+  temp: number;
+  wind: number;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   open: "#10b981",
   soon: "#f59e0b",
@@ -16,7 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
   closed: "Season Closed",
 };
 
-export function getPopupHTML(abbr: string, stateName: string, species: Species): string {
+export function getPopupHTML(abbr: string, stateName: string, species: Species, weather?: PopupWeather | null): string {
   const season = getPrimarySeasonForState(species, abbr);
   const now = new Date();
   const status = season ? getSeasonStatus(season, now) : "closed";
@@ -34,6 +39,11 @@ export function getPopupHTML(abbr: string, stateName: string, species: Species):
     }
   }
 
+  let weatherInfo = "";
+  if (weather) {
+    weatherInfo = `<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:4px;display:flex;gap:8px">${Math.round(weather.temp)}&deg;F &middot; ${Math.round(weather.wind)} mph wind</div>`;
+  }
+
   return `
     <div style="font-family:Inter,sans-serif;padding:2px 0;min-width:120px">
       <div style="font-weight:600;font-size:13px;color:#fff;margin-bottom:4px">${stateName}</div>
@@ -42,6 +52,7 @@ export function getPopupHTML(abbr: string, stateName: string, species: Species):
         <span style="font-size:11px;color:rgba(255,255,255,0.7)">${label}</span>
       </div>
       ${dateInfo}
+      ${weatherInfo}
     </div>
   `;
 }

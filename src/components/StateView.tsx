@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { ExternalLink, Star, ShieldCheck, AlertTriangle, Zap, ChevronRight } from "lucide-react";
+import { ExternalLink, Star, ShieldCheck, AlertTriangle, Brain, ChevronRight } from "lucide-react";
 import type { Species, HuntingSeason } from "@/data/types";
 import { speciesConfig } from "@/data/speciesConfig";
 import { getSeasonsByState, getPrimarySeasonForState, getAllSpeciesForState } from "@/data/seasons";
@@ -14,8 +14,10 @@ import {
   getSeasonTypeLabel,
   type SeasonStatus,
 } from "@/lib/seasonUtils";
+import { useStateIntel } from "@/hooks/useStateIntel";
 import CountdownTimer from "./CountdownTimer";
 import EBirdSightings from "./EBirdSightings";
+import WeatherBrief from "./WeatherBrief";
 
 interface StateViewProps {
   species: Species;
@@ -64,6 +66,7 @@ export default function StateView({
     (s) => s !== species,
   );
   const config = speciesConfig[species];
+  const { data: intel } = useStateIntel(species, abbreviation);
 
   // Find distinct zones for this species+state
   const zones = useMemo(() => {
@@ -217,19 +220,40 @@ export default function StateView({
         </p>
       )}
 
+      {/* Current Conditions */}
+      <div>
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
+          Current Conditions
+        </p>
+        <WeatherBrief stateAbbr={abbreviation} />
+      </div>
+
       {/* Facts */}
       {facts.length > 0 && <FactRotator facts={facts} />}
 
       {/* eBird sightings */}
       <EBirdSightings species={species} stateAbbr={abbreviation} />
 
-      {/* AI Intel Brief placeholder */}
-      <div className="border border-dashed border-border/50 rounded-lg p-3">
-        <p className="text-[10px] text-muted-foreground font-body flex items-center gap-1.5">
-          <Zap size={12} />
-          AI Intel Brief — Coming Soon
-        </p>
-      </div>
+      {/* AI Intel */}
+      {intel && intel.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <Brain size={12} className="text-primary" />
+            Intel
+          </p>
+          {intel.map((item, i) => (
+            <div
+              key={i}
+              className="border-l-2 border-primary/30 bg-secondary/50 rounded-r-lg p-3"
+            >
+              <p className="text-xs text-foreground/80 font-body">{item.content}</p>
+              {item.content_type === "weather-pattern" && (
+                <p className="text-[9px] text-primary/60 mt-1 font-body">Based on 5 years of data</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Zone list */}
       {zones.length > 0 && (
