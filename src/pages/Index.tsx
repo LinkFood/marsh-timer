@@ -1,25 +1,24 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { AnimatePresence } from "framer-motion";
 import type { Species } from "@/data/types";
 import { isValidSpecies } from "@/data/types";
 import { getStatesForSpecies } from "@/data/seasons";
-import Header from "@/components/Header";
-import SpeciesSelector from "@/components/SpeciesSelector";
-import StatusBar from "@/components/StatusBar";
-import SearchBar from "@/components/SearchBar";
-import USMap from "@/components/USMap";
-import StateDetail from "@/components/StateDetail";
-import StateList from "@/components/StateList";
-import FavoritesBar from "@/components/FavoritesBar";
-import Footer from "@/components/Footer";
+import { isFlywaySpecies } from "@/data/flyways";
 import { useFavorites } from "@/hooks/useFavorites";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import MapView from "@/components/MapView";
+import HeaderBar from "@/components/HeaderBar";
+import LiveTicker from "@/components/LiveTicker";
+import CountdownBoard from "@/components/CountdownBoard";
+import StateDetailPanel from "@/components/StateDetailPanel";
+import MapControls from "@/components/MapControls";
 
 const Index = () => {
   const { first, second } = useParams<{ first?: string; second?: string }>();
   const navigate = useNavigate();
-  const detailRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
   const { favorites, toggleFavorite, isFavorite, getFavoritesForSpecies } = useFavorites();
+  const mapRef = useRef<{ flyTo: (abbr: string) => void }>(null);
 
   // Parse route params: /:species/:stateAbbr or /:stateAbbr (legacy)
   const parsed = useMemo(() => {
@@ -27,14 +26,13 @@ const Index = () => {
 
     const lower = first.toLowerCase();
     if (isValidSpecies(lower)) {
-      // /:species or /:species/:stateAbbr
       const abbr = second?.toUpperCase() || null;
       const validAbbr = abbr && getStatesForSpecies(lower as Species).has(abbr) ? abbr : null;
       if (abbr && !validAbbr) return { species: lower as Species, stateAbbr: null, redirect: `/${lower}` };
       return { species: lower as Species, stateAbbr: validAbbr, redirect: null };
     }
 
-    // Legacy: /:stateAbbr (2-letter) → redirect to /duck/:stateAbbr
+    // Legacy: /:stateAbbr (2-letter) -> redirect to /duck/:stateAbbr
     const upper = first.toUpperCase();
     if (upper.length === 2 && getStatesForSpecies("duck").has(upper)) {
       return { species: "duck" as Species, stateAbbr: upper, redirect: `/duck/${upper}` };
@@ -45,6 +43,8 @@ const Index = () => {
 
   const [species, setSpecies] = useState<Species>(parsed.species);
   const [selectedState, setSelectedState] = useState<string | null>(parsed.stateAbbr);
+  const [showFlyways, setShowFlyways] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(false);
 
   // Handle redirects
   useEffect(() => {
@@ -59,6 +59,11 @@ const Index = () => {
     setSelectedState(parsed.stateAbbr);
   }, [parsed.species, parsed.stateAbbr]);
 
+  // Reset flyway toggle when switching to non-flyway species
+  useEffect(() => {
+    if (!isFlywaySpecies(species)) setShowFlyways(false);
+  }, [species]);
+
   const handleSelectSpecies = useCallback((s: Species) => {
     setSpecies(s);
     setSelectedState(null);
@@ -68,9 +73,6 @@ const Index = () => {
   const handleSelectState = useCallback((abbr: string) => {
     setSelectedState(abbr);
     navigate(`/${species}/${abbr}`, { replace: true });
-    setTimeout(() => {
-      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 100);
   }, [navigate, species]);
 
   const handleDeselectState = useCallback(() => {
@@ -80,7 +82,6 @@ const Index = () => {
 
   const handleSwitchSpecies = useCallback((s: Species) => {
     setSpecies(s);
-    // Keep the same state selected if it has data for the new species
     if (selectedState && getStatesForSpecies(s).has(selectedState)) {
       navigate(`/${s}/${selectedState}`, { replace: true });
     } else {
@@ -89,54 +90,83 @@ const Index = () => {
     }
   }, [navigate, selectedState]);
 
+  const handleGeolocate = useCallback(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        // Simple reverse-geocode: find nearest state centroid
+        // For now just center the map — full geocoding is v2
+        console.log("User location:", pos.coords.latitude, pos.coords.longitude);
+      },
+      () => {
+        console.log("Geolocation denied");
+      }
+    );
+  }, []);
+
   const speciesFavorites = useMemo(
     () => getFavoritesForSpecies(species),
     [getFavoritesForSpecies, species]
   );
 
   return (
-    <div className="min-h-screen bg-background relative">
-      <div className="grain-overlay" />
-      <div className="relative z-10">
-        <Header />
-        <SpeciesSelector selected={species} onSelect={handleSelectSpecies} />
-        <StatusBar species={species} />
-        <SearchBar species={species} onSelectState={handleSelectState} />
-        <FavoritesBar
-          species={species}
-          favorites={speciesFavorites}
-          onSelectState={handleSelectState}
-          onToggleFavorite={toggleFavorite}
-        />
-        <USMap
-          species={species}
-          selectedState={selectedState}
-          onSelectState={handleSelectState}
-        />
-        <div ref={detailRef}>
-          <AnimatePresence mode="wait">
-            {selectedState && (
-              <StateDetail
-                key={`${species}-${selectedState}`}
-                species={species}
-                abbreviation={selectedState}
-                onDeselect={handleDeselectState}
-                isFavorite={isFavorite(species, selectedState)}
-                onToggleFavorite={toggleFavorite}
-                onSwitchSpecies={handleSwitchSpecies}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-        <StateList
-          species={species}
-          onSelectState={handleSelectState}
-          selectedState={selectedState}
-          favorites={speciesFavorites}
-          onToggleFavorite={toggleFavorite}
-        />
-        <Footer />
+    <div className="h-[100dvh] w-screen overflow-hidden relative">
+      {/* Map background */}
+      <MapView
+        species={species}
+        selectedState={selectedState}
+        onSelectState={handleSelectState}
+        showFlyways={showFlyways}
+      />
+
+      {/* Header */}
+      <HeaderBar
+        species={species}
+        onSelectSpecies={handleSelectSpecies}
+        onSearch={handleSelectState}
+      />
+
+      {/* Ticker below header */}
+      <div className="fixed top-12 left-0 right-0 z-20 map-overlay-panel border-b border-border/30 py-1">
+        <LiveTicker species={species} />
       </div>
+
+      {/* Countdown Board */}
+      <CountdownBoard
+        species={species}
+        selectedState={selectedState}
+        onSelectState={handleSelectState}
+        favorites={speciesFavorites}
+        onToggleFavorite={toggleFavorite}
+        isMobile={isMobile}
+      />
+
+      {/* State Detail Panel */}
+      {selectedState && (
+        <StateDetailPanel
+          key={`${species}-${selectedState}`}
+          species={species}
+          abbreviation={selectedState}
+          onClose={handleDeselectState}
+          isFavorite={isFavorite(species, selectedState)}
+          onToggleFavorite={toggleFavorite}
+          onSwitchSpecies={handleSwitchSpecies}
+          isMobile={isMobile}
+        />
+      )}
+
+      {/* Map Controls */}
+      <MapControls
+        onGeolocate={handleGeolocate}
+        showFlyways={showFlyways}
+        onToggleFlyways={() => setShowFlyways(f => !f)}
+        showFlywayOption={isFlywaySpecies(species)}
+        onToggleSatellite={() => setIsSatellite(s => !s)}
+        isSatellite={isSatellite}
+      />
+
+      {/* Grain overlay */}
+      <div className="grain-overlay" />
     </div>
   );
 };
