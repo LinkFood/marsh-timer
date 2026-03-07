@@ -24,15 +24,18 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="max-w-sm w-full mx-4 p-6 rounded-xl bg-card border border-border">
-        <div className="text-center mb-6">
-          <span className="text-3xl">🦆</span>
-          <h1 className="font-display text-xl font-bold mt-2">DUCK COUNTDOWN</h1>
-          <p className="text-sm text-muted-foreground mt-1 font-body">Sign in to unlock AI chat and save your spots</p>
+      <div className="max-w-sm w-full mx-4 p-8 rounded-xl glass-panel">
+        <div className="text-center mb-8">
+          <h1 className="font-display text-xl font-bold tracking-widest text-white/90">
+            DUCK COUNTDOWN
+          </h1>
+          <p className="text-xs text-white/30 mt-2 tracking-wide uppercase">
+            Hunting Intelligence Platform
+          </p>
         </div>
         <button
           onClick={handleGoogleSignIn}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-white text-gray-800 font-semibold text-sm hover:bg-gray-50 transition-colors border border-gray-200"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-white text-gray-800 font-semibold text-sm hover:bg-gray-50 transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -42,8 +45,8 @@ export default function Auth() {
           </svg>
           Continue with Google
         </button>
-        <p className="text-[10px] text-muted-foreground text-center mt-4 font-body">
-          Free tier: 3 AI chat queries per day. Sign in for more.
+        <p className="text-[10px] text-white/20 text-center mt-6">
+          Authorized access only
         </p>
       </div>
     </div>
