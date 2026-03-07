@@ -12,13 +12,14 @@ import HeaderBar from "@/components/HeaderBar";
 import Sidebar from "@/components/Sidebar";
 import MobileSheet from "@/components/MobileSheet";
 import MapPresets from "@/components/MapPresets";
-import { useRadarTiles } from "@/hooks/useRadarTiles";
+import { useWeatherTiles } from "@/hooks/useWeatherTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
 import { useHuntAlerts } from "@/hooks/useHuntAlerts";
 import { useConvergenceScores } from "@/hooks/useConvergenceScores";
 import { useScoutReport } from "@/hooks/useScoutReport";
 import { useConvergenceAlerts } from "@/hooks/useConvergenceAlerts";
+import { useCountyGeoJSON } from "@/hooks/useCountyGeoJSON";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -104,7 +105,8 @@ const Index = () => {
   const [elevation, setElevation] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);
-  const radarTileUrl = useRadarTiles();
+  const weatherTiles = useWeatherTiles();
+  const countyGeoJSON = useCountyGeoJSON();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
   const { alerts } = useHuntAlerts();
@@ -275,8 +277,8 @@ const Index = () => {
         isSatellite={isSatellite}
         show3D={show3D}
         isMobile={isMobile}
-        showRadar={mapMode === 'weather' || mapMode === 'intel'}
-        radarTileUrl={radarTileUrl}
+        weatherTiles={weatherTiles}
+        countyGeoJSON={countyGeoJSON}
         sightingsGeoJSON={sightingsGeoJSON}
         weatherCache={weatherCache}
         onElevation={setElevation}

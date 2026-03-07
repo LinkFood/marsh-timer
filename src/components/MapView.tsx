@@ -17,6 +17,7 @@ import { getSeasonStatus } from "@/lib/seasonUtils";
 import { getPopupHTML } from "@/components/MapPopup";
 import { stateFlyways, FLYWAY_COLORS, isFlywaySpecies } from "@/data/flyways";
 import type { FeatureCollection, Feature, Geometry, Position } from "geojson";
+import type { WeatherTiles } from "@/hooks/useWeatherTiles";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -71,8 +72,8 @@ export interface MapViewProps {
   isSatellite: boolean;
   show3D: boolean;
   isMobile?: boolean;
-  showRadar?: boolean;
-  radarTileUrl?: string | null;
+  weatherTiles?: WeatherTiles;
+  countyGeoJSON?: FeatureCollection | null;
   sightingsGeoJSON?: FeatureCollection | null;
   onMoveEnd?: (center: [number, number], zoom: number) => void;
   weatherCache?: Map<string, { temp: number; wind: number; windDir: number; pressure: number; precip: number }>;
@@ -232,8 +233,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     isSatellite,
     show3D,
     isMobile = false,
-    showRadar = false,
-    radarTileUrl = null,
+    weatherTiles,
+    countyGeoJSON = null,
     sightingsGeoJSON = null,
     onMoveEnd,
     weatherCache,
@@ -437,7 +438,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               'snow', 'rgba(255, 255, 255, 0.3)',
               'rgba(0,0,0,0)',
             ],
-            'fill-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0, 10, 0.7],
+            'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 7, 0.7],
           },
           layout: { visibility: 'none' },
         }, 'states-fill');
@@ -475,7 +476,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             'fill-color': 'rgba(30, 100, 200, 0.5)',
             'fill-outline-color': 'rgba(59, 130, 246, 0.7)',
           },
-          minzoom: 7,
+          minzoom: 5,
           layout: { visibility: 'none' },
         }, 'states-fill');
       }
@@ -503,7 +504,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: 'fill',
           source: 'streets-v8',
           'source-layer': 'landuse',
-          filter: ['==', ['get', 'class'], 'park'],
+          filter: ['in', ['get', 'class'], ['literal', ['park', 'national_park']]],
           paint: {
             'fill-color': 'rgba(34, 197, 94, 0.25)',
             'fill-outline-color': 'rgba(34, 197, 94, 0.5)',
@@ -538,7 +539,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               0.8,
             ],
           },
-          minzoom: 8,
+          minzoom: 7,
           layout: { visibility: 'none' },
         });
       }
@@ -649,41 +650,65 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
-      // Radar overlay
-      if (!map.getSource("radar")) {
-        map.addSource("radar", {
-          type: "raster",
-          tiles: [radarTileUrl || ""],
-          tileSize: 256,
-        });
-      }
-      if (!map.getLayer("radar-overlay")) {
-        map.addLayer(
-          {
-            id: "radar-overlay",
+      // Weather tile overlays (OWM or RainViewer fallback)
+      const tileLayers: { id: string; url: string | null | undefined }[] = [
+        { id: "radar", url: weatherTiles?.radar },
+        { id: "temp-tiles", url: weatherTiles?.temperature },
+        { id: "wind-tiles", url: weatherTiles?.wind },
+        { id: "clouds-tiles", url: weatherTiles?.clouds },
+        { id: "pressure-tiles", url: weatherTiles?.pressure },
+      ];
+
+      for (const { id, url } of tileLayers) {
+        if (!map.getSource(id) && url) {
+          map.addSource(id, {
             type: "raster",
-            source: "radar",
-            paint: { "raster-opacity": 0.6 },
-            layout: { visibility: showRadar && radarTileUrl ? "visible" : "none" },
-          },
-          "states-fill",
-        );
+            tiles: [url],
+            tileSize: 256,
+            maxzoom: 12,
+          });
+        }
+        const layerId = `${id}-overlay`;
+        if (!map.getLayer(layerId) && map.getSource(id)) {
+          map.addLayer(
+            {
+              id: layerId,
+              type: "raster",
+              source: id,
+              paint: { "raster-opacity": id === "radar" ? 0.6 : 0.5 },
+              layout: { visibility: "none" },
+            },
+            "states-fill",
+          );
+        }
       }
 
-      // County boundaries (visible at state zoom, more prominent)
-      if (!map.getLayer('county-boundaries')) {
+      // County GeoJSON source + layers
+      if (countyGeoJSON && !map.getSource("counties")) {
+        map.addSource("counties", { type: "geojson", data: countyGeoJSON });
+
         map.addLayer({
-          id: 'county-boundaries',
-          type: 'line',
-          source: 'streets-v8',
-          'source-layer': 'admin',
-          filter: ['all', ['==', 'admin_level', 4], ['==', 'iso_3166_1', 'US']],
+          id: "county-fill",
+          type: "fill",
+          source: "counties",
           paint: {
-            'line-color': 'rgba(255,255,255,0.7)',
-            'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.3, 8, 0.8, 10, 1.2],
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0, 6, 0.4, 8, 0.7],
+            "fill-color": "rgba(255,255,255,0.03)",
+            "fill-opacity": 0,
           },
-          minzoom: 4,
+          minzoom: 5,
+          layout: { visibility: "none" },
+        }, "states-fill");
+
+        map.addLayer({
+          id: "county-line",
+          type: "line",
+          source: "counties",
+          paint: {
+            "line-color": "rgba(255,255,255,0.5)",
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.2, 8, 0.6, 10, 1],
+            "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0, 6, 0.3, 8, 0.6],
+          },
+          minzoom: 5,
         });
       }
 
@@ -776,21 +801,38 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           source: "wind-arrows",
           layout: {
             "icon-image": "wind-arrow",
-            "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.4, 6, 0.7],
+            "icon-size": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              5, 0.5, 20, 1.0, 40, 1.4,
+            ],
             "icon-rotate": ["get", "windDir"],
             "icon-rotation-alignment": "map",
             "icon-allow-overlap": true,
+            "text-field": ["concat", ["to-string", ["round", ["get", "windSpeed"]]], ""],
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-size": 10,
+            "text-offset": [0, 1.8],
+            "text-allow-overlap": true,
             visibility: "none",
           },
           paint: {
-            "icon-opacity": 0.7,
+            "icon-color": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              5, "rgba(255,255,255,0.5)",
+              15, "rgba(34,211,238,0.8)",
+              30, "rgba(239,68,68,0.9)",
+            ],
+            "icon-opacity": 0.9,
+            "text-color": "rgba(255,255,255,0.7)",
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1,
           },
         });
       }
 
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData, showRadar, radarTileUrl, sightingsGeoJSON],
+    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON],
   );
 
   const initMap = useCallback(() => {
@@ -812,20 +854,20 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     prevStyleRef.current = isSatellite ? "satellite" : "dark";
 
     map.on("load", async () => {
-      // Create wind arrow icon (simple triangle pointing up, rotated by windDir)
-      const arrowSize = 32;
+      // Create wind arrow icon (48px triangle, better visibility)
+      const arrowSize = 48;
       const canvas = document.createElement("canvas");
       canvas.width = arrowSize;
       canvas.height = arrowSize;
       const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.lineWidth = 1;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(arrowSize / 2, 4);
-      ctx.lineTo(arrowSize / 2 + 8, arrowSize - 6);
-      ctx.lineTo(arrowSize / 2, arrowSize - 10);
-      ctx.lineTo(arrowSize / 2 - 8, arrowSize - 6);
+      ctx.lineTo(arrowSize / 2 + 12, arrowSize - 8);
+      ctx.lineTo(arrowSize / 2, arrowSize - 14);
+      ctx.lineTo(arrowSize / 2 - 12, arrowSize - 8);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
@@ -1017,30 +1059,40 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
   }, [showFlyways, species]);
 
-  // Toggle radar overlay visibility
+  // Update weather tile sources when URLs change
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
+    if (!map || !loadedRef.current || !weatherTiles) return;
 
-    if (map.getLayer("radar-overlay")) {
-      map.setLayoutProperty(
-        "radar-overlay",
-        "visibility",
-        showRadar && radarTileUrl ? "visible" : "none",
-      );
+    const tileEntries: { id: string; url: string | null | undefined }[] = [
+      { id: "radar", url: weatherTiles.radar },
+      { id: "temp-tiles", url: weatherTiles.temperature },
+      { id: "wind-tiles", url: weatherTiles.wind },
+      { id: "clouds-tiles", url: weatherTiles.clouds },
+      { id: "pressure-tiles", url: weatherTiles.pressure },
+    ];
+
+    for (const { id, url } of tileEntries) {
+      if (!url) continue;
+      const source = map.getSource(id) as mapboxgl.RasterTileSource | undefined;
+      if (source) {
+        source.setTiles([url]);
+      } else {
+        // Source doesn't exist yet — add it + layer
+        map.addSource(id, { type: "raster", tiles: [url], tileSize: 256, maxzoom: 12 });
+        const layerId = `${id}-overlay`;
+        if (!map.getLayer(layerId)) {
+          map.addLayer({
+            id: layerId,
+            type: "raster",
+            source: id,
+            paint: { "raster-opacity": id === "radar" ? 0.6 : 0.5 },
+            layout: { visibility: "none" },
+          }, "states-fill");
+        }
+      }
     }
-  }, [showRadar, radarTileUrl]);
-
-  // Update radar tile URL
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current || !radarTileUrl) return;
-
-    const source = map.getSource("radar") as mapboxgl.RasterTileSource | undefined;
-    if (source) {
-      source.setTiles([radarTileUrl]);
-    }
-  }, [radarTileUrl]);
+  }, [weatherTiles]);
 
   // Update eBird sightings data
   useEffect(() => {
@@ -1079,7 +1131,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
   }, [overlays]);
 
-  // Mode-driven layer activation + temperature heatmap + wind arrows
+  // Mode-driven layer activation + temperature heatmap + wind arrows + weather tiles
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -1087,6 +1139,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const modeConfig = MODE_LAYERS[mapMode];
     const showTempHeatmap = !!modeConfig.tempHeatmap;
     const showWindArrows = !!modeConfig.windArrows;
+    const hasRadar = !!weatherTiles?.radar;
 
     // Apply overlay visibility from mode
     const layerMap: Record<string, boolean> = {
@@ -1110,13 +1163,29 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
     }
 
-    // Radar from mode
-    if (map.getLayer("radar-overlay")) {
-      const radarOn = !!modeConfig.radar && !!radarTileUrl;
-      map.setLayoutProperty("radar-overlay", "visibility", radarOn ? "visible" : "none");
+    // Weather tile overlays — mode-driven visibility
+    const showRadarTile = !!modeConfig.radar && hasRadar;
+    const showTempTile = (mapMode === 'weather' || mapMode === 'intel') && !!weatherTiles?.temperature;
+    const weatherTileVis: Record<string, boolean> = {
+      'radar-overlay': showRadarTile,
+      'temp-tiles-overlay': showTempTile,
+      'wind-tiles-overlay': false,
+      'clouds-tiles-overlay': false,
+      'pressure-tiles-overlay': false,
+    };
+    for (const [layerId, visible] of Object.entries(weatherTileVis)) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+      }
     }
 
-    // Convergence scores: override fill in intel mode when available
+    // County layer visibility — show in Scout/Intel at state zoom
+    const showCounty = mapMode === 'scout' || mapMode === 'intel';
+    if (map.getLayer('county-fill')) {
+      map.setLayoutProperty('county-fill', 'visibility', showCounty ? 'visible' : 'none');
+    }
+
+    // State fill — mode-specific behavior (Build 2b + 5a)
     if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
       for (const [abbr, score] of convergenceScores) {
@@ -1128,10 +1197,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           ...entries,
           "rgba(100,100,100,0.2)",
         ] as mapboxgl.Expression);
-        map.setPaintProperty("states-fill", "fill-opacity", 0.65);
+        map.setPaintProperty("states-fill", "fill-opacity", 0.7);
       }
-    } else if (showTempHeatmap && weatherCache && weatherCache.size > 0 && map.getLayer("states-fill")) {
-      // Temperature heatmap fallback
+    } else if (mapMode === 'weather' && weatherCache && weatherCache.size > 0 && map.getLayer("states-fill")) {
       const entries: (string | string)[] = [];
       for (const [abbr, w] of weatherCache) {
         entries.push(abbr, tempToColor(w.temp));
@@ -1142,20 +1210,61 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           ...entries,
           "rgba(100,100,100,0.2)",
         ] as mapboxgl.Expression);
-        map.setPaintProperty("states-fill", "fill-opacity", 0.65);
+        map.setPaintProperty("states-fill", "fill-opacity", 0.7);
+      }
+    } else if (mapMode === 'scout' && map.getLayer("states-fill")) {
+      // Scout mode: muted teal tint on all states
+      const entries: string[] = [];
+      for (const abbr of statesWithData) {
+        entries.push(abbr, 'rgba(20, 184, 166, 0.35)');
+      }
+      if (entries.length > 0) {
+        map.setPaintProperty("states-fill", "fill-color", [
+          "match", ["get", "abbr"],
+          ...entries,
+          "rgba(100,100,100,0.15)",
+        ] as mapboxgl.Expression);
+        map.setPaintProperty("states-fill", "fill-opacity", 0.5);
+      }
+    } else if (mapMode === 'terrain' && map.getLayer("states-fill")) {
+      // Terrain mode: muted earth tones
+      const entries: string[] = [];
+      for (const abbr of statesWithData) {
+        entries.push(abbr, 'rgba(139, 119, 80, 0.25)');
+      }
+      if (entries.length > 0) {
+        map.setPaintProperty("states-fill", "fill-color", [
+          "match", ["get", "abbr"],
+          ...entries,
+          "rgba(100,100,100,0.15)",
+        ] as mapboxgl.Expression);
+        map.setPaintProperty("states-fill", "fill-opacity", 0.5);
       }
     } else if (map.getLayer("states-fill")) {
-      // Restore normal species-based fill
+      // Default: species-based season fills
       map.setPaintProperty("states-fill", "fill-color", buildFillExpression(species, selectedState));
       map.setPaintProperty("states-fill", "fill-opacity", 0.5);
     }
 
-    // Wind arrows: update GeoJSON with current weather data
+    // State outlines — stronger in data modes (Build 5b)
+    if (map.getLayer("states-line")) {
+      const isDataMode = mapMode === 'intel' || mapMode === 'weather';
+      map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : 0.8);
+      map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)");
+    }
+
+    // Selected state outline — brighter (Build 5c)
+    if (map.getLayer("states-selected-outline")) {
+      map.setPaintProperty("states-selected-outline", "line-width", 2.5);
+      map.setPaintProperty("states-selected-outline", "line-opacity", 0.9);
+    }
+
+    // Wind arrows: update GeoJSON with current weather data (Build 4 — lower threshold)
     if (showWindArrows && weatherCache && weatherCache.size > 0) {
       const features: Feature[] = [];
       for (const [abbr, w] of weatherCache) {
         const centroid = centroidsRef.current.get(abbr);
-        if (centroid && w.wind > 3) { // Only show arrows for wind > 3mph
+        if (centroid && w.wind > 1) {
           features.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: centroid },
@@ -1168,16 +1277,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         source.setData({ type: "FeatureCollection", features });
       }
     }
-  }, [mapMode, weatherCache, radarTileUrl, species, selectedState, convergenceScores]);
+  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData]);
 
-  // Auto-activate layers on zoom (county boundaries + waterways always show when zoomed in)
+  // Auto-activate layers on zoom (waterways at state zoom in scout/intel)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const onZoom = () => {
       const zoom = map.getZoom();
-      // Auto-show waterways + water bodies at zoom 7+ in scout/intel modes
       if (mapMode === 'scout' || mapMode === 'intel') {
         const vis = zoom >= 7 ? 'visible' : 'none';
         if (map.getLayer('waterway-lines')) map.setLayoutProperty('waterway-lines', 'visibility', vis);
@@ -1188,6 +1296,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on('zoom', onZoom);
     return () => { map.off('zoom', onZoom); };
   }, [mapMode]);
+
+  // Update county GeoJSON data when it loads
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !countyGeoJSON) return;
+
+    const source = map.getSource("counties") as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(countyGeoJSON);
+    }
+  }, [countyGeoJSON]);
 
   // Handle satellite style toggle
   useEffect(() => {
