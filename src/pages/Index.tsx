@@ -9,12 +9,16 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
 import type { MapViewRef, MapMode } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
-import BottomPanel from "@/components/BottomPanel";
+import Sidebar from "@/components/Sidebar";
+import MobileSheet from "@/components/MobileSheet";
 import MapPresets from "@/components/MapPresets";
 import { useRadarTiles } from "@/hooks/useRadarTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
 import { useHuntAlerts } from "@/hooks/useHuntAlerts";
+import { useConvergenceScores } from "@/hooks/useConvergenceScores";
+import { useScoutReport } from "@/hooks/useScoutReport";
+import { useConvergenceAlerts } from "@/hooks/useConvergenceAlerts";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -104,6 +108,25 @@ const Index = () => {
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
   const { alerts } = useHuntAlerts();
+  const { scores: convergenceScores, topStates: convergenceTopStates } = useConvergenceScores();
+  const { report: scoutReport, loading: scoutReportLoading } = useScoutReport();
+  const { alerts: convergenceAlerts } = useConvergenceAlerts();
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+
+  // Build convergence score map for MapView (abbr -> score number)
+  const convergenceScoreMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [abbr, data] of convergenceScores) {
+      map.set(abbr, data.score);
+    }
+    return map;
+  }, [convergenceScores]);
+
+  // Get convergence score for selected state
+  const selectedConvergenceScore = useMemo(() => {
+    if (!selectedState) return null;
+    return convergenceScores.get(selectedState) || null;
+  }, [selectedState, convergenceScores]);
 
   // Derive drill level
   const level: DrillLevel = useMemo(() => {
@@ -259,6 +282,7 @@ const Index = () => {
         onElevation={setElevation}
         onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
         mapMode={mapMode}
+        convergenceScores={convergenceScoreMap}
       />
 
       {/* Header */}
@@ -269,23 +293,47 @@ const Index = () => {
         onSearchLocation={handleSearchLocation}
       />
 
-      {/* Bottom Panel */}
-      <BottomPanel
-        level={level}
-        species={species}
-        stateAbbr={selectedState}
-        zoneSlug={zoneSlug}
-        onSelectState={handleSelectState}
-        onSelectZone={handleSelectZone}
-        onBack={handleBack}
-        onSwitchSpecies={handleSwitchSpecies}
-        isMobile={isMobile}
-        favorites={speciesFavorites}
-        onToggleFavorite={toggleFavorite}
-        isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-        alerts={alerts}
-        weatherSnapshot={weatherCache}
-      />
+      {/* Sidebar (desktop) / MobileSheet (mobile) */}
+      {isMobile ? (
+        <MobileSheet
+          level={level}
+          species={species}
+          stateAbbr={selectedState}
+          zoneSlug={zoneSlug}
+          onSelectState={handleSelectState}
+          onSelectZone={handleSelectZone}
+          onBack={handleBack}
+          onSwitchSpecies={handleSwitchSpecies}
+          favorites={speciesFavorites}
+          onToggleFavorite={toggleFavorite}
+          isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+          alerts={alerts}
+          weatherSnapshot={weatherCache}
+        />
+      ) : (
+        <Sidebar
+          level={level}
+          species={species}
+          stateAbbr={selectedState}
+          zoneSlug={zoneSlug}
+          onSelectState={handleSelectState}
+          onSelectZone={handleSelectZone}
+          onBack={handleBack}
+          onSwitchSpecies={handleSwitchSpecies}
+          favorites={speciesFavorites}
+          onToggleFavorite={toggleFavorite}
+          isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+          alerts={alerts}
+          weatherSnapshot={weatherCache}
+          convergenceTopStates={convergenceTopStates}
+          convergenceScore={selectedConvergenceScore}
+          scoutReport={scoutReport}
+          scoutReportLoading={scoutReportLoading}
+          convergenceAlerts={convergenceAlerts}
+          expanded={sidebarExpanded}
+          onToggleExpanded={() => setSidebarExpanded(e => !e)}
+        />
+      )}
 
       {/* Map Mode Presets */}
       <MapPresets
@@ -305,7 +353,10 @@ const Index = () => {
 
       {/* Elevation HUD */}
       {show3D && elevation !== null && mapZoom > 8 && (
-        <div className="fixed bottom-6 left-4 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]">
+        <div
+          className="fixed bottom-6 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06] transition-all duration-300"
+          style={{ left: !isMobile && sidebarExpanded ? 'calc(340px + 1rem)' : '1rem' }}
+        >
           <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
           <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
         </div>

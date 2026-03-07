@@ -181,11 +181,6 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: Hea
                 }`}
               >
                 {config.label}
-                {count > 0 && (
-                  <span className="ml-1.5 text-[9px] font-bold text-emerald-400">
-                    {count}
-                  </span>
-                )}
               </button>
             );
           })}

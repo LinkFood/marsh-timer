@@ -2,10 +2,8 @@ import { useRef, useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
 import type { Species } from '@/data/types';
 import { useChat } from '@/hooks/useChat';
-import { useHuntContext } from '@/hooks/useHuntContext';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
-import ChatContextPanel from './ChatContextPanel';
 
 interface HuntChatProps {
   species: Species;
@@ -15,7 +13,6 @@ interface HuntChatProps {
 
 export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps) {
   const { messages, loading, sendMessage } = useChat(species, stateAbbr);
-  const context = useHuntContext(species, stateAbbr);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -58,18 +55,5 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
     </div>
   );
 
-  // Mobile: stacked (chat only, context panel is the existing state detail)
-  if (isMobile) {
-    return <div className="h-full">{chatArea}</div>;
-  }
-
-  // Desktop: 50/50 split
-  return (
-    <div className="flex h-full divide-x divide-white/[0.06]">
-      <div className="w-1/2 flex flex-col">{chatArea}</div>
-      <div className="w-1/2">
-        <ChatContextPanel context={context} />
-      </div>
-    </div>
-  );
+  return <div className="h-full">{chatArea}</div>;
 }

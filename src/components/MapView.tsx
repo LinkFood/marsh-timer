@@ -54,6 +54,14 @@ function tempToColor(tempF: number): string {
   return 'rgba(239, 68, 68, 0.6)';                      // red
 }
 
+function convergenceToColor(score: number): string {
+  if (score >= 81) return 'rgba(239, 68, 68, 0.6)';    // red - fire
+  if (score >= 61) return 'rgba(251, 146, 60, 0.55)';   // orange - hot
+  if (score >= 41) return 'rgba(250, 204, 21, 0.5)';    // yellow - warming up
+  if (score >= 21) return 'rgba(59, 130, 246, 0.4)';    // blue - cool
+  return 'rgba(100, 100, 100, 0.3)';                     // gray - nothing
+}
+
 export interface MapViewProps {
   species: Species;
   selectedState: string | null;
@@ -71,6 +79,7 @@ export interface MapViewProps {
   overlays?: MapOverlays;
   onElevation?: (elevation: number | null) => void;
   mapMode?: MapMode;
+  convergenceScores?: Map<string, number>;
 }
 
 export interface MapViewRef {
@@ -231,6 +240,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     overlays = { wetlands: false, waterBodies: false, landCover: false, contours: false, waterways: false, agriculture: false, parks: false, trails: false },
     onElevation,
     mapMode = 'default',
+    convergenceScores,
   },
   ref,
 ) {
@@ -245,9 +255,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const selectedStateRef = useRef(selectedState);
   const prevStyleRef = useRef<string>("dark");
   const weatherCacheRef = useRef(weatherCache);
+  const convergenceRef = useRef(convergenceScores);
 
   selectedStateRef.current = selectedState;
   weatherCacheRef.current = weatherCache;
+  convergenceRef.current = convergenceScores;
 
   const statesWithData = useMemo(
     () => getStatesForSpecies(species),
@@ -268,7 +280,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           map.flyTo({ center: centroid, zoom: STATE_ZOOM, pitch: 45, bearing: -15, duration: 1500 });
         }
       },
-      flyToCoords: (lng: number, lat: number, zoom = 13) => {
+      flyToCoords: (lng: number, lat: number, zoom = 15) => {
         const map = mapRef.current;
         if (!map) return;
         flyingRef.current = true;
@@ -883,7 +895,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               offset: 10,
             })
               .setLngLat(centroid)
-              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr)))
+              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr)))
               .addTo(map);
           }
         }
@@ -1104,8 +1116,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       map.setLayoutProperty("radar-overlay", "visibility", radarOn ? "visible" : "none");
     }
 
-    // Temperature heatmap: override state fill colors with temp-based gradient
-    if (showTempHeatmap && weatherCache && weatherCache.size > 0 && map.getLayer("states-fill")) {
+    // Convergence scores: override fill in intel mode when available
+    if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
+      const entries: string[] = [];
+      for (const [abbr, score] of convergenceScores) {
+        entries.push(abbr, convergenceToColor(score));
+      }
+      if (entries.length > 0) {
+        map.setPaintProperty("states-fill", "fill-color", [
+          "match", ["get", "abbr"],
+          ...entries,
+          "rgba(100,100,100,0.2)",
+        ] as mapboxgl.Expression);
+        map.setPaintProperty("states-fill", "fill-opacity", 0.65);
+      }
+    } else if (showTempHeatmap && weatherCache && weatherCache.size > 0 && map.getLayer("states-fill")) {
+      // Temperature heatmap fallback
       const entries: (string | string)[] = [];
       for (const [abbr, w] of weatherCache) {
         entries.push(abbr, tempToColor(w.temp));
@@ -1142,7 +1168,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         source.setData({ type: "FeatureCollection", features });
       }
     }
-  }, [mapMode, weatherCache, radarTileUrl, species, selectedState]);
+  }, [mapMode, weatherCache, radarTileUrl, species, selectedState, convergenceScores]);
 
   // Auto-activate layers on zoom (county boundaries + waterways always show when zoomed in)
   useEffect(() => {
