@@ -1,4 +1,4 @@
-import { CloudRain, Crosshair, Layers, Navigation, Plus, Minus, Mountain } from "lucide-react";
+import { CloudRain, Crosshair, Layers, Navigation, Plus, Minus, Mountain, Map } from "lucide-react";
 
 interface MapControlsProps {
   onGeolocate: () => void;
@@ -13,6 +13,8 @@ interface MapControlsProps {
   onToggle3D: () => void;
   showRadar: boolean;
   onToggleRadar: () => void;
+  showLayers: boolean;
+  onToggleLayers: () => void;
 }
 
 export default function MapControls({
@@ -28,6 +30,8 @@ export default function MapControls({
   onToggle3D,
   showRadar,
   onToggleRadar,
+  showLayers,
+  onToggleLayers,
 }: MapControlsProps) {
   const activeClass = "bg-cyan-400/10 text-cyan-400 border-cyan-400/20";
   const inactiveClass = "glass-panel border border-white/[0.06] text-white/60";
@@ -88,6 +92,14 @@ export default function MapControls({
           aria-label="Toggle weather radar"
         >
           <CloudRain size={16} />
+        </button>
+
+        <button
+          onClick={onToggleLayers}
+          className={`${btnBase} ${showLayers ? activeClass : inactiveClass}`}
+          aria-label="Toggle map layers"
+        >
+          <Map size={16} />
         </button>
 
         {showFlywayOption && (

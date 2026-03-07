@@ -20,6 +20,16 @@ import type { FeatureCollection, Feature, Geometry, Position } from "geojson";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
+export interface MapOverlays {
+  wetlands: boolean;
+  landCover: boolean;
+  contours: boolean;
+  waterways: boolean;
+  agriculture: boolean;
+  parks: boolean;
+  trails: boolean;
+}
+
 export interface MapViewProps {
   species: Species;
   selectedState: string | null;
@@ -34,10 +44,13 @@ export interface MapViewProps {
   sightingsGeoJSON?: FeatureCollection | null;
   onMoveEnd?: (center: [number, number], zoom: number) => void;
   weatherCache?: Map<string, { temp: number; wind: number }>;
+  overlays?: MapOverlays;
+  onElevation?: (elevation: number | null) => void;
 }
 
 export interface MapViewRef {
   flyTo: (abbr: string) => void;
+  flyToCoords: (lng: number, lat: number, zoom?: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   resetView: () => void;
@@ -190,6 +203,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     sightingsGeoJSON = null,
     onMoveEnd,
     weatherCache,
+    overlays = { wetlands: false, landCover: false, contours: false, waterways: false, agriculture: false, parks: false, trails: false },
+    onElevation,
   },
   ref,
 ) {
@@ -226,6 +241,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           map.once('moveend', () => { flyingRef.current = false; });
           map.flyTo({ center: centroid, zoom: STATE_ZOOM, pitch: 45, bearing: -15, duration: 1500 });
         }
+      },
+      flyToCoords: (lng: number, lat: number, zoom = 13) => {
+        const map = mapRef.current;
+        if (!map) return;
+        flyingRef.current = true;
+        map.once('moveend', () => { flyingRef.current = false; });
+        map.flyTo({ center: [lng, lat], zoom, pitch: 60, bearing: -20, duration: 2000 });
       },
       zoomIn: () => {
         const map = mapRef.current;
@@ -269,6 +291,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       // States source
       if (!map.getSource("states")) {
         map.addSource("states", { type: "geojson", data: geoJSON });
+      }
+
+      // Mapbox Streets v8 (shared source for wetlands, agriculture, waterways, parks, trails)
+      if (!map.getSource('streets-v8')) {
+        map.addSource('streets-v8', {
+          type: 'vector',
+          url: 'mapbox://mapbox.mapbox-streets-v8',
+        });
+      }
+
+      // Mapbox Terrain v2 (land cover, contours)
+      if (!map.getSource('terrain-v2')) {
+        map.addSource('terrain-v2', {
+          type: 'vector',
+          url: 'mapbox://mapbox.mapbox-terrain-v2',
+        });
       }
 
       // States fill
@@ -344,6 +382,194 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Land Cover (terrain-v2 landcover layer)
+      if (!map.getLayer('landcover-fill')) {
+        map.addLayer({
+          id: 'landcover-fill',
+          type: 'fill',
+          source: 'terrain-v2',
+          'source-layer': 'landcover',
+          paint: {
+            'fill-color': [
+              'match', ['get', 'class'],
+              'crop', 'rgba(217, 181, 100, 0.35)',
+              'wood', 'rgba(34, 139, 34, 0.3)',
+              'grass', 'rgba(154, 205, 50, 0.25)',
+              'scrub', 'rgba(107, 142, 35, 0.25)',
+              'snow', 'rgba(255, 255, 255, 0.3)',
+              'rgba(0,0,0,0)',
+            ],
+            'fill-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0, 10, 0.7],
+          },
+          layout: { visibility: 'none' },
+        }, 'states-fill');
+      }
+
+      // Wetlands (streets-v8 landuse_overlay layer)
+      if (!map.getLayer('wetland-fill')) {
+        map.addLayer({
+          id: 'wetland-fill',
+          type: 'fill',
+          source: 'streets-v8',
+          'source-layer': 'landuse_overlay',
+          filter: ['in', ['get', 'class'], ['literal', ['wetland', 'wetland_noveg']]],
+          paint: {
+            'fill-color': [
+              'match', ['get', 'class'],
+              'wetland', 'rgba(0, 180, 180, 0.4)',
+              'wetland_noveg', 'rgba(0, 150, 200, 0.35)',
+              'rgba(0,0,0,0)',
+            ],
+            'fill-outline-color': 'rgba(0, 200, 200, 0.6)',
+          },
+          layout: { visibility: 'none' },
+        }, 'states-fill');
+      }
+
+      // Agriculture (streets-v8 landuse layer)
+      if (!map.getLayer('agriculture-fill')) {
+        map.addLayer({
+          id: 'agriculture-fill',
+          type: 'fill',
+          source: 'streets-v8',
+          'source-layer': 'landuse',
+          filter: ['==', ['get', 'class'], 'agriculture'],
+          paint: {
+            'fill-color': 'rgba(217, 181, 100, 0.3)',
+            'fill-outline-color': 'rgba(217, 181, 100, 0.5)',
+          },
+          layout: { visibility: 'none' },
+        }, 'states-fill');
+      }
+
+      // Parks (streets-v8 landuse layer)
+      if (!map.getLayer('parks-fill')) {
+        map.addLayer({
+          id: 'parks-fill',
+          type: 'fill',
+          source: 'streets-v8',
+          'source-layer': 'landuse',
+          filter: ['==', ['get', 'class'], 'park'],
+          paint: {
+            'fill-color': 'rgba(34, 197, 94, 0.25)',
+            'fill-outline-color': 'rgba(34, 197, 94, 0.5)',
+          },
+          layout: { visibility: 'none' },
+        }, 'states-fill');
+      }
+
+      // Waterways - solid (streets-v8 waterway layer, excluding intermittent)
+      if (!map.getLayer('waterway-lines')) {
+        map.addLayer({
+          id: 'waterway-lines',
+          type: 'line',
+          source: 'streets-v8',
+          'source-layer': 'waterway',
+          filter: ['!=', ['get', 'class'], 'stream_intermittent'],
+          paint: {
+            'line-color': [
+              'match', ['get', 'class'],
+              'river', 'rgba(59, 130, 246, 0.8)',
+              'canal', 'rgba(59, 130, 246, 0.6)',
+              'stream', 'rgba(59, 130, 246, 0.5)',
+              'drain', 'rgba(59, 130, 246, 0.3)',
+              'ditch', 'rgba(59, 130, 246, 0.25)',
+              'rgba(59, 130, 246, 0.4)',
+            ],
+            'line-width': [
+              'match', ['get', 'class'],
+              'river', 2.5,
+              'canal', 1.8,
+              'stream', 1.2,
+              0.8,
+            ],
+          },
+          minzoom: 8,
+          layout: { visibility: 'none' },
+        });
+      }
+
+      // Waterways - intermittent (dashed, separate layer because line-dasharray doesn't support expressions)
+      if (!map.getLayer('waterway-intermittent')) {
+        map.addLayer({
+          id: 'waterway-intermittent',
+          type: 'line',
+          source: 'streets-v8',
+          'source-layer': 'waterway',
+          filter: ['==', ['get', 'class'], 'stream_intermittent'],
+          paint: {
+            'line-color': 'rgba(59, 130, 246, 0.35)',
+            'line-width': 0.8,
+            'line-dasharray': [2, 2],
+          },
+          minzoom: 10,
+          layout: { visibility: 'none' },
+        });
+      }
+
+      // Contour lines (terrain-v2 contour layer)
+      if (!map.getLayer('contour-lines')) {
+        map.addLayer({
+          id: 'contour-lines',
+          type: 'line',
+          source: 'terrain-v2',
+          'source-layer': 'contour',
+          paint: {
+            'line-color': 'rgba(255, 255, 255, 0.2)',
+            'line-width': [
+              'match', ['get', 'index'],
+              5, 1.2,
+              10, 1.5,
+              0.6,
+            ],
+          },
+          minzoom: 11,
+          layout: { visibility: 'none' },
+        });
+      }
+
+      // Contour labels (terrain-v2 contour layer, only major contours)
+      if (!map.getLayer('contour-labels')) {
+        map.addLayer({
+          id: 'contour-labels',
+          type: 'symbol',
+          source: 'terrain-v2',
+          'source-layer': 'contour',
+          filter: ['in', ['get', 'index'], ['literal', [5, 10]]],
+          layout: {
+            'symbol-placement': 'line',
+            'text-field': ['concat', ['to-string', ['round', ['*', ['get', 'ele'], 3.281]]], 'ft'],
+            'text-size': 9,
+            'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+            visibility: 'none',
+          },
+          paint: {
+            'text-color': 'rgba(255, 255, 255, 0.5)',
+            'text-halo-color': 'rgba(0, 0, 0, 0.8)',
+            'text-halo-width': 1,
+          },
+          minzoom: 12,
+        });
+      }
+
+      // Trails / dirt roads (streets-v8 road layer)
+      if (!map.getLayer('trails-lines')) {
+        map.addLayer({
+          id: 'trails-lines',
+          type: 'line',
+          source: 'streets-v8',
+          'source-layer': 'road',
+          filter: ['in', ['get', 'class'], ['literal', ['track', 'path']]],
+          paint: {
+            'line-color': 'rgba(217, 181, 100, 0.6)',
+            'line-width': 1,
+            'line-dasharray': [2, 1],
+          },
+          minzoom: 12,
+          layout: { visibility: 'none' },
+        });
+      }
+
       // Radar overlay
       if (!map.getSource("radar")) {
         map.addSource("radar", {
@@ -370,10 +596,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.addLayer({
           id: 'county-boundaries',
           type: 'line',
-          source: {
-            type: 'vector',
-            url: 'mapbox://mapbox.mapbox-streets-v8',
-          },
+          source: 'streets-v8',
           'source-layer': 'admin',
           filter: ['all', ['==', 'admin_level', 4], ['==', 'iso_3166_1', 'US']],
           paint: {
@@ -510,6 +733,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
 
       startPulse();
+
+      // Elevation tracking on mouse move
+      map.on('mousemove', (e) => {
+        if (!show3D || !onElevation) return;
+        const elevation = map.queryTerrainElevation(e.lngLat);
+        if (elevation !== null) {
+          onElevation(Math.round(elevation * 3.281)); // meters to feet
+        }
+      });
     });
 
     // Click handler
@@ -695,6 +927,30 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       source.setData(sightingsGeoJSON);
     }
   }, [sightingsGeoJSON]);
+
+  // Toggle overlay visibility
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const layerMap: Record<string, boolean> = {
+      'wetland-fill': overlays.wetlands,
+      'landcover-fill': overlays.landCover,
+      'contour-lines': overlays.contours,
+      'contour-labels': overlays.contours,
+      'waterway-lines': overlays.waterways,
+      'waterway-intermittent': overlays.waterways,
+      'agriculture-fill': overlays.agriculture,
+      'parks-fill': overlays.parks,
+      'trails-lines': overlays.trails,
+    };
+
+    for (const [layerId, visible] of Object.entries(layerMap)) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+      }
+    }
+  }, [overlays]);
 
   // Handle satellite style toggle
   useEffect(() => {

@@ -7,10 +7,11 @@ import { isFlywaySpecies } from "@/data/flyways";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
-import type { MapViewRef } from "@/components/MapView";
+import type { MapViewRef, MapOverlays } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
 import BottomPanel from "@/components/BottomPanel";
 import MapControls from "@/components/MapControls";
+import LayersPanel from "@/components/LayersPanel";
 import { useRadarTiles } from "@/hooks/useRadarTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
@@ -98,6 +99,17 @@ const Index = () => {
   const [isSatellite, setIsSatellite] = useState(true);
   const [show3D, setShow3D] = useState(true);
   const [showRadar, setShowRadar] = useState(false);
+  const [showLayers, setShowLayers] = useState(false);
+  const [overlays, setOverlays] = useState<MapOverlays>({
+    wetlands: false,
+    landCover: false,
+    contours: false,
+    waterways: false,
+    agriculture: false,
+    parks: false,
+    trails: false,
+  });
+  const [elevation, setElevation] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);
   const radarTileUrl = useRadarTiles();
@@ -196,21 +208,53 @@ const Index = () => {
     [navigate, selectedState],
   );
 
+  const handleToggleOverlay = useCallback((key: keyof MapOverlays) => {
+    setOverlays(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const handleSearchLocation = useCallback(
+    (lng: number, lat: number, stateAbbr: string | null) => {
+      // If we know the state, set it for the panel
+      if (stateAbbr && getStatesForSpecies(species).has(stateAbbr)) {
+        setSelectedState(stateAbbr);
+        setZoneSlug(null);
+        navigate(`/${species}/${stateAbbr}`, { replace: true });
+      }
+      // Fly to the exact coordinates at high zoom with terrain
+      mapRef.current?.flyToCoords(lng, lat);
+    },
+    [navigate, species],
+  );
+
   const handleGeolocate = useCallback(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        console.log(
-          "User location:",
-          pos.coords.latitude,
-          pos.coords.longitude,
-        );
+        const { latitude, longitude } = pos.coords;
+        // Fly to user's location
+        mapRef.current?.flyToCoords(longitude, latitude);
+        // Try to reverse-geocode to determine state
+        const token = import.meta.env.VITE_MAPBOX_TOKEN;
+        if (token) {
+          fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&types=region&limit=1`)
+            .then(r => r.json())
+            .then(data => {
+              const stateFeature = data.features?.[0];
+              if (stateFeature?.properties?.short_code) {
+                const abbr = stateFeature.properties.short_code.replace("US-", "");
+                if (getStatesForSpecies(species).has(abbr)) {
+                  setSelectedState(abbr);
+                  setZoneSlug(null);
+                  navigate(`/${species}/${abbr}`, { replace: true });
+                }
+              }
+            })
+            .catch(() => {});
+        }
       },
-      () => {
-        console.log("Geolocation denied");
-      },
+      () => {},
     );
-  }, []);
+  }, [navigate, species]);
 
   const speciesFavorites = useMemo(
     () => getFavoritesForSpecies(species),
@@ -234,6 +278,8 @@ const Index = () => {
         radarTileUrl={radarTileUrl}
         sightingsGeoJSON={sightingsGeoJSON}
         weatherCache={weatherCache}
+        overlays={overlays}
+        onElevation={setElevation}
         onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
       />
 
@@ -242,6 +288,7 @@ const Index = () => {
         species={species}
         onSelectSpecies={handleSelectSpecies}
         onSearch={handleSelectState}
+        onSearchLocation={handleSearchLocation}
       />
 
       {/* Bottom Panel */}
@@ -274,7 +321,25 @@ const Index = () => {
         onToggle3D={() => setShow3D((s) => !s)}
         showRadar={showRadar}
         onToggleRadar={() => setShowRadar((r) => !r)}
+        showLayers={showLayers}
+        onToggleLayers={() => setShowLayers((l) => !l)}
       />
+
+      {/* Layers Panel */}
+      <LayersPanel
+        overlays={overlays}
+        onToggle={handleToggleOverlay}
+        isOpen={showLayers}
+        onClose={() => setShowLayers(false)}
+      />
+
+      {/* Elevation HUD */}
+      {show3D && elevation !== null && mapZoom > 8 && (
+        <div className="fixed bottom-6 left-4 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]">
+          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
+          <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
+        </div>
+      )}
 
       {/* Grain overlay */}
       <div className="grain-overlay" />

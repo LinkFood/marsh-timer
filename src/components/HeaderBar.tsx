@@ -1,22 +1,43 @@
-import { useState, useMemo, useRef, useEffect } from "react";
-import { Search, X } from "lucide-react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Search, X, MapPin } from "lucide-react";
 import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
 import UserMenu from './UserMenu';
 
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+
+interface GeoResult {
+  name: string;
+  lng: number;
+  lat: number;
+  stateAbbr: string | null;
+  type: "place";
+}
+
+interface StateResult {
+  name: string;
+  abbreviation: string;
+  type: "state";
+}
+
+type SearchResult = GeoResult | StateResult;
+
 interface HeaderBarProps {
   species: Species;
   onSelectSpecies: (s: Species) => void;
   onSearch: (abbr: string) => void;
+  onSearchLocation?: (lng: number, lat: number, stateAbbr: string | null) => void;
 }
 
-const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
+const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: HeaderBarProps) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const counts = useMemo(() => {
     const now = new Date();
@@ -44,13 +65,62 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
     });
   }, [species]);
 
-  const results = useMemo(() => {
+  const stateResults = useMemo((): StateResult[] => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
     return stateList
       .filter(s => s.state.toLowerCase().includes(q) || s.abbreviation.toLowerCase() === q)
-      .slice(0, 6);
+      .slice(0, 3)
+      .map(s => ({ name: s.state, abbreviation: s.abbreviation, type: "state" as const }));
   }, [query, stateList]);
+
+  // State abbreviation lookup for geocoding results
+  const STATE_ABBRS: Record<string, string> = {
+    Alabama:"AL",Alaska:"AK",Arizona:"AZ",Arkansas:"AR",California:"CA",
+    Colorado:"CO",Connecticut:"CT",Delaware:"DE",Florida:"FL",Georgia:"GA",
+    Hawaii:"HI",Idaho:"ID",Illinois:"IL",Indiana:"IN",Iowa:"IA",
+    Kansas:"KS",Kentucky:"KY",Louisiana:"LA",Maine:"ME",Maryland:"MD",
+    Massachusetts:"MA",Michigan:"MI",Minnesota:"MN",Mississippi:"MS",Missouri:"MO",
+    Montana:"MT",Nebraska:"NE",Nevada:"NV","New Hampshire":"NH","New Jersey":"NJ",
+    "New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND",Ohio:"OH",
+    Oklahoma:"OK",Oregon:"OR",Pennsylvania:"PA","Rhode Island":"RI","South Carolina":"SC",
+    "South Dakota":"SD",Tennessee:"TN",Texas:"TX",Utah:"UT",Vermont:"VT",
+    Virginia:"VA",Washington:"WA","West Virginia":"WV",Wisconsin:"WI",Wyoming:"WY",
+  };
+
+  const geocode = useCallback(async (q: string) => {
+    if (!MAPBOX_TOKEN || q.length < 2) { setGeoResults([]); return; }
+    try {
+      const encoded = encodeURIComponent(q);
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&country=US&types=postcode,place,locality,neighborhood,address,poi&limit=4`
+      );
+      if (!res.ok) { setGeoResults([]); return; }
+      const data = await res.json();
+      const results: GeoResult[] = (data.features || []).map((f: any) => {
+        const [lng, lat] = f.center;
+        const regionCtx = f.context?.find((c: any) => c.id?.startsWith("region"));
+        const stateName = regionCtx?.text || null;
+        const stateAbbr = stateName ? STATE_ABBRS[stateName] || null : null;
+        return { name: f.place_name, lng, lat, stateAbbr, type: "place" as const };
+      });
+      setGeoResults(results);
+    } catch {
+      setGeoResults([]);
+    }
+  }, []);
+
+  // Debounced geocoding
+  useEffect(() => {
+    if (!query.trim() || query.length < 2) { setGeoResults([]); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => geocode(query), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query, geocode]);
+
+  const allResults: SearchResult[] = useMemo(() => {
+    return [...stateResults, ...geoResults].slice(0, 6);
+  }, [stateResults, geoResults]);
 
   useEffect(() => {
     if (searchOpen && inputRef.current) {
@@ -139,7 +209,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search state..."
+                  placeholder="Search state, city, or zip..."
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                   className="w-48 sm:w-64 pl-3 pr-8 py-1.5 rounded-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-foreground font-body text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400/30"
@@ -151,21 +221,42 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch }: HeaderBarProps) => {
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-              {results.length > 0 && (
-                <div className="absolute top-full right-0 mt-2 w-48 sm:w-64 glass-panel rounded-lg shadow-xl overflow-hidden z-50">
-                  {results.map(s => (
-                    <button
-                      key={s.abbreviation}
-                      onMouseDown={() => {
-                        onSearch(s.abbreviation);
-                        setSearchOpen(false);
-                        setQuery("");
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-secondary transition-colors text-xs font-body text-foreground flex justify-between items-center"
-                    >
-                      <span>{s.state}</span>
-                      <span className="text-muted-foreground text-[10px]">{s.abbreviation}</span>
-                    </button>
+              {allResults.length > 0 && (
+                <div className="absolute top-full right-0 mt-2 w-64 sm:w-80 glass-panel rounded-lg shadow-xl overflow-hidden z-50">
+                  {allResults.map((r, i) => (
+                    r.type === "state" ? (
+                      <button
+                        key={`state-${r.abbreviation}`}
+                        onMouseDown={() => {
+                          onSearch(r.abbreviation);
+                          setSearchOpen(false);
+                          setQuery("");
+                          setGeoResults([]);
+                        }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-secondary transition-colors text-xs font-body text-foreground flex justify-between items-center"
+                      >
+                        <span>{r.name}</span>
+                        <span className="text-muted-foreground text-[10px]">{r.abbreviation}</span>
+                      </button>
+                    ) : (
+                      <button
+                        key={`geo-${i}`}
+                        onMouseDown={() => {
+                          if (onSearchLocation) {
+                            onSearchLocation(r.lng, r.lat, r.stateAbbr);
+                          } else if (r.stateAbbr) {
+                            onSearch(r.stateAbbr);
+                          }
+                          setSearchOpen(false);
+                          setQuery("");
+                          setGeoResults([]);
+                        }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-secondary transition-colors text-xs font-body text-foreground flex items-center gap-2"
+                      >
+                        <MapPin size={12} className="text-cyan-400 flex-shrink-0" />
+                        <span className="truncate">{r.name}</span>
+                      </button>
+                    )
                   ))}
                 </div>
               )}
