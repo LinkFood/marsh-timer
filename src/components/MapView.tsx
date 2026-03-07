@@ -182,6 +182,16 @@ export default function MapView({
         data: geoJSON,
       });
 
+      // Hide Mapbox base map labels (state names, cities, etc.)
+      const labelLayers = map.getStyle().layers?.filter(
+        (l) => l.type === "symbol" && (
+          l.id.includes("label") || l.id.includes("place") || l.id.includes("state")
+        )
+      ) || [];
+      for (const layer of labelLayers) {
+        map.setLayoutProperty(layer.id, "visibility", "none");
+      }
+
       // States fill layer
       map.addLayer({
         id: "states-fill",
@@ -189,7 +199,7 @@ export default function MapView({
         source: "states",
         paint: {
           "fill-color": buildFillExpression(species, selectedState),
-          "fill-opacity": 0.85,
+          "fill-opacity": 0.5,
         },
       });
 
@@ -201,7 +211,7 @@ export default function MapView({
         filter: buildPulseFilter(species),
         paint: {
           "fill-color": buildFillExpression(species, selectedState),
-          "fill-opacity": 0.85,
+          "fill-opacity": 0.5,
         },
       });
 
@@ -213,6 +223,19 @@ export default function MapView({
         paint: {
           "line-color": "#0a1a0a",
           "line-width": 0.5,
+        },
+      });
+
+      // Selected state highlight outline
+      map.addLayer({
+        id: "states-selected-outline",
+        type: "line",
+        source: "states",
+        filter: ["==", ["get", "abbr"], selectedState || ""],
+        paint: {
+          "line-color": speciesConfig[species].colors.selected,
+          "line-width": 3,
+          "line-opacity": 0.9,
         },
       });
 
@@ -328,7 +351,7 @@ export default function MapView({
       if (!map || !map.getLayer("states-pulse")) return;
 
       const t = (Math.sin(Date.now() / 800) + 1) / 2; // oscillates 0..1
-      const opacity = 0.7 + t * 0.3; // oscillates 0.7..1.0
+      const opacity = 0.35 + t * 0.3; // oscillates 0.35..0.65
 
       map.setPaintProperty("states-pulse", "fill-opacity", opacity);
       pulseFrameRef.current = requestAnimationFrame(animate);
@@ -359,15 +382,15 @@ export default function MapView({
     const expression = buildFillExpression(species, selectedState);
     map.setPaintProperty("states-fill", "fill-color", expression);
     map.setPaintProperty("states-pulse", "fill-color", expression);
-    map.setPaintProperty(
-      "states-pulse",
-      "fill-opacity",
-      0.85,
-    );
+    map.setPaintProperty("states-pulse", "fill-opacity", 0.5);
 
     // Update pulse filter for new species
     const pulseFilter = buildPulseFilter(species);
     map.setFilter("states-pulse", pulseFilter);
+
+    // Update selected state outline
+    map.setFilter("states-selected-outline", ["==", ["get", "abbr"], selectedState || ""]);
+    map.setPaintProperty("states-selected-outline", "line-color", speciesConfig[species].colors.selected);
   }, [species, selectedState]);
 
   // Toggle flyway layer visibility
