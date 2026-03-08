@@ -56,8 +56,9 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   // Weather
   'radar-overlay': new Set(['weather']),
   'temp-tiles-overlay': new Set(),
-  'wind-flow': new Set(['weather', 'intel']),
-  'wind-speed-labels': new Set(['weather', 'intel']),
+  'wind-flow': new Set(['default', 'weather', 'intel']),
+  'wind-speed-labels': new Set(['default', 'weather', 'intel']),
+  'wind-arrow-heads': new Set(['default', 'weather', 'intel']),
   'isobar-lines': new Set(['weather']),
   'pressure-center-labels': new Set(['weather']),
   'nws-alert-fill': new Set(['weather', 'intel']),
@@ -78,6 +79,11 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'ebird-dots': new Set(['scout']),
   'ebird-clusters': new Set(['scout']),
   'ebird-cluster-count': new Set(['scout']),
+  // Pressure trends
+  'pressure-trend-arrows': new Set(['default', 'weather', 'intel']),
+  // Perfect Storm (all modes — the point is to interrupt any view)
+  'perfect-storm-glow': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
+  'perfect-storm-ring': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
   // County boundaries
   'county-fill': new Set(['scout', 'intel']),
 };
@@ -123,11 +129,12 @@ export interface MapViewProps {
   countyGeoJSON?: FeatureCollection | null;
   sightingsGeoJSON?: FeatureCollection | null;
   onMoveEnd?: (center: [number, number], zoom: number) => void;
-  weatherCache?: Map<string, { temp: number; wind: number; windDir: number; pressure: number; precip: number }>;
+  weatherCache?: Map<string, { temp: number; wind: number; windDir: number; pressure: number; precip: number; pressureTrend: 'rising' | 'falling' | 'flat' }>;
   overlays?: MapOverlays;
   onElevation?: (elevation: number | null) => void;
   mapMode?: MapMode;
   convergenceScores?: Map<string, number>;
+  perfectStormStates?: Set<string>;
   nwsAlertsGeoJSON?: FeatureCollection | null;
   migrationFrontLine?: Feature<LineString> | null;
   scrubDate?: Date | null;
@@ -241,6 +248,43 @@ function buildFillExpression(
   ] as mapboxgl.Expression;
 }
 
+function buildSatelliteFillExpression(
+  species: Species,
+  selectedState: string | null,
+): mapboxgl.Expression {
+  const colors = speciesConfig[species].colors;
+  const statesWithData = getStatesForSpecies(species);
+  const now = new Date();
+  const entries: string[] = [];
+
+  for (const abbr of statesWithData) {
+    if (abbr === selectedState) {
+      entries.push(abbr, colors.selected);
+      continue;
+    }
+    const season = getPrimarySeasonForState(species, abbr);
+    if (!season) {
+      entries.push(abbr, 'rgba(60, 60, 70, 0.7)');
+      continue;
+    }
+    const status = getSeasonStatus(season, now);
+    if (status === 'closed') {
+      entries.push(abbr, 'rgba(60, 60, 70, 0.7)');
+    } else if (status === 'upcoming') {
+      entries.push(abbr, 'rgba(70, 85, 110, 0.6)');
+    } else {
+      entries.push(abbr, colors[status]);
+    }
+  }
+
+  return [
+    "match",
+    ["get", "abbr"],
+    ...entries,
+    'rgba(60, 60, 70, 0.7)',
+  ] as mapboxgl.Expression;
+}
+
 function buildPulseFilter(species: Species): mapboxgl.Expression {
   const statesWithData = getStatesForSpecies(species);
   const now = new Date();
@@ -310,6 +354,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     onElevation,
     mapMode = 'default',
     convergenceScores,
+    perfectStormStates,
     nwsAlertsGeoJSON = null,
     migrationFrontLine = null,
   },
@@ -326,6 +371,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const flyingRef = useRef(false);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const selectedStateRef = useRef(selectedState);
+  const onSelectStateRef = useRef(onSelectState);
   const prevStyleRef = useRef<string>("dark");
   const weatherCacheRef = useRef(weatherCache);
   const convergenceRef = useRef(convergenceScores);
@@ -333,6 +379,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   selectedStateRef.current = selectedState;
   weatherCacheRef.current = weatherCache;
   convergenceRef.current = convergenceScores;
+  onSelectStateRef.current = onSelectState;
 
   const statesWithData = useMemo(
     () => getStatesForSpecies(species),
@@ -1042,16 +1089,23 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           paint: {
             "line-color": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              0, "rgba(255,255,255,0.8)",
-              10, "rgba(255,255,255,0.8)",
-              15, "rgba(34,211,238,0.9)",
-              30, "rgba(239,68,68,0.9)",
+              0, "rgba(200,220,255,0.7)",
+              8, "rgba(200,220,255,0.7)",
+              9, "rgba(34,211,238,0.85)",
+              15, "rgba(34,211,238,0.85)",
+              16, "rgba(251,191,36,0.9)",
+              25, "rgba(251,191,36,0.9)",
+              26, "rgba(239,68,68,0.95)",
             ],
             "line-width": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              0, 1.5, 15, 2, 30, 3,
+              0, 2, 15, 3.5, 30, 5,
             ],
-            "line-opacity": 0.6,
+            "line-opacity": 0.75,
+            "line-blur": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              0, 0, 15, 1, 30, 2,
+            ],
             "line-dasharray": [2, 2],
           },
         });
@@ -1073,6 +1127,37 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-color": "rgba(255,255,255,0.7)",
             "text-halo-color": "rgba(0,0,0,0.8)",
             "text-halo-width": 1,
+          },
+        });
+      }
+
+      // Wind arrowheads at line endpoints
+      if (!map.getLayer("wind-arrow-heads")) {
+        map.addLayer({
+          id: "wind-arrow-heads",
+          type: "symbol",
+          source: "wind-speed-points",
+          minzoom: 3,
+          layout: {
+            "icon-image": "triangle-11",
+            "icon-size": 0.8,
+            "icon-rotate": ["get", "windDir"],
+            "icon-rotation-alignment": "map",
+            "icon-allow-overlap": true,
+            visibility: "none",
+          },
+          paint: {
+            "icon-color": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              0, "rgba(200,220,255,0.7)",
+              8, "rgba(200,220,255,0.7)",
+              9, "rgba(34,211,238,0.85)",
+              15, "rgba(34,211,238,0.85)",
+              16, "rgba(251,191,36,0.9)",
+              25, "rgba(251,191,36,0.9)",
+              26, "rgba(239,68,68,0.95)",
+            ],
+            "icon-opacity": 0.75,
           },
         });
       }
@@ -1363,9 +1448,65 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Pressure trend arrows source + layer
+      if (!map.getSource("pressure-trend-points")) {
+        map.addSource("pressure-trend-points", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("pressure-trend-arrows")) {
+        map.addLayer({
+          id: "pressure-trend-arrows",
+          type: "symbol",
+          source: "pressure-trend-points",
+          minzoom: 3,
+          layout: {
+            "icon-image": "triangle-11",
+            "icon-size": 0.8,
+            "icon-rotate": ["match", ["get", "trend"], "falling", 180, "rising", 0, 90],
+            "icon-rotation-alignment": "map",
+            "icon-allow-overlap": true,
+            "icon-offset": [15, 0],
+            visibility: "none",
+          },
+          paint: {
+            "icon-color": ["match", ["get", "trend"], "falling", "#ef4444", "rising", "#22c55e", "#94a3b8"],
+            "icon-opacity": 0.85,
+          },
+        });
+      }
+
+      // Perfect Storm glow + ring layers
+      if (!map.getLayer("perfect-storm-glow")) {
+        map.addLayer({
+          id: "perfect-storm-glow",
+          type: "fill",
+          source: "states",
+          filter: ["in", ["get", "abbr"], ["literal", []]],
+          paint: {
+            "fill-color": "rgba(255, 200, 50, 0.25)",
+            "fill-opacity": 0.2,
+          },
+        });
+      }
+      if (!map.getLayer("perfect-storm-ring")) {
+        map.addLayer({
+          id: "perfect-storm-ring",
+          type: "line",
+          source: "states",
+          filter: ["in", ["get", "abbr"], ["literal", []]],
+          paint: {
+            "line-color": "rgba(255, 180, 0, 0.6)",
+            "line-width": 3,
+            "line-blur": 4,
+          },
+        });
+      }
+
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine],
+    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates],
   );
 
   const initMap = useCallback(() => {
@@ -1505,7 +1646,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (!e.features || e.features.length === 0) return;
       const abbr = e.features[0].properties?.abbr;
       if (!abbr || !statesWithData.has(abbr)) return;
-      onSelectState(abbr);
+      popupRef.current?.remove();
+      popupRef.current = null;
+      onSelectStateRef.current(abbr);
     });
 
     // eBird cluster click — zoom to expand
@@ -1632,6 +1775,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (map.getLayer("nws-alert-fill")) {
         const nwsOpacity = 0.15 + t * 0.2;
         map.setPaintProperty("nws-alert-fill", "fill-opacity", nwsOpacity);
+      }
+
+      // Perfect Storm glow pulse (slow breathe)
+      if (map.getLayer("perfect-storm-glow")) {
+        const stormT = (Math.sin(Date.now() / 2000) + 1) / 2;
+        map.setPaintProperty("perfect-storm-glow", "fill-opacity", 0.15 + stormT * 0.2);
       }
 
       // Animated wind flow dash-array (~10fps for performance)
@@ -1987,15 +2136,16 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.setPaintProperty("states-fill", "fill-opacity", 0.5);
       }
     } else if (map.getLayer("states-fill")) {
-      map.setPaintProperty("states-fill", "fill-color", buildFillExpression(species, selectedState));
-      map.setPaintProperty("states-fill", "fill-opacity", 0.65);
+      map.setPaintProperty("states-fill", "fill-color", buildSatelliteFillExpression(species, selectedState));
+      map.setPaintProperty("states-fill", "fill-opacity", 0.75);
     }
 
-    // State outlines — stronger in data modes
+    // State outlines — stronger in data modes, visible in default
     if (map.getLayer("states-line")) {
       const isDataMode = mapMode === 'intel' || mapMode === 'weather';
-      map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : 1.0);
-      map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.2)");
+      const isDefault = mapMode === 'default';
+      map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : isDefault ? 1.2 : 1.0);
+      map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : isDefault ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.2)");
     }
 
     // Selected state outline
@@ -2012,7 +2162,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       for (const [abbr, w] of weatherCache) {
         const centroid = centroidsRef.current.get(abbr);
         if (centroid && w.wind > 1) {
-          const coords = windFlowLine(centroid, w.windDir);
+          const lengthDeg = 0.3 + Math.min(w.wind, 30) / 30 * 1.7;
+          const coords = windFlowLine(centroid, w.windDir, lengthDeg);
           lineFeatures.push({
             type: "Feature",
             geometry: { type: "LineString", coordinates: coords },
@@ -2021,7 +2172,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           pointFeatures.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: centroid },
-            properties: { abbr, windSpeed: w.wind },
+            properties: { abbr, windSpeed: w.wind, windDir: w.windDir },
           });
         }
       }
@@ -2043,6 +2194,23 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           pressurePoints.push({ lng: centroid[0], lat: centroid[1], pressure: w.pressure });
         }
       }
+      // Pressure trend arrows
+      const trendFeatures: Feature[] = [];
+      for (const [abbr, w] of weatherCache) {
+        const centroid = centroidsRef.current.get(abbr);
+        if (centroid && (w as any).pressureTrend) {
+          trendFeatures.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: centroid },
+            properties: { abbr, trend: (w as any).pressureTrend },
+          });
+        }
+      }
+      const trendSource = map.getSource("pressure-trend-points") as mapboxgl.GeoJSONSource | undefined;
+      if (trendSource) {
+        trendSource.setData({ type: "FeatureCollection", features: trendFeatures });
+      }
+
       if (pressurePoints.length >= 3) {
         const { contours, centers } = generateIsobars(pressurePoints);
         const isobarSource = map.getSource("isobar-lines") as mapboxgl.GeoJSONSource | undefined;
@@ -2055,7 +2223,18 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         }
       }
     }
-  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData]);
+    // Perfect Storm overlay filter update
+    const stormAbbrs = perfectStormStates ? [...perfectStormStates] : [];
+    const stormFilter: mapboxgl.Expression = stormAbbrs.length > 0
+      ? ["in", ["get", "abbr"], ["literal", stormAbbrs]] as mapboxgl.Expression
+      : ["==", ["get", "abbr"], "__none__"] as mapboxgl.Expression;
+    if (map.getLayer("perfect-storm-glow")) {
+      map.setFilter("perfect-storm-glow", stormFilter);
+    }
+    if (map.getLayer("perfect-storm-ring")) {
+      map.setFilter("perfect-storm-ring", stormFilter);
+    }
+  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates]);
 
   // Auto-activate layers on zoom (waterways at state zoom in scout/intel)
   useEffect(() => {

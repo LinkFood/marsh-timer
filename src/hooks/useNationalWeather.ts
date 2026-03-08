@@ -19,6 +19,7 @@ export interface StateWeather {
   windDir: number;
   pressure: number;
   precip: number;
+  pressureTrend: 'rising' | 'falling' | 'flat';
 }
 
 export function useNationalWeather() {
@@ -36,12 +37,21 @@ export function useNationalWeather() {
 
       try {
         const res = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&temperature_unit=fahrenheit&wind_speed_unit=mph`
+          `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&hourly=pressure_msl&past_hours=6&forecast_hours=0&temperature_unit=fahrenheit&wind_speed_unit=mph`
         );
         if (!res.ok) return;
         const data = await res.json();
 
         const newCache = new Map<string, StateWeather>();
+
+        function computePressureTrend(d: any): 'rising' | 'falling' | 'flat' {
+          const hourly = d.hourly?.pressure_msl;
+          if (!Array.isArray(hourly) || hourly.length < 2) return 'flat';
+          const delta = hourly[hourly.length - 1] - hourly[0];
+          if (delta < -2) return 'falling';
+          if (delta > 2) return 'rising';
+          return 'flat';
+        }
 
         if (Array.isArray(data)) {
           data.forEach((d: any, i: number) => {
@@ -52,6 +62,7 @@ export function useNationalWeather() {
                 windDir: d.current.wind_direction_10m ?? 0,
                 pressure: d.current.pressure_msl ?? 1013,
                 precip: d.current.precipitation ?? 0,
+                pressureTrend: computePressureTrend(d),
               });
             }
           });
@@ -62,6 +73,7 @@ export function useNationalWeather() {
             windDir: data.current.wind_direction_10m ?? 0,
             pressure: data.current.pressure_msl ?? 1013,
             precip: data.current.precipitation ?? 0,
+            pressureTrend: computePressureTrend(data),
           });
         }
 

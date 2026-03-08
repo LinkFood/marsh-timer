@@ -134,6 +134,17 @@ const Index = () => {
     return map;
   }, [convergenceScores]);
 
+  // "Perfect Storm" states — convergence >= 85, weather >= 80, migration >= 70
+  const perfectStormStates = useMemo(() => {
+    const states = new Set<string>();
+    for (const [abbr, data] of convergenceScores) {
+      if (data.score >= 85 && data.weather_component >= 80 && data.migration_component >= 70) {
+        states.add(abbr);
+      }
+    }
+    return states;
+  }, [convergenceScores]);
+
   // Fetch historical convergence scores when scrub date changes
   useEffect(() => {
     if (!scrubDate) {
@@ -252,6 +263,7 @@ const Index = () => {
       setSpecies(s);
       setSelectedState(null);
       setZoneSlug(null);
+      setMapMode('default');
       navigate(`/${s}`, { replace: true });
     },
     [navigate],
@@ -376,6 +388,7 @@ const Index = () => {
         onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
         mapMode={mapMode}
         convergenceScores={activeConvergenceScores}
+        perfectStormStates={perfectStormStates}
         nwsAlertsGeoJSON={nwsAlertsGeoJSON}
         migrationFrontLine={migrationFrontLine}
         scrubDate={scrubDate}
