@@ -1,3 +1,6 @@
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import { useFeedback } from '../../hooks/useFeedback';
+
 function scoreColor(score: number): string {
   if (score >= 81) return '#ef4444';
   if (score >= 61) return '#fb923c';
@@ -23,6 +26,7 @@ interface ConvergenceCardProps {
   patternComponent: number;
   nationalRank: number;
   reasoning: string;
+  stateAbbr?: string;
 }
 
 const COMPONENTS = [
@@ -42,6 +46,7 @@ export default function ConvergenceCard({
   patternComponent,
   nationalRank,
   reasoning,
+  stateAbbr,
 }: ConvergenceCardProps) {
   const values: Record<string, number> = {
     weatherComponent,
@@ -89,6 +94,41 @@ export default function ConvergenceCard({
       </div>
 
       <p className="text-xs text-white/50 italic line-clamp-2">{reasoning}</p>
+
+      {stateAbbr && <ConvergenceFeedbackRow stateAbbr={stateAbbr} />}
+    </div>
+  );
+}
+
+function ConvergenceFeedbackRow({ stateAbbr }: { stateAbbr: string }) {
+  const { submitFeedback, getFeedback, isLoading, isAuthenticated } = useFeedback();
+  const today = new Date().toISOString().split('T')[0];
+  const current = getFeedback('convergence_score', today, stateAbbr);
+  const loading = isLoading('convergence_score', today, stateAbbr);
+
+  if (!isAuthenticated) return null;
+
+  return (
+    <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+      <span className="text-[10px] text-white/30 font-body">Accurate?</span>
+      <button
+        onClick={() => submitFeedback('convergence_score', today, true, stateAbbr)}
+        disabled={loading}
+        className="p-0.5 transition-colors"
+      >
+        <ThumbsUp
+          className={`w-3.5 h-3.5 ${current === true ? 'text-green-400' : 'text-white/40 hover:text-white/60'}`}
+        />
+      </button>
+      <button
+        onClick={() => submitFeedback('convergence_score', today, false, stateAbbr)}
+        disabled={loading}
+        className="p-0.5 transition-colors"
+      >
+        <ThumbsDown
+          className={`w-3.5 h-3.5 ${current === false ? 'text-red-400' : 'text-white/40 hover:text-white/60'}`}
+        />
+      </button>
     </div>
   );
 }

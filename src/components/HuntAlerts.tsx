@@ -1,5 +1,6 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ThumbsUp, ThumbsDown } from "lucide-react";
 import type { HuntAlert } from "../hooks/useHuntAlerts";
+import { useFeedback } from "../hooks/useFeedback";
 
 interface HuntAlertsProps {
   alerts: HuntAlert[];
@@ -13,6 +14,38 @@ function severityClasses(severity: "high" | "medium") {
     : { text: "text-amber-400", border: "border-amber-400/20", bg: "bg-amber-400/10", badge: "bg-amber-400/20 text-amber-400" };
 }
 
+function AlertFeedback({ stateAbbr }: { stateAbbr: string }) {
+  const { submitFeedback, getFeedback, isLoading, isAuthenticated } = useFeedback();
+  const today = new Date().toISOString().split('T')[0];
+  const current = getFeedback('convergence_alert', today, stateAbbr);
+  const loading = isLoading('convergence_alert', today, stateAbbr);
+
+  if (!isAuthenticated) return null;
+
+  return (
+    <div className="flex items-center gap-1 mt-1.5">
+      <button
+        onClick={(e) => { e.stopPropagation(); submitFeedback('convergence_alert', today, true, stateAbbr); }}
+        disabled={loading}
+        className="p-0.5 transition-colors"
+      >
+        <ThumbsUp
+          className={`w-3 h-3 ${current === true ? 'text-green-400' : 'text-white/40 hover:text-white/60'}`}
+        />
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); submitFeedback('convergence_alert', today, false, stateAbbr); }}
+        disabled={loading}
+        className="p-0.5 transition-colors"
+      >
+        <ThumbsDown
+          className={`w-3 h-3 ${current === false ? 'text-red-400' : 'text-white/40 hover:text-white/60'}`}
+        />
+      </button>
+    </div>
+  );
+}
+
 function NationalAlerts({
   alerts,
   onSelectState,
@@ -23,42 +56,40 @@ function NationalAlerts({
   if (alerts.length === 0) return null;
 
   return (
-    <div>
-      <p className="text-[10px] font-body text-white/40 uppercase tracking-wider mb-1.5">Notable Hunting Weather</p>
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1">
-        {alerts.map((alert) => {
-          const c = severityClasses(alert.severity);
-          return (
-            <button
-              key={alert.stateAbbr}
-              onClick={() => onSelectState?.(alert.stateAbbr)}
-              className={`flex-shrink-0 max-w-[200px] w-[200px] rounded-lg border ${c.border} bg-white/5 p-2.5 text-left transition-colors hover:bg-white/[0.08] active:bg-white/[0.1]`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-body font-semibold text-xs text-white/90 truncate">
-                  {alert.stateName}
-                </span>
-                <span
-                  className={`flex-shrink-0 ml-1.5 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-body font-semibold ${c.badge}`}
-                >
-                  {alert.severity}
-                </span>
+    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1">
+      {alerts.map((alert) => {
+        const c = severityClasses(alert.severity);
+        return (
+          <button
+            key={alert.stateAbbr}
+            onClick={() => onSelectState?.(alert.stateAbbr)}
+            className={`flex-shrink-0 max-w-[200px] w-[200px] rounded-lg border ${c.border} bg-white/5 p-2.5 text-left transition-colors hover:bg-white/[0.08] active:bg-white/[0.1]`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="font-body font-semibold text-xs text-white/90 truncate">
+                {alert.stateName}
+              </span>
+              <span
+                className={`flex-shrink-0 ml-1.5 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-body font-semibold ${c.badge}`}
+              >
+                {alert.severity}
+              </span>
+            </div>
+            <p className="text-[10px] font-body text-white/50 truncate mb-1">
+              {alert.forecastSummary}
+            </p>
+            {alert.patterns.length > 0 && (
+              <div className="flex items-center gap-1">
+                <AlertTriangle className={`w-2.5 h-2.5 flex-shrink-0 ${c.text}`} />
+                <p className={`text-[10px] font-body truncate ${c.text}`}>
+                  {alert.patterns[0]}
+                </p>
               </div>
-              <p className="text-[10px] font-body text-white/50 truncate mb-1">
-                {alert.forecastSummary}
-              </p>
-              {alert.patterns.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <AlertTriangle className={`w-2.5 h-2.5 flex-shrink-0 ${c.text}`} />
-                  <p className={`text-[10px] font-body truncate ${c.text}`}>
-                    {alert.patterns[0]}
-                  </p>
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
+            )}
+              <AlertFeedback stateAbbr={alert.stateAbbr} />
+          </button>
+        );
+      })}
     </div>
   );
 }

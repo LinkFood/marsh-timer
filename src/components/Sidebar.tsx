@@ -180,6 +180,7 @@ export default function Sidebar({
               patternComponent={convergenceScore.pattern_component}
               nationalRank={convergenceScore.national_rank}
               reasoning={convergenceScore.reasoning}
+              stateAbbr={stateAbbr}
             />
           )}
           <StateView
