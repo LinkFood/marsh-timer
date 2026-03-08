@@ -19,16 +19,18 @@ interface ConvergenceCardProps {
   weatherComponent: number;
   solunarComponent: number;
   migrationComponent: number;
+  birdcastComponent: number;
   patternComponent: number;
   nationalRank: number;
   reasoning: string;
 }
 
 const COMPONENTS = [
-  { label: 'Weather', max: 30, key: 'weatherComponent' },
-  { label: 'Solunar', max: 20, key: 'solunarComponent' },
-  { label: 'Migration', max: 30, key: 'migrationComponent' },
-  { label: 'Pattern', max: 20, key: 'patternComponent' },
+  { label: 'Weather', max: 25, key: 'weatherComponent', color: null },
+  { label: 'Solunar', max: 15, key: 'solunarComponent', color: null },
+  { label: 'Migration', max: 25, key: 'migrationComponent', color: null },
+  { label: 'BirdCast', max: 20, key: 'birdcastComponent', color: '#06b6d4' },
+  { label: 'Pattern', max: 15, key: 'patternComponent', color: null },
 ] as const;
 
 export default function ConvergenceCard({
@@ -36,6 +38,7 @@ export default function ConvergenceCard({
   weatherComponent,
   solunarComponent,
   migrationComponent,
+  birdcastComponent,
   patternComponent,
   nationalRank,
   reasoning,
@@ -44,6 +47,7 @@ export default function ConvergenceCard({
     weatherComponent,
     solunarComponent,
     migrationComponent,
+    birdcastComponent,
     patternComponent,
   };
 
@@ -62,7 +66,7 @@ export default function ConvergenceCard({
       </div>
 
       <div className="space-y-2">
-        {COMPONENTS.map(({ label, max, key }) => {
+        {COMPONENTS.map(({ label, max, key, color: barColor }) => {
           const value = values[key];
           const pct = Math.round((value / max) * 100);
           return (
@@ -76,7 +80,7 @@ export default function ConvergenceCard({
               <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{ width: `${pct}%`, backgroundColor: color }}
+                  style={{ width: `${pct}%`, backgroundColor: barColor || color }}
                 />
               </div>
             </div>

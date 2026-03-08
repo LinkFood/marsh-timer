@@ -176,6 +176,7 @@ export default function Sidebar({
               weatherComponent={convergenceScore.weather_component}
               solunarComponent={convergenceScore.solunar_component}
               migrationComponent={convergenceScore.migration_component}
+              birdcastComponent={convergenceScore.birdcast_component}
               patternComponent={convergenceScore.pattern_component}
               nationalRank={convergenceScore.national_rank}
               reasoning={convergenceScore.reasoning}

@@ -7,6 +7,7 @@ export interface ConvergenceScore {
   solunar_component: number;
   migration_component: number;
   pattern_component: number;
+  birdcast_component: number;
   reasoning: string;
   national_rank: number;
 }
@@ -47,6 +48,7 @@ export function useConvergenceScores() {
           solunar_component: row.solunar_component,
           migration_component: row.migration_component,
           pattern_component: row.pattern_component,
+          birdcast_component: row.birdcast_component ?? 0,
           reasoning: row.reasoning,
           national_rank: i + 1,
         }));

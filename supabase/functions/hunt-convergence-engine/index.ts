@@ -15,6 +15,7 @@ interface ScoreResult {
   solunar: number;
   migration: number;
   pattern: number;
+  birdcast: number;
   score: number;
   reasoning: string;
   signals: Record<string, unknown>;
@@ -22,6 +23,7 @@ interface ScoreResult {
   moonPhase: string;
   migrationDetails: string;
   patternSummary: string;
+  birdcastDetails: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +82,7 @@ async function scoreWeather(
     parts.push('stable (no events)');
   }
 
-  score = Math.min(30, Math.max(0, score));
+  score = Math.min(25, Math.max(0, score));
   return { score, details: parts.join(', ') || 'none', signals: signalData };
 }
 
@@ -120,7 +122,7 @@ async function scoreSolunar(
     if (hasPrime) { score += 15; signalData.is_prime = true; }
   }
 
-  score = Math.min(20, Math.max(0, score));
+  score = Math.min(15, Math.max(0, score));
   return { score, moonPhase, signals: signalData };
 }
 
@@ -181,7 +183,7 @@ async function scoreMigration(
     details = `${history.length} recent observations, no spikes`;
   }
 
-  score = Math.min(30, Math.max(0, score));
+  score = Math.min(25, Math.max(0, score));
   return { score, details, signals: signalData };
 }
 
@@ -225,8 +227,46 @@ async function scorePattern(
     console.error(`[hunt-convergence-engine] Pattern search error for ${stateAbbr}:`, err);
   }
 
-  score = Math.min(20, Math.max(0, score));
+  score = Math.min(15, Math.max(0, score));
   return { score, summary, signals: signalData };
+}
+
+async function getBirdCastScore(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  stateAbbr: string,
+  date: string,
+): Promise<{ score: number; detail: string }> {
+  const threeDaysAgo = new Date(new Date(date).getTime() - 3 * 86400000).toISOString().split('T')[0];
+
+  const { data } = await supabase
+    .from('hunt_birdcast')
+    .select('cumulative_birds, is_high, avg_direction, avg_speed')
+    .eq('state_abbr', stateAbbr)
+    .gte('date', threeDaysAgo)
+    .lte('date', date)
+    .order('date', { ascending: false });
+
+  if (!data || data.length === 0) return { score: 0, detail: 'No BirdCast data' };
+
+  let score = 0;
+  const latest = data[0];
+  const details: string[] = [];
+
+  // High intensity flag
+  if (latest.is_high) { score += 10; details.push('high intensity'); }
+
+  // Volume-based scoring
+  const birds = latest.cumulative_birds || 0;
+  if (birds > 1000000) { score += 5; details.push(`${(birds / 1e6).toFixed(1)}M birds`); }
+  else if (birds > 500000) { score += 3; details.push(`${(birds / 1e3).toFixed(0)}K birds`); }
+  else if (birds > 100000) { score += 1; details.push(`${(birds / 1e3).toFixed(0)}K birds`); }
+
+  // Multi-day activity bonus
+  const activeDays = data.filter((d: { cumulative_birds: number | null }) => (d.cumulative_birds || 0) > 50000).length;
+  if (activeDays >= 3) { score += 5; details.push('3-day streak'); }
+  else if (activeDays >= 2) { score += 3; details.push('2-day activity'); }
+
+  return { score: Math.min(score, 20), detail: details.join(', ') || 'Low activity' };
 }
 
 // ---------------------------------------------------------------------------
@@ -241,11 +281,12 @@ async function scoreState(
 ): Promise<ScoreResult> {
   const stateName = STATE_NAMES[stateAbbr] || stateAbbr;
 
-  // Run weather, solunar, migration in parallel (pattern depends on their results)
-  const [weatherResult, solunarResult, migrationResult] = await Promise.all([
+  // Run weather, solunar, migration, birdcast in parallel (pattern depends on their results)
+  const [weatherResult, solunarResult, migrationResult, birdcastResult] = await Promise.all([
     scoreWeather(supabase, stateAbbr, today, endDate),
     scoreSolunar(supabase, today, endDate),
     scoreMigration(supabase, stateAbbr, today),
+    getBirdCastScore(supabase, stateAbbr, today),
   ]);
 
   // Pattern depends on the other components' details
@@ -259,7 +300,7 @@ async function scoreState(
   );
 
   const total = Math.min(100, Math.max(0,
-    weatherResult.score + solunarResult.score + migrationResult.score + patternResult.score
+    weatherResult.score + solunarResult.score + migrationResult.score + patternResult.score + birdcastResult.score
   ));
 
   // Build reasoning
@@ -267,6 +308,7 @@ async function scoreState(
   if (weatherResult.score > 10) parts.push(`Weather active: ${weatherResult.details}`);
   if (solunarResult.score > 10) parts.push(`Moon favorable: ${solunarResult.moonPhase}`);
   if (migrationResult.score > 10) parts.push(`Migration elevated: ${migrationResult.details}`);
+  if (birdcastResult.score > 5) parts.push(`BirdCast: ${birdcastResult.detail}`);
   if (patternResult.score > 5) parts.push(`Historical match: ${patternResult.summary}`);
   const reasoning = `Score ${total}/100. ${parts.join('. ')}.`;
 
@@ -276,6 +318,7 @@ async function scoreState(
     solunar: solunarResult.score,
     migration: migrationResult.score,
     pattern: patternResult.score,
+    birdcast: birdcastResult.score,
     score: total,
     reasoning,
     signals: {
@@ -283,11 +326,13 @@ async function scoreState(
       solunar: solunarResult.signals,
       migration: migrationResult.signals,
       pattern: patternResult.signals,
+      birdcast: { detail: birdcastResult.detail },
     },
     weatherDetails: weatherResult.details,
     moonPhase: solunarResult.moonPhase,
     migrationDetails: migrationResult.details,
     patternSummary: patternResult.summary,
+    birdcastDetails: birdcastResult.detail,
   };
 }
 
@@ -369,6 +414,7 @@ serve(async (req) => {
       solunar_component: r.solunar,
       migration_component: r.migration,
       pattern_component: r.pattern,
+      birdcast_component: r.birdcast,
       reasoning: r.reasoning,
       signals: r.signals,
       national_rank: (r as ScoreResult & { national_rank?: number }).national_rank ?? null,
@@ -409,7 +455,7 @@ serve(async (req) => {
     if (top10.length > 0) {
       console.log(`[hunt-convergence-engine] Embedding top ${top10.length} states`);
       const embedTexts = top10.map(r =>
-        `convergence | ${r.state_abbr} | ${today} | score:${r.score}/100 | ${r.reasoning}`
+        `convergence | ${r.state_abbr} | ${today} | score:${r.score}/100 | birdcast:${r.birdcastDetails} | ${r.reasoning}`
       );
 
       try {
