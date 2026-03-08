@@ -53,57 +53,73 @@ function isInMigrationSeason(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Parse BirdCast NUXT data from HTML
+// Parse BirdCast NUXT data from HTML via eval of the IIFE
 // ---------------------------------------------------------------------------
 
 function parseBirdcastHtml(html: string): BirdcastData | null {
-  // Strategy 1: Find window.__NUXT__ block
-  const nuxtMatch = html.match(/window\.__NUXT__\s*=\s*/);
+  // The NUXT payload is a minified IIFE: window.__NUXT__=(function(a,b,...){...})(v1,v2,...)
+  // Regex won't work because field assignments use variable aliases.
+  // We eval the IIFE to get the resolved object, then navigate to the migration data.
+  const nuxtMatch = html.match(/window\.__NUXT__\s*=\s*([\s\S]*?)<\/script>/);
   if (!nuxtMatch) {
     console.warn('[hunt-birdcast] No __NUXT__ block found in HTML');
     return null;
   }
 
-  // Try to extract cumulativeBirds directly from the raw text
-  const cumulativeMatch = html.match(/cumulativeBirds["\s:]+(\d+)/);
-  const isHighMatch = html.match(/isHigh["\s:]+(\w+)/);
-
-  if (!cumulativeMatch) {
-    console.warn('[hunt-birdcast] Could not extract cumulativeBirds from HTML');
+  let nuxtObj: Record<string, unknown>;
+  try {
+    // deno-lint-ignore no-eval
+    nuxtObj = eval(nuxtMatch[1].replace(/;$/, ''));
+  } catch (e) {
+    console.warn(`[hunt-birdcast] Failed to eval NUXT payload: ${e}`);
     return null;
   }
 
-  const cumulativeBirds = parseInt(cumulativeMatch[1], 10);
-  const isHigh = isHighMatch ? isHighMatch[1] === 'true' : false;
-
-  // Extract nightSeries data points
-  const nightSeries: NightReading[] = [];
-
-  // Look for numAloft values in the NUXT payload
-  const numAloftMatches = [...html.matchAll(/numAloft["\s:]+(\d+(?:\.\d+)?)/g)];
-  const meanHeightMatches = [...html.matchAll(/meanHeight["\s:]+(\d+(?:\.\d+)?)/g)];
-  const avgDirectionMatches = [...html.matchAll(/avgDirection["\s:]+(\d+(?:\.\d+)?)/g)];
-  const avgSpeedMatches = [...html.matchAll(/avgSpeed["\s:]+(\d+(?:\.\d+)?)/g)];
-  const vidMatches = [...html.matchAll(/vid["\s:]+(\d+(?:\.\d+)?)/g)];
-
-  const seriesLen = Math.min(
-    numAloftMatches.length,
-    meanHeightMatches.length,
-    avgDirectionMatches.length,
-    avgSpeedMatches.length,
-  );
-
-  for (let i = 0; i < seriesLen; i++) {
-    nightSeries.push({
-      numAloft: parseFloat(numAloftMatches[i][1]),
-      meanHeight: parseFloat(meanHeightMatches[i][1]),
-      avgDirection: parseFloat(avgDirectionMatches[i][1]),
-      avgSpeed: parseFloat(avgSpeedMatches[i][1]),
-      vid: vidMatches[i] ? parseFloat(vidMatches[i][1]) : 0,
-    });
+  // Navigate: fetch["Region:0"].migrationLiveDataFromApi
+  const fetchData = (nuxtObj as Record<string, unknown>)?.fetch as Record<string, Record<string, unknown>> | undefined;
+  if (!fetchData) {
+    console.warn('[hunt-birdcast] No fetch data in NUXT object');
+    return null;
   }
 
-  return { cumulativeBirds, isHigh, nightSeries };
+  const regionData = fetchData['Region:0'];
+  if (!regionData) {
+    console.warn('[hunt-birdcast] No Region:0 in fetch data');
+    return null;
+  }
+
+  const liveData = regionData.migrationLiveDataFromApi as {
+    cumulativeBirds?: number;
+    isHigh?: boolean;
+    nightSeries?: Array<{
+      numAloft?: number;
+      meanHeight?: number;
+      avgDirection?: number;
+      avgSpeed?: number;
+      vid?: number;
+    }>;
+  } | undefined;
+
+  if (!liveData) {
+    console.warn('[hunt-birdcast] No migrationLiveDataFromApi in Region:0');
+    return null;
+  }
+
+  const nightSeries: NightReading[] = (liveData.nightSeries || [])
+    .filter(r => r.numAloft != null)
+    .map(r => ({
+      numAloft: r.numAloft ?? 0,
+      meanHeight: r.meanHeight ?? 0,
+      avgDirection: r.avgDirection ?? 0,
+      avgSpeed: r.avgSpeed ?? 0,
+      vid: r.vid ?? 0,
+    }));
+
+  return {
+    cumulativeBirds: liveData.cumulativeBirds ?? 0,
+    isHigh: liveData.isHigh ?? false,
+    nightSeries,
+  };
 }
 
 // ---------------------------------------------------------------------------
