@@ -3,17 +3,11 @@ import { useState, useEffect } from "react";
 export interface WeatherTiles {
   radar: string | null;
   temperature: string | null;
-  wind: string | null;
-  clouds: string | null;
-  pressure: string | null;
 }
 
 const EMPTY: WeatherTiles = {
   radar: null,
   temperature: null,
-  wind: null,
-  clouds: null,
-  pressure: null,
 };
 
 export function useWeatherTiles(): WeatherTiles {
@@ -23,19 +17,10 @@ export function useWeatherTiles(): WeatherTiles {
     let cancelled = false;
     const owmKey = import.meta.env.VITE_OWM_API_KEY;
 
-    // OWM layers (temp, wind, clouds, pressure) — only if key exists
-    const owmTiles: Partial<WeatherTiles> = {};
+    // OWM temperature tiles — only if key exists
+    let tempUrl: string | null = null;
     if (owmKey) {
-      const layers: Record<string, string> = {
-        temperature: "temp_new",
-        wind: "wind_new",
-        clouds: "clouds_new",
-        pressure: "pressure_new",
-      };
-      for (const [key, layer] of Object.entries(layers)) {
-        owmTiles[key as keyof WeatherTiles] =
-          `https://tile.openweathermap.org/map/${layer}/{z}/{x}/{y}.png?appid=${owmKey}`;
-      }
+      tempUrl = `https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=${owmKey}`;
     }
 
     // Always use RainViewer for radar (free, no key, updates every 10min)
@@ -51,21 +36,15 @@ export function useWeatherTiles(): WeatherTiles {
         if (!cancelled) {
           setTiles({
             radar: url,
-            temperature: owmTiles.temperature || null,
-            wind: owmTiles.wind || null,
-            clouds: owmTiles.clouds || null,
-            pressure: owmTiles.pressure || null,
+            temperature: tempUrl,
           });
         }
       } catch {
         // Still set OWM tiles even if radar fails
-        if (!cancelled && owmKey) {
+        if (!cancelled && tempUrl) {
           setTiles({
             radar: null,
-            temperature: owmTiles.temperature || null,
-            wind: owmTiles.wind || null,
-            clouds: owmTiles.clouds || null,
-            pressure: owmTiles.pressure || null,
+            temperature: tempUrl,
           });
         }
       }

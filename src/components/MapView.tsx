@@ -15,8 +15,12 @@ import { fipsToAbbr } from "@/data/fips";
 import { getPrimarySeasonForState, getStatesForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
 import { getPopupHTML } from "@/components/MapPopup";
+import { getSightingPopupHTML } from "@/components/SightingPopup";
 import { stateFlyways, FLYWAY_COLORS, isFlywaySpecies } from "@/data/flyways";
-import type { FeatureCollection, Feature, Geometry, Position } from "geojson";
+import { FLYWAY_CORRIDORS, FLYWAY_FLOW_LINES } from "@/data/flywayPaths";
+import { calculateTerminator, calculateGoldenHour } from "@/lib/terminator";
+import type { FeatureCollection, Feature, Geometry, Position, LineString } from "geojson";
+import { generateIsobars } from "@/lib/isobars";
 import type { WeatherTiles } from "@/hooks/useWeatherTiles";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -34,13 +38,48 @@ export interface MapOverlays {
   trails: boolean;
 }
 
-// Mode -> layer mapping
-const MODE_LAYERS: Record<MapMode, Partial<MapOverlays> & { radar?: boolean; tempHeatmap?: boolean; windArrows?: boolean }> = {
-  default: {},
-  scout: { wetlands: true, waterBodies: true, waterways: true, parks: true, trails: true },
-  weather: { radar: true, tempHeatmap: true, windArrows: true },
-  terrain: { landCover: true, contours: true },
-  intel: { wetlands: true, waterBodies: true, waterways: true, radar: true, tempHeatmap: true, windArrows: true },
+// Master layer-to-mode visibility map
+// Each layer lists which modes it should be visible in
+const LAYER_MODES: Record<string, Set<MapMode>> = {
+  // Overlays — Scout/Terrain
+  'wetland-fill': new Set(['scout']),
+  'water-fill': new Set(['scout']),
+  'waterway-lines': new Set(['scout']),
+  'waterway-intermittent': new Set(['scout']),
+  'waterway-labels': new Set(['scout']),
+  'parks-fill': new Set(['scout']),
+  'trails-lines': new Set(['scout']),
+  'agriculture-fill': new Set(),
+  'landcover-fill': new Set(['terrain']),
+  'contour-lines': new Set(['terrain']),
+  'contour-labels': new Set(['terrain']),
+  // Weather
+  'radar-overlay': new Set(['weather']),
+  'temp-tiles-overlay': new Set(),
+  'wind-flow': new Set(['weather', 'intel']),
+  'wind-speed-labels': new Set(['weather', 'intel']),
+  'isobar-lines': new Set(['weather']),
+  'pressure-center-labels': new Set(['weather']),
+  'nws-alert-fill': new Set(['weather', 'intel']),
+  'nws-alert-outline': new Set(['weather', 'intel']),
+  'nws-alert-labels': new Set(['weather', 'intel']),
+  // Intel — convergence + migration
+  'convergence-score-bg': new Set(['intel']),
+  'convergence-score-label': new Set(['intel']),
+  'convergence-pulse': new Set(['intel']),
+  'migration-front-line': new Set(['intel']),
+  'migration-front-label': new Set(['intel']),
+  // Flyways
+  'flyway-corridor-fill': new Set(['default', 'scout', 'intel']),
+  'flyway-flow-lines': new Set(['default', 'intel']),
+  'flyway-corridor-labels': new Set(['default', 'intel']),
+  // eBird
+  'ebird-heatmap': new Set(['default', 'intel']),
+  'ebird-dots': new Set(['scout']),
+  'ebird-clusters': new Set(['scout']),
+  'ebird-cluster-count': new Set(['scout']),
+  // County boundaries
+  'county-fill': new Set(['scout', 'intel']),
 };
 
 function tempToColor(tempF: number): string {
@@ -63,6 +102,14 @@ function convergenceToColor(score: number): string {
   return 'rgba(100, 100, 100, 0.3)';                     // gray - nothing
 }
 
+function convergenceScoreColor(score: number): string {
+  if (score >= 81) return '#ef4444';
+  if (score >= 61) return '#fb923c';
+  if (score >= 41) return '#facc15';
+  if (score >= 21) return '#3b82f6';
+  return 'rgba(100,100,100,0.6)';
+}
+
 export interface MapViewProps {
   species: Species;
   selectedState: string | null;
@@ -81,6 +128,9 @@ export interface MapViewProps {
   onElevation?: (elevation: number | null) => void;
   mapMode?: MapMode;
   convergenceScores?: Map<string, number>;
+  nwsAlertsGeoJSON?: FeatureCollection | null;
+  migrationFrontLine?: Feature<LineString> | null;
+  scrubDate?: Date | null;
 }
 
 export interface MapViewRef {
@@ -117,6 +167,13 @@ function extractCoordinates(geometry: Geometry): Position[] {
   return coords;
 }
 
+function getConvergenceRank(abbr: string, scores?: Map<string, number>): number | null {
+  if (!scores || scores.size === 0) return null;
+  const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  const idx = sorted.findIndex(([a]) => a === abbr);
+  return idx >= 0 ? idx + 1 : null;
+}
+
 const STATE_NAMES: Record<string, string> = {
   AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",
   CO:"Colorado",CT:"Connecticut",DE:"Delaware",FL:"Florida",GA:"Georgia",
@@ -140,6 +197,17 @@ function computeCentroid(feature: Feature): [number, number] | null {
     sumLat += lat;
   }
   return [sumLng / coords.length, sumLat / coords.length];
+}
+
+function windFlowLine(center: [number, number], windDirDeg: number, lengthDeg: number = 0.5): [number, number][] {
+  // windDir is meteorological (direction FROM), flow goes opposite
+  const flowDirRad = ((windDirDeg + 180) % 360) * Math.PI / 180;
+  const dx = Math.sin(flowDirRad) * lengthDeg / 2;
+  const dy = Math.cos(flowDirRad) * lengthDeg / 2;
+  return [
+    [center[0] - dx, center[1] - dy],
+    [center[0] + dx, center[1] + dy],
+  ];
 }
 
 function buildFillExpression(
@@ -242,6 +310,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     onElevation,
     mapMode = 'default',
     convergenceScores,
+    nwsAlertsGeoJSON = null,
+    migrationFrontLine = null,
   },
   ref,
 ) {
@@ -249,6 +319,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const centroidsRef = useRef<Map<string, [number, number]>>(new Map());
   const pulseFrameRef = useRef<number>(0);
+  const dashStepRef = useRef<number>(0);
+  const lastDashTimeRef = useRef<number>(0);
   const statesGeoRef = useRef<FeatureCollection | null>(null);
   const loadedRef = useRef(false);
   const flyingRef = useRef(false);
@@ -361,6 +433,55 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Dawn/dusk terminator (night overlay + golden hour band)
+      if (!map.getSource("terminator")) {
+        const now = new Date();
+        map.addSource("terminator", {
+          type: "geojson",
+          data: calculateTerminator(now),
+        });
+      }
+      if (!map.getSource("golden-hour")) {
+        const now = new Date();
+        map.addSource("golden-hour", {
+          type: "geojson",
+          data: calculateGoldenHour(now),
+        });
+      }
+      if (!map.getLayer("golden-hour-fill")) {
+        map.addLayer({
+          id: "golden-hour-fill",
+          type: "fill",
+          source: "golden-hour",
+          paint: {
+            "fill-color": "rgba(255, 180, 50, 0.08)",
+            "fill-opacity": 0.8,
+          },
+        }, "states-fill");
+      }
+      if (!map.getLayer("terminator-fill")) {
+        map.addLayer({
+          id: "terminator-fill",
+          type: "fill",
+          source: "terminator",
+          paint: {
+            "fill-color": "rgba(0, 0, 20, 0.15)",
+            "fill-opacity": 1,
+          },
+        }, "states-fill");
+      }
+      if (!map.getLayer("terminator-line")) {
+        map.addLayer({
+          id: "terminator-line",
+          type: "line",
+          source: "terminator",
+          paint: {
+            "line-color": "rgba(255, 180, 50, 0.6)",
+            "line-width": 2,
+          },
+        });
+      }
+
       // Pulse
       if (!map.getLayer("states-pulse")) {
         map.addLayer({
@@ -417,6 +538,63 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           layout: {
             visibility:
               showFlyways && isFlywaySpecies(species) ? "visible" : "none",
+          },
+        });
+      }
+
+      // Flyway corridor shapes (geographic bands)
+      if (!map.getSource('flyway-corridors')) {
+        map.addSource('flyway-corridors', { type: 'geojson', data: FLYWAY_CORRIDORS });
+      }
+      if (!map.getLayer('flyway-corridor-fill')) {
+        map.addLayer({
+          id: 'flyway-corridor-fill',
+          type: 'fill',
+          source: 'flyway-corridors',
+          paint: {
+            'fill-color': ['get', 'color'],
+            'fill-opacity': 0.8,
+          },
+          layout: { visibility: 'none' },
+        }, 'states-fill');
+      }
+
+      // Flyway flow lines (animated center lines)
+      if (!map.getSource('flyway-flow')) {
+        map.addSource('flyway-flow', { type: 'geojson', data: FLYWAY_FLOW_LINES });
+      }
+      if (!map.getLayer('flyway-flow-lines')) {
+        map.addLayer({
+          id: 'flyway-flow-lines',
+          type: 'line',
+          source: 'flyway-flow',
+          paint: {
+            'line-color': ['get', 'lineColor'],
+            'line-width': 2,
+            'line-dasharray': [2, 2],
+          },
+          layout: { visibility: 'none' },
+        });
+      }
+
+      // Flyway corridor labels (along flow lines)
+      if (!map.getLayer('flyway-corridor-labels')) {
+        map.addLayer({
+          id: 'flyway-corridor-labels',
+          type: 'symbol',
+          source: 'flyway-flow',
+          layout: {
+            'symbol-placement': 'line',
+            'text-field': ['get', 'name'],
+            'text-size': 12,
+            'text-allow-overlap': false,
+            'text-ignore-placement': false,
+            visibility: 'none',
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': 'rgba(0, 0, 0, 0.8)',
+            'text-halo-width': 1.5,
           },
         });
       }
@@ -654,9 +832,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       const tileLayers: { id: string; url: string | null | undefined }[] = [
         { id: "radar", url: weatherTiles?.radar },
         { id: "temp-tiles", url: weatherTiles?.temperature },
-        { id: "wind-tiles", url: weatherTiles?.wind },
-        { id: "clouds-tiles", url: weatherTiles?.clouds },
-        { id: "pressure-tiles", url: weatherTiles?.pressure },
       ];
 
       for (const { id, url } of tileLayers) {
@@ -757,18 +932,41 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
-      // eBird sighting markers
+      // eBird sighting markers (clustered source)
+      const ebirdEmpty = { type: "FeatureCollection" as const, features: [] as any[] };
       if (!map.getSource("ebird-sightings")) {
         map.addSource("ebird-sightings", {
           type: "geojson",
-          data: sightingsGeoJSON || { type: "FeatureCollection", features: [] },
+          data: sightingsGeoJSON || ebirdEmpty,
+          cluster: true,
+          clusterMaxZoom: 14,
+          clusterRadius: 50,
         });
       }
+      // Separate non-clustered source for heatmap
+      if (!map.getSource("ebird-heatmap-source")) {
+        map.addSource("ebird-heatmap-source", { type: "geojson", data: sightingsGeoJSON || ebirdEmpty });
+      }
+      // eBird heatmap layer
+      if (!map.getLayer("ebird-heatmap")) {
+        map.addLayer({
+          id: "ebird-heatmap", type: "heatmap", source: "ebird-heatmap-source", minzoom: 3, maxzoom: 9,
+          paint: {
+            "heatmap-weight": ["interpolate", ["linear"], ["get", "count"], 0, 0.1, 5, 0.4, 20, 0.7, 100, 1],
+            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.3, 6, 0.8, 9, 1],
+            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 3, 15, 6, 25, 9, 35],
+            "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"], 0, "rgba(0,0,0,0)", 0.2, "rgba(16,185,129,0.3)", 0.4, "rgba(16,185,129,0.5)", 0.6, "rgba(245,158,11,0.6)", 0.8, "rgba(239,68,68,0.7)", 1, "rgba(239,68,68,0.85)"],
+            "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 3, 0.8, 7, 0.5, 9, 0],
+          },
+        });
+      }
+      // eBird individual dots (unclustered only)
       if (!map.getLayer("ebird-dots")) {
         map.addLayer({
           id: "ebird-dots",
           type: "circle",
           source: "ebird-sightings",
+          filter: ["!", ["has", "point_count"]],
           minzoom: 6,
           paint: {
             "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 10, 6],
@@ -787,42 +985,90 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
-      // Wind arrows source (populated by weather data)
+      // eBird cluster circles
+      if (!map.getLayer("ebird-clusters")) {
+        map.addLayer({
+          id: "ebird-clusters", type: "circle", source: "ebird-sightings",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": ["step", ["get", "point_count"], "#10b981", 10, "#f59e0b", 50, "#ef4444"],
+            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 50, 40],
+            "circle-opacity": 0.75,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "rgba(255,255,255,0.4)",
+          },
+        });
+      }
+      // eBird cluster count labels
+      if (!map.getLayer("ebird-cluster-count")) {
+        map.addLayer({
+          id: "ebird-cluster-count", type: "symbol", source: "ebird-sightings",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-size": 13,
+            "text-allow-overlap": true,
+          },
+          paint: { "text-color": "#ffffff" },
+        });
+      }
+
+      // Wind flow lines source (LineStrings for animated flow)
       if (!map.getSource("wind-arrows")) {
         map.addSource("wind-arrows", {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
         });
       }
-      if (!map.getLayer("wind-arrow-layer")) {
+      // Wind speed label points source
+      if (!map.getSource("wind-speed-points")) {
+        map.addSource("wind-speed-points", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("wind-flow")) {
         map.addLayer({
-          id: "wind-arrow-layer",
-          type: "symbol",
+          id: "wind-flow",
+          type: "line",
           source: "wind-arrows",
+          minzoom: 3,
           layout: {
-            "icon-image": "wind-arrow",
-            "icon-size": [
+            "line-cap": "round",
+            visibility: "none",
+          },
+          paint: {
+            "line-color": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              5, 0.5, 20, 1.0, 40, 1.4,
+              0, "rgba(255,255,255,0.8)",
+              10, "rgba(255,255,255,0.8)",
+              15, "rgba(34,211,238,0.9)",
+              30, "rgba(239,68,68,0.9)",
             ],
-            "icon-rotate": ["get", "windDir"],
-            "icon-rotation-alignment": "map",
-            "icon-allow-overlap": true,
-            "text-field": ["concat", ["to-string", ["round", ["get", "windSpeed"]]], ""],
+            "line-width": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              0, 1.5, 15, 2, 30, 3,
+            ],
+            "line-opacity": 0.6,
+            "line-dasharray": [2, 2],
+          },
+        });
+      }
+      if (!map.getLayer("wind-speed-labels")) {
+        map.addLayer({
+          id: "wind-speed-labels",
+          type: "symbol",
+          source: "wind-speed-points",
+          minzoom: 6,
+          layout: {
+            "text-field": ["concat", ["to-string", ["round", ["get", "windSpeed"]]], " mph"],
             "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
             "text-size": 10,
-            "text-offset": [0, 1.8],
             "text-allow-overlap": true,
             visibility: "none",
           },
           paint: {
-            "icon-color": [
-              "interpolate", ["linear"], ["get", "windSpeed"],
-              5, "rgba(255,255,255,0.5)",
-              15, "rgba(34,211,238,0.8)",
-              30, "rgba(239,68,68,0.9)",
-            ],
-            "icon-opacity": 0.9,
             "text-color": "rgba(255,255,255,0.7)",
             "text-halo-color": "rgba(0,0,0,0.8)",
             "text-halo-width": 1,
@@ -830,9 +1076,295 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Isobar contour lines source + layer
+      if (!map.getSource("isobar-lines")) {
+        map.addSource("isobar-lines", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("isobar-lines")) {
+        map.addLayer({
+          id: "isobar-lines",
+          type: "line",
+          source: "isobar-lines",
+          paint: {
+            "line-color": "rgba(150, 200, 255, 0.5)",
+            "line-width": [
+              "case",
+              ["get", "major"], 1.5,
+              1,
+            ],
+            "line-opacity": 0.6,
+          },
+          layout: { visibility: "none" },
+        });
+      }
+
+      // Pressure center labels (H/L markers)
+      if (!map.getSource("pressure-centers")) {
+        map.addSource("pressure-centers", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("pressure-center-labels")) {
+        map.addLayer({
+          id: "pressure-center-labels",
+          type: "symbol",
+          source: "pressure-centers",
+          layout: {
+            "text-field": ["concat", ["get", "type"], "\n", ["to-string", ["get", "pressure"]]],
+            "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+            "text-size": 22,
+            "text-allow-overlap": true,
+            "text-line-height": 1.1,
+            visibility: "none",
+          },
+          paint: {
+            "text-color": [
+              "match", ["get", "type"],
+              "H", "#3b82f6",
+              "L", "#ef4444",
+              "#ffffff",
+            ],
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 2,
+          },
+        });
+      }
+
+      // Convergence score labels (floating numbers over states in Intel mode)
+      if (!map.getSource("convergence-labels")) {
+        const convFeatures: Feature[] = [];
+        const scores = convergenceScores;
+        if (scores) {
+          for (const [abbr, score] of scores) {
+            const centroid = centroidsRef.current.get(abbr);
+            if (centroid) {
+              convFeatures.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: centroid },
+                properties: { abbr, score, scoreColor: convergenceScoreColor(score) },
+              });
+            }
+          }
+        }
+        map.addSource("convergence-labels", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: convFeatures },
+        });
+      }
+      if (!map.getLayer("convergence-score-bg")) {
+        map.addLayer({
+          id: "convergence-score-bg",
+          type: "symbol",
+          source: "convergence-labels",
+          minzoom: 3.5,
+          maxzoom: 7,
+          layout: {
+            "icon-image": "score-pill",
+            "icon-allow-overlap": true,
+            "icon-offset": [0, -18],
+            visibility: mapMode === 'intel' ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("convergence-score-label")) {
+        map.addLayer({
+          id: "convergence-score-label",
+          type: "symbol",
+          source: "convergence-labels",
+          minzoom: 3.5,
+          maxzoom: 7,
+          layout: {
+            "text-field": ["to-string", ["get", "score"]],
+            "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+            "text-size": [
+              "step", ["get", "score"],
+              11,   // 0-40: size 11
+              41, 12,  // 41-60: size 12
+              61, 13,  // 61-80: size 13
+              81, 14,  // 81+: size 14
+            ],
+            "text-allow-overlap": true,
+            "text-offset": [0, -1.5],
+            visibility: mapMode === 'intel' ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": [
+              "step", ["get", "score"],
+              "rgba(100,100,100,0.6)",  // 0-20
+              21, "#3b82f6",             // 21-40
+              41, "#facc15",             // 41-60
+              61, "#fb923c",             // 61-80
+              81, "#ef4444",             // 81+
+            ],
+            "text-halo-color": "rgba(0,0,0,0.9)",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
+      // Convergence hotspot pulsing rings (score >= 70)
+      if (!map.getSource("convergence-hotspots")) {
+        const hotspotFeatures: Feature[] = [];
+        if (convergenceScores) {
+          for (const [abbr, score] of convergenceScores) {
+            if (score < 70) continue;
+            const centroid = centroidsRef.current.get(abbr);
+            if (centroid) {
+              hotspotFeatures.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: centroid },
+                properties: { abbr, score, tier: score >= 81 ? 'fire' : 'hot' },
+              });
+            }
+          }
+        }
+        map.addSource("convergence-hotspots", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: hotspotFeatures },
+        });
+      }
+      if (!map.getLayer("convergence-pulse")) {
+        map.addLayer({
+          id: "convergence-pulse",
+          type: "symbol",
+          source: "convergence-hotspots",
+          layout: {
+            "icon-image": [
+              "match", ["get", "tier"],
+              "fire", "pulsing-dot-fire",
+              "pulsing-dot-hot",
+            ],
+            "icon-size": [
+              "interpolate", ["linear"], ["get", "score"],
+              70, 0.8,
+              85, 1.1,
+              100, 1.4,
+            ],
+            "icon-allow-overlap": true,
+            visibility: mapMode === 'intel' ? 'visible' : 'none',
+          },
+        });
+      }
+
+      // NWS weather alert polygons
+      const nwsEmpty: FeatureCollection = { type: "FeatureCollection", features: [] };
+      if (!map.getSource("nws-alerts")) {
+        map.addSource("nws-alerts", { type: "geojson", data: nwsAlertsGeoJSON || nwsEmpty });
+      }
+      if (!map.getLayer("nws-alert-fill")) {
+        map.addLayer({
+          id: "nws-alert-fill",
+          type: "fill",
+          source: "nws-alerts",
+          paint: {
+            "fill-color": [
+              "match", ["get", "severity"],
+              "Extreme", "rgba(239, 68, 68, 0.25)",
+              "Severe", "rgba(251, 146, 60, 0.25)",
+              "Moderate", "rgba(250, 204, 21, 0.2)",
+              "Minor", "rgba(96, 165, 250, 0.15)",
+              "rgba(96, 165, 250, 0.15)",
+            ],
+            "fill-opacity": 0.25,
+          },
+          layout: {
+            visibility: (mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("nws-alert-outline")) {
+        map.addLayer({
+          id: "nws-alert-outline",
+          type: "line",
+          source: "nws-alerts",
+          paint: {
+            "line-color": [
+              "match", ["get", "severity"],
+              "Extreme", "rgba(239, 68, 68, 0.6)",
+              "Severe", "rgba(251, 146, 60, 0.6)",
+              "Moderate", "rgba(250, 204, 21, 0.5)",
+              "Minor", "rgba(96, 165, 250, 0.4)",
+              "rgba(96, 165, 250, 0.4)",
+            ],
+            "line-width": 1.5,
+          },
+          layout: {
+            visibility: (mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("nws-alert-labels")) {
+        map.addLayer({
+          id: "nws-alert-labels",
+          type: "symbol",
+          source: "nws-alerts",
+          layout: {
+            "text-field": ["get", "event"],
+            "text-size": 10,
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-allow-overlap": false,
+            visibility: (mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": "#ffffff",
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
+      // Migration front line (animated dashed cyan line — Intel mode only)
+      if (!map.getSource("migration-front")) {
+        const frontData: FeatureCollection = migrationFrontLine
+          ? { type: "FeatureCollection", features: [migrationFrontLine] }
+          : { type: "FeatureCollection", features: [] };
+        map.addSource("migration-front", { type: "geojson", data: frontData });
+      }
+      if (!map.getLayer("migration-front-line")) {
+        map.addLayer({
+          id: "migration-front-line",
+          type: "line",
+          source: "migration-front",
+          paint: {
+            "line-color": "rgba(0, 255, 255, 0.7)",
+            "line-width": 2.5,
+            "line-dasharray": [4, 4],
+          },
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+            visibility: mapMode === 'intel' ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("migration-front-label")) {
+        map.addLayer({
+          id: "migration-front-label",
+          type: "symbol",
+          source: "migration-front",
+          layout: {
+            "text-field": ["get", "label"],
+            "text-size": 11,
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "symbol-placement": "line",
+            "text-allow-overlap": true,
+            visibility: mapMode === 'intel' ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": "rgba(0, 255, 255, 0.9)",
+            "text-halo-color": "rgba(0, 0, 0, 0.8)",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON],
+    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine],
   );
 
   const initMap = useCallback(() => {
@@ -854,24 +1386,80 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     prevStyleRef.current = isSatellite ? "satellite" : "dark";
 
     map.on("load", async () => {
-      // Create wind arrow icon (48px triangle, better visibility)
-      const arrowSize = 48;
-      const canvas = document.createElement("canvas");
-      canvas.width = arrowSize;
-      canvas.height = arrowSize;
-      const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(arrowSize / 2, 4);
-      ctx.lineTo(arrowSize / 2 + 12, arrowSize - 8);
-      ctx.lineTo(arrowSize / 2, arrowSize - 14);
-      ctx.lineTo(arrowSize / 2 - 12, arrowSize - 8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      map.addImage("wind-arrow", { width: arrowSize, height: arrowSize, data: ctx.getImageData(0, 0, arrowSize, arrowSize).data } as any);
+      // Create score pill background image (dark rounded rect)
+      const pillW = 40, pillH = 24, pillR = 6;
+      const pillCanvas = document.createElement("canvas");
+      pillCanvas.width = pillW;
+      pillCanvas.height = pillH;
+      const pCtx = pillCanvas.getContext("2d")!;
+      pCtx.beginPath();
+      pCtx.moveTo(pillR, 0);
+      pCtx.lineTo(pillW - pillR, 0);
+      pCtx.arcTo(pillW, 0, pillW, pillR, pillR);
+      pCtx.lineTo(pillW, pillH - pillR);
+      pCtx.arcTo(pillW, pillH, pillW - pillR, pillH, pillR);
+      pCtx.lineTo(pillR, pillH);
+      pCtx.arcTo(0, pillH, 0, pillH - pillR, pillR);
+      pCtx.lineTo(0, pillR);
+      pCtx.arcTo(0, 0, pillR, 0, pillR);
+      pCtx.closePath();
+      pCtx.fillStyle = "rgba(10,15,30,0.85)";
+      pCtx.fill();
+      map.addImage("score-pill", { width: pillW, height: pillH, data: pCtx.getImageData(0, 0, pillW, pillH).data } as any);
+
+      // Pulsing dot images for convergence hotspots (score >= 70)
+      const createPulsingDot = (color: [number, number, number]) => {
+        const dotSize = 80;
+        const pulsingDot: mapboxgl.StyleImageInterface & { context: CanvasRenderingContext2D | null; t: number } = {
+          width: dotSize,
+          height: dotSize,
+          context: null,
+          t: 0,
+          data: new Uint8Array(dotSize * dotSize * 4),
+          onAdd() {
+            const cv = document.createElement('canvas');
+            cv.width = dotSize;
+            cv.height = dotSize;
+            this.context = cv.getContext('2d');
+          },
+          render() {
+            this.t = (this.t + 1) % 120;
+            const progress = this.t / 120;
+            const radius = 10 + progress * 25;
+            const alpha = 1 - progress;
+            const cv = this.context;
+            if (!cv) return false;
+            cv.clearRect(0, 0, dotSize, dotSize);
+            // Outer expanding ring
+            cv.beginPath();
+            cv.arc(dotSize / 2, dotSize / 2, radius, 0, Math.PI * 2);
+            cv.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha * 0.6})`;
+            cv.lineWidth = 3;
+            cv.stroke();
+            // Second ring (offset phase)
+            const progress2 = ((this.t + 60) % 120) / 120;
+            const radius2 = 10 + progress2 * 25;
+            const alpha2 = 1 - progress2;
+            cv.beginPath();
+            cv.arc(dotSize / 2, dotSize / 2, radius2, 0, Math.PI * 2);
+            cv.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha2 * 0.4})`;
+            cv.lineWidth = 2;
+            cv.stroke();
+            // Center dot
+            cv.beginPath();
+            cv.arc(dotSize / 2, dotSize / 2, 5, 0, Math.PI * 2);
+            cv.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.9)`;
+            cv.fill();
+            this.data = cv.getImageData(0, 0, dotSize, dotSize).data as any;
+            map.triggerRepaint();
+            return true;
+          },
+        };
+        return pulsingDot;
+      };
+
+      map.addImage('pulsing-dot-fire', createPulsingDot([239, 68, 68]) as any, { pixelRatio: 2 });
+      map.addImage('pulsing-dot-hot', createPulsingDot([251, 146, 60]) as any, { pixelRatio: 2 });
 
       const response = await fetch(TOPO_URL);
       const topoData = (await response.json()) as Topology;
@@ -919,6 +1507,68 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       onSelectState(abbr);
     });
 
+    // eBird cluster click — zoom to expand
+    map.on("click", "ebird-clusters", (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const clusterId = e.features[0].properties?.cluster_id;
+      const source = map.getSource("ebird-sightings") as mapboxgl.GeoJSONSource;
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err || zoom == null) return;
+        const coords = (e.features![0].geometry as any).coordinates as [number, number];
+        map.flyTo({ center: coords, zoom, duration: 500 });
+      });
+    });
+
+    // eBird dot click — show sighting popup
+    map.on("click", "ebird-dots", (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties || {};
+      const coords = (e.features[0].geometry as any).coordinates.slice() as [number, number];
+      while (Math.abs(e.lngLat.lng - coords[0]) > 180) {
+        coords[0] += e.lngLat.lng > coords[0] ? 360 : -360;
+      }
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10 })
+        .setLngLat(coords)
+        .setHTML(getSightingPopupHTML(props.name || "Unknown", props.count || 0, props.location || "", props.date || "", props.recency || "old"))
+        .addTo(map);
+    });
+
+    // eBird cursor changes
+    map.on("mouseenter", "ebird-clusters", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "ebird-clusters", () => { map.getCanvas().style.cursor = ""; });
+    map.on("mouseenter", "ebird-dots", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "ebird-dots", () => { map.getCanvas().style.cursor = ""; });
+
+    // NWS alert click — show popup with details
+    map.on("click", "nws-alert-fill", (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties || {};
+      const severity = props.severity || 'Minor';
+      const severityColors: Record<string, string> = {
+        Extreme: '#ef4444', Severe: '#fb923c', Moderate: '#facc15', Minor: '#60a5fa',
+      };
+      const color = severityColors[severity] || '#60a5fa';
+      const onset = props.onset ? new Date(props.onset).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      const expires = props.expires ? new Date(props.expires).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+      const timeRange = onset && expires ? `${onset} - ${expires}` : (onset || expires || '');
+      const html = `
+        <div style="max-width:280px;font-family:system-ui,sans-serif;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="background:${color};color:#000;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;">${severity}</span>
+          </div>
+          <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;">${props.headline || props.event || 'Weather Alert'}</div>
+          ${timeRange ? `<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:6px;">${timeRange}</div>` : ''}
+          <div style="font-size:11px;color:rgba(255,255,255,0.7);max-height:120px;overflow-y:auto;line-height:1.4;">${(props.description || '').slice(0, 300)}${(props.description || '').length > 300 ? '...' : ''}</div>
+        </div>
+      `;
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10, maxWidth: '300px' })
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(map);
+    });
+    map.on("mouseenter", "nws-alert-fill", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "nws-alert-fill", () => { map.getCanvas().style.cursor = ""; });
+
     // Cursor + popup
     map.on("mouseenter", "states-fill", (e) => {
       if (e.features?.[0]?.properties?.abbr) {
@@ -937,7 +1587,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               offset: 10,
             })
               .setLngLat(centroid)
-              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr)))
+              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr), getConvergenceRank(abbr, convergenceRef.current)))
               .addTo(map);
           }
         }
@@ -976,6 +1626,53 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       const opacity = 0.35 + t * 0.3;
 
       map.setPaintProperty("states-pulse", "fill-opacity", opacity);
+
+      // NWS alert fill pulsing opacity
+      if (map.getLayer("nws-alert-fill")) {
+        const nwsOpacity = 0.15 + t * 0.2;
+        map.setPaintProperty("nws-alert-fill", "fill-opacity", nwsOpacity);
+      }
+
+      // Animated wind flow dash-array (~10fps for performance)
+      const now = Date.now();
+      if (map.getLayer("wind-flow") && now - lastDashTimeRef.current > 100) {
+        lastDashTimeRef.current = now;
+        const step = dashStepRef.current % 4;
+        dashStepRef.current++;
+        const dashArrays: [number, number, number, number][] = [
+          [0, 2, 2, 0],
+          [1, 2, 1, 0],
+          [2, 2, 0, 0],
+          [0, 1, 2, 1],
+        ];
+        map.setPaintProperty("wind-flow", "line-dasharray", dashArrays[step]);
+      }
+
+      // Animated migration front dash-array (marching ants, same timing as wind)
+      if (map.getLayer("migration-front-line") && now - lastDashTimeRef.current < 200) {
+        const migStep = dashStepRef.current % 4;
+        const migDash: [number, number, number, number][] = [
+          [0, 4, 4, 0],
+          [1, 4, 3, 0],
+          [2, 4, 2, 0],
+          [3, 4, 1, 0],
+        ];
+        map.setPaintProperty("migration-front-line", "line-dasharray", migDash[migStep]);
+      }
+
+      // Animated flyway flow dash-array (marching ants, same timing as wind)
+      if (map.getLayer("flyway-flow-lines") && now - lastDashTimeRef.current < 200) {
+        // Reuse dashStepRef — already incremented above for wind
+        const flywayStep = dashStepRef.current % 4;
+        // Fall/winter (Oct-Feb): south direction (forward dash). Spring (Mar-Sep): reverse.
+        const month = new Date().getMonth(); // 0-indexed
+        const isFallWinter = month >= 9 || month <= 1; // Oct(9)-Feb(1)
+        const flywayDash: [number, number, number, number][] = isFallWinter
+          ? [[0, 2, 2, 0], [1, 2, 1, 0], [2, 2, 0, 0], [0, 1, 2, 1]]
+          : [[2, 2, 0, 0], [1, 2, 1, 0], [0, 2, 2, 0], [0, 1, 2, 1]];
+        map.setPaintProperty("flyway-flow-lines", "line-dasharray", flywayDash[flywayStep]);
+      }
+
       pulseFrameRef.current = requestAnimationFrame(animate);
     };
     cancelAnimationFrame(pulseFrameRef.current);
@@ -1067,9 +1764,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const tileEntries: { id: string; url: string | null | undefined }[] = [
       { id: "radar", url: weatherTiles.radar },
       { id: "temp-tiles", url: weatherTiles.temperature },
-      { id: "wind-tiles", url: weatherTiles.wind },
-      { id: "clouds-tiles", url: weatherTiles.clouds },
-      { id: "pressure-tiles", url: weatherTiles.pressure },
     ];
 
     for (const { id, url } of tileEntries) {
@@ -1103,7 +1797,102 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (source && sightingsGeoJSON) {
       source.setData(sightingsGeoJSON);
     }
-  }, [sightingsGeoJSON]);
+    const heatmapSource = map.getSource("ebird-heatmap-source") as mapboxgl.GeoJSONSource | undefined;
+    if (!heatmapSource) return;
+
+    if (sightingsGeoJSON && sightingsGeoJSON.features.length > 0) {
+      // Use real sighting data when available (zoomed in)
+      heatmapSource.setData(sightingsGeoJSON);
+    } else if (convergenceScores && convergenceScores.size > 0) {
+      // At national zoom, use convergence scores as heatmap proxy
+      const features: Feature[] = [];
+      for (const [abbr, score] of convergenceScores) {
+        const centroid = centroidsRef.current.get(abbr);
+        if (centroid && score > 20) {
+          const pointCount = Math.ceil(score / 20); // 1-5 points per state
+          for (let i = 0; i < pointCount; i++) {
+            // Deterministic jitter so points don't jump on re-render
+            const jitterX = Math.sin(abbr.charCodeAt(0) * 7 + abbr.charCodeAt(1) * 13 + i * 17) * 0.5;
+            const jitterY = Math.cos(abbr.charCodeAt(0) * 11 + abbr.charCodeAt(1) * 3 + i * 23) * 0.5;
+            features.push({
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [centroid[0] + jitterX, centroid[1] + jitterY],
+              },
+              properties: { count: score, recency: 'today' },
+            });
+          }
+        }
+      }
+      heatmapSource.setData({ type: 'FeatureCollection', features });
+    }
+  }, [sightingsGeoJSON, convergenceScores]);
+
+  // Update NWS alerts data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !nwsAlertsGeoJSON) return;
+
+    const source = map.getSource("nws-alerts") as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(nwsAlertsGeoJSON);
+    }
+  }, [nwsAlertsGeoJSON]);
+
+  // Update migration front line when data changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const source = map.getSource("migration-front") as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      const data: FeatureCollection = migrationFrontLine
+        ? { type: "FeatureCollection", features: [migrationFrontLine] }
+        : { type: "FeatureCollection", features: [] };
+      source.setData(data);
+    }
+  }, [migrationFrontLine]);
+
+  // Update convergence score labels when scores change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !convergenceScores) return;
+
+    const source = map.getSource("convergence-labels") as mapboxgl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    const features: Feature[] = [];
+    for (const [abbr, score] of convergenceScores) {
+      const centroid = centroidsRef.current.get(abbr);
+      if (centroid) {
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: centroid },
+          properties: { abbr, score, scoreColor: convergenceScoreColor(score) },
+        });
+      }
+    }
+    source.setData({ type: "FeatureCollection", features });
+
+    // Also update hotspot pulsing rings
+    const hotspotSource = map.getSource("convergence-hotspots") as mapboxgl.GeoJSONSource | undefined;
+    if (hotspotSource) {
+      const hotspotFeatures: Feature[] = [];
+      for (const [abbr, score] of convergenceScores) {
+        if (score < 70) continue;
+        const centroid = centroidsRef.current.get(abbr);
+        if (centroid) {
+          hotspotFeatures.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: centroid },
+            properties: { abbr, score, tier: score >= 81 ? 'fire' : 'hot' },
+          });
+        }
+      }
+      hotspotSource.setData({ type: "FeatureCollection", features: hotspotFeatures });
+    }
+  }, [convergenceScores]);
 
   // Toggle overlay visibility
   useEffect(() => {
@@ -1131,61 +1920,19 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
   }, [overlays]);
 
-  // Mode-driven layer activation + temperature heatmap + wind arrows + weather tiles
+  // Mode-driven layer visibility + state fill coloring + wind/isobar data
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
 
-    const modeConfig = MODE_LAYERS[mapMode];
-    const showTempHeatmap = !!modeConfig.tempHeatmap;
-    const showWindArrows = !!modeConfig.windArrows;
-    const hasRadar = !!weatherTiles?.radar;
-
-    // Apply overlay visibility from mode
-    const layerMap: Record<string, boolean> = {
-      'wetland-fill': !!modeConfig.wetlands,
-      'water-fill': !!modeConfig.waterBodies,
-      'landcover-fill': !!modeConfig.landCover,
-      'contour-lines': !!modeConfig.contours,
-      'contour-labels': !!modeConfig.contours,
-      'waterway-lines': !!modeConfig.waterways,
-      'waterway-intermittent': !!modeConfig.waterways,
-      'waterway-labels': !!modeConfig.waterways,
-      'agriculture-fill': !!modeConfig.agriculture,
-      'parks-fill': !!modeConfig.parks,
-      'trails-lines': !!modeConfig.trails,
-      'wind-arrow-layer': showWindArrows,
-    };
-
-    for (const [layerId, visible] of Object.entries(layerMap)) {
+    // --- BLOCK 1: Layer visibility (driven by LAYER_MODES master map) ---
+    for (const [layerId, modes] of Object.entries(LAYER_MODES)) {
       if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+        map.setLayoutProperty(layerId, 'visibility', modes.has(mapMode) ? 'visible' : 'none');
       }
     }
 
-    // Weather tile overlays — mode-driven visibility
-    const showRadarTile = !!modeConfig.radar && hasRadar;
-    const showTempTile = (mapMode === 'weather' || mapMode === 'intel') && !!weatherTiles?.temperature;
-    const weatherTileVis: Record<string, boolean> = {
-      'radar-overlay': showRadarTile,
-      'temp-tiles-overlay': showTempTile,
-      'wind-tiles-overlay': false,
-      'clouds-tiles-overlay': false,
-      'pressure-tiles-overlay': false,
-    };
-    for (const [layerId, visible] of Object.entries(weatherTileVis)) {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
-      }
-    }
-
-    // County layer visibility — show in Scout/Intel at state zoom
-    const showCounty = mapMode === 'scout' || mapMode === 'intel';
-    if (map.getLayer('county-fill')) {
-      map.setLayoutProperty('county-fill', 'visibility', showCounty ? 'visible' : 'none');
-    }
-
-    // State fill — mode-specific behavior (Build 2b + 5a)
+    // --- BLOCK 2: State fill coloring (separate from visibility) ---
     if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
       for (const [abbr, score] of convergenceScores) {
@@ -1213,7 +1960,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.setPaintProperty("states-fill", "fill-opacity", 0.7);
       }
     } else if (mapMode === 'scout' && map.getLayer("states-fill")) {
-      // Scout mode: muted teal tint on all states
       const entries: string[] = [];
       for (const abbr of statesWithData) {
         entries.push(abbr, 'rgba(20, 184, 166, 0.35)');
@@ -1227,7 +1973,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.setPaintProperty("states-fill", "fill-opacity", 0.5);
       }
     } else if (mapMode === 'terrain' && map.getLayer("states-fill")) {
-      // Terrain mode: muted earth tones
       const entries: string[] = [];
       for (const abbr of statesWithData) {
         entries.push(abbr, 'rgba(139, 119, 80, 0.25)');
@@ -1241,40 +1986,72 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.setPaintProperty("states-fill", "fill-opacity", 0.5);
       }
     } else if (map.getLayer("states-fill")) {
-      // Default: species-based season fills
       map.setPaintProperty("states-fill", "fill-color", buildFillExpression(species, selectedState));
       map.setPaintProperty("states-fill", "fill-opacity", 0.5);
     }
 
-    // State outlines — stronger in data modes (Build 5b)
+    // State outlines — stronger in data modes
     if (map.getLayer("states-line")) {
       const isDataMode = mapMode === 'intel' || mapMode === 'weather';
       map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : 0.8);
       map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)");
     }
 
-    // Selected state outline — brighter (Build 5c)
+    // Selected state outline
     if (map.getLayer("states-selected-outline")) {
       map.setPaintProperty("states-selected-outline", "line-width", 2.5);
       map.setPaintProperty("states-selected-outline", "line-opacity", 0.9);
     }
 
-    // Wind arrows: update GeoJSON with current weather data (Build 4 — lower threshold)
-    if (showWindArrows && weatherCache && weatherCache.size > 0) {
-      const features: Feature[] = [];
+    // --- BLOCK 3: Wind flow + isobar data generation ---
+    const showWind = LAYER_MODES['wind-flow'].has(mapMode);
+    if (showWind && weatherCache && weatherCache.size > 0) {
+      const lineFeatures: Feature[] = [];
+      const pointFeatures: Feature[] = [];
       for (const [abbr, w] of weatherCache) {
         const centroid = centroidsRef.current.get(abbr);
         if (centroid && w.wind > 1) {
-          features.push({
+          const coords = windFlowLine(centroid, w.windDir);
+          lineFeatures.push({
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: coords },
+            properties: { abbr, windSpeed: w.wind },
+          });
+          pointFeatures.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: centroid },
-            properties: { abbr, windDir: w.windDir, windSpeed: w.wind },
+            properties: { abbr, windSpeed: w.wind },
           });
         }
       }
-      const source = map.getSource("wind-arrows") as mapboxgl.GeoJSONSource | undefined;
-      if (source) {
-        source.setData({ type: "FeatureCollection", features });
+      const lineSource = map.getSource("wind-arrows") as mapboxgl.GeoJSONSource | undefined;
+      if (lineSource) {
+        lineSource.setData({ type: "FeatureCollection", features: lineFeatures });
+      }
+      const pointSource = map.getSource("wind-speed-points") as mapboxgl.GeoJSONSource | undefined;
+      if (pointSource) {
+        pointSource.setData({ type: "FeatureCollection", features: pointFeatures });
+      }
+    }
+
+    if (showWind && weatherCache && weatherCache.size > 0) {
+      const pressurePoints = [] as { lng: number; lat: number; pressure: number }[];
+      for (const [abbr, w] of weatherCache) {
+        const centroid = centroidsRef.current.get(abbr);
+        if (centroid && w.pressure > 0) {
+          pressurePoints.push({ lng: centroid[0], lat: centroid[1], pressure: w.pressure });
+        }
+      }
+      if (pressurePoints.length >= 3) {
+        const { contours, centers } = generateIsobars(pressurePoints);
+        const isobarSource = map.getSource("isobar-lines") as mapboxgl.GeoJSONSource | undefined;
+        if (isobarSource) {
+          isobarSource.setData(contours as any);
+        }
+        const centerSource = map.getSource("pressure-centers") as mapboxgl.GeoJSONSource | undefined;
+        if (centerSource) {
+          centerSource.setData(centers as any);
+        }
       }
     }
   }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData]);
@@ -1296,6 +2073,24 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on('zoom', onZoom);
     return () => { map.off('zoom', onZoom); };
   }, [mapMode]);
+
+  // Dawn/dusk terminator: update every 60 seconds
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    const update = () => {
+      const now = new Date();
+      const terminatorSrc = map.getSource("terminator") as mapboxgl.GeoJSONSource | undefined;
+      const goldenSrc = map.getSource("golden-hour") as mapboxgl.GeoJSONSource | undefined;
+      if (terminatorSrc) terminatorSrc.setData(calculateTerminator(now));
+      if (goldenSrc) goldenSrc.setData(calculateGoldenHour(now));
+    };
+
+    update();
+    const interval = setInterval(update, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Create/update county source + layers when GeoJSON loads (async, usually after map init)
   useEffect(() => {

@@ -1,6 +1,6 @@
 # Duck Countdown — Master Roadmap
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 ## The Thesis
 
@@ -321,7 +321,64 @@ The weekly pipeline is the thinker. Long-range planning, knowledge ingestion, pa
 
 ---
 
-## Phase 5: Future Horizon
+## Phase 5: Operation War Room (Frontend Intelligence Layer)
+
+**Status: SHIPPED (2026-03-07)**
+
+Transformed the map from colored rectangles into a world-class military-grade hunting intelligence command center. 16 features across 4 build phases, all in one session.
+
+### What Was Built
+
+**Phase 1 — Bring the Map to Life:**
+- eBird interactive clusters + heatmap (clustering, click-to-expand, species popups)
+- Pulsing convergence hotspots (animated rings on 70+ states, red/orange by tier)
+- Floating convergence score labels (dark pill + tier-colored score over each state)
+- Animated wind flow lines (replaced ugly white triangles with marching-ants, speed-colored)
+- Dead code cleanup (removed unused OWM wind/clouds/pressure tiles)
+
+**Phase 2 — Weather Intelligence:**
+- Pressure isobars with H/L center markers (turf interpolation + marching squares)
+- NWS alert polygons (live from NWS API, severity-colored, pulsing, clickable)
+- Dawn/dusk terminator (real-time sunrise line, updates every 60s, golden hour band)
+
+**Phase 3 — Migration Intelligence:**
+- Flyway migration corridors (4 bands with animated directional flow, seasonal)
+- Migration front line (estimated from eBird density, cyan dashed, Intel mode)
+- Convergence-weighted national heatmap (glows at national zoom using scores as proxy)
+
+**Phase 4 — Command Center:**
+- Rich hover intel cards (dark glass Bloomberg-style: score bar, weather, wind, moon, rank)
+- Time machine scrubber (30d back / 7d forward, fetches historical convergence scores)
+- Mode overhaul (5 distinct identities with master layer visibility map)
+- Contextual legend panel (mode-aware, collapsible, bottom-left)
+
+### Mode Identities After Overhaul
+
+| Mode | Identity | Key Layers |
+|------|----------|-----------|
+| Default | Season overview | Season fills + flyways + eBird heatmap |
+| Scout | Habitat recon | Wetlands + parks + water + trails + eBird clusters |
+| Weather | Meteorologist view | Temp fills + radar + isobars + H/L + wind + NWS alerts |
+| Terrain | Topographic | Landcover + contours + contour labels |
+| Intel | Command center | Convergence fills + scores + hotspots + migration front + NWS + flyways + heatmap |
+
+### Files Created (9)
+- `src/components/SightingPopup.tsx` — eBird click popup
+- `src/components/TimelineScrubber.tsx` — Time machine UI
+- `src/components/MapLegend.tsx` — Contextual floating legend
+- `src/hooks/useNWSAlerts.ts` — Live NWS alert polygons
+- `src/hooks/useMigrationFront.ts` — Migration front estimation
+- `src/lib/isobars.ts` — Pressure interpolation + contouring
+- `src/lib/terminator.ts` — Solar terminator calculation
+- `src/lib/migrationFront.ts` — Migration front math
+- `src/data/flywayPaths.ts` — Flyway corridor GeoJSON
+
+### New Dependencies
+None. Everything built with existing deps (mapbox-gl, @turf/turf).
+
+---
+
+## Phase 6: Future Horizon
 
 Items that matter but aren't in the immediate build plan.
 

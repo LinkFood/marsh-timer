@@ -12,6 +12,7 @@ import HeaderBar from "@/components/HeaderBar";
 import Sidebar from "@/components/Sidebar";
 import MobileSheet from "@/components/MobileSheet";
 import MapPresets from "@/components/MapPresets";
+import MapLegend from "@/components/MapLegend";
 import { useWeatherTiles } from "@/hooks/useWeatherTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
@@ -20,6 +21,9 @@ import { useConvergenceScores } from "@/hooks/useConvergenceScores";
 import { useScoutReport } from "@/hooks/useScoutReport";
 import { useConvergenceAlerts } from "@/hooks/useConvergenceAlerts";
 import { useCountyGeoJSON } from "@/hooks/useCountyGeoJSON";
+import { useNWSAlerts } from "@/hooks/useNWSAlerts";
+import { useMigrationFront } from "@/hooks/useMigrationFront";
+import TimelineScrubber from "@/components/TimelineScrubber";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -107,6 +111,8 @@ const Index = () => {
   const [mapZoom, setMapZoom] = useState(3.5);
   const weatherTiles = useWeatherTiles();
   const countyGeoJSON = useCountyGeoJSON();
+  const nwsAlertsGeoJSON = useNWSAlerts();
+  const migrationFrontLine = useMigrationFront();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
   const { alerts } = useHuntAlerts();
@@ -114,6 +120,92 @@ const Index = () => {
   const { report: scoutReport, loading: scoutReportLoading } = useScoutReport();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [scrubDate, setScrubDate] = useState<Date | null>(null);
+  const [scrubScores, setScrubScores] = useState<Map<string, number> | null>(null);
+  const [scrubLoading, setScrubLoading] = useState(false);
+
+  // Fetch historical convergence scores when scrub date changes
+  useEffect(() => {
+    if (!scrubDate) {
+      setScrubScores(null);
+      return;
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scrubDay = new Date(scrubDate);
+    scrubDay.setHours(0, 0, 0, 0);
+
+    // If it's today, use live scores
+    if (scrubDay.getTime() === today.getTime()) {
+      setScrubScores(null);
+      return;
+    }
+
+    // Future dates: no forecast data exists
+    if (scrubDay > today) {
+      setScrubScores(null);
+      return;
+    }
+
+    const dateStr = scrubDay.toISOString().split('T')[0];
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return;
+
+    let cancelled = false;
+    setScrubLoading(true);
+
+    fetch(
+      `${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score&date=eq.${dateStr}`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    )
+      .then(r => r.json())
+      .then((rows: Array<{ state_abbr: string; score: number }>) => {
+        if (cancelled) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          setScrubScores(new Map());
+        } else {
+          const map = new Map<string, number>();
+          for (const row of rows) {
+            map.set(row.state_abbr, row.score);
+          }
+          setScrubScores(map);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setScrubScores(new Map());
+      })
+      .finally(() => {
+        if (!cancelled) setScrubLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [scrubDate]);
+
+  // Determine which convergence scores to pass to MapView
+  const activeConvergenceScores = useMemo(() => {
+    if (scrubScores !== null) return scrubScores;
+    return convergenceScoreMap;
+  }, [scrubScores, convergenceScoreMap]);
+
+  // Compute whether we're viewing a non-today date
+  const isViewingHistory = useMemo(() => {
+    if (!scrubDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scrubDay = new Date(scrubDate);
+    scrubDay.setHours(0, 0, 0, 0);
+    return scrubDay.getTime() !== today.getTime();
+  }, [scrubDate]);
+
+  const isFutureDate = useMemo(() => {
+    if (!scrubDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scrubDay = new Date(scrubDate);
+    scrubDay.setHours(0, 0, 0, 0);
+    return scrubDay > today;
+  }, [scrubDate]);
 
   // Build convergence score map for MapView (abbr -> score number)
   const convergenceScoreMap = useMemo(() => {
@@ -284,7 +376,10 @@ const Index = () => {
         onElevation={setElevation}
         onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
         mapMode={mapMode}
-        convergenceScores={convergenceScoreMap}
+        convergenceScores={activeConvergenceScores}
+        nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+        migrationFrontLine={migrationFrontLine}
+        scrubDate={scrubDate}
       />
 
       {/* Header */}
@@ -353,6 +448,13 @@ const Index = () => {
         showFlywayOption={isFlywaySpecies(species)}
       />
 
+      {/* Map Legend */}
+      <MapLegend
+        mode={mapMode}
+        sidebarExpanded={sidebarExpanded}
+        isMobile={isMobile}
+      />
+
       {/* Elevation HUD */}
       {show3D && elevation !== null && mapZoom > 8 && (
         <div
@@ -361,6 +463,50 @@ const Index = () => {
         >
           <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
           <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
+        </div>
+      )}
+
+      {/* Timeline Scrubber — Intel mode only */}
+      {mapMode === 'intel' && (
+        <TimelineScrubber
+          onDateChange={setScrubDate}
+          sidebarOffset={!isMobile && sidebarExpanded ? 340 : 0}
+        />
+      )}
+
+      {/* Viewing indicator for non-today dates */}
+      {mapMode === 'intel' && isViewingHistory && (
+        <div
+          className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
+          style={{
+            bottom: '48px',
+            left: !isMobile && sidebarExpanded ? 'calc(340px + 1rem)' : '1rem',
+          }}
+        >
+          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Viewing</span>
+          <span className="text-xs text-cyan-400 font-body font-medium">
+            {scrubDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+          {scrubLoading && (
+            <span className="text-[10px] text-white/30 ml-2">Loading...</span>
+          )}
+          {!scrubLoading && scrubScores && scrubScores.size === 0 && (
+            <span className="text-[10px] text-white/30 ml-2">No data</span>
+          )}
+        </div>
+      )}
+
+      {/* Future date indicator */}
+      {mapMode === 'intel' && isFutureDate && (
+        <div
+          className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
+          style={{
+            bottom: '48px',
+            left: !isMobile && sidebarExpanded ? 'calc(340px + 1rem)' : '1rem',
+          }}
+        >
+          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Forecast</span>
+          <span className="text-xs text-white/50 font-body font-medium">Not available</span>
         </div>
       )}
 

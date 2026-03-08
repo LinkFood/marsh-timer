@@ -30,7 +30,7 @@ Hunting OS — "Google for Hunting." Interactive Mapbox GL map with AI chat brai
 ```
 src/
   components/
-    MapView.tsx           # Mapbox GL: satellite, 3D terrain, globe projection, state fills, county boundaries, flyways, mode-driven overlays (wetlands, waterways, contours, temp heatmap, convergence heatmap, wind arrows, radar)
+    MapView.tsx           # Mapbox GL command center: satellite, 3D terrain, globe projection, state fills, county boundaries, flyways, eBird clusters+heatmap, convergence hotspots+labels, wind flow lines, isobars+H/L, NWS alert polygons, dawn/dusk terminator, flyway corridors, migration front, mode-driven overlays
     HeaderBar.tsx         # Brand + species pills + search + UserMenu
     Sidebar.tsx           # Desktop left sidebar (340px expanded / 48px collapsed) with Intel/Chat/Alerts tabs
     MobileSheet.tsx       # Mobile bottom sheet with drag-snap (peek/half/full)
@@ -45,7 +45,10 @@ src/
     HuntChat.tsx          # Chat container: full-width in sidebar tab
     ChatInput.tsx         # Chat input with auth gate
     ChatMessage.tsx       # User/assistant message bubbles with card embedding
-    MapPopup.tsx          # Hover popup: state name, season status, dates, convergence score (HTML string gen)
+    MapPopup.tsx          # Rich hover intel card: dark glass panel with convergence bar, weather, wind, moon phase, rank
+    SightingPopup.tsx     # eBird click popup: species, count, location, date, recency badge
+    TimelineScrubber.tsx  # Time machine: drag 30d back / 7d forward, fetches historical convergence
+    MapLegend.tsx         # Contextual floating legend: mode-aware, collapsible
     HuntAlerts.tsx        # Proactive weather alerts: national scroll strip + state banner
     cards/
       ConvergenceCard.tsx # Hunt score breakdown: 0-100 with 4 component bars + national rank
@@ -65,8 +68,12 @@ src/
     seasons/              # Per-species static data (duck, goose, deer, turkey, dove)
     stateFacts.ts         # 576 facts across all species
     regulationLinks.ts    # State DNR URLs per species
+    flywayPaths.ts        # Flyway corridor GeoJSON polygons + flow center lines
   lib/
     seasonUtils.ts        # Status calc, countdown, sorting
+    isobars.ts            # Pressure interpolation + marching squares contouring
+    terminator.ts         # Solar terminator + golden hour calculation (pure trig)
+    migrationFront.ts     # Migration front estimation from sighting density
     supabase.ts           # Supabase client (conditional on env vars)
     ebird.ts              # eBird API helpers (fetchRecentSightings, fetchGeoSightings)
   hooks/
@@ -82,6 +89,8 @@ src/
     useScoutReport.ts     # Latest daily scout brief from hunt_intel_briefs, 60-min refresh
     useConvergenceAlerts.ts # Convergence score spike alerts, 30-min refresh
     useSolunar.ts         # Solunar data via hunt-solunar edge function (TanStack Query)
+    useNWSAlerts.ts       # Live NWS alert polygons (GeoJSON FeatureCollection, 15-min refresh)
+    useMigrationFront.ts  # Migration front estimation from hunt_migration_history
     useIsMobile.ts        # Responsive breakpoint detection
 supabase/
   functions/
@@ -267,7 +276,17 @@ All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84
 | Weather radar overlay | RainViewer API (free, no auth) | `useRadarTiles.ts` → raster layer, 5-min refresh, CloudRain toggle |
 | 3D camera drill-in | Mapbox GL | pitch 45, bearing -15 on state select, fog at distance |
 | State info popups | Local season data + convergence | `MapPopup.tsx` → hover popup with status dot + dates + hunt score (desktop) |
-| eBird live sightings | eBird Geo API (`VITE_EBIRD_API_KEY`) | `useEBirdMapSightings.ts` → circle markers, green/amber/dim by recency, zoom 6+ |
+| eBird live sightings | eBird Geo API (`VITE_EBIRD_API_KEY`) | `useEBirdMapSightings.ts` → clustered dots (click to expand), heatmap at national zoom, species popups |
+| Pressure isobars + H/L | `useNationalWeather.ts` pressure data | `isobars.ts` turf interpolation → contour lines + H/L markers, Weather mode |
+| NWS alert polygons | NWS API (free, live) | `useNWSAlerts.ts` → pulsing severity-colored polygons, clickable, Weather+Intel modes |
+| Dawn/dusk terminator | Solar position math | `terminator.ts` → dark overlay + golden hour band, updates every 60s, all modes |
+| Flyway corridors | Static GeoJSON | `flywayPaths.ts` → 4 colored bands with animated directional flow lines |
+| Migration front line | `hunt_migration_history` table | `useMigrationFront.ts` → cyan dashed line at estimated front latitude, Intel mode |
+| Convergence hotspots | `hunt_convergence_scores` table | Pulsing animated rings on states scoring 70+, Intel mode |
+| Floating score labels | `hunt_convergence_scores` table | Dark pill + tier-colored score number over each state, Intel mode |
+| Wind flow lines | `useNationalWeather.ts` wind data | Animated marching-ants lines colored by speed (white→cyan→red), Weather+Intel modes |
+| Time machine scrubber | `hunt_convergence_scores` historical | Drag 30d back / 7d forward, re-colors map to historical scores, Intel mode |
+| Contextual legend | Mode state | Mode-aware floating panel, collapsible, explains visible layers |
 | Proactive weather alerts | Open-Meteo bulk + hunt_knowledge vectors | `hunt-alerts` edge fn → `useHuntAlerts.ts` → `HuntAlerts.tsx` (national scroll strip + state banner) |
 | Map overlay layers | Mapbox streets-v8 + terrain-v2 tilesets | Mode-driven: wetlands, waterways, contours, land cover, agriculture, parks, trails |
 | Elevation HUD | Mapbox `queryTerrainElevation` | Client-side, shows ft when 3D on + zoom > 8, shifts right when sidebar expanded |
