@@ -1131,7 +1131,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
-      // Wind arrowheads at line endpoints
+      // Wind arrowheads at line endpoints (text-based — sprite icons unreliable)
       if (!map.getLayer("wind-arrow-heads")) {
         map.addLayer({
           id: "wind-arrow-heads",
@@ -1139,15 +1139,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           source: "wind-speed-points",
           minzoom: 3,
           layout: {
-            "icon-image": "triangle-11",
-            "icon-size": 0.8,
-            "icon-rotate": ["get", "windDir"],
-            "icon-rotation-alignment": "map",
-            "icon-allow-overlap": true,
+            "text-field": "▶",
+            "text-size": 14,
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-rotate": ["get", "windDir"],
+            "text-rotation-alignment": "map",
+            "text-allow-overlap": true,
+            "text-offset": [0, -1.5],
             visibility: "none",
           },
           paint: {
-            "icon-color": [
+            "text-color": [
               "interpolate", ["linear"], ["get", "windSpeed"],
               0, "rgba(200,220,255,0.7)",
               8, "rgba(200,220,255,0.7)",
@@ -1157,7 +1159,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               25, "rgba(251,191,36,0.9)",
               26, "rgba(239,68,68,0.95)",
             ],
-            "icon-opacity": 0.75,
+            "text-halo-color": "rgba(0,0,0,0.6)",
+            "text-halo-width": 1,
           },
         });
       }
@@ -1448,7 +1451,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
-      // Pressure trend arrows source + layer
+      // Pressure trend arrows source + layer (text-based — sprite icons unreliable)
       if (!map.getSource("pressure-trend-points")) {
         map.addSource("pressure-trend-points", {
           type: "geojson",
@@ -1462,17 +1465,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           source: "pressure-trend-points",
           minzoom: 3,
           layout: {
-            "icon-image": "triangle-11",
-            "icon-size": 0.8,
-            "icon-rotate": ["match", ["get", "trend"], "falling", 180, "rising", 0, 90],
-            "icon-rotation-alignment": "map",
-            "icon-allow-overlap": true,
-            "icon-offset": [15, 0],
+            "text-field": ["match", ["get", "trend"], "falling", "▼", "rising", "▲", "▸"],
+            "text-size": 16,
+            "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+            "text-allow-overlap": true,
+            "text-offset": [1.5, 0],
             visibility: "none",
           },
           paint: {
-            "icon-color": ["match", ["get", "trend"], "falling", "#ef4444", "rising", "#22c55e", "#94a3b8"],
-            "icon-opacity": 0.85,
+            "text-color": ["match", ["get", "trend"], "falling", "#ef4444", "rising", "#22c55e", "#94a3b8"],
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1.5,
           },
         });
       }
