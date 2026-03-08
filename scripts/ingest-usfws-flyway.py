@@ -6,11 +6,10 @@ Downloads USFWS flyway data book PDFs, extracts harvest tables with pdfplumber,
 stores structured records in Supabase (hunt_usfws_harvest + hunt_knowledge) with embeddings.
 
 Usage:
-  SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... python3 scripts/ingest-usfws-flyway.py
+  SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/ingest-usfws-flyway.py
 
 Env vars:
   SUPABASE_SERVICE_ROLE_KEY  — required
-  VOYAGE_API_KEY             — required
   START_FLYWAY               — resume from a specific flyway (e.g. mississippi)
   START_YEAR                 — resume from a specific year (e.g. 2020)
   --dry-run                  — pass as CLI arg to download + parse without storing
@@ -37,7 +36,6 @@ import requests
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://rvhyotvklfowklzjahdd.supabase.co")
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-VOYAGE_KEY = os.environ.get("VOYAGE_API_KEY")
 START_FLYWAY = os.environ.get("START_FLYWAY")
 START_YEAR = int(os.environ.get("START_YEAR", "0"))
 DRY_RUN = "--dry-run" in sys.argv
@@ -180,146 +178,148 @@ def detect_species_from_context(text: str) -> str:
     return "unknown"
 
 
-def extract_harvest_data(pdf_path: str, flyway: str, year: int) -> list[dict]:
-    """Extract harvest records from a USFWS flyway databook PDF."""
+def is_harvest_page(text: str) -> bool:
+    """Check if page text contains harvest/hunter data worth ingesting."""
+    lower = text.lower()
+    harvest_keywords = ["harvest", "bag", "kill", "hunter", "active hunter",
+                        "days afield", "days hunted", "season total", "estimated"]
+    has_keyword = any(kw in lower for kw in harvest_keywords)
+    # Must also contain at least one state name or abbreviation
+    has_state = any(normalize_state(word) for word in re.split(r'[\s,;]+', text) if len(word) > 1)
+    if not has_state:
+        # Try multi-word state names
+        for state_name in STATE_TO_ABBR:
+            if state_name in lower:
+                has_state = True
+                break
+    return has_keyword and has_state
+
+
+# Regex patterns for state + numbers lines in fixed-width text
+# Matches lines like: "Kansas  12,345  6,789  45,678" or "KS 12345 6789"
+STATE_LINE_PATTERN = re.compile(
+    r'^[\s]*'
+    r'(?P<state>[A-Za-z][A-Za-z\s.\']+?)'  # State name (letters, spaces, dots, apostrophes)
+    r'[\s]{2,}'                              # 2+ spaces separating state from numbers
+    r'(?P<numbers>[\d,.\s]+)$',             # Remaining numbers (comma-separated, space-separated)
+    re.MULTILINE,
+)
+
+
+def parse_state_line_numbers(numbers_str: str) -> list[Optional[int]]:
+    """Parse space/tab-separated numbers from a fixed-width text line."""
+    # Split on 2+ spaces or tabs to separate columns
+    parts = re.split(r'[\s]{2,}|\t+', numbers_str.strip())
+    result = []
+    for part in parts:
+        val = parse_number(part)
+        if val is not None:
+            result.append(val)
+    # If that didn't work well, try splitting on single spaces (for dense formats)
+    if not result:
+        parts = numbers_str.strip().split()
+        for part in parts:
+            val = parse_number(part)
+            if val is not None:
+                result.append(val)
+    return result
+
+
+def extract_structured_records_from_text(text: str, flyway: str, year: int, page_num: int) -> list[dict]:
+    """Try to extract structured harvest records from page text using regex."""
     records = []
+    species = detect_species_from_context(text)
+
+    for match in STATE_LINE_PATTERN.finditer(text):
+        state_raw = match.group("state").strip()
+        numbers_raw = match.group("numbers")
+
+        state_abbr = normalize_state(state_raw)
+        if not state_abbr:
+            continue
+
+        numbers = parse_state_line_numbers(numbers_raw)
+        if not numbers:
+            continue
+
+        # Assign numbers based on position — USFWS common layouts:
+        # harvest, hunters, days (or subsets)
+        harvest = numbers[0] if len(numbers) >= 1 else None
+        hunters = numbers[1] if len(numbers) >= 2 else None
+        days = numbers[2] if len(numbers) >= 3 else None
+
+        records.append({
+            "flyway": flyway,
+            "year": year,
+            "state_abbr": state_abbr,
+            "species_group": species,
+            "harvest": harvest,
+            "hunters": hunters,
+            "days_hunted": days,
+            "_page": page_num,
+            "_table": 0,
+        })
+
+    return records
+
+
+def extract_harvest_data(pdf_path: str, flyway: str, year: int) -> tuple[list[dict], list[dict]]:
+    """Extract harvest records + page-level knowledge entries from a USFWS flyway databook PDF.
+
+    Returns (structured_records, page_knowledge_entries).
+    """
+    records = []
+    page_entries = []
 
     try:
         pdf = pdfplumber.open(pdf_path)
     except Exception as e:
         log.error(f"  Failed to open PDF: {e}")
-        return records
+        return records, page_entries
 
     for page_num, page in enumerate(pdf.pages, 1):
-        tables = page.extract_tables()
-        if not tables:
+        page_text = page.extract_text() or ""
+        if not page_text.strip():
             continue
 
-        # Get page text for species context
-        page_text = page.extract_text() or ""
+        # --- Prong A: Try to extract structured records from text ---
+        page_records = extract_structured_records_from_text(page_text, flyway, year, page_num)
+        records.extend(page_records)
 
-        for table_idx, table in enumerate(tables):
-            if not table or len(table) < 2:
-                continue
+        # --- Prong B: Store page-level knowledge for any harvest-related page ---
+        if is_harvest_page(page_text):
+            # Truncate to 2000 chars for knowledge entry
+            content_text = page_text[:2000].strip()
+            if content_text:
+                species = detect_species_from_context(page_text)
+                species_label = species.replace("_", " ").title() if species != "unknown" else "Harvest"
 
-            # Try to find header row — look for "State" or state names
-            header_row_idx = None
-            state_col_idx = None
-            harvest_col_idx = None
-            hunters_col_idx = None
-            days_col_idx = None
-
-            # First pass: find the header
-            for row_idx, row in enumerate(table):
-                if not row:
-                    continue
-                for col_idx, cell in enumerate(row):
-                    if not cell:
-                        continue
-                    cell_lower = cell.strip().lower()
-                    if cell_lower in ("state", "states", "state/area"):
-                        header_row_idx = row_idx
-                        state_col_idx = col_idx
-                        break
-                if header_row_idx is not None:
-                    break
-
-            if header_row_idx is None:
-                # Try to detect tables by looking for state names in first column
-                for row_idx, row in enumerate(table):
-                    if not row or not row[0]:
-                        continue
-                    if normalize_state(row[0]):
-                        # Found a state in first column — assume no header row
-                        state_col_idx = 0
-                        header_row_idx = -1  # sentinel: no header
-                        break
-
-            if state_col_idx is None:
-                continue
-
-            # Identify harvest/hunters/days columns from header
-            if header_row_idx >= 0 and header_row_idx < len(table):
-                header = table[header_row_idx]
-                for col_idx, cell in enumerate(header):
-                    if not cell:
-                        continue
-                    cell_lower = cell.strip().lower()
-                    if "harvest" in cell_lower or "bag" in cell_lower or "kill" in cell_lower:
-                        harvest_col_idx = col_idx
-                    elif "hunter" in cell_lower or "active" in cell_lower:
-                        hunters_col_idx = col_idx
-                    elif "day" in cell_lower:
-                        days_col_idx = col_idx
-
-            # If we couldn't identify columns from headers, assume common layout:
-            # State | Harvest | Hunters | Days (or variations)
-            num_cols = max(len(row) for row in table if row)
-            if harvest_col_idx is None and num_cols >= 2:
-                harvest_col_idx = state_col_idx + 1
-            if hunters_col_idx is None and num_cols >= 3:
-                hunters_col_idx = state_col_idx + 2
-            if days_col_idx is None and num_cols >= 4:
-                days_col_idx = state_col_idx + 3
-
-            # Detect species from page context
-            species = detect_species_from_context(page_text)
-
-            # Also check for species in table header area
-            if species == "unknown" and header_row_idx >= 0:
-                header_text = " ".join(str(c) for c in table[header_row_idx] if c)
-                species = detect_species_from_context(header_text)
-
-            # Check rows above header for species context
-            if species == "unknown":
-                for check_idx in range(max(0, (header_row_idx if header_row_idx >= 0 else 0) - 3),
-                                        max(0, header_row_idx if header_row_idx >= 0 else 0)):
-                    if check_idx < len(table) and table[check_idx]:
-                        row_text = " ".join(str(c) for c in table[check_idx] if c)
-                        species = detect_species_from_context(row_text)
-                        if species != "unknown":
-                            break
-
-            # Extract data rows
-            start_row = (header_row_idx + 1) if header_row_idx >= 0 else 0
-            for row in table[start_row:]:
-                if not row or not row[state_col_idx]:
-                    continue
-
-                state_abbr = normalize_state(row[state_col_idx])
-                if not state_abbr:
-                    # Could be a total/summary row — skip
-                    continue
-
-                def safe_col(idx):
-                    if idx is not None and idx < len(row) and row[idx]:
-                        return parse_number(row[idx])
-                    return None
-
-                harvest = safe_col(harvest_col_idx)
-                hunters = safe_col(hunters_col_idx)
-                days = safe_col(days_col_idx)
-
-                # Skip rows where all data is None
-                if harvest is None and hunters is None and days is None:
-                    continue
-
-                records.append({
-                    "flyway": flyway,
-                    "year": year,
-                    "state_abbr": state_abbr,
-                    "species_group": species,
-                    "harvest": harvest,
-                    "hunters": hunters,
-                    "days_hunted": days,
-                    "_page": page_num,
-                    "_table": table_idx,
+                page_entries.append({
+                    "title": f"USFWS {flyway.title()} Flyway Databook {year} - Page {page_num}",
+                    "content": content_text,
+                    "content_type": "usfws_harvest",
+                    "tags": ["usfws", flyway, species, f"year:{year}"],
+                    "state_abbr": None,
+                    "metadata": json.dumps({
+                        "source": "usfws_flyway_databook",
+                        "flyway": flyway,
+                        "year": year,
+                        "page": page_num,
+                        "species_detected": species,
+                        "structured_records_found": len(page_records),
+                    }),
+                    "_embed_text": f"USFWS {flyway} flyway {year} {species_label} | {content_text[:500]}",
                 })
 
-        page.close()
-
+    total_pages = len(pdf.pages)
     pdf.close()
-    return records
+
+    if records:
+        log.info(f"  Text extraction: {len(records)} structured records from {total_pages} pages")
+    if page_entries:
+        log.info(f"  Knowledge pages: {len(page_entries)} harvest-related pages identified")
+
+    return records, page_entries
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +400,7 @@ def store_knowledge_records(records: list[dict], flyway: str, year: int) -> list
             "title": f"USFWS {flyway.title()} Flyway {year} {species_group.replace('_', ' ').title()} Harvest - {state_name}",
             "content": content,
             "content_type": "usfws_harvest",
-            "tags": json.dumps(["usfws", flyway, state_name.lower(), species_group]),
+            "tags": ["usfws", flyway, state_name.lower(), species_group],
             "state_abbr": state_abbr,
             "metadata": json.dumps({"source": "usfws_flyway_databook", "flyway": flyway, "year": year}),
             # Embed text — structured for vector search
@@ -436,71 +436,91 @@ def store_knowledge_records(records: list[dict], flyway: str, year: int) -> list
 # Embedding
 # ---------------------------------------------------------------------------
 
+def embed_via_edge_function(text: str, retries=3) -> list[float]:
+    """Embed a single text via the hunt-generate-embedding edge function."""
+    for attempt in range(retries):
+        try:
+            resp = requests.post(
+                f"{SUPABASE_URL}/functions/v1/hunt-generate-embedding",
+                headers={
+                    "Authorization": f"Bearer {SERVICE_KEY}",
+                    "apikey": SERVICE_KEY,
+                    "Content-Type": "application/json",
+                },
+                json={"text": text, "input_type": "document"},
+                timeout=30,
+            )
+            if resp.ok:
+                return resp.json()["embedding"]
+            if resp.status_code == 429 and attempt < retries - 1:
+                time.sleep(30)
+                continue
+            if resp.status_code >= 500 and attempt < retries - 1:
+                time.sleep(5)
+                continue
+            log.warning(f"    Embed error {resp.status_code}: {resp.text[:200]}")
+            return []
+        except requests.RequestException as e:
+            if attempt < retries - 1:
+                time.sleep(5)
+                continue
+            log.warning(f"    Embed request failed: {e}")
+            return []
+    return []
+
+
 def batch_embed_and_update(knowledge_rows: list[dict]):
-    """Embed knowledge records in batches of 20 and update hunt_knowledge."""
+    """Embed knowledge records one at a time via edge function and update hunt_knowledge."""
     rows_with_ids = [r for r in knowledge_rows if "id" in r]
     if not rows_with_ids:
         return
 
-    batch_size = 20
-    for i in range(0, len(rows_with_ids), batch_size):
-        batch = rows_with_ids[i:i + batch_size]
-        texts = [r["_embed_text"] for r in batch]
+    log.info(f"  Embedding {len(rows_with_ids)} records...")
 
-        log.info(f"  Embedding batch {i // batch_size + 1} ({len(batch)} texts)...")
+    for j, row in enumerate(rows_with_ids):
+        embedding = embed_via_edge_function(row["_embed_text"])
+        if embedding:
+            update_resp = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/hunt_knowledge?id=eq.{row['id']}",
+                headers=SUPABASE_HEADERS,
+                json={"embedding": json.dumps(embedding)},
+            )
+            if update_resp.status_code not in (200, 204):
+                log.warning(f"    Embedding update failed for {row['id']}: {update_resp.status_code}")
+        else:
+            log.warning(f"    No embedding returned for {row['id']}")
+        time.sleep(0.2)  # gentle rate limit
 
-        for attempt in range(3):
-            try:
-                resp = requests.post(
-                    "https://api.voyageai.com/v1/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {VOYAGE_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": "voyage-3-lite",
-                        "input": texts,
-                        "input_type": "document",
-                    },
-                    timeout=60,
-                )
+    log.info(f"    Embedded {len(rows_with_ids)} records")
 
-                if resp.status_code == 200:
-                    embeddings = [d["embedding"] for d in resp.json()["data"]]
-                    # Update each record with its embedding
-                    for j, row in enumerate(batch):
-                        update_resp = requests.patch(
-                            f"{SUPABASE_URL}/rest/v1/hunt_knowledge?id=eq.{row['id']}",
-                            headers=SUPABASE_HEADERS,
-                            json={"embedding": json.dumps(embeddings[j])},
-                        )
-                        if update_resp.status_code not in (200, 204):
-                            log.warning(f"    Embedding update failed for {row['id']}: {update_resp.status_code}")
-                    log.info(f"    Embedded {len(batch)} records")
-                    break
-                elif resp.status_code == 429 and attempt < 2:
-                    wait = (attempt + 1) * 30
-                    log.warning(f"    Rate limited, waiting {wait}s...")
-                    time.sleep(wait)
-                    continue
-                elif resp.status_code >= 500 and attempt < 2:
-                    wait = (attempt + 1) * 5
-                    log.warning(f"    Server error {resp.status_code}, retrying in {wait}s...")
-                    time.sleep(wait)
-                    continue
-                else:
-                    log.error(f"    Voyage error: {resp.status_code} {resp.text[:200]}")
-                    break
-            except requests.RequestException as e:
-                if attempt < 2:
-                    log.warning(f"    Request error, retrying: {e}")
-                    time.sleep(5)
-                else:
-                    log.error(f"    Embedding request failed: {e}")
 
-        # Small delay between batches to avoid rate limits
-        if i + batch_size < len(rows_with_ids):
-            time.sleep(1)
+def store_page_knowledge(page_entries: list[dict]) -> list[dict]:
+    """Insert page-level knowledge entries into hunt_knowledge. Returns entries with IDs for embedding."""
+    if not page_entries:
+        return []
+
+    # Prepare payload (strip internal fields)
+    payload = [{k: v for k, v in row.items() if not k.startswith("_")} for row in page_entries]
+
+    resp = requests.post(
+        f"{SUPABASE_URL}/rest/v1/hunt_knowledge",
+        headers={
+            **SUPABASE_HEADERS,
+            "Prefer": "return=representation",
+        },
+        json=payload,
+    )
+
+    if resp.status_code in (200, 201):
+        inserted = resp.json()
+        for i, row in enumerate(page_entries):
+            if i < len(inserted):
+                row["id"] = inserted[i]["id"]
+        log.info(f"  Inserted {len(inserted)} page-level knowledge entries")
+        return page_entries
+    else:
+        log.error(f"  Page knowledge insert failed: {resp.status_code} {resp.text[:300]}")
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -511,10 +531,6 @@ def main():
     if not SERVICE_KEY:
         log.error("SUPABASE_SERVICE_ROLE_KEY required")
         sys.exit(1)
-    if not VOYAGE_KEY and not DRY_RUN:
-        log.error("VOYAGE_API_KEY required (or use --dry-run)")
-        sys.exit(1)
-
     if DRY_RUN:
         log.info("=== DRY RUN MODE — will download + parse only, no storage ===")
 
@@ -530,6 +546,7 @@ def main():
 
     total_records = 0
     total_knowledge = 0
+    total_page_knowledge = 0
     total_pdfs = 0
 
     for flyway in flyways:
@@ -551,12 +568,13 @@ def main():
 
             total_pdfs += 1
 
-            # Extract
+            # Extract (two-pronged: structured records + page knowledge)
+            records = []
+            page_entries = []
             try:
-                records = extract_harvest_data(pdf_path, flyway, year)
+                records, page_entries = extract_harvest_data(pdf_path, flyway, year)
             except Exception as e:
                 log.error(f"  Extraction failed: {e}")
-                records = []
             finally:
                 # Clean up temp file
                 try:
@@ -564,52 +582,65 @@ def main():
                 except OSError:
                     pass
 
-            if not records:
-                log.warning(f"  No harvest records extracted from PDF")
+            if not records and not page_entries:
+                log.warning(f"  No data extracted from PDF")
                 continue
 
-            # Deduplicate by (state_abbr, species_group)
-            seen = {}
-            deduped = []
-            for r in records:
-                key = (r["state_abbr"], r["species_group"])
-                if key not in seen:
-                    seen[key] = r
-                    deduped.append(r)
+            # --- Handle structured records (Prong A) ---
+            if records:
+                # Deduplicate by (state_abbr, species_group)
+                seen = {}
+                deduped = []
+                for r in records:
+                    key = (r["state_abbr"], r["species_group"])
+                    if key not in seen:
+                        seen[key] = r
+                        deduped.append(r)
+                    else:
+                        existing = seen[key]
+                        if r["harvest"] is not None and existing["harvest"] is None:
+                            existing["harvest"] = r["harvest"]
+                        if r["hunters"] is not None and existing["hunters"] is None:
+                            existing["hunters"] = r["hunters"]
+                        if r["days_hunted"] is not None and existing["days_hunted"] is None:
+                            existing["days_hunted"] = r["days_hunted"]
+                records = deduped
+
+                species_groups = set(r["species_group"] for r in records)
+                log.info(f"  Structured: {len(records)} records — species: {species_groups}")
+
+                if DRY_RUN:
+                    for r in records[:5]:
+                        log.info(f"    {r['state_abbr']} | {r['species_group']} | harvest={r['harvest']} hunters={r['hunters']} days={r['days_hunted']}")
+                    if len(records) > 5:
+                        log.info(f"    ... and {len(records) - 5} more")
+                    total_records += len(records)
                 else:
-                    # Merge — prefer non-None values
-                    existing = seen[key]
-                    if r["harvest"] is not None and existing["harvest"] is None:
-                        existing["harvest"] = r["harvest"]
-                    if r["hunters"] is not None and existing["hunters"] is None:
-                        existing["hunters"] = r["hunters"]
-                    if r["days_hunted"] is not None and existing["days_hunted"] is None:
-                        existing["days_hunted"] = r["days_hunted"]
-            records = deduped
+                    stored = upsert_harvest_records(records)
+                    log.info(f"  Stored {stored} harvest records")
+                    total_records += stored
 
-            species_groups = set(r["species_group"] for r in records)
-            log.info(f"  Extracted {len(records)} records — species: {species_groups}")
+                    # Store structured knowledge records + embed
+                    knowledge_rows = store_knowledge_records(records, flyway, year)
+                    total_knowledge += len(knowledge_rows)
+                    if knowledge_rows:
+                        batch_embed_and_update(knowledge_rows)
 
-            if DRY_RUN:
-                # Print sample
-                for r in records[:5]:
-                    log.info(f"    {r['state_abbr']} | {r['species_group']} | harvest={r['harvest']} hunters={r['hunters']} days={r['days_hunted']}")
-                if len(records) > 5:
-                    log.info(f"    ... and {len(records) - 5} more")
-                total_records += len(records)
-                continue
+            # --- Handle page-level knowledge entries (Prong B) ---
+            if page_entries:
+                log.info(f"  Pages: {len(page_entries)} harvest-related pages found")
 
-            # Store harvest records
-            stored = upsert_harvest_records(records)
-            log.info(f"  Stored {stored} harvest records")
-            total_records += stored
-
-            # Store knowledge records + embed
-            knowledge_rows = store_knowledge_records(records, flyway, year)
-            total_knowledge += len(knowledge_rows)
-
-            if knowledge_rows:
-                batch_embed_and_update(knowledge_rows)
+                if DRY_RUN:
+                    for pe in page_entries[:3]:
+                        log.info(f"    {pe['title']} ({len(pe['content'])} chars)")
+                    if len(page_entries) > 3:
+                        log.info(f"    ... and {len(page_entries) - 3} more pages")
+                    total_page_knowledge += len(page_entries)
+                else:
+                    stored_pages = store_page_knowledge(page_entries)
+                    total_page_knowledge += len(stored_pages)
+                    if stored_pages:
+                        batch_embed_and_update(stored_pages)
 
             # Be polite to USFWS servers
             time.sleep(2)
@@ -617,8 +648,9 @@ def main():
     log.info(f"\n{'='*60}")
     log.info(f"DONE {'(DRY RUN)' if DRY_RUN else ''}")
     log.info(f"  PDFs downloaded: {total_pdfs}")
-    log.info(f"  Harvest records: {total_records}")
-    log.info(f"  Knowledge records: {total_knowledge}")
+    log.info(f"  Structured harvest records: {total_records}")
+    log.info(f"  Structured knowledge records: {total_knowledge}")
+    log.info(f"  Page-level knowledge entries: {total_page_knowledge}")
     log.info(f"{'='*60}")
 
 

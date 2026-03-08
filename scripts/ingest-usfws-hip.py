@@ -6,8 +6,8 @@ Downloads PDF reports from fws.gov, extracts state-level harvest tables
 with pdfplumber, stores structured records in Supabase with Voyage AI embeddings.
 
 Usage:
-  SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... python3 scripts/ingest-usfws-hip.py
-  SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... python3 scripts/ingest-usfws-hip.py --dry-run
+  SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/ingest-usfws-hip.py
+  SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/ingest-usfws-hip.py --dry-run
 """
 
 import argparse
@@ -27,7 +27,6 @@ from bs4 import BeautifulSoup
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://rvhyotvklfowklzjahdd.supabase.co")
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-VOYAGE_KEY = os.environ.get("VOYAGE_API_KEY", "")
 
 if not SERVICE_KEY:
     print("ERROR: SUPABASE_SERVICE_ROLE_KEY is required")
@@ -171,28 +170,30 @@ def scrape_pdf_links() -> list[dict]:
 
 def try_known_urls() -> list[dict]:
     """Try known URL patterns for HIP PDFs."""
-    known_patterns = [
-        "https://www.fws.gov/sites/default/files/documents/migratory-bird-hunting-activity-and-harvest-{year}.pdf",
-        "https://www.fws.gov/sites/default/files/documents/{year}-migratory-bird-hunting-activity-harvest.pdf",
-        "https://www.fws.gov/sites/default/files/documents/preliminary-estimates-migratory-bird-hunting-{year}.pdf",
-    ]
+    BASE = "https://www.fws.gov/sites/default/files/documents"
+
+    # Confirmed URLs from recon — each PDF covers 2 seasons
+    known_urls = {
+        2021: f"{BASE}/migratory_bird_hunter_activity_harvest_report_2019-20_and_2020-21.pdf",
+        2022: f"{BASE}/migratory-bird-hunting-activity-and-harvest-report-2020-to-2021-and-2021-to-2022.pdf",
+        2023: f"{BASE}/migratory-bird-hunting-activity-and-harvest-report-2021-to-2022-and-2022-to-2023.pdf",
+        2024: f"{BASE}/2024-08/migratory-bird-hunting-activity-and-harvest-during-2022-23-and-2023-24-hunting-seasons.pdf",
+        2025: f"{BASE}/2025-09/migratory-bird-hunting-activity-and-harvest-during-2023-24-and-2024-25-hunting-seasons.pdf",
+    }
 
     results = []
-    for year in YEAR_RANGE:
-        for pattern in known_patterns:
-            url = pattern.format(year=year)
-            try:
-                resp = requests.head(url, timeout=10, allow_redirects=True, headers={
-                    "User-Agent": "Mozilla/5.0 (DuckCountdown research bot)"
-                })
-                if resp.status_code == 200:
-                    content_type = resp.headers.get("Content-Type", "")
-                    if "pdf" in content_type.lower() or url.endswith(".pdf"):
-                        results.append({"year": year, "url": url, "text": f"{year} harvest report"})
-                        print(f"  Found PDF for {year}: {url}")
-                        break
-            except requests.RequestException:
-                continue
+    for year, url in sorted(known_urls.items()):
+        try:
+            resp = requests.head(url, timeout=10, allow_redirects=True, headers={
+                "User-Agent": "Mozilla/5.0 (DuckCountdown research bot)"
+            })
+            if resp.status_code == 200:
+                results.append({"year": year, "url": url, "text": f"{year} harvest report"})
+                print(f"  Found PDF for {year}: {url}")
+            else:
+                print(f"  {year}: HTTP {resp.status_code} for {url}")
+        except requests.RequestException as e:
+            print(f"  {year}: Request failed: {e}")
     return results
 
 
@@ -351,6 +352,75 @@ def extract_hip_data(pdf_path: str, year: int) -> list[dict]:
     return deduped
 
 
+def extract_pages_as_knowledge(pdf_path: str, year: int, dry_run: bool) -> int:
+    """Last-resort fallback: extract raw page text as knowledge entries for the AI brain."""
+    HIP_KEYWORDS = list(STATE_NAME_TO_ABBR.keys()) + [
+        "harvest", "hunters", "days afield", "active hunters",
+        "ducks", "geese", "coots", "woodcock", "dove", "snipe",
+        "mallard", "pintail", "teal", "gadwall", "wigeon",
+    ]
+
+    print(f"    Attempting page-level knowledge extraction for {year}...")
+
+    try:
+        pdf = pdfplumber.open(pdf_path)
+    except Exception as e:
+        print(f"    WARNING: Could not open PDF: {e}")
+        return 0
+
+    total = 0
+    for page_num, page in enumerate(pdf.pages):
+        text = page.extract_text()
+        if not text or len(text.strip()) < 100:
+            continue
+
+        text_lower = text.lower()
+        # Check if page has harvest-relevant content
+        matches = [kw for kw in HIP_KEYWORDS if kw in text_lower]
+        if len(matches) < 2:
+            continue
+
+        # Build knowledge entry
+        title = f"USFWS HIP {year} Harvest Report — Page {page_num + 1}"
+        content = text[:2000]
+        tags = ["usfws", "hip", "harvest", "raw-text"]
+        rich_text = f"usfws_hip | {year} | harvest information program | {' '.join(matches[:5])} | {content[:500]}"
+
+        if dry_run:
+            print(f"    [DRY RUN] Page knowledge: {title} ({len(matches)} keyword matches)")
+            total += 1
+            continue
+
+        embedding = embed_via_edge_function(rich_text)
+
+        row = {
+            "title": title,
+            "content": content,
+            "content_type": "usfws_hip",
+            "tags": tags,
+            "metadata": json.dumps({"source": "usfws_hip", "year": year, "page": page_num + 1}),
+        }
+        if embedding:
+            row["embedding"] = json.dumps(embedding)
+
+        resp = requests.post(
+            f"{SUPABASE_URL}/rest/v1/hunt_knowledge",
+            headers={**HEADERS, "Prefer": "resolution=merge-duplicates"},
+            json=[row],
+            timeout=30,
+        )
+        if resp.ok:
+            total += 1
+        else:
+            print(f"    ERROR inserting page knowledge: {resp.status_code} {resp.text[:200]}")
+
+        time.sleep(0.3)  # gentle rate limit
+
+    pdf.close()
+    print(f"    Extracted {total} page-level knowledge entries")
+    return total
+
+
 def upsert_hip_records(records: list[dict], dry_run: bool) -> int:
     """Upsert records into hunt_usfws_hip."""
     if not records:
@@ -416,43 +486,47 @@ def build_knowledge_entries(records: list[dict]) -> list[dict]:
     return entries
 
 
-def batch_embed(texts: list[str]) -> list[list[float]]:
-    """Embed a batch of texts via Voyage AI. Max 20 at a time."""
-    if not VOYAGE_KEY:
-        print("    WARNING: No VOYAGE_API_KEY, skipping embeddings")
-        return [[] for _ in texts]
-
-    for attempt in range(3):
+def embed_via_edge_function(text: str, retries=3) -> list[float]:
+    """Embed a single text via the hunt-generate-embedding edge function."""
+    for attempt in range(retries):
         try:
             resp = requests.post(
-                "https://api.voyageai.com/v1/embeddings",
+                f"{SUPABASE_URL}/functions/v1/hunt-generate-embedding",
                 headers={
-                    "Authorization": f"Bearer {VOYAGE_KEY}",
+                    "Authorization": f"Bearer {SERVICE_KEY}",
+                    "apikey": SERVICE_KEY,
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": "voyage-3-lite",
-                    "input": texts,
-                    "input_type": "document",
-                },
+                json={"text": text, "input_type": "document"},
                 timeout=30,
             )
             if resp.ok:
-                data = resp.json()
-                return [item["embedding"] for item in data["data"]]
-            if resp.status_code == 429 and attempt < 2:
-                print(f"    Rate limited, waiting 30s...")
+                return resp.json()["embedding"]
+            if resp.status_code == 429 and attempt < retries - 1:
                 time.sleep(30)
                 continue
-            print(f"    WARNING: Voyage API error {resp.status_code}: {resp.text[:200]}")
-            return [[] for _ in texts]
-        except requests.RequestException as e:
-            print(f"    WARNING: Voyage API request failed: {e}")
-            if attempt < 2:
+            if resp.status_code >= 500 and attempt < retries - 1:
                 time.sleep(5)
                 continue
-            return [[] for _ in texts]
-    return [[] for _ in texts]
+            print(f"    WARNING: Embed error {resp.status_code}: {resp.text[:200]}")
+            return []
+        except requests.RequestException as e:
+            if attempt < retries - 1:
+                time.sleep(5)
+                continue
+            print(f"    WARNING: Embed request failed: {e}")
+            return []
+    return []
+
+
+def batch_embed(texts: list[str]) -> list[list[float]]:
+    """Embed texts one at a time via the edge function."""
+    results = []
+    for text in texts:
+        emb = embed_via_edge_function(text)
+        results.append(emb)
+        time.sleep(0.2)  # gentle rate limit
+    return results
 
 
 def upsert_knowledge(entries: list[dict], dry_run: bool) -> int:
@@ -503,7 +577,7 @@ def upsert_knowledge(entries: list[dict], dry_run: bool) -> int:
             total += len(rows)
 
         if i + batch_size < len(entries):
-            time.sleep(1)  # Be gentle with Voyage API
+            time.sleep(1)  # Be gentle between batches
 
     print(f"    Upserted {total} knowledge entries")
     return total
@@ -556,7 +630,9 @@ def main():
         records = extract_hip_data(local_path, year)
 
         if not records:
-            print(f"    WARNING: No data extracted for {year}")
+            print(f"    WARNING: No structured data extracted for {year}, falling back to page-level knowledge extraction")
+            page_count = extract_pages_as_knowledge(local_path, year, args.dry_run)
+            total_knowledge += page_count
             continue
 
         all_records.extend(records)

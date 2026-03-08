@@ -1,20 +1,18 @@
 /**
  * Ingest DU migration alerts into hunt_du_articles + hunt_knowledge
  * Paginates the DU content API, filters for migration alerts, fetches full article bodies,
- * embeds via Voyage AI, and stores in Supabase.
+ * embeds via hunt-generate-embedding edge function (which has the Voyage key), and stores in Supabase.
  *
  * Usage:
- *   SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/ingest-du-alerts.ts
- *   START_OFFSET=100 SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/ingest-du-alerts.ts
+ *   SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/ingest-du-alerts.ts
+ *   START_OFFSET=100 SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/ingest-du-alerts.ts
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const VOYAGE_KEY = process.env.VOYAGE_API_KEY;
 const START_OFFSET = parseInt(process.env.START_OFFSET || "0", 10);
 
 if (!SERVICE_KEY) { console.error("SUPABASE_SERVICE_ROLE_KEY required"); process.exit(1); }
-if (!VOYAGE_KEY) { console.error("VOYAGE_API_KEY required"); process.exit(1); }
 
 const supaHeaders = {
   Authorization: `Bearer ${SERVICE_KEY}`,
@@ -36,7 +34,7 @@ const STATE_ABBRS: Record<string, string> = {
 };
 
 const DU_API_BASE = "https://www.ducks.org/sites/ducksorg/contents/data/api.json";
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10; // API caps at 10 per page regardless of limit param
 const RATE_LIMIT_MS = 500;
 
 // ---------------------------------------------------------------------------
@@ -107,24 +105,21 @@ function extractArticleText(html: string): string {
   return clean;
 }
 
-async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
+async function embedViaEdgeFunction(text: string, retries = 3): Promise<number[]> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${VOYAGE_KEY}`,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          apikey: SERVICE_KEY!,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: "voyage-3-lite",
-          input: texts,
-          input_type: "document",
-        }),
+        body: JSON.stringify({ text, input_type: "document" }),
       });
       if (res.ok) {
         const data = await res.json();
-        return data.data.map((d: { embedding: number[] }) => d.embedding);
+        return data.embedding;
       }
       if (res.status === 429 && attempt < retries - 1) {
         const wait = (attempt + 1) * 30000;
@@ -138,7 +133,7 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
         await sleep(wait);
         continue;
       }
-      throw new Error(`Voyage error: ${res.status} ${await res.text()}`);
+      throw new Error(`Embed error: ${res.status} ${await res.text()}`);
     } catch (err) {
       if (attempt < retries - 1) {
         const wait = (attempt + 1) * 10000;
@@ -150,6 +145,15 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
     }
   }
   throw new Error("Exhausted embed retries");
+}
+
+async function batchEmbed(texts: string[]): Promise<number[][]> {
+  const results: number[][] = [];
+  for (const text of texts) {
+    results.push(await embedViaEdgeFunction(text));
+    await sleep(200); // gentle rate limit on edge function
+  }
+  return results;
 }
 
 interface DUArticle {
@@ -178,7 +182,7 @@ interface ProcessedArticle {
 // Main pipeline
 // ---------------------------------------------------------------------------
 
-async function fetchDUPage(offset: number): Promise<{ articles: DUArticle[]; remainingArticles: number }> {
+async function fetchDUPage(offset: number): Promise<{ articles: DUArticle[]; remainingArticles: boolean; totalCount: number }> {
   const url = `${DU_API_BASE}?limit=${PAGE_SIZE}&offset=${offset}`;
   const res = await fetchWithRetry(url);
   return res.json();
@@ -299,7 +303,7 @@ async function main() {
     console.log(`\nFetching page at offset=${offset}...`);
     const page = await fetchDUPage(offset);
     const articles = page.articles || [];
-    const remaining = page.remainingArticles ?? 0;
+    const remaining = page.remainingArticles ?? false;
 
     if (articles.length === 0) {
       console.log("No more articles.");
@@ -354,7 +358,7 @@ async function main() {
       await sleep(500);
     }
 
-    hasMore = remaining > 0;
+    hasMore = remaining === true;
     offset += PAGE_SIZE;
   }
 

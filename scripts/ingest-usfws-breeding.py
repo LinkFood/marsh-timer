@@ -7,8 +7,8 @@ estimate tables with pdfplumber, stores structured records in Supabase
 with Voyage AI embeddings.
 
 Usage:
-  SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... python3 scripts/ingest-usfws-breeding.py
-  SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... python3 scripts/ingest-usfws-breeding.py --dry-run
+  SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/ingest-usfws-breeding.py
+  SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/ingest-usfws-breeding.py --dry-run
 """
 
 import argparse
@@ -28,7 +28,6 @@ from bs4 import BeautifulSoup
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://rvhyotvklfowklzjahdd.supabase.co")
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-VOYAGE_KEY = os.environ.get("VOYAGE_API_KEY", "")
 
 if not SERVICE_KEY:
     print("ERROR: SUPABASE_SERVICE_ROLE_KEY is required")
@@ -168,29 +167,39 @@ def scrape_pdf_links() -> list[dict]:
 
 def try_known_urls() -> list[dict]:
     """Try known URL patterns for USFWS breeding survey PDFs."""
-    known_patterns = [
-        "https://www.fws.gov/sites/default/files/documents/{year}-waterfowl-population-status.pdf",
-        "https://www.fws.gov/sites/default/files/documents/waterfowl-population-status-{year}.pdf",
-        "https://www.fws.gov/sites/default/files/documents/{year}-status-of-waterfowl.pdf",
-        "https://www.fws.gov/media/waterfowl-population-status-{year}",
-    ]
+    BASE = "https://www.fws.gov/sites/default/files/documents"
+
+    # Confirmed URL patterns from recon (FWS changed patterns over the years)
+    known_urls = {
+        2015: f"{BASE}/WaterfowlPopulationStatusReport15.pdf",
+        2016: f"{BASE}/WaterfowlPopulationStatusReport16.pdf",
+        2017: f"{BASE}/WaterfowlPopulationStatusReport17.pdf",
+        2018: f"{BASE}/WaterfowlPopulationStatusReport18.pdf",
+        2019: f"{BASE}/WaterfowlPopulationStatusReport19.pdf",
+        2020: f"{BASE}/WaterfowlPopulationStatusReport20.pdf",
+        2021: f"{BASE}/WaterfowlPopulationStatusReport21.pdf",
+        2022: f"{BASE}/waterfowl-population-status-report-2022.pdf",
+        2023: f"{BASE}/waterfowl-population-status-report-2023.pdf",
+        2024: f"{BASE}/2024-08/waterfowl-population-status-report-2024.pdf",
+        2025: f"{BASE}/2025-09/waterfowl-population-status-report-2025.pdf",
+    }
 
     results = []
     for year in YEAR_RANGE:
-        for pattern in known_patterns:
-            url = pattern.format(year=year)
-            try:
-                resp = requests.head(url, timeout=10, allow_redirects=True, headers={
-                    "User-Agent": "Mozilla/5.0 (DuckCountdown research bot)"
-                })
-                if resp.status_code == 200:
-                    content_type = resp.headers.get("Content-Type", "")
-                    if "pdf" in content_type.lower() or url.endswith(".pdf"):
-                        results.append({"year": year, "url": url, "text": f"{year} status report"})
-                        print(f"  Found PDF for {year}: {url}")
-                        break
-            except requests.RequestException:
-                continue
+        url = known_urls.get(year)
+        if not url:
+            continue
+        try:
+            resp = requests.head(url, timeout=10, allow_redirects=True, headers={
+                "User-Agent": "Mozilla/5.0 (DuckCountdown research bot)"
+            })
+            if resp.status_code == 200:
+                results.append({"year": year, "url": url, "text": f"{year} status report"})
+                print(f"  Found PDF for {year}: {url}")
+            else:
+                print(f"  {year}: HTTP {resp.status_code} for {url}")
+        except requests.RequestException as e:
+            print(f"  {year}: Request failed: {e}")
     return results
 
 
@@ -379,6 +388,75 @@ def extract_from_text_fallback(pdf_path: str, year: int) -> list[dict]:
     return records
 
 
+def extract_pages_as_knowledge(pdf_path: str, year: int, dry_run: bool) -> int:
+    """Last-resort fallback: extract raw page text as knowledge entries for the AI brain."""
+    BREEDING_KEYWORDS = [
+        "mallard", "pintail", "scaup", "gadwall", "wigeon", "shoveler",
+        "canvasback", "redhead", "teal", "wood duck", "canada goose",
+        "population", "estimate", "breeding", "survey",
+    ]
+
+    print(f"    Attempting page-level knowledge extraction for {year}...")
+
+    try:
+        pdf = pdfplumber.open(pdf_path)
+    except Exception as e:
+        print(f"    WARNING: Could not open PDF: {e}")
+        return 0
+
+    total = 0
+    for page_num, page in enumerate(pdf.pages):
+        text = page.extract_text()
+        if not text or len(text.strip()) < 100:
+            continue
+
+        text_lower = text.lower()
+        # Check if page has population-relevant content
+        matches = [kw for kw in BREEDING_KEYWORDS if kw in text_lower]
+        if len(matches) < 2:
+            continue
+
+        # Build knowledge entry
+        title = f"USFWS {year} Breeding Population Survey — Page {page_num + 1}"
+        content = text[:2000]
+        tags = ["usfws", "breeding", "raw-text"]
+        rich_text = f"usfws_breeding | {year} | breeding population survey | {' '.join(matches[:5])} | {content[:500]}"
+
+        if dry_run:
+            print(f"    [DRY RUN] Page knowledge: {title} ({len(matches)} keyword matches)")
+            total += 1
+            continue
+
+        embedding = embed_via_edge_function(rich_text)
+
+        row = {
+            "title": title,
+            "content": content,
+            "content_type": "usfws_breeding",
+            "tags": tags,
+            "metadata": json.dumps({"source": "usfws_breeding_survey", "year": year, "page": page_num + 1}),
+        }
+        if embedding:
+            row["embedding"] = json.dumps(embedding)
+
+        resp = requests.post(
+            f"{SUPABASE_URL}/rest/v1/hunt_knowledge",
+            headers={**HEADERS, "Prefer": "resolution=merge-duplicates"},
+            json=[row],
+            timeout=30,
+        )
+        if resp.ok:
+            total += 1
+        else:
+            print(f"    ERROR inserting page knowledge: {resp.status_code} {resp.text[:200]}")
+
+        time.sleep(0.3)  # gentle rate limit
+
+    pdf.close()
+    print(f"    Extracted {total} page-level knowledge entries")
+    return total
+
+
 def upsert_breeding_records(records: list[dict], dry_run: bool) -> int:
     """Upsert records into hunt_usfws_breeding."""
     if not records:
@@ -439,43 +517,47 @@ def build_knowledge_entries(records: list[dict]) -> list[dict]:
     return entries
 
 
-def batch_embed(texts: list[str]) -> list[list[float]]:
-    """Embed a batch of texts via Voyage AI. Max 20 at a time."""
-    if not VOYAGE_KEY:
-        print("    WARNING: No VOYAGE_API_KEY, skipping embeddings")
-        return [[] for _ in texts]
-
-    for attempt in range(3):
+def embed_via_edge_function(text: str, retries=3) -> list[float]:
+    """Embed a single text via the hunt-generate-embedding edge function."""
+    for attempt in range(retries):
         try:
             resp = requests.post(
-                "https://api.voyageai.com/v1/embeddings",
+                f"{SUPABASE_URL}/functions/v1/hunt-generate-embedding",
                 headers={
-                    "Authorization": f"Bearer {VOYAGE_KEY}",
+                    "Authorization": f"Bearer {SERVICE_KEY}",
+                    "apikey": SERVICE_KEY,
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": "voyage-3-lite",
-                    "input": texts,
-                    "input_type": "document",
-                },
+                json={"text": text, "input_type": "document"},
                 timeout=30,
             )
             if resp.ok:
-                data = resp.json()
-                return [item["embedding"] for item in data["data"]]
-            if resp.status_code == 429 and attempt < 2:
-                print(f"    Rate limited, waiting 30s...")
+                return resp.json()["embedding"]
+            if resp.status_code == 429 and attempt < retries - 1:
                 time.sleep(30)
                 continue
-            print(f"    WARNING: Voyage API error {resp.status_code}: {resp.text[:200]}")
-            return [[] for _ in texts]
-        except requests.RequestException as e:
-            print(f"    WARNING: Voyage API request failed: {e}")
-            if attempt < 2:
+            if resp.status_code >= 500 and attempt < retries - 1:
                 time.sleep(5)
                 continue
-            return [[] for _ in texts]
-    return [[] for _ in texts]
+            print(f"    WARNING: Embed error {resp.status_code}: {resp.text[:200]}")
+            return []
+        except requests.RequestException as e:
+            if attempt < retries - 1:
+                time.sleep(5)
+                continue
+            print(f"    WARNING: Embed request failed: {e}")
+            return []
+    return []
+
+
+def batch_embed(texts: list[str]) -> list[list[float]]:
+    """Embed texts one at a time via the edge function."""
+    results = []
+    for text in texts:
+        emb = embed_via_edge_function(text)
+        results.append(emb)
+        time.sleep(0.2)  # gentle rate limit
+    return results
 
 
 def upsert_knowledge(entries: list[dict], dry_run: bool) -> int:
@@ -525,7 +607,7 @@ def upsert_knowledge(entries: list[dict], dry_run: bool) -> int:
             total += len(rows)
 
         if i + batch_size < len(entries):
-            time.sleep(1)  # Be gentle with Voyage API
+            time.sleep(1)  # Be gentle between batches
 
     print(f"    Upserted {total} knowledge entries")
     return total
@@ -582,7 +664,9 @@ def main():
             records = extract_from_text_fallback(local_path, year)
 
         if not records:
-            print(f"    WARNING: No data extracted for {year}")
+            print(f"    WARNING: No structured data extracted for {year}, falling back to page-level knowledge extraction")
+            page_count = extract_pages_as_knowledge(local_path, year, args.dry_run)
+            total_knowledge += page_count
             continue
 
         all_records.extend(records)

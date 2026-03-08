@@ -3,12 +3,15 @@ import {
   Crosshair,
   MessageSquare,
   Bell,
+  ClipboardList,
   PanelLeftClose,
   PanelLeft,
   ArrowLeft,
 } from "lucide-react";
 import type { Species } from "@/data/types";
 import type { HuntAlert } from "@/hooks/useHuntAlerts";
+import { useAuth } from "@/hooks/useAuth";
+import { useHuntLogs } from "@/hooks/useHuntLogs";
 import NationalView from "./NationalView";
 import StateView from "./StateView";
 import ZoneView from "./ZoneView";
@@ -17,10 +20,12 @@ import HuntAlerts from "./HuntAlerts";
 import ScoutReport from "./ScoutReport";
 import HotspotRanking from "./HotspotRanking";
 import ConvergenceCard from "./cards/ConvergenceCard";
+import HuntLogForm from "./HuntLogForm";
+import HuntLogList from "./HuntLogList";
 
 type DrillLevel = "national" | "state" | "zone";
 
-type TabId = "intel" | "chat" | "alerts";
+type TabId = "intel" | "chat" | "alerts" | "log";
 
 interface SidebarProps {
   level: DrillLevel;
@@ -70,6 +75,7 @@ const TABS: { id: TabId; icon: typeof Crosshair; label: string }[] = [
   { id: "intel", icon: Crosshair, label: "Intel" },
   { id: "chat", icon: MessageSquare, label: "Chat" },
   { id: "alerts", icon: Bell, label: "Alerts" },
+  { id: "log", icon: ClipboardList, label: "Log" },
 ];
 
 export default function Sidebar({
@@ -96,6 +102,11 @@ export default function Sidebar({
   onToggleExpanded,
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<TabId>("intel");
+  const { user, session } = useAuth();
+  const { logs, loading: logsLoading, submitLog, deleteLog } = useHuntLogs(
+    user?.id ?? null,
+    session?.access_token ?? null
+  );
 
   // Reset to intel tab when drill level changes
   useEffect(() => {
@@ -232,6 +243,26 @@ export default function Sidebar({
     </>
   );
 
+  const renderLogContent = () => {
+    if (!user) {
+      return (
+        <div className="flex flex-col items-center justify-center h-40 text-white/40">
+          <ClipboardList size={24} className="mb-2 text-white/20" />
+          <p className="text-xs font-body">Sign in to log hunts</p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <HuntLogForm onSubmit={submitLog} />
+        <div className="mt-3">
+          <HuntLogList logs={logs} loading={logsLoading} onDelete={deleteLog} />
+        </div>
+      </>
+    );
+  };
+
   const headerText = (() => {
     if (level === "national") return null;
     if (level === "state") return stateAbbr;
@@ -247,7 +278,7 @@ export default function Sidebar({
       <div className="h-10 flex items-center px-3 border-b border-white/[0.06] shrink-0">
         {level === "national" ? (
           <span className="text-xs font-display tracking-widest text-white/60">
-            DUCK COUNTDOWN
+            {species.toUpperCase()} INTEL
           </span>
         ) : (
           <button
@@ -299,6 +330,7 @@ export default function Sidebar({
           <HuntChat species={species} stateAbbr={stateAbbr} isMobile={false} />
         )}
         {activeTab === "alerts" && renderAlertsContent()}
+        {activeTab === "log" && renderLogContent()}
       </div>
     </div>
   );
