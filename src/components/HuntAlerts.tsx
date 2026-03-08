@@ -23,39 +23,42 @@ function NationalAlerts({
   if (alerts.length === 0) return null;
 
   return (
-    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1">
-      {alerts.map((alert) => {
-        const c = severityClasses(alert.severity);
-        return (
-          <button
-            key={alert.stateAbbr}
-            onClick={() => onSelectState?.(alert.stateAbbr)}
-            className={`flex-shrink-0 max-w-[200px] w-[200px] rounded-lg border ${c.border} bg-white/5 p-2.5 text-left transition-colors hover:bg-white/[0.08] active:bg-white/[0.1]`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="font-body font-semibold text-xs text-white/90 truncate">
-                {alert.stateName}
-              </span>
-              <span
-                className={`flex-shrink-0 ml-1.5 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-body font-semibold ${c.badge}`}
-              >
-                {alert.severity}
-              </span>
-            </div>
-            <p className="text-[10px] font-body text-white/50 truncate mb-1">
-              {alert.forecastSummary}
-            </p>
-            {alert.patterns.length > 0 && (
-              <div className="flex items-center gap-1">
-                <AlertTriangle className={`w-2.5 h-2.5 flex-shrink-0 ${c.text}`} />
-                <p className={`text-[10px] font-body truncate ${c.text}`}>
-                  {alert.patterns[0]}
-                </p>
+    <div>
+      <p className="text-[10px] font-body text-white/40 uppercase tracking-wider mb-1.5">Notable Hunting Weather</p>
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1">
+        {alerts.map((alert) => {
+          const c = severityClasses(alert.severity);
+          return (
+            <button
+              key={alert.stateAbbr}
+              onClick={() => onSelectState?.(alert.stateAbbr)}
+              className={`flex-shrink-0 max-w-[200px] w-[200px] rounded-lg border ${c.border} bg-white/5 p-2.5 text-left transition-colors hover:bg-white/[0.08] active:bg-white/[0.1]`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-body font-semibold text-xs text-white/90 truncate">
+                  {alert.stateName}
+                </span>
+                <span
+                  className={`flex-shrink-0 ml-1.5 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-body font-semibold ${c.badge}`}
+                >
+                  {alert.severity}
+                </span>
               </div>
-            )}
-          </button>
-        );
-      })}
+              <p className="text-[10px] font-body text-white/50 truncate mb-1">
+                {alert.forecastSummary}
+              </p>
+              {alert.patterns.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <AlertTriangle className={`w-2.5 h-2.5 flex-shrink-0 ${c.text}`} />
+                  <p className={`text-[10px] font-body truncate ${c.text}`}>
+                    {alert.patterns[0]}
+                  </p>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

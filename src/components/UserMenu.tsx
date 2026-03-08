@@ -2,6 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { User, LogOut } from 'lucide-react';
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  const visible = local.slice(0, 3);
+  return `${visible}***@${domain}`;
+}
+
 export default function UserMenu() {
   const { user, profile, signIn, signOut } = useAuth();
   const [open, setOpen] = useState(false);
@@ -49,7 +56,7 @@ export default function UserMenu() {
         <div className="absolute right-0 top-full mt-2 w-48 glass-panel border border-white/[0.06] rounded-lg shadow-xl overflow-hidden z-50">
           <div className="px-3 py-2 border-b border-white/[0.06]">
             <p className="text-xs font-body font-semibold text-white/90 truncate">{displayName}</p>
-            <p className="text-[10px] text-white/40 truncate">{user.email}</p>
+            <p className="text-[10px] text-white/40 truncate">{maskEmail(user.email || '')}</p>
           </div>
           <button
             onClick={() => { signOut(); setOpen(false); }}

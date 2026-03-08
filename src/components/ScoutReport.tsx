@@ -121,7 +121,8 @@ export default function ScoutReport({ briefText, loading }: ScoutReportProps) {
 
   if (!briefText) return null;
 
-  const sections = parseSections(briefText);
+  const cleanedText = briefText.replace(/DUCK COUNTDOWN/gi, '').trim();
+  const sections = parseSections(cleanedText);
 
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
