@@ -312,21 +312,33 @@ eBird Historical (5 years) + Open-Meteo Archive (5 years)
 | `scripts/backfill-ebird-history.ts` | 5 years eBird observations → hunt_migration_history | `EBIRD_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-ebird-history.ts` (200 req/hr, supports `START_STATE`, `YEAR`) |
 | `scripts/extract-patterns.ts` | Cross-reference migration+weather → Sonnet pattern extraction → embed | `ANTHROPIC_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/extract-patterns.ts` (run after both backfills) |
 
-## Future Data Sources
+## Data Sources
 
-### Tier 1 — Integrated or In Progress
+### Tier 1 — Live & Integrated
 
-| Source | Status |
-|--------|--------|
-| **eBird** (Cornell Lab) | Live sightings on map + historical backfill running |
-| **RainViewer** | Live radar overlay on map |
-| **Open-Meteo** | Live forecast via hunt-weather + 5-year archive backfilled |
+| Source | Status | Pipeline |
+|--------|--------|----------|
+| **eBird** (Cornell Lab) | Live sightings on map + historical backfill | hunt-migration-monitor (5 crons) |
+| **RainViewer** | Live radar overlay on map | Frontend only |
+| **Open-Meteo** | Live forecast + 5-year archive | hunt-weather-watchdog (daily) |
+| **NASA POWER** | Satellite solar/cloud data | hunt-nasa-power (daily) |
+| **NWS API** | Severe weather alerts | hunt-nws-monitor (every 3hr) |
 
-### Tier 2 — Watch List
+### Tier 2 — Ready to Build (Phase 6 "The Mother Lode")
 
-| Source | What It Provides |
-|--------|-----------------|
-| **BirdCast** (Cornell + Colorado State) | Forecast migration intensity + live radar-based nocturnal migration |
-| **USFWS Waterfowl Survey** | Annual population estimates (sets regulations) |
-| **Ducks Unlimited Migration Map** | Real-time waterfowl concentration reports (no API yet) |
-| **Migration Station** | WMA/refuge waterfowl counts Oct-Jan (no API yet) |
+| Source | Type | API/Access | Volume | Status |
+|--------|------|-----------|--------|--------|
+| **DU Migration Alerts** | JSON API, no auth | `ducks.org/sites/ducksorg/contents/data/api.json` | ~700 expert articles | READY |
+| **USFWS Flyway Data Books** | PDF download, public domain | `fws.gov/sites/default/files/documents/` | ~200 PDFs, 60+ years | READY |
+| **USFWS Breeding Survey** | PDF, public domain | `fws.gov/project/waterfowl-breeding-population-and-habitat-survey` | Annual 1947-present | READY |
+| **USFWS HIP Harvest** | PDF, public domain | `fws.gov/program/migratory-bird-harvest-surveys` | Annual, county-level | READY |
+| **BirdCast Radar** | Undocumented dashboard API | `dashboard.birdcast.org/region/{FIPS}` | 2013-present, county-level | NEEDS RECON |
+| **DU Migration Map** | Undocumented map API | `migrationmap.ducks.org` | Thousands/season, geo-tagged | NEEDS RECON |
+
+### Tier 3 — Deferred (Legal Risk)
+
+| Source | Risk | Decision |
+|--------|------|----------|
+| DuckHuntingChat.com (3.2M posts) | Commercial forum, user content | DEFERRED — use clean sources first |
+| Refuge Forums | Same | DEFERRED |
+| Migration Station USA | TOS/patent claims | SKIP — go to USFWS directly |
