@@ -102,7 +102,7 @@ export default function NationalView({
     const topAlerts = (alerts ?? []).slice(0, 3);
 
     return (
-      <div className="px-1 py-1 max-h-[120px] overflow-y-auto scrollbar-hide space-y-2">
+      <div className="px-1 py-1 space-y-2">
         {/* Header */}
         <span className="text-[10px] uppercase tracking-[0.15em] text-white/40 font-body font-semibold">
           Off-Season Intel
@@ -199,6 +199,13 @@ export default function NationalView({
         )}
         <span className="text-white/40">{counts.closed} Closed</span>
       </div>
+
+      {/* Sparse species note */}
+      {sorted.length < 20 && (
+        <p className="text-[10px] text-white/30 font-body mb-2 px-1">
+          Showing {sorted.length} states with {config.label.toLowerCase()} season data
+        </p>
+      )}
 
       {/* Horizontal scroll cards */}
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1">

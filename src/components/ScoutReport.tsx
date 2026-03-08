@@ -13,6 +13,37 @@ interface Section {
   content: string;
 }
 
+function deduplicateLines(lines: string[]): string[] {
+  const result: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const prevTrimmed = result.length > 0 ? result[result.length - 1].trim() : '';
+    if (trimmed === prevTrimmed) continue;
+    // Skip lines that are >80% similar to previous
+    if (trimmed.length > 0 && prevTrimmed.length > 0) {
+      const shorter = Math.min(trimmed.length, prevTrimmed.length);
+      const longer = Math.max(trimmed.length, prevTrimmed.length);
+      if (shorter / longer > 0.8) {
+        let matches = 0;
+        for (let i = 0; i < shorter; i++) {
+          if (trimmed[i] === prevTrimmed[i]) matches++;
+        }
+        if (matches / longer > 0.8) continue;
+      }
+    }
+    result.push(line);
+  }
+  return result;
+}
+
+function truncateLine(line: string, max = 200): string {
+  return line.length > max ? line.slice(0, max) + '...' : line;
+}
+
+function normalizeSectionTitle(title: string): string {
+  return title.replace(/[^A-Z]/g, '');
+}
+
 function parseSections(text: string): Section[] {
   const lines = text.split('\n');
   const sections: Section[] = [];
@@ -22,7 +53,9 @@ function parseSections(text: string): Section[] {
   for (const line of lines) {
     if (SECTION_PATTERN.test(line.trim())) {
       if (currentLines.length > 0) {
-        sections.push({ title: currentTitle, content: currentLines.join('\n').trim() });
+        const deduped = deduplicateLines(currentLines);
+        const content = deduped.map((l) => truncateLine(l)).join('\n').trim();
+        sections.push({ title: currentTitle, content });
       }
       currentTitle = line.trim();
       currentLines = [];
@@ -32,14 +65,25 @@ function parseSections(text: string): Section[] {
   }
 
   if (currentLines.length > 0) {
-    sections.push({ title: currentTitle, content: currentLines.join('\n').trim() });
+    const deduped = deduplicateLines(currentLines);
+    const content = deduped.map((l) => truncateLine(l)).join('\n').trim();
+    sections.push({ title: currentTitle, content });
   }
 
-  return sections.filter((s) => s.content.length > 0);
+  // Deduplicate sections with similar titles — keep first occurrence
+  const seen = new Set<string>();
+  const unique = sections.filter((s) => {
+    const key = normalizeSectionTitle(s.title);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return unique.filter((s) => s.content.length > 0);
 }
 
-function SectionBlock({ section }: { section: Section }) {
-  const [open, setOpen] = useState(true);
+function SectionBlock({ section, defaultOpen }: { section: Section; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
     <div>
@@ -87,9 +131,9 @@ export default function ScoutReport({ briefText, loading }: ScoutReportProps) {
           Daily Scout Report
         </span>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 max-h-[300px] overflow-y-auto">
         {sections.map((section, i) => (
-          <SectionBlock key={i} section={section} />
+          <SectionBlock key={i} section={section} defaultOpen={i === 0} />
         ))}
       </div>
     </div>

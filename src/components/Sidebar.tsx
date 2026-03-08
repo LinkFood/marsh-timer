@@ -42,6 +42,7 @@ interface SidebarProps {
     reasoning: string;
     national_rank: number;
   }>;
+  convergenceLoading?: boolean;
   convergenceScore?: {
     score: number;
     weather_component: number;
@@ -86,6 +87,7 @@ export default function Sidebar({
   alerts,
   weatherSnapshot,
   convergenceTopStates,
+  convergenceLoading,
   convergenceScore,
   scoutReport,
   scoutReportLoading,
@@ -140,6 +142,7 @@ export default function Sidebar({
           <HotspotRanking
             states={convergenceTopStates || []}
             onSelectState={onSelectState}
+            loading={convergenceLoading}
           />
           <NationalView
             species={species}

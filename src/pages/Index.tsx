@@ -116,7 +116,7 @@ const Index = () => {
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
   const { alerts } = useHuntAlerts();
-  const { scores: convergenceScores, topStates: convergenceTopStates } = useConvergenceScores();
+  const { scores: convergenceScores, topStates: convergenceTopStates, loading: convergenceLoading } = useConvergenceScores();
   const { report: scoutReport, loading: scoutReportLoading } = useScoutReport();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
@@ -422,6 +422,7 @@ const Index = () => {
           alerts={alerts}
           weatherSnapshot={weatherCache}
           convergenceTopStates={convergenceTopStates}
+          convergenceLoading={convergenceLoading}
           convergenceScore={selectedConvergenceScore}
           scoutReport={scoutReport}
           scoutReportLoading={scoutReportLoading}

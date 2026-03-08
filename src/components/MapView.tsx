@@ -142,8 +142,8 @@ export interface MapViewRef {
 }
 
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-const US_CENTER: [number, number] = [-98.5, 39.8];
-const US_ZOOM = 3.5;
+const US_CENTER: [number, number] = [-99.5, 38.5];
+const US_ZOOM = 3.4;
 const STATE_ZOOM = 7;
 const DRILL_UP_ZOOM_THRESHOLD = 4;
 
@@ -585,6 +585,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           source: 'flyway-flow',
           layout: {
             'symbol-placement': 'line',
+            'symbol-spacing': 500,
             'text-field': ['get', 'name'],
             'text-size': 12,
             'text-allow-overlap': false,
@@ -1987,14 +1988,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
     } else if (map.getLayer("states-fill")) {
       map.setPaintProperty("states-fill", "fill-color", buildFillExpression(species, selectedState));
-      map.setPaintProperty("states-fill", "fill-opacity", 0.5);
+      map.setPaintProperty("states-fill", "fill-opacity", 0.65);
     }
 
     // State outlines — stronger in data modes
     if (map.getLayer("states-line")) {
       const isDataMode = mapMode === 'intel' || mapMode === 'weather';
-      map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : 0.8);
-      map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)");
+      map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : 1.0);
+      map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.2)");
     }
 
     // Selected state outline

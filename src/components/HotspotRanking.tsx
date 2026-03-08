@@ -22,9 +22,10 @@ interface HotspotRankingProps {
     national_rank: number;
   }>;
   onSelectState: (abbr: string) => void;
+  loading?: boolean;
 }
 
-export default function HotspotRanking({ states, onSelectState }: HotspotRankingProps) {
+export default function HotspotRanking({ states, onSelectState, loading }: HotspotRankingProps) {
   const top10 = states.slice(0, 10);
 
   return (
@@ -33,8 +34,16 @@ export default function HotspotRanking({ states, onSelectState }: HotspotRanking
         Where to Hunt Today
       </div>
 
-      {top10.length === 0 ? (
-        <div className="text-xs text-white/30">Convergence data loading...</div>
+      {loading ? (
+        <div className="space-y-1.5">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-6 rounded bg-white/[0.04] animate-pulse" />
+          ))}
+        </div>
+      ) : top10.length === 0 ? (
+        <div className="text-[11px] text-white/30 leading-snug">
+          No convergence data for today. Scores update daily at 8AM UTC.
+        </div>
       ) : (
         <div className="space-y-0.5">
           {top10.map((state) => {

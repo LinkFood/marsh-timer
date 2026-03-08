@@ -106,24 +106,27 @@ export default function StateView({
           </button>
         </div>
 
-        {/* Season type tabs */}
-        {seasons.length > 1 && (
-          <div className="flex justify-center gap-1 mt-2 flex-wrap">
-            {seasons.map((s) => (
-              <button
-                key={s.seasonType}
-                onClick={() => setActiveSeasonType(s.seasonType)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-body font-semibold transition-colors ${
-                  s.seasonType === activeSeasonType
-                    ? "bg-primary/20 text-primary border border-primary/30"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                }`}
-              >
-                {getSeasonTypeLabel(s.seasonType)}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Season type tabs (deduplicated) */}
+        {(() => {
+          const uniqueTypes = Array.from(new Set(seasons.map((s) => s.seasonType)));
+          return uniqueTypes.length > 1 ? (
+            <div className="flex justify-center gap-1 mt-2 flex-wrap">
+              {uniqueTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setActiveSeasonType(type)}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-body font-semibold transition-colors ${
+                    type === activeSeasonType
+                      ? "bg-primary/20 text-primary border border-primary/30"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {getSeasonTypeLabel(type)}
+                </button>
+              ))}
+            </div>
+          ) : null;
+        })()}
 
         <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-xs font-body">
           <span
