@@ -30,11 +30,11 @@ interface ConvergenceCardProps {
 }
 
 const COMPONENTS = [
-  { label: 'Weather', max: 25, key: 'weatherComponent', color: null },
-  { label: 'Solunar', max: 15, key: 'solunarComponent', color: null },
-  { label: 'Migration', max: 25, key: 'migrationComponent', color: null },
+  { label: 'Weather', max: 25, key: 'weatherComponent', color: '#60a5fa' },
+  { label: 'Solunar', max: 15, key: 'solunarComponent', color: '#a78bfa' },
+  { label: 'Migration', max: 25, key: 'migrationComponent', color: '#34d399' },
   { label: 'BirdCast', max: 20, key: 'birdcastComponent', color: '#06b6d4' },
-  { label: 'Pattern', max: 15, key: 'patternComponent', color: null },
+  { label: 'Pattern', max: 15, key: 'patternComponent', color: '#f59e0b' },
 ] as const;
 
 export default function ConvergenceCard({
@@ -73,19 +73,19 @@ export default function ConvergenceCard({
       <div className="space-y-2">
         {COMPONENTS.map(({ label, max, key, color: barColor }) => {
           const value = values[key];
-          const pct = Math.round((value / max) * 100);
+          const pct = Math.min(100, Math.round((value / max) * 100));
           return (
             <div key={key}>
               <div className="flex items-center justify-between mb-0.5">
                 <span className="text-[10px] text-white/50">{label}</span>
                 <span className="text-[10px] text-white/50">
-                  {value}/{max}
+                  {Math.min(value, max)}/{max}
                 </span>
               </div>
               <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{ width: `${pct}%`, backgroundColor: barColor || color }}
+                  style={{ width: `${pct}%`, backgroundColor: barColor }}
                 />
               </div>
             </div>

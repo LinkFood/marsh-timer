@@ -138,6 +138,7 @@ export interface MapViewProps {
   nwsAlertsGeoJSON?: FeatureCollection | null;
   migrationFrontLine?: Feature<LineString> | null;
   scrubDate?: Date | null;
+  showRadar?: boolean;
 }
 
 export interface MapViewRef {
@@ -271,7 +272,7 @@ function buildSatelliteFillExpression(
     if (status === 'closed') {
       entries.push(abbr, 'rgba(60, 60, 70, 0.7)');
     } else if (status === 'upcoming') {
-      entries.push(abbr, 'rgba(70, 85, 110, 0.6)');
+      entries.push(abbr, 'rgba(70, 85, 110, 0.8)');
     } else {
       entries.push(abbr, colors[status]);
     }
@@ -357,6 +358,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     perfectStormStates,
     nwsAlertsGeoJSON = null,
     migrationFrontLine = null,
+    showRadar = false,
   },
   ref,
 ) {
@@ -2010,7 +2012,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   // Update convergence score labels when scores change
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !loadedRef.current || !convergenceScores) return;
+    if (!map || !convergenceScores) return;
 
     const source = map.getSource("convergence-labels") as mapboxgl.GeoJSONSource | undefined;
     if (!source) return;
@@ -2085,6 +2087,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
     }
 
+    // Radar toggle override — force radar-overlay visible/hidden based on showRadar prop
+    if (map.getLayer('radar-overlay')) {
+      map.setLayoutProperty('radar-overlay', 'visibility', showRadar ? 'visible' : 'none');
+    }
+
     // --- BLOCK 2: State fill coloring (separate from visibility) ---
     if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
@@ -2140,7 +2147,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
     } else if (map.getLayer("states-fill")) {
       map.setPaintProperty("states-fill", "fill-color", buildSatelliteFillExpression(species, selectedState));
-      map.setPaintProperty("states-fill", "fill-opacity", 0.75);
+      map.setPaintProperty("states-fill", "fill-opacity", 0.85);
     }
 
     // State outlines — stronger in data modes, visible in default
@@ -2237,7 +2244,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (map.getLayer("perfect-storm-ring")) {
       map.setFilter("perfect-storm-ring", stormFilter);
     }
-  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates]);
+  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar]);
 
   // Auto-activate layers on zoom (waterways at state zoom in scout/intel)
   useEffect(() => {

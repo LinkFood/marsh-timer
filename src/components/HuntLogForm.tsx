@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import type { HuntLogInput } from '@/hooks/useHuntLogs';
 
@@ -37,17 +37,27 @@ function todayStr(): string {
 
 interface HuntLogFormProps {
   onSubmit: (input: HuntLogInput) => Promise<unknown>;
+  species?: string;
+  stateAbbr?: string;
 }
 
-export default function HuntLogForm({ onSubmit }: HuntLogFormProps) {
+export default function HuntLogForm({ onSubmit, species: speciesProp, stateAbbr: stateAbbrProp }: HuntLogFormProps) {
   const [date, setDate] = useState(todayStr());
-  const [stateAbbr, setStateAbbr] = useState('');
-  const [species, setSpecies] = useState('duck');
+  const [stateAbbr, setStateAbbr] = useState(stateAbbrProp || '');
+  const [species, setSpecies] = useState(speciesProp || 'duck');
   const [harvestCount, setHarvestCount] = useState(0);
   const [county, setCounty] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    if (speciesProp) setSpecies(speciesProp);
+  }, [speciesProp]);
+
+  useEffect(() => {
+    if (stateAbbrProp) setStateAbbr(stateAbbrProp);
+  }, [stateAbbrProp]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

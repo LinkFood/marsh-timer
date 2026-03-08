@@ -27,6 +27,8 @@ interface MapPresetsProps {
   showFlyways: boolean;
   onToggleFlyways: () => void;
   showFlywayOption: boolean;
+  showRadar?: boolean;
+  onToggleRadar?: () => void;
 }
 
 const modes: { key: MapMode; label: string; icon: typeof Map }[] = [
@@ -50,6 +52,8 @@ export default function MapPresets({
   showFlyways,
   onToggleFlyways,
   showFlywayOption,
+  showRadar = false,
+  onToggleRadar,
 }: MapPresetsProps) {
   const panelClass =
     "bg-[rgba(10,15,30,0.85)] backdrop-blur-[12px] border border-white/[0.08] rounded-xl";
@@ -116,6 +120,18 @@ export default function MapPresets({
             aria-label="Toggle flyway overlay"
           >
             <Navigation size={14} />
+          </button>
+        )}
+
+        {onToggleRadar && (
+          <button
+            onClick={onToggleRadar}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors border text-xs ${
+              showRadar ? utilActive : utilInactive
+            }`}
+            aria-label="Toggle radar overlay"
+          >
+            <CloudRain size={14} />
           </button>
         )}
       </div>

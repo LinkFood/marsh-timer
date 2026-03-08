@@ -103,6 +103,7 @@ const Index = () => {
   );
   const [zoneSlug, setZoneSlug] = useState<string | null>(parsed.zoneSlug);
   const [showFlyways, setShowFlyways] = useState(false);
+  const [showRadar, setShowRadar] = useState(false);
   const [isSatellite, setIsSatellite] = useState(true);
   const [show3D, setShow3D] = useState(true);
   const [mapMode, setMapMode] = useState<MapMode>('default');
@@ -138,7 +139,7 @@ const Index = () => {
   const perfectStormStates = useMemo(() => {
     const states = new Set<string>();
     for (const [abbr, data] of convergenceScores) {
-      if (data.score >= 85 && data.weather_component >= 80 && data.migration_component >= 70) {
+      if (data.score >= 80 && data.weather_component >= 20 && data.migration_component >= 20) {
         states.add(abbr);
       }
     }
@@ -392,6 +393,7 @@ const Index = () => {
         nwsAlertsGeoJSON={nwsAlertsGeoJSON}
         migrationFrontLine={migrationFrontLine}
         scrubDate={scrubDate}
+        showRadar={showRadar}
       />
 
       {/* Header */}
@@ -459,6 +461,8 @@ const Index = () => {
         showFlyways={showFlyways}
         onToggleFlyways={() => setShowFlyways((f) => !f)}
         showFlywayOption={isFlywaySpecies(species)}
+        showRadar={showRadar}
+        onToggleRadar={() => setShowRadar((r) => !r)}
       />
 
       {/* Map Legend */}

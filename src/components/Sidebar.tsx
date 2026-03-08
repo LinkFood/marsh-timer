@@ -142,19 +142,31 @@ export default function Sidebar({
 
   // --- Expanded state ---
 
+  const isWaterfowl = species === 'duck' || species === 'goose';
+
   const renderIntelContent = () => {
     if (level === "national") {
       return (
         <>
-          <ScoutReport
-            briefText={scoutReport?.brief_text}
-            loading={scoutReportLoading ?? false}
-          />
-          <HotspotRanking
-            states={convergenceTopStates || []}
-            onSelectState={onSelectState}
-            loading={convergenceLoading}
-          />
+          {isWaterfowl ? (
+            <>
+              <ScoutReport
+                briefText={scoutReport?.brief_text}
+                loading={scoutReportLoading ?? false}
+              />
+              <HotspotRanking
+                states={convergenceTopStates || []}
+                onSelectState={onSelectState}
+                loading={convergenceLoading}
+              />
+            </>
+          ) : (
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center">
+              <p className="text-xs text-white/50 font-body">
+                Hunt intelligence is available for waterfowl species
+              </p>
+            </div>
+          )}
           <NationalView
             species={species}
             onSelectState={onSelectState}
@@ -170,7 +182,7 @@ export default function Sidebar({
     if (level === "state" && stateAbbr) {
       return (
         <>
-          {convergenceScore && (
+          {isWaterfowl && convergenceScore && (
             <ConvergenceCard
               score={convergenceScore.score}
               weatherComponent={convergenceScore.weather_component}
@@ -182,6 +194,13 @@ export default function Sidebar({
               reasoning={convergenceScore.reasoning}
               stateAbbr={stateAbbr}
             />
+          )}
+          {!isWaterfowl && (
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center mb-3">
+              <p className="text-xs text-white/50 font-body">
+                Hunt intelligence is available for waterfowl species
+              </p>
+            </div>
           )}
           <StateView
             species={species}
@@ -257,7 +276,7 @@ export default function Sidebar({
 
     return (
       <>
-        <HuntLogForm onSubmit={submitLog} />
+        <HuntLogForm onSubmit={submitLog} species={species} stateAbbr={stateAbbr ?? undefined} />
         <div className="mt-3">
           <HuntLogList logs={logs} loading={logsLoading} onDelete={deleteLog} />
         </div>
