@@ -124,6 +124,16 @@ const Index = () => {
   const [scrubScores, setScrubScores] = useState<Map<string, number> | null>(null);
   const [scrubLoading, setScrubLoading] = useState(false);
 
+  // Build convergence score map for MapView (abbr -> score number)
+  // MUST be defined before activeConvergenceScores which depends on it
+  const convergenceScoreMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [abbr, data] of convergenceScores) {
+      map.set(abbr, data.score);
+    }
+    return map;
+  }, [convergenceScores]);
+
   // Fetch historical convergence scores when scrub date changes
   useEffect(() => {
     if (!scrubDate) {
@@ -135,13 +145,11 @@ const Index = () => {
     const scrubDay = new Date(scrubDate);
     scrubDay.setHours(0, 0, 0, 0);
 
-    // If it's today, use live scores
     if (scrubDay.getTime() === today.getTime()) {
       setScrubScores(null);
       return;
     }
 
-    // Future dates: no forecast data exists
     if (scrubDay > today) {
       setScrubScores(null);
       return;
@@ -206,15 +214,6 @@ const Index = () => {
     scrubDay.setHours(0, 0, 0, 0);
     return scrubDay > today;
   }, [scrubDate]);
-
-  // Build convergence score map for MapView (abbr -> score number)
-  const convergenceScoreMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const [abbr, data] of convergenceScores) {
-      map.set(abbr, data.score);
-    }
-    return map;
-  }, [convergenceScores]);
 
   // Get convergence score for selected state
   const selectedConvergenceScore = useMemo(() => {
