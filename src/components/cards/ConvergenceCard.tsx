@@ -82,11 +82,15 @@ export default function ConvergenceCard({
                   {Math.min(value, max)}/{max}
                 </span>
               </div>
-              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${pct}%`, backgroundColor: barColor }}
-                />
+              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden relative">
+                {value === 0 ? (
+                  <span className="absolute inset-0 flex items-center justify-center text-[7px] text-white/30">No data</span>
+                ) : (
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, backgroundColor: barColor }}
+                  />
+                )}
               </div>
             </div>
           );

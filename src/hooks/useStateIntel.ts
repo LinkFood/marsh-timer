@@ -29,11 +29,16 @@ export function useStateIntel(species: Species, stateAbbr: string | null) {
       if (!res.ok) return [];
       const data = await res.json();
 
+      const isWaterfowl = species === 'duck' || species === 'goose';
+      const waterfowlTypes = new Set(['du_report', 'du_alert', 'birdcast', 'flyway_data', 'breeding_survey', 'hip_harvest', 'weather-pattern']);
+
       const results: IntelResult[] = [];
 
       // Vector results (patterns, facts)
       for (const v of data.vector || []) {
         if (v.similarity > 0.3) {
+          // Filter out waterfowl-specific intel for non-waterfowl species
+          if (!isWaterfowl && waterfowlTypes.has(v.content_type)) continue;
           results.push({
             title: v.title,
             content: v.content,

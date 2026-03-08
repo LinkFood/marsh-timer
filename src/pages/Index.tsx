@@ -106,7 +106,11 @@ const Index = () => {
   const [showRadar, setShowRadar] = useState(false);
   const [isSatellite, setIsSatellite] = useState(true);
   const [show3D, setShow3D] = useState(true);
-  const [mapMode, setMapMode] = useState<MapMode>('default');
+  const [mapMode, setMapModeRaw] = useState<MapMode>('default');
+  const setMapMode = useCallback((mode: MapMode) => {
+    setMapModeRaw(mode);
+    if (mode === 'terrain') setShow3D(true);
+  }, []);
   const [elevation, setElevation] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);

@@ -239,7 +239,7 @@ export default function Sidebar({
       {convergenceAlerts && convergenceAlerts.length > 0 && (
         <div className="mt-3 space-y-2">
           <p className="text-[10px] uppercase tracking-widest text-white/40 font-medium">
-            Convergence Alerts
+            Notable Hunting Weather
           </p>
           {convergenceAlerts.map((ca, i) => (
             <div
