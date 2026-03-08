@@ -399,6 +399,12 @@ verify_jwt = false
 [functions.hunt-convergence-alerts]
 verify_jwt = false
 
+[functions.hunt-du-alerts]
+verify_jwt = false
+
+[functions.hunt-log]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
