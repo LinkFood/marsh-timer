@@ -271,12 +271,12 @@ function buildSatelliteFillExpression(
     }
     const season = getPrimarySeasonForState(species, abbr);
     if (!season) {
-      entries.push(abbr, 'rgba(80, 85, 95, 0.85)');
+      entries.push(abbr, 'rgba(100, 105, 115, 0.90)');
       continue;
     }
     const status = getSeasonStatus(season, now);
     if (status === 'closed') {
-      entries.push(abbr, 'rgba(80, 85, 95, 0.85)');
+      entries.push(abbr, 'rgba(100, 105, 115, 0.90)');
     } else if (status === 'upcoming') {
       entries.push(abbr, 'rgba(70, 85, 110, 0.8)');
     } else {
@@ -288,7 +288,7 @@ function buildSatelliteFillExpression(
     "match",
     ["get", "abbr"],
     ...entries,
-    'rgba(80, 85, 95, 0.85)',
+    'rgba(100, 105, 115, 0.90)',
   ] as mapboxgl.Expression;
 }
 
@@ -511,7 +511,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: "fill",
           source: "golden-hour",
           paint: {
-            "fill-color": "rgba(255, 180, 50, 0.18)",
+            "fill-color": "rgba(255, 180, 50, 0.30)",
             "fill-opacity": 0.8,
           },
         }, "states-fill");
@@ -522,7 +522,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: "fill",
           source: "terminator",
           paint: {
-            "fill-color": "rgba(0, 0, 20, 0.35)",
+            "fill-color": "rgba(0, 0, 20, 0.50)",
             "fill-opacity": 1,
           },
         }, "states-fill");
@@ -534,7 +534,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           source: "terminator",
           paint: {
             "line-color": "rgba(255, 180, 50, 0.8)",
-            "line-width": 2,
+            "line-width": 3,
           },
         });
       }
@@ -1177,7 +1177,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             ],
             "line-width": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              0, 2, 15, 3.5, 30, 5,
+              0, 2.5, 15, 4, 30, 6,
             ],
             "line-opacity": 0.75,
             "line-blur": [
@@ -1220,15 +1220,20 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-field": "▶",
             "text-size": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              0, 10,
-              15, 14,
-              30, 20
+              0, 8,
+              15, 16,
+              30, 24
             ],
             "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
             "text-rotate": ["get", "windDir"],
             "text-rotation-alignment": "map",
             "text-allow-overlap": true,
-            "text-offset": [0, -1.5],
+            "text-offset": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              0, ["literal", [0, -1.2]],
+              15, ["literal", [0, -1.8]],
+              30, ["literal", [0, -2.5]]
+            ],
             visibility: "none",
           },
           paint: {
@@ -1729,10 +1734,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // Click handler
     map.on("click", "states-fill", (e) => {
-      const ebirdLayers = ['ebird-dots', 'ebird-clusters'].filter(l => map.getLayer(l));
-      if (ebirdLayers.length > 0) {
-        const ebirdHits = map.queryRenderedFeatures(e.point, { layers: ebirdLayers });
-        if (ebirdHits.length > 0) return;
+      const interactiveLayers = ['ebird-dots', 'ebird-clusters', 'ebird-cluster-count', 'du-pins-dots', 'du-pins-clusters'].filter(l => map.getLayer(l));
+      if (interactiveLayers.length > 0) {
+        const hits = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
+        if (hits.length > 0) return;
       }
       if (!e.features || e.features.length === 0) return;
       const abbr = e.features[0].properties?.abbr;
@@ -1744,6 +1749,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // eBird cluster click — zoom to expand
     map.on("click", "ebird-clusters", (e) => {
+      e.preventDefault();
       if (!e.features || e.features.length === 0) return;
       const clusterId = e.features[0].properties?.cluster_id;
       const source = map.getSource("ebird-sightings") as mapboxgl.GeoJSONSource;
@@ -1756,6 +1762,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // eBird dot click — show sighting popup
     map.on("click", "ebird-dots", (e) => {
+      e.preventDefault();
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties || {};
       const coords = (e.features[0].geometry as any).coordinates.slice() as [number, number];
@@ -2017,6 +2024,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (!map) return;
 
     if (selectedState) {
+      if (flyingRef.current) return; // Already flying to search coordinates — don't override with centroid
       const centroid = centroidsRef.current.get(selectedState);
       if (centroid) {
         flyingRef.current = true;
@@ -2504,7 +2512,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (show3D) {
       addTerrain(map);
       if (map.getZoom() < 6 && map.getPitch() < 10) {
-        map.easeTo({ pitch: 25, duration: 800 });
+        map.easeTo({ pitch: 40, bearing: -10, duration: 800 });
       }
     } else {
       removeTerrain(map);
@@ -2535,7 +2543,7 @@ function addTerrain(map: mapboxgl.Map) {
       maxzoom: 14,
     });
   }
-  map.setTerrain({ source: "mapbox-terrain", exaggeration: 1.5 });
+  map.setTerrain({ source: "mapbox-terrain", exaggeration: map.getZoom() < 6 ? 2.5 : 1.5 });
 
   if (!map.getLayer("sky")) {
     map.addLayer({
