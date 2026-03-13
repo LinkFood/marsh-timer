@@ -1746,10 +1746,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const clusterId = e.features[0].properties?.cluster_id;
+      // Capture coords NOW — e.features is recycled by Mapbox after this handler returns
+      const coords = (e.features[0].geometry as any).coordinates as [number, number];
       const source = map.getSource("ebird-sightings") as mapboxgl.GeoJSONSource;
       source.getClusterExpansionZoom(clusterId, (err, zoom) => {
         if (err || zoom == null) return;
-        const coords = (e.features![0].geometry as any).coordinates as [number, number];
         map.flyTo({ center: coords, zoom, duration: 500 });
       });
     });
