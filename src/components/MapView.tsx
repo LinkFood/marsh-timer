@@ -1737,29 +1737,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       });
     });
 
-    // Click handler
-    map.on("click", "states-fill", (e) => {
-      const interactiveLayers = ['ebird-dots', 'ebird-clusters', 'ebird-cluster-count', 'du-pins-dots', 'du-pins-clusters'].filter(l => map.getLayer(l));
-      if (interactiveLayers.length > 0) {
-        const r = 20; // px radius for fat-finger tolerance
-        const bbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
-          [e.point.x - r, e.point.y - r],
-          [e.point.x + r, e.point.y + r],
-        ];
-        const hits = map.queryRenderedFeatures(bbox, { layers: interactiveLayers });
-        if (hits.length > 0) return;
-      }
-      if (!e.features || e.features.length === 0) return;
-      const abbr = e.features[0].properties?.abbr;
-      if (!abbr || !statesWithData.has(abbr)) return;
-      popupRef.current?.remove();
-      popupRef.current = null;
-      onSelectStateRef.current(abbr);
-    });
+    // Unified click handler — checks interactive layers in priority order
+    // eBird/DU features take priority over state polygon selection
+    let clickHandled = false;
 
-    // eBird cluster click — zoom to expand
     map.on("click", "ebird-clusters", (e) => {
-      e.preventDefault();
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const clusterId = e.features[0].properties?.cluster_id;
       const source = map.getSource("ebird-sightings") as mapboxgl.GeoJSONSource;
@@ -1770,9 +1754,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       });
     });
 
-    // eBird dot click — show sighting popup
     map.on("click", "ebird-dots", (e) => {
-      e.preventDefault();
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties || {};
       const coords = (e.features[0].geometry as any).coordinates.slice() as [number, number];
@@ -1785,6 +1769,20 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         .addTo(map);
     });
 
+    // State click — deferred to let eBird/DU handlers claim the click first
+    map.on("click", "states-fill", (e) => {
+      // Defer by a tick so eBird/DU layer handlers fire first and set clickHandled
+      setTimeout(() => {
+        if (clickHandled) return;
+        if (!e.features || e.features.length === 0) return;
+        const abbr = e.features[0].properties?.abbr;
+        if (!abbr || !statesWithData.has(abbr)) return;
+        popupRef.current?.remove();
+        popupRef.current = null;
+        onSelectStateRef.current(abbr);
+      }, 0);
+    });
+
     // eBird cursor changes
     map.on("mouseenter", "ebird-clusters", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "ebird-clusters", () => { map.getCanvas().style.cursor = ""; });
@@ -1793,6 +1791,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // DU pin click — show popup with report details
     map.on("click", "du-pins-dots", (e) => {
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties || {};
       const coords = (e.features[0].geometry as any).coordinates.slice() as [number, number];
@@ -1823,6 +1823,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // DU cluster click — zoom in
     map.on("click", "du-pins-clusters", (e) => {
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const clusterId = e.features[0].properties?.cluster_id;
       const source = map.getSource("du-pins") as mapboxgl.GeoJSONSource;
