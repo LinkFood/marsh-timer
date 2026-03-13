@@ -255,11 +255,21 @@ function buildFillExpression(
   ] as mapboxgl.Expression;
 }
 
+// Species-tinted satellite closed colors (brighter than streets, with opacity for satellite visibility)
+const SATELLITE_CLOSED_COLORS: Record<Species, string> = {
+  duck: 'rgba(60, 100, 60, 0.85)',    // dark green tint
+  goose: 'rgba(45, 70, 110, 0.85)',   // dark blue tint
+  deer: 'rgba(90, 65, 30, 0.85)',     // dark brown tint
+  turkey: 'rgba(85, 40, 40, 0.85)',   // dark red tint
+  dove: 'rgba(65, 60, 85, 0.85)',     // dark purple tint
+};
+
 function buildSatelliteFillExpression(
   species: Species,
   selectedState: string | null,
 ): mapboxgl.Expression {
   const colors = speciesConfig[species].colors;
+  const closedColor = SATELLITE_CLOSED_COLORS[species];
   const statesWithData = getStatesForSpecies(species);
   const now = new Date();
   const entries: string[] = [];
@@ -271,12 +281,12 @@ function buildSatelliteFillExpression(
     }
     const season = getPrimarySeasonForState(species, abbr);
     if (!season) {
-      entries.push(abbr, 'rgba(100, 105, 115, 0.90)');
+      entries.push(abbr, closedColor);
       continue;
     }
     const status = getSeasonStatus(season, now);
     if (status === 'closed') {
-      entries.push(abbr, 'rgba(100, 105, 115, 0.90)');
+      entries.push(abbr, closedColor);
     } else if (status === 'upcoming') {
       entries.push(abbr, 'rgba(70, 85, 110, 0.8)');
     } else {
@@ -288,7 +298,7 @@ function buildSatelliteFillExpression(
     "match",
     ["get", "abbr"],
     ...entries,
-    'rgba(100, 105, 115, 0.90)',
+    closedColor,
   ] as mapboxgl.Expression;
 }
 
@@ -1177,7 +1187,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             ],
             "line-width": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              0, 2.5, 15, 4, 30, 6,
+              0, 1.5, 15, 4.5, 30, 7,
             ],
             "line-opacity": 0.75,
             "line-blur": [
@@ -1220,9 +1230,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-field": "▶",
             "text-size": [
               "interpolate", ["linear"], ["get", "windSpeed"],
-              0, 8,
-              15, 16,
-              30, 24
+              0, 12,
+              15, 20,
+              30, 28
             ],
             "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
             "text-rotate": ["get", "windDir"],
@@ -1736,7 +1746,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on("click", "states-fill", (e) => {
       const interactiveLayers = ['ebird-dots', 'ebird-clusters', 'ebird-cluster-count', 'du-pins-dots', 'du-pins-clusters'].filter(l => map.getLayer(l));
       if (interactiveLayers.length > 0) {
-        const hits = map.queryRenderedFeatures(e.point, { layers: interactiveLayers });
+        const r = 10; // px radius for fat-finger tolerance
+        const bbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
+          [e.point.x - r, e.point.y - r],
+          [e.point.x + r, e.point.y + r],
+        ];
+        const hits = map.queryRenderedFeatures(bbox, { layers: interactiveLayers });
         if (hits.length > 0) return;
       }
       if (!e.features || e.features.length === 0) return;
@@ -2511,14 +2526,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     if (show3D) {
       addTerrain(map);
-      if (map.getZoom() < 6 && map.getPitch() < 10) {
-        map.easeTo({ pitch: 40, bearing: -10, duration: 800 });
+      if (map.getZoom() < 6) {
+        // Dramatic tilt + rotation so the 3D effect is immediately obvious at national zoom
+        map.flyTo({ pitch: 45, bearing: -15, duration: 1000 });
       }
     } else {
       removeTerrain(map);
-      if (map.getPitch() > 0) {
-        map.easeTo({ pitch: 0, duration: 500 });
-      }
+      map.flyTo({ pitch: 0, bearing: 0, duration: 600 });
     }
   }, [show3D]);
 
@@ -2543,7 +2557,7 @@ function addTerrain(map: mapboxgl.Map) {
       maxzoom: 14,
     });
   }
-  map.setTerrain({ source: "mapbox-terrain", exaggeration: map.getZoom() < 6 ? 2.5 : 1.5 });
+  map.setTerrain({ source: "mapbox-terrain", exaggeration: map.getZoom() < 6 ? 3.5 : 1.5 });
 
   if (!map.getLayer("sky")) {
     map.addLayer({
