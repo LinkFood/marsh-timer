@@ -1,6 +1,6 @@
 # Duck Countdown — Master Roadmap
 
-Last updated: 2026-03-08 (evening)
+Last updated: 2026-03-13
 
 ## The Thesis
 
@@ -18,118 +18,84 @@ Nobody else is doing this. HuntProof has a static algorithm. Duckr is a journal 
 
 ## SHIPPED
 
-### Phase 1: Eyes & Ears (Layer 2 — Continuous Monitoring) ✅
+### Phase 1: Eyes & Ears (Continuous Monitoring) ✅
 
-All 3 pipelines running 24/7. 6 edge functions, 10 pg_cron jobs, 2200+ embeddings flowing.
+6 edge functions, 10 pg_cron jobs, 2200+ embeddings flowing 24/7.
 
-| Function | Schedule | Purpose |
-|----------|----------|---------|
-| hunt-weather-watchdog | 0 6 * * * | 50-state Open-Meteo daily + events + embed |
-| hunt-nws-monitor | 0 */3 * * * | NWS filtered alerts → store + embed |
-| hunt-nasa-power (×2) | 30/33 6 * * * | NASA POWER satellite data → weather history |
-| hunt-solunar-precompute | 0 6 * * 0 | Meeus lunar math → 365-day calendar |
-| hunt-migration-monitor (×5) | 0-20/5 7 * * * | eBird spike detection |
+### Phase 2: The Brain (Convergence Engine) ✅
 
-### Phase 2: The Brain (Layer 3 — Convergence) ✅
+5-component scoring (weather/solunar/migration/birdcast/pattern) → 0-100 per state per day.
 
-| hunt-convergence-engine | 0 8 * * * | 4-component scoring → 0-100/state/day |
+### Phase 3: The Voice (Outbound Intelligence) ✅
 
-### Phase 3: The Voice (Layer 4 — Outbound Intelligence) ✅
-
-| hunt-scout-report | 0 9 * * * | Daily AI scout brief |
-| hunt-convergence-alerts | 15 8 * * * | Score spike detection + notifications |
+Daily scout reports + convergence spike alerts + feedback loop (thumbs up/down).
 
 ### Phase 5: Operation War Room (Map Intelligence) ✅
 
-16 map features shipped: convergence heatmap, eBird clusters, wind flow, isobars, NWS polygons, terminator, flyway corridors, migration front, time machine, 5 map modes, hover intel cards, pressure trends, perfect storm overlay.
+16 map features: convergence heatmap, eBird clusters, wind flow, isobars, NWS polygons, terminator, flyway corridors, migration front, time machine, 5 map modes, hover intel cards, pressure trends, perfect storm overlay. Satellite-friendly season colors, wind as hero feature.
 
-### Map Intelligence Layer (2026-03-08) ✅
+### Phase 6: The Mother Lode (Data Pipeline) ✅
 
-Satellite-friendly season colors, wind as hero feature (default mode, speed-scaled, glowing), pressure trend arrows per state, perfect storm overlay.
+4,900+ knowledge entries from 5 sources: DU Migration Alerts (55 articles, weekly cron), USFWS Flyway Data Books (~311 pages), BirdCast Radar (daily 50-state cron), USFWS Breeding Survey (107 entries), USFWS HIP Harvest (361 pages). DU Migration Map (7 seasons backfilled, weekly cron).
 
-### Phase 6: The Mother Lode (Data Intelligence Pipeline) ✅
+### Phase 7: User Data ✅
 
-All Wave 1 backfills complete. 4,900+ knowledge entries. 12 pg_cron jobs total.
+Hunt log (form + edge fn + auto-fill + embedding) + feedback loop on reports/alerts/scores.
 
-| Source | Entries | Method | Cron |
-|--------|---------|--------|------|
-| 6A: DU Migration Alerts | 55 articles embedded | TypeScript backfill + edge fn | Weekly Mon 6AM UTC |
-| 6B: USFWS Flyway Data Books | ~311 pages embedded (6 PDFs) | Python + pdfplumber | Manual (annual) |
-| 6C: BirdCast Radar Migration | 50 states/day, daily cron LIVE | SSR scraper (window.__NUXT__) | Daily 10AM UTC |
-| 6D: USFWS Breeding Survey | 107 entries (9 PDFs, 12 species) | Python + pdfplumber | Manual (annual) |
-| 6D: USFWS HIP Harvest | 361 pages embedded (5 PDFs) | Python + pdfplumber | Manual (annual) |
+### Map QA Round 1 (13 bugs) ✅
 
-| Function | Schedule | Purpose |
-|----------|----------|---------|
-| hunt-du-alerts | 0 6 * * 1 | Weekly DU migration alert polling |
-| hunt-birdcast | 0 10 * * * | Daily BirdCast radar migration (50 states) |
+All 13 bugs fixed. Species gating, convergence bars, radar toggle, terrain auto-3D, fill opacity, intel labels, alerts header, BirdCast empty state, stale scores purged.
 
-### Phase 7A: Hunt Log ✅
+### Map QA Round 2 (6 bugs) ✅
 
-Hunt log form + list in sidebar Log tab. Edge function with auto-fill + embedding.
+Wind arrow scaling (arrowheads at line endpoints, speed-based sizing). Search flies to city not state centroid. 3D toggle zoom-in + pitch at national zoom. Terminator opacity boost. Species-tinted closed-state fills on satellite + streets.
 
 ---
 
 ## IN PROGRESS
 
-### Map QA Round 2 — Bug Fixes
+### eBird Cluster Click Priority (Bug 3)
 
-13 bugs found in QA. 9 fixed + 4 quick wins shipped. Remaining bugs from QA report:
+Click priority fixed (eBird handlers intercept before state selection). Cluster zoom-to-expand action broken — `e.features` stale in async callback, fix deployed, awaiting verification.
 
-| # | Bug | Status | Effort |
-|---|-----|--------|--------|
-| 1 | Wind arrows uniform size (should scale by speed) | **Open** | Medium — modify wind rendering in MapView.tsx |
-| 2 | Search flies to state, not specific city/zip | **Open** | Medium — geocode returns coords but fly-to snaps to state centroid. Fix in HeaderBar.tsx search handler |
-| 3 | eBird cluster click conflicts with state click (Scout mode) | **Open** | Medium — z-index / event priority in MapView.tsx |
-| 4 | 3D toggle no visible effect at national zoom | **Open** | Low — may need minimum pitch on toggle or user education |
-| 5 | Dawn/dusk terminator too subtle | **Open** | Low — increase overlay opacity |
-| 6 | State fill colors faint on satellite (closed seasons) | **Open** | Low — bump closed-state alpha further |
+### eBird Backfill
 
-### Map QA Round 2 — Suggestions to Implement
+Running via nohup (~40 hrs). Check: `tail ~/marsh-timer/ebird-backfill.log` or query `hunt_migration_history`.
 
-| # | Suggestion | Status | Effort |
-|---|-----------|--------|--------|
-| 1 | Species-specific intel for deer/turkey (rut forecast, gobble activity) | **Open** | Large — new data pipeline |
-| 2 | Drill-in fill color legend (score/status meaning) | **Open** | Low — add small legend to state detail |
-| 3 | Loading indicator for search fly-to | **Open** | Low |
-| 4 | County boundary hint in zoom controls | **Open** | Low |
+---
 
-### DU Data Surfacing — INVESTIGATE
+## UP NEXT
 
-All DU data (55 migration alert articles + 7 seasons of migration map pins) is in `hunt_knowledge` as embeddings but only surfaces through chat/vector search. Need to:
-- Test: ask chat species-specific migration questions, verify DU data shows in responses
-- Test: check state intel cards for DU content on waterfowl state pages
-- Evaluate: should DU migration map pins render as a visual layer on the map?
-- Evaluate: should there be a dedicated "Migration Reports" section in the sidebar?
+### Flyway Corridors — Full Continental Extent
+All 4 flyway corridors + flow lines currently stop at US borders. Real flyways run from Arctic breeding grounds (Canada/Alaska) through the US to wintering grounds (Mexico, Caribbean, Central America). Extend polygon + flow line coordinates in `flywayPaths.ts`. Also extends Pacific Flyway to include Alaska.
 
-### Already Fixed (this session)
-- Species gating (waterfowl-only intel)
-- Hunt log species sync from map
-- Convergence bar clamping + distinct colors
-- Radar toggle (CloudRain button)
-- Perfect storm thresholds (percentage-based)
-- State fill opacity bump (0.75→0.85)
-- Intel mode labels/rings (loadedRef → source check)
-- Terrain mode auto-enables 3D
-- Alerts header → "Notable Hunting Weather"
-- Filter waterfowl intel from deer/turkey state pages
-- BirdCast 0 bar → "No data" label
-- Stale convergence scores purged + re-scored
+### DU Data Surfacing
+All DU data (55 articles + 7 seasons of map pins) is embedded but only surfaces via chat. Evaluate:
+- DU migration map pins as a visual layer on the map (toggle-controlled)
+- Dedicated "Migration Reports" section in sidebar
+- Verify DU content appears in state intel cards for waterfowl
+
+### Post-eBird Backfill
+- **Pattern re-extraction:** Re-run `extract-patterns.ts` with full 5-year eBird + weather data. Current 348 patterns from partial data — could 3-5x.
+- **Migration monitor tuning:** Verify `hunt-migration-monitor` spike detection with full dataset.
+
+### Map QA Suggestions
+| # | Suggestion | Effort |
+|---|-----------|--------|
+| 1 | Species-specific intel for deer/turkey (rut forecast, gobble activity) | Large — new data pipeline |
+| 2 | Drill-in fill color legend (score/status meaning) | Low |
+| 3 | Loading indicator for search fly-to | Low |
+| 4 | County boundary hint in zoom controls | Low |
 
 ---
 
 ## PHASE 9: FUTURE HORIZON
 
-### Post-eBird Backfill (when ~50% backfill completes)
-
-- **Pattern re-extraction:** Re-run `extract-patterns.ts` with full 5-year eBird + weather data. Current 348 patterns from partial data — could 3-5x.
-- **Migration monitor tuning:** Verify `hunt-migration-monitor` spike detection with full dataset.
-
 - **Native app (iOS/Android):** Push notifications require it. PWA as bridge.
 - **SMS alerts:** Twilio for convergence alerts. Hunters in the field.
 - **Premium tiers:** Free = season lookup. Paid = convergence, scout reports, hunt log, alerts.
 - **NOAA AIGFS long-range:** AI 16-day forecast for model comparison.
-- **Multi-species intelligence:** Deer movement, turkey roosting patterns.
+- **Multi-species intelligence:** Deer movement patterns, turkey roosting.
 - **Social layer (The Wire):** Crowdsourced real-time reports. Needs active user base first.
 
 ---
@@ -145,7 +111,7 @@ Legal risk. DU biologist articles + USFWS data + BirdCast radar + eBird already 
 
 | Timeframe | Corpus Size | What It Knows |
 |-----------|------------|---------------|
-| Today (2026-03-08) | ~4,900 embeddings | 348 patterns, 55 DU articles, 780 USFWS pages, BirdCast daily, weather/migration/solunar |
+| Today (2026-03-13) | ~5,000 embeddings | 348 patterns, 55 DU articles, 780 USFWS pages, BirdCast daily, weather/migration/solunar |
 | After eBird backfill | ~25,000+ | + 5 years eBird observations across 50 states |
 | After pattern re-extraction | ~26,000+ | + 1,000+ cross-referenced weather/migration patterns |
 | After 1 season with all crons | ~100,000+ | Weather + radar + expert reports + harvest history + eBird + convergence + user logs |

@@ -1771,8 +1771,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     });
 
     // State click — deferred to let eBird/DU handlers claim the click first
+    // 50ms delay ensures all layer handlers in this click event have fired and set clickHandled
     map.on("click", "states-fill", (e) => {
-      // Defer by a tick so eBird/DU layer handlers fire first and set clickHandled
       setTimeout(() => {
         if (clickHandled) return;
         if (!e.features || e.features.length === 0) return;
@@ -1781,7 +1781,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         popupRef.current?.remove();
         popupRef.current = null;
         onSelectStateRef.current(abbr);
-      }, 0);
+      }, 50);
     });
 
     // eBird cursor changes
