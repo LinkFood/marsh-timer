@@ -1238,12 +1238,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-rotate": ["get", "windDir"],
             "text-rotation-alignment": "map",
             "text-allow-overlap": true,
-            "text-offset": [
-              "interpolate", ["linear"], ["get", "windSpeed"],
-              0, ["literal", [0, -1.2]],
-              15, ["literal", [0, -1.8]],
-              30, ["literal", [0, -2.5]]
-            ],
+            "text-offset": [0, 0],
             visibility: "none",
           },
           paint: {
@@ -1746,7 +1741,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on("click", "states-fill", (e) => {
       const interactiveLayers = ['ebird-dots', 'ebird-clusters', 'ebird-cluster-count', 'du-pins-dots', 'du-pins-clusters'].filter(l => map.getLayer(l));
       if (interactiveLayers.length > 0) {
-        const r = 10; // px radius for fat-finger tolerance
+        const r = 20; // px radius for fat-finger tolerance
         const bbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
           [e.point.x - r, e.point.y - r],
           [e.point.x + r, e.point.y + r],
@@ -2353,9 +2348,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             geometry: { type: "LineString", coordinates: coords },
             properties: { abbr, windSpeed: w.wind },
           });
+          // Place arrowhead at the line endpoint (downwind end), not centroid
           pointFeatures.push({
             type: "Feature",
-            geometry: { type: "Point", coordinates: centroid },
+            geometry: { type: "Point", coordinates: coords[1] },
             properties: { abbr, windSpeed: w.wind, windDir: w.windDir },
           });
         }
@@ -2527,12 +2523,19 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (show3D) {
       addTerrain(map);
       if (map.getZoom() < 6) {
-        // Dramatic tilt + rotation so the 3D effect is immediately obvious at national zoom
-        map.flyTo({ pitch: 45, bearing: -15, duration: 1000 });
+        // Zoom in + dramatic tilt so terrain is actually visible on globe projection
+        map.flyTo({
+          zoom: 5.5,
+          pitch: 50,
+          bearing: -20,
+          duration: 1200,
+        });
+      } else {
+        map.flyTo({ pitch: 50, bearing: -20, duration: 800 });
       }
     } else {
       removeTerrain(map);
-      map.flyTo({ pitch: 0, bearing: 0, duration: 600 });
+      map.flyTo({ pitch: 0, bearing: 0, zoom: Math.min(map.getZoom(), 4.2), duration: 800 });
     }
   }, [show3D]);
 
