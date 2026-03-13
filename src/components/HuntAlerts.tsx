@@ -135,7 +135,15 @@ function StateAlertBanner({ alert }: { alert: HuntAlert }) {
 }
 
 export default function HuntAlerts({ alerts, stateAbbr, onSelectState }: HuntAlertsProps) {
-  if (alerts.length === 0) return null;
+  if (alerts.length === 0) {
+    return (
+      <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 mb-2">
+        <p className="text-[11px] text-white/30 font-body text-center">
+          No active weather alerts
+        </p>
+      </div>
+    );
+  }
 
   if (stateAbbr) {
     const match = alerts.find((a) => a.stateAbbr === stateAbbr);

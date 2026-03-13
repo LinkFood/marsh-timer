@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, X, MapPin } from "lucide-react";
+import { Search, X, MapPin, Loader2, HelpCircle } from "lucide-react";
 import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
@@ -29,12 +29,14 @@ interface HeaderBarProps {
   onSelectSpecies: (s: Species) => void;
   onSearch: (abbr: string) => void;
   onSearchLocation?: (lng: number, lat: number, stateAbbr: string | null) => void;
+  onHelpOpen?: () => void;
 }
 
-const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: HeaderBarProps) => {
+const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHelpOpen }: HeaderBarProps) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -90,12 +92,13 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: Hea
 
   const geocode = useCallback(async (q: string) => {
     if (!MAPBOX_TOKEN || q.length < 2) { setGeoResults([]); return; }
+    setIsGeocoding(true);
     try {
       const encoded = encodeURIComponent(q);
       const res = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&country=US&types=postcode,place,locality,neighborhood,address,poi&limit=4`
       );
-      if (!res.ok) { setGeoResults([]); return; }
+      if (!res.ok) { setGeoResults([]); setIsGeocoding(false); return; }
       const data = await res.json();
       const results: GeoResult[] = (data.features || []).map((f: any) => {
         const [lng, lat] = f.center;
@@ -107,6 +110,8 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: Hea
       setGeoResults(results);
     } catch {
       setGeoResults([]);
+    } finally {
+      setIsGeocoding(false);
     }
   }, []);
 
@@ -188,6 +193,15 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: Hea
 
         {/* Right: User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {onHelpOpen && (
+            <button
+              onClick={onHelpOpen}
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Help"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          )}
           <UserMenu />
           <div ref={searchContainerRef} className="relative">
           {!searchOpen ? (
@@ -216,6 +230,12 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation }: Hea
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
+              {isGeocoding && allResults.length === 0 && (
+                <div className="absolute top-full right-0 mt-2 w-64 sm:w-80 glass-panel rounded-lg shadow-xl z-50 px-3 py-2.5 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                  <span className="text-xs text-white/50">Searching...</span>
+                </div>
+              )}
               {allResults.length > 0 && (
                 <div className="absolute top-full right-0 mt-2 w-64 sm:w-80 glass-panel rounded-lg shadow-xl overflow-hidden z-50">
                   {allResults.map((r, i) => (

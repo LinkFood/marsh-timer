@@ -29,9 +29,24 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-white/40">
             <MessageSquare size={24} className="mb-2 opacity-40" />
-            <p className="text-xs font-body text-center">
-              Ask about seasons, weather, solunar,<br />or anything hunting-related
+            <p className="text-xs font-body text-center mb-3">
+              Ask me about hunting conditions in any state
             </p>
+            <div className="flex flex-col gap-1.5 w-full max-w-[240px]">
+              {[
+                "Best states for mallards this week",
+                "Texas conditions today",
+                "Migration activity in Mississippi Flyway",
+              ].map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => sendMessage(prompt)}
+                  className="text-[11px] font-body text-cyan-400/70 hover:text-cyan-400 bg-cyan-400/5 hover:bg-cyan-400/10 border border-cyan-400/10 rounded-lg px-3 py-1.5 text-left transition-colors"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map(msg => (

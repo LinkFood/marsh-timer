@@ -1,13 +1,20 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { Crosshair, MessageSquare, ClipboardList } from "lucide-react";
 import type { Species } from "@/data/types";
 import type { HuntAlert } from "@/hooks/useHuntAlerts";
+import { useAuth } from "@/hooks/useAuth";
+import { useHuntLogs } from "@/hooks/useHuntLogs";
 import NationalView from "./NationalView";
 import StateView from "./StateView";
 import ZoneView from "./ZoneView";
 import HuntChat from "./HuntChat";
 import HuntAlerts from "./HuntAlerts";
+import HuntLogForm from "./HuntLogForm";
+import HuntLogList from "./HuntLogList";
 
 type DrillLevel = "national" | "state" | "zone";
+
+type MobileTab = "info" | "chat" | "log";
 
 type SnapIndex = 0 | 1 | 2;
 
@@ -74,14 +81,22 @@ export default function MobileSheet({
 }: MobileSheetProps) {
   const [currentSnap, setCurrentSnap] = useState<SnapIndex>(1);
   const [translateY, setTranslateY] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<MobileTab>("info");
   const startY = useRef(0);
   const startTranslate = useRef(0);
   const dragging = useRef(false);
+
+  const { user, session } = useAuth();
+  const { logs, loading: logsLoading, submitLog, deleteLog } = useHuntLogs(
+    user?.id ?? null,
+    session?.access_token ?? null
+  );
 
   // Reset to half snap when context changes
   useEffect(() => {
     setCurrentSnap(1);
     setTranslateY(null);
+    setActiveTab("info");
   }, [level, stateAbbr, zoneSlug]);
 
   const getSnapY = useCallback((snapIndex: number) => {
@@ -145,7 +160,13 @@ export default function MobileSheet({
     }
   })();
 
-  const content = (() => {
+  const MOBILE_TABS: { id: MobileTab; icon: typeof Crosshair; label: string }[] = [
+    { id: "info", icon: Crosshair, label: "Info" },
+    { id: "chat", icon: MessageSquare, label: "Chat" },
+    { id: "log", icon: ClipboardList, label: "Log" },
+  ];
+
+  const infoContent = (() => {
     switch (level) {
       case "national":
         return (
@@ -198,6 +219,25 @@ export default function MobileSheet({
     }
   })();
 
+  const logContent = (() => {
+    if (!user) {
+      return (
+        <div className="flex flex-col items-center justify-center h-40 text-white/40">
+          <ClipboardList size={24} className="mb-2 text-white/20" />
+          <p className="text-xs font-body">Sign in to log hunts</p>
+        </div>
+      );
+    }
+    return (
+      <>
+        <HuntLogForm onSubmit={submitLog} species={species} stateAbbr={stateAbbr ?? undefined} />
+        <div className="mt-3">
+          <HuntLogList logs={logs} loading={logsLoading} onDelete={deleteLog} />
+        </div>
+      </>
+    );
+  })();
+
   return (
     <div
       className="fixed bottom-0 left-0 right-0 z-20 rounded-t-2xl glass-panel border-t border-white/[0.06]"
@@ -227,20 +267,38 @@ export default function MobileSheet({
         </div>
       </div>
 
-      {/* Scrollable content */}
-      <div
-        className="overflow-y-auto scrollbar-hide px-4 pb-8"
-        style={{ height: `calc(${SNAP_FULL * 100}dvh - 3.5rem)` }}
-      >
-        {content}
+      {/* Tab bar */}
+      <div className="flex border-b border-white/[0.06] shrink-0 px-2">
+        {MOBILE_TABS.map(({ id, icon: Icon, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors text-[11px] font-body ${
+              activeTab === id
+                ? "border-b-2 border-cyan-400 text-cyan-400"
+                : "text-white/40 hover:text-white/60"
+            }`}
+          >
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
 
-        {/* Chat */}
-        <div
-          className="border-t border-white/[0.06] mt-4"
-          style={{ minHeight: "300px" }}
-        >
+      {/* Tab content */}
+      <div
+        className={`${
+          activeTab === "chat"
+            ? "flex flex-col"
+            : "overflow-y-auto scrollbar-hide px-4 pb-8"
+        }`}
+        style={{ height: `calc(${SNAP_FULL * 100}dvh - 6.5rem)` }}
+      >
+        {activeTab === "info" && infoContent}
+        {activeTab === "chat" && (
           <HuntChat species={species} stateAbbr={stateAbbr} isMobile={true} />
-        </div>
+        )}
+        {activeTab === "log" && logContent}
       </div>
     </div>
   );

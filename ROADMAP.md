@@ -72,17 +72,49 @@ Hunt log form + list in sidebar Log tab. Edge function with auto-fill + embeddin
 
 ## IN PROGRESS
 
-### 6E: DU Migration Map Pins — RECON
+### Map QA Round 2 — Bug Fixes
 
-Live at `migrationmap.ducks.org` — user-submitted + biologist pins with species, intensity, lat/lng. API endpoint discovery in progress.
+13 bugs found in QA. 9 fixed + 4 quick wins shipped. Remaining bugs from QA report:
 
-### BirdCast → Convergence Engine (5th Component) — BUILDING
+| # | Bug | Status | Effort |
+|---|-----|--------|--------|
+| 1 | Wind arrows uniform size (should scale by speed) | **Open** | Medium — modify wind rendering in MapView.tsx |
+| 2 | Search flies to state, not specific city/zip | **Open** | Medium — geocode returns coords but fly-to snaps to state centroid. Fix in HeaderBar.tsx search handler |
+| 3 | eBird cluster click conflicts with state click (Scout mode) | **Open** | Medium — z-index / event priority in MapView.tsx |
+| 4 | 3D toggle no visible effect at national zoom | **Open** | Low — may need minimum pitch on toggle or user education |
+| 5 | Dawn/dusk terminator too subtle | **Open** | Low — increase overlay opacity |
+| 6 | State fill colors faint on satellite (closed seasons) | **Open** | Low — bump closed-state alpha further |
 
-Adding BirdCast radar intensity as 5th convergence scoring component. Rebalancing from 4 components (30/20/30/20) to 5 (25/15/25/20/15).
+### Map QA Round 2 — Suggestions to Implement
 
-### 7B: Feedback Loop — BUILDING
+| # | Suggestion | Status | Effort |
+|---|-----------|--------|--------|
+| 1 | Species-specific intel for deer/turkey (rut forecast, gobble activity) | **Open** | Large — new data pipeline |
+| 2 | Drill-in fill color legend (score/status meaning) | **Open** | Low — add small legend to state detail |
+| 3 | Loading indicator for search fly-to | **Open** | Low |
+| 4 | County boundary hint in zoom controls | **Open** | Low |
 
-Thumbs up/down on scout reports + convergence alerts. `hunt_feedback` table + edge function + UI.
+### DU Data Surfacing — INVESTIGATE
+
+All DU data (55 migration alert articles + 7 seasons of migration map pins) is in `hunt_knowledge` as embeddings but only surfaces through chat/vector search. Need to:
+- Test: ask chat species-specific migration questions, verify DU data shows in responses
+- Test: check state intel cards for DU content on waterfowl state pages
+- Evaluate: should DU migration map pins render as a visual layer on the map?
+- Evaluate: should there be a dedicated "Migration Reports" section in the sidebar?
+
+### Already Fixed (this session)
+- Species gating (waterfowl-only intel)
+- Hunt log species sync from map
+- Convergence bar clamping + distinct colors
+- Radar toggle (CloudRain button)
+- Perfect storm thresholds (percentage-based)
+- State fill opacity bump (0.75→0.85)
+- Intel mode labels/rings (loadedRef → source check)
+- Terrain mode auto-enables 3D
+- Alerts header → "Notable Hunting Weather"
+- Filter waterfowl intel from deer/turkey state pages
+- BirdCast 0 bar → "No data" label
+- Stale convergence scores purged + re-scored
 
 ---
 

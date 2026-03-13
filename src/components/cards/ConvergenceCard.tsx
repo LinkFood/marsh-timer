@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useFeedback } from '../../hooks/useFeedback';
 
@@ -56,7 +57,22 @@ export default function ConvergenceCard({
     patternComponent,
   };
 
+  const [showGuide, setShowGuide] = useState(false);
   const color = scoreColor(score);
+
+  const allZero = score === 0 && weatherComponent === 0 && solunarComponent === 0 && migrationComponent === 0 && birdcastComponent === 0 && patternComponent === 0;
+
+  if (allZero) {
+    return (
+      <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center space-y-1.5">
+        <span className="text-2xl font-display font-bold text-white/20">--</span>
+        <p className="text-xs text-white/40 font-body">No score data yet</p>
+        <p className="text-[10px] text-white/30 font-body leading-snug">
+          Convergence scores update daily at 8AM UTC using weather, solunar, migration, and pattern data.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3 space-y-3">
@@ -98,6 +114,31 @@ export default function ConvergenceCard({
       </div>
 
       <p className="text-xs text-white/50 italic line-clamp-2">{reasoning}</p>
+
+      <div>
+        <button
+          onClick={() => setShowGuide(!showGuide)}
+          className="text-[10px] text-white/40 hover:text-white/60 transition-colors"
+        >
+          Score Guide {showGuide ? '\u25B2' : '\u25BC'}
+        </button>
+        {showGuide && (
+          <div className="mt-1.5 space-y-1">
+            {[
+              { color: '#ef4444', label: '80-100 \u2014 Outstanding. Drop everything and go.' },
+              { color: '#fb923c', label: '60-79 \u2014 Strong. Solid day, worth the trip.' },
+              { color: '#facc15', label: '40-59 \u2014 Fair. Average conditions.' },
+              { color: '#3b82f6', label: '20-39 \u2014 Poor. Tough hunting.' },
+              { color: 'rgba(100,100,100,0.5)', label: '0-19 \u2014 Skip it. Stay home.' },
+            ].map(({ color: dotColor, label }) => (
+              <div key={dotColor} className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />
+                <span className="text-xs text-white/50">{label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {stateAbbr && <ConvergenceFeedbackRow stateAbbr={stateAbbr} />}
     </div>

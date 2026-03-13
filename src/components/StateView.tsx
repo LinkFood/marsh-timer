@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { ExternalLink, Star, ShieldCheck, AlertTriangle, Brain, ChevronRight, CalendarPlus } from "lucide-react";
+import { ExternalLink, Star, Share2, ShieldCheck, AlertTriangle, Brain, ChevronRight, CalendarPlus } from "lucide-react";
 import type { Species, HuntingSeason } from "@/data/types";
 import { speciesConfig } from "@/data/speciesConfig";
 import { getSeasonsByState, getPrimarySeasonForState, getAllSpeciesForState } from "@/data/seasons";
@@ -104,6 +104,7 @@ export default function StateView({
               }
             />
           </button>
+          <ShareIconButton stateAbbr={abbreviation} />
         </div>
 
         {/* Season type tabs (deduplicated) */}
@@ -365,6 +366,38 @@ function FactRotator({ facts }: { facts: string[] }) {
       </p>
       <p className="text-xs text-foreground/80 font-body">{facts[index]}</p>
     </div>
+  );
+}
+
+function ShareIconButton({ stateAbbr }: { stateAbbr: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleShare = useCallback(async () => {
+    const url = `${window.location.origin}/duck/${stateAbbr}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Duck Countdown - ${stateAbbr}`, url });
+        return;
+      } catch { /* cancelled */ }
+    }
+
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [stateAbbr]);
+
+  return (
+    <button
+      onClick={handleShare}
+      className="p-1 transition-colors"
+      title={copied ? "Link copied!" : "Share"}
+    >
+      <Share2
+        size={18}
+        className={copied ? "text-season-open" : "text-muted-foreground hover:text-primary"}
+      />
+    </button>
   );
 }
 

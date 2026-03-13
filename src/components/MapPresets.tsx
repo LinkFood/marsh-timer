@@ -10,6 +10,8 @@ import {
   Plus,
   Minus,
   Crosshair,
+  Info,
+  Bird,
 } from "lucide-react";
 
 export type MapMode = "default" | "scout" | "weather" | "terrain" | "intel";
@@ -29,6 +31,8 @@ interface MapPresetsProps {
   showFlywayOption: boolean;
   showRadar?: boolean;
   onToggleRadar?: () => void;
+  showDUPins?: boolean;
+  onToggleDUPins?: () => void;
 }
 
 const modes: { key: MapMode; label: string; icon: typeof Map }[] = [
@@ -54,6 +58,8 @@ export default function MapPresets({
   showFlywayOption,
   showRadar = false,
   onToggleRadar,
+  showDUPins = false,
+  onToggleDUPins,
 }: MapPresetsProps) {
   const panelClass =
     "bg-[rgba(10,15,30,0.85)] backdrop-blur-[12px] border border-white/[0.08] rounded-xl";
@@ -134,7 +140,27 @@ export default function MapPresets({
             <CloudRain size={14} />
           </button>
         )}
+
+        {onToggleDUPins && (mode === "scout" || mode === "intel") && (
+          <button
+            onClick={onToggleDUPins}
+            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors border text-xs ${
+              showDUPins ? utilActive : utilInactive
+            }`}
+            aria-label="Toggle DU Reports"
+            title="DU Reports"
+          >
+            <Bird size={14} />
+          </button>
+        )}
       </div>
+
+      {(mode === "scout" || mode === "intel") && (
+        <div className="flex items-center gap-1 px-1">
+          <Info size={10} className="text-gray-500 flex-shrink-0" />
+          <span className="text-[9px] text-gray-500">Zoom in for county lines</span>
+        </div>
+      )}
 
       {/* Zoom + geolocate */}
       <div className="flex flex-col gap-1.5">

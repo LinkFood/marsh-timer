@@ -414,6 +414,9 @@ verify_jwt = false
 [functions.hunt-du-map]
 verify_jwt = false
 
+[functions.hunt-extract-patterns]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

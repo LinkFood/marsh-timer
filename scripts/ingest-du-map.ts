@@ -192,17 +192,21 @@ async function upsertReports(rows: ReturnType<typeof toDbRow>[]): Promise<number
   let inserted = 0;
   for (let i = 0; i < rows.length; i += 50) {
     const batch = rows.slice(i, i + 50);
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_du_map_reports`, {
-      method: "POST",
-      headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(batch),
-    });
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_du_map_reports`, {
+        method: "POST",
+        headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify(batch),
+      });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`  Upsert failed: ${errText}`);
-    } else {
-      inserted += batch.length;
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`  Upsert failed: ${errText}`);
+      } else {
+        inserted += batch.length;
+      }
+    } catch (err) {
+      console.warn(`  Upsert network error (non-fatal), skipping batch: ${err}`);
     }
   }
   return inserted;
@@ -237,7 +241,7 @@ async function embedViaEdgeFunction(text: string, retries = 3): Promise<number[]
       throw new Error(`Embed error: ${res.status} ${await res.text()}`);
     } catch (err) {
       if (attempt < retries - 1) {
-        const wait = (attempt + 1) * 10000;
+        const wait = (attempt + 1) * 15000;
         console.log(`    Embed error, retrying in ${wait / 1000}s: ${err}`);
         await sleep(wait);
         continue;
@@ -285,16 +289,20 @@ async function insertKnowledgeRow(report: DUReport, embedding: number[]): Promis
 async function markEmbedded(reportIds: number[]): Promise<void> {
   if (reportIds.length === 0) return;
   const filter = reportIds.map((id) => `report_id.eq.${id}`).join(",");
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/hunt_du_map_reports?or=(${filter})`,
-    {
-      method: "PATCH",
-      headers: { ...supaHeaders, Prefer: "return=minimal" },
-      body: JSON.stringify({ embedded_at: new Date().toISOString() }),
-    },
-  );
-  if (!res.ok) {
-    console.warn(`  Failed to mark embedded for ${reportIds.length} reports`);
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/hunt_du_map_reports?or=(${filter})`,
+      {
+        method: "PATCH",
+        headers: { ...supaHeaders, Prefer: "return=minimal" },
+        body: JSON.stringify({ embedded_at: new Date().toISOString() }),
+      },
+    );
+    if (!res.ok) {
+      console.warn(`  Failed to mark embedded for ${reportIds.length} reports`);
+    }
+  } catch (err) {
+    console.warn(`  markEmbedded network error (non-fatal): ${err}`);
   }
 }
 

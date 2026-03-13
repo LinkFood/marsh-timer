@@ -86,6 +86,10 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'perfect-storm-ring': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
   // County boundaries
   'county-fill': new Set(['scout', 'intel']),
+  // DU migration map pins (toggle-controlled, not mode-controlled)
+  'du-pins-dots': new Set(),
+  'du-pins-clusters': new Set(),
+  'du-pins-cluster-count': new Set(),
 };
 
 function tempToColor(tempF: number): string {
@@ -139,6 +143,8 @@ export interface MapViewProps {
   migrationFrontLine?: Feature<LineString> | null;
   scrubDate?: Date | null;
   showRadar?: boolean;
+  showDUPins?: boolean;
+  duPinsGeoJSON?: FeatureCollection | null;
 }
 
 export interface MapViewRef {
@@ -265,12 +271,12 @@ function buildSatelliteFillExpression(
     }
     const season = getPrimarySeasonForState(species, abbr);
     if (!season) {
-      entries.push(abbr, 'rgba(60, 60, 70, 0.7)');
+      entries.push(abbr, 'rgba(80, 85, 95, 0.85)');
       continue;
     }
     const status = getSeasonStatus(season, now);
     if (status === 'closed') {
-      entries.push(abbr, 'rgba(60, 60, 70, 0.7)');
+      entries.push(abbr, 'rgba(80, 85, 95, 0.85)');
     } else if (status === 'upcoming') {
       entries.push(abbr, 'rgba(70, 85, 110, 0.8)');
     } else {
@@ -282,7 +288,7 @@ function buildSatelliteFillExpression(
     "match",
     ["get", "abbr"],
     ...entries,
-    'rgba(60, 60, 70, 0.7)',
+    'rgba(80, 85, 95, 0.85)',
   ] as mapboxgl.Expression;
 }
 
@@ -359,6 +365,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     nwsAlertsGeoJSON = null,
     migrationFrontLine = null,
     showRadar = false,
+    showDUPins = false,
+    duPinsGeoJSON = null,
   },
   ref,
 ) {
@@ -503,7 +511,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: "fill",
           source: "golden-hour",
           paint: {
-            "fill-color": "rgba(255, 180, 50, 0.08)",
+            "fill-color": "rgba(255, 180, 50, 0.18)",
             "fill-opacity": 0.8,
           },
         }, "states-fill");
@@ -514,7 +522,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: "fill",
           source: "terminator",
           paint: {
-            "fill-color": "rgba(0, 0, 20, 0.15)",
+            "fill-color": "rgba(0, 0, 20, 0.35)",
             "fill-opacity": 1,
           },
         }, "states-fill");
@@ -525,7 +533,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: "line",
           source: "terminator",
           paint: {
-            "line-color": "rgba(255, 180, 50, 0.6)",
+            "line-color": "rgba(255, 180, 50, 0.8)",
             "line-width": 2,
           },
         });
@@ -1064,6 +1072,74 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // DU migration map pins (clustered)
+      const duEmpty = { type: "FeatureCollection" as const, features: [] as any[] };
+      if (!map.getSource("du-pins")) {
+        map.addSource("du-pins", {
+          type: "geojson",
+          data: duPinsGeoJSON || duEmpty,
+          cluster: true,
+          clusterMaxZoom: 14,
+          clusterRadius: 50,
+        });
+      }
+      // DU individual dots (unclustered)
+      if (!map.getLayer("du-pins-dots")) {
+        map.addLayer({
+          id: "du-pins-dots",
+          type: "circle",
+          source: "du-pins",
+          filter: ["!", ["has", "point_count"]],
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 2, 8, 5, 12, 7],
+            "circle-color": [
+              "step", ["get", "activity_level_id"],
+              "#10b981",  // 0 = green (low/unknown)
+              3, "#facc15", // 3 = yellow (medium)
+              4, "#ef4444", // 4-5 = red (high)
+            ],
+            "circle-opacity": 0.85,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(0,0,0,0.3)",
+          },
+          layout: { visibility: "none" },
+        });
+      }
+      // DU cluster circles
+      if (!map.getLayer("du-pins-clusters")) {
+        map.addLayer({
+          id: "du-pins-clusters",
+          type: "circle",
+          source: "du-pins",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": ["step", ["get", "point_count"], "#10b981", 20, "#facc15", 100, "#ef4444"],
+            "circle-radius": ["step", ["get", "point_count"], 16, 20, 24, 100, 32],
+            "circle-opacity": 0.75,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "rgba(255,255,255,0.4)",
+          },
+          layout: { visibility: "none" },
+        });
+      }
+      // DU cluster count labels
+      if (!map.getLayer("du-pins-cluster-count")) {
+        map.addLayer({
+          id: "du-pins-cluster-count",
+          type: "symbol",
+          source: "du-pins",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-size": 12,
+            "text-allow-overlap": true,
+            visibility: "none",
+          },
+          paint: { "text-color": "#ffffff" },
+        });
+      }
+
       // Wind flow lines source (LineStrings for animated flow)
       if (!map.getSource("wind-arrows")) {
         map.addSource("wind-arrows", {
@@ -1142,7 +1218,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           minzoom: 3,
           layout: {
             "text-field": "▶",
-            "text-size": 14,
+            "text-size": [
+              "interpolate", ["linear"], ["get", "windSpeed"],
+              0, 10,
+              15, 14,
+              30, 20
+            ],
             "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
             "text-rotate": ["get", "windDir"],
             "text-rotation-alignment": "map",
@@ -1511,7 +1592,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates],
+    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates, duPinsGeoJSON],
   );
 
   const initMap = useCallback(() => {
@@ -1648,6 +1729,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // Click handler
     map.on("click", "states-fill", (e) => {
+      const ebirdLayers = ['ebird-dots', 'ebird-clusters'].filter(l => map.getLayer(l));
+      if (ebirdLayers.length > 0) {
+        const ebirdHits = map.queryRenderedFeatures(e.point, { layers: ebirdLayers });
+        if (ebirdHits.length > 0) return;
+      }
       if (!e.features || e.features.length === 0) return;
       const abbr = e.features[0].properties?.abbr;
       if (!abbr || !statesWithData.has(abbr)) return;
@@ -1687,6 +1773,54 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on("mouseleave", "ebird-clusters", () => { map.getCanvas().style.cursor = ""; });
     map.on("mouseenter", "ebird-dots", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "ebird-dots", () => { map.getCanvas().style.cursor = ""; });
+
+    // DU pin click — show popup with report details
+    map.on("click", "du-pins-dots", (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties || {};
+      const coords = (e.features[0].geometry as any).coordinates.slice() as [number, number];
+      while (Math.abs(e.lngLat.lng - coords[0]) > 180) {
+        coords[0] += e.lngLat.lng > coords[0] ? 360 : -360;
+      }
+      const dateStr = props.submit_date ? new Date(props.submit_date).toLocaleDateString() : "";
+      const activityColors: Record<string, string> = {
+        "Very Low": "#64748b", "Low": "#64748b", "Moderate": "#facc15", "Good": "#fb923c", "Excellent": "#ef4444",
+      };
+      const actColor = activityColors[props.activity_level] || "#94a3b8";
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10 })
+        .setLngLat(coords)
+        .setHTML(`
+          <div style="font-family:Inter,sans-serif;padding:4px 0;min-width:150px;max-width:240px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="background:${actColor};width:8px;height:8px;border-radius:50%;display:inline-block"></span>
+              <span style="font-weight:600;font-size:13px;color:#fff">${props.activity_level || "Unknown"}</span>
+            </div>
+            <div style="color:rgba(255,255,255,0.7);font-size:11px">${props.classification || ""}</div>
+            ${props.location_name ? `<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:3px">${props.location_name}${props.state_abbr ? ", " + props.state_abbr : ""}</div>` : ""}
+            ${props.weather ? `<div style="color:rgba(255,255,255,0.4);font-size:10px;margin-top:3px">${props.weather}</div>` : ""}
+            <div style="color:rgba(255,255,255,0.4);font-size:10px;margin-top:4px">${dateStr}</div>
+          </div>
+        `)
+        .addTo(map);
+    });
+
+    // DU cluster click — zoom in
+    map.on("click", "du-pins-clusters", (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const clusterId = e.features[0].properties?.cluster_id;
+      const source = map.getSource("du-pins") as mapboxgl.GeoJSONSource;
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err) return;
+        const coords = (e.features![0].geometry as any).coordinates as [number, number];
+        map.flyTo({ center: coords, zoom, duration: 500 });
+      });
+    });
+
+    // DU cursor changes
+    map.on("mouseenter", "du-pins-dots", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "du-pins-dots", () => { map.getCanvas().style.cursor = ""; });
+    map.on("mouseenter", "du-pins-clusters", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "du-pins-clusters", () => { map.getCanvas().style.cursor = ""; });
 
     // NWS alert click — show popup with details
     map.on("click", "nws-alert-fill", (e) => {
@@ -1984,6 +2118,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
   }, [sightingsGeoJSON, convergenceScores]);
 
+  // Update DU migration map pins data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !duPinsGeoJSON) return;
+
+    const source = map.getSource("du-pins") as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(duPinsGeoJSON);
+    }
+  }, [duPinsGeoJSON]);
+
   // Update NWS alerts data
   useEffect(() => {
     const map = mapRef.current;
@@ -2091,6 +2236,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (map.getLayer('radar-overlay')) {
       map.setLayoutProperty('radar-overlay', 'visibility', showRadar ? 'visible' : 'none');
     }
+
+    // DU pins toggle override
+    const duVis = showDUPins ? 'visible' : 'none';
+    if (map.getLayer('du-pins-dots')) map.setLayoutProperty('du-pins-dots', 'visibility', duVis);
+    if (map.getLayer('du-pins-clusters')) map.setLayoutProperty('du-pins-clusters', 'visibility', duVis);
+    if (map.getLayer('du-pins-cluster-count')) map.setLayoutProperty('du-pins-cluster-count', 'visibility', duVis);
 
     // --- BLOCK 2: State fill coloring (separate from visibility) ---
     if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
@@ -2244,7 +2395,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (map.getLayer("perfect-storm-ring")) {
       map.setFilter("perfect-storm-ring", stormFilter);
     }
-  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar]);
+  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar, showDUPins]);
 
   // Auto-activate layers on zoom (waterways at state zoom in scout/intel)
   useEffect(() => {
@@ -2352,8 +2503,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     if (show3D) {
       addTerrain(map);
+      if (map.getZoom() < 6 && map.getPitch() < 10) {
+        map.easeTo({ pitch: 25, duration: 800 });
+      }
     } else {
       removeTerrain(map);
+      if (map.getPitch() > 0) {
+        map.easeTo({ pitch: 0, duration: 500 });
+      }
     }
   }, [show3D]);
 

@@ -23,7 +23,9 @@ import { useConvergenceAlerts } from "@/hooks/useConvergenceAlerts";
 import { useCountyGeoJSON } from "@/hooks/useCountyGeoJSON";
 import { useNWSAlerts } from "@/hooks/useNWSAlerts";
 import { useMigrationFront } from "@/hooks/useMigrationFront";
+import { useDUMapReports } from "@/hooks/useDUMapReports";
 import TimelineScrubber from "@/components/TimelineScrubber";
+import HelpModal, { useHelpModal } from "@/components/HelpModal";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -104,6 +106,7 @@ const Index = () => {
   const [zoneSlug, setZoneSlug] = useState<string | null>(parsed.zoneSlug);
   const [showFlyways, setShowFlyways] = useState(false);
   const [showRadar, setShowRadar] = useState(false);
+  const [showDUPins, setShowDUPins] = useState(false);
   const [isSatellite, setIsSatellite] = useState(true);
   const [show3D, setShow3D] = useState(true);
   const [mapMode, setMapModeRaw] = useState<MapMode>('default');
@@ -118,6 +121,7 @@ const Index = () => {
   const countyGeoJSON = useCountyGeoJSON();
   const nwsAlertsGeoJSON = useNWSAlerts();
   const migrationFrontLine = useMigrationFront();
+  const { geojson: duPinsGeoJSON } = useDUMapReports();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
   const { alerts } = useHuntAlerts();
@@ -125,6 +129,7 @@ const Index = () => {
   const { report: scoutReport, loading: scoutReportLoading } = useScoutReport();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const helpModal = useHelpModal();
   const [scrubDate, setScrubDate] = useState<Date | null>(null);
   const [scrubScores, setScrubScores] = useState<Map<string, number> | null>(null);
   const [scrubLoading, setScrubLoading] = useState(false);
@@ -398,6 +403,8 @@ const Index = () => {
         migrationFrontLine={migrationFrontLine}
         scrubDate={scrubDate}
         showRadar={showRadar}
+        showDUPins={showDUPins}
+        duPinsGeoJSON={duPinsGeoJSON}
       />
 
       {/* Header */}
@@ -406,6 +413,7 @@ const Index = () => {
         onSelectSpecies={handleSelectSpecies}
         onSearch={handleSelectState}
         onSearchLocation={handleSearchLocation}
+        onHelpOpen={helpModal.show}
       />
 
       {/* Sidebar (desktop) / MobileSheet (mobile) */}
@@ -467,6 +475,8 @@ const Index = () => {
         showFlywayOption={isFlywaySpecies(species)}
         showRadar={showRadar}
         onToggleRadar={() => setShowRadar((r) => !r)}
+        showDUPins={showDUPins}
+        onToggleDUPins={() => setShowDUPins((d) => !d)}
       />
 
       {/* Map Legend */}
@@ -530,6 +540,9 @@ const Index = () => {
           <span className="text-xs text-white/50 font-body font-medium">Not available</span>
         </div>
       )}
+
+      {/* Help Modal */}
+      <HelpModal open={helpModal.open} onClose={helpModal.close} />
 
       {/* Grain overlay */}
       <div className="grain-overlay" />
