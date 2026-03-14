@@ -395,6 +395,7 @@ async function main() {
 
     const lat = STATE_CENTROIDS[abbr].lat;
     console.log(`\n${abbr} (${STATE_CENTROIDS[abbr].name}, lat ${lat}):`);
+    try { // Wrap entire state processing — socket errors skip state, don't kill script
 
     // We need the previous day's length for daily change calculation.
     // Compute it for the day before the first date.
@@ -481,6 +482,9 @@ async function main() {
     }
 
     console.log(`  ${abbr} done: ${stateCount} entries`);
+    } catch (stateErr) {
+      console.error(`  ${abbr} FAILED (will continue to next state): ${stateErr}`);
+    }
   }
 
   console.log(`\n=== Complete: ${globalCount} photoperiod entries embedded ===`);

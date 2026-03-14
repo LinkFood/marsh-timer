@@ -429,12 +429,13 @@ async function main() {
       const entries = summaries.map((s) => buildEntry(s, state, month));
 
       // Embed + insert
-      const inserted = await processEntries(entries);
-      stateInserted += inserted;
-
-      console.log(
-        `  ${month}: ${summaries.length} stations -> ${inserted} embedded`,
-      );
+      try {
+        const inserted = await processEntries(entries);
+        stateInserted += inserted;
+        console.log(`  ${month}: ${summaries.length} stations -> ${inserted} embedded`);
+      } catch (err) {
+        console.error(`  ${month}: embed/insert failed (continuing): ${err}`);
+      }
     }
 
     totalInserted += stateInserted;

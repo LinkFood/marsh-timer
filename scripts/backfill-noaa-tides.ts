@@ -405,9 +405,13 @@ async function main() {
 
     if (entries.length === 0) continue;
 
-    await processEntries(entries);
-    totalEntries += entries.length;
-    console.log(`  Done. Running total: ${totalEntries} entries`);
+    try {
+      await processEntries(entries);
+      totalEntries += entries.length;
+      console.log(`  Done. Running total: ${totalEntries} entries`);
+    } catch (err) {
+      console.error(`  Embed/insert failed (continuing to next station): ${err}`);
+    }
   }
 
   console.log(`\n=== Complete! ${totalEntries} tide entries embedded ===`);
