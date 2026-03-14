@@ -244,6 +244,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   // Search hunt_knowledge for weather-migration pattern insights
   let patternInsight = '';
+  let weatherPatternMatches: Array<{ title: string; content: string; similarity: number; content_type: string }> = [];
   try {
     const conditionStr = `${state.name} duck hunting weather: ${temp}°F, wind ${wind} mph, precipitation ${precip}mm`;
     const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
@@ -257,11 +258,20 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     });
     if (searchRes.ok) {
       const searchData = await searchRes.json();
-      const patterns = (searchData.vector || [])
-        .filter((v: { similarity: number; content_type?: string }) => v.similarity > 0.5)
-        .map((v: { content: string }) => v.content);
-      if (patterns.length > 0) {
-        patternInsight = `\n\nHistorical patterns:\n${patterns.join('\n')}`;
+      const allPatterns = (searchData.vector || [])
+        .filter((v: { similarity: number }) => v.similarity > 0.5) as Array<{ title: string; content: string; similarity: number; content_type?: string }>;
+      const patternContents = allPatterns.map((v) => v.content);
+      if (patternContents.length > 0) {
+        patternInsight = `\n\nHistorical patterns:\n${patternContents.join('\n')}`;
+      }
+      // Build pattern card for weather response
+      if (allPatterns.length > 0) {
+        weatherPatternMatches = allPatterns.slice(0, 5).map((v) => ({
+          title: v.title,
+          content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
+          similarity: v.similarity,
+          content_type: v.content_type || 'pattern',
+        }));
       }
     }
   } catch { /* pattern matching is best-effort */ }
@@ -299,6 +309,10 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
         reasoning: convData.reasoning,
       },
     });
+  }
+
+  if (weatherPatternMatches.length > 0) {
+    cards.push({ type: 'pattern', data: { patterns: weatherPatternMatches } });
   }
 
   return {
@@ -452,6 +466,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
 async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, query: string) {
   // Hybrid search: vector via hunt-search + keyword fallback
   let vectorContext = '';
+  const cards: unknown[] = [];
   try {
     const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
     const searchRes = await fetch(searchUrl, {
@@ -464,14 +479,45 @@ async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, q
     });
     if (searchRes.ok) {
       const searchData = await searchRes.json();
-      const vectorHits = (searchData.vector || [])
-        .filter((v: { similarity: number }) => v.similarity > 0.3)
-        .map((v: { title: string; content: string; similarity: number }) => `[${v.title}] ${v.content}`);
+      const allVector = (searchData.vector || []) as Array<{ title: string; content: string; similarity: number; content_type?: string }>;
+      const filteredVector = allVector.filter((v) => v.similarity > 0.3);
+      const vectorHits = filteredVector
+        .map((v) => `[${v.title}] ${v.content}`);
       const factHits = (searchData.keywords?.facts || [])
         .map((f: { species_id: string; state_name: string; facts: string[] }) => `${f.species_id} ${f.state_name}: ${f.facts.join('; ')}`);
       const seasonHits = (searchData.keywords?.seasons || [])
         .map((s: { species_id: string; state_name: string; season_type: string; notes: string }) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || ''}`);
       vectorContext = [...vectorHits, ...factHits, ...seasonHits].join('\n');
+
+      // Build pattern card from top vector matches
+      const patternMatches = filteredVector
+        .filter((v) => v.similarity > 0.4)
+        .slice(0, 5)
+        .map((v) => ({
+          title: v.title,
+          content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
+          similarity: v.similarity,
+          content_type: v.content_type || 'unknown',
+        }));
+      if (patternMatches.length > 0) {
+        cards.push({ type: 'pattern', data: { patterns: patternMatches } });
+      }
+
+      // Build source card
+      const keywordCount = (searchData.keywords?.facts?.length || 0) + (searchData.keywords?.seasons?.length || 0);
+      const contentTypes = [...new Set(filteredVector.map((v) => v.content_type || 'unknown'))];
+      const similarities = filteredVector.map((v) => v.similarity);
+      if (filteredVector.length > 0) {
+        cards.push({
+          type: 'source',
+          data: {
+            vectorCount: filteredVector.length,
+            keywordCount,
+            contentTypes,
+            similarityRange: [Math.min(...similarities), Math.max(...similarities)],
+          },
+        });
+      }
     }
   } catch { /* fall through to keyword only */ }
 
@@ -502,7 +548,7 @@ async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, q
 
   return {
     response: parseTextContent(searchResponse),
-    cards: [],
+    cards,
   };
 }
 

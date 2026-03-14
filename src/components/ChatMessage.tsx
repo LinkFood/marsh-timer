@@ -1,3 +1,4 @@
+import type { ReactNode, ReactElement } from 'react';
 import type { ChatMessage as ChatMessageType, ChatCard } from '@/hooks/useChat';
 import { useMapAction } from '@/contexts/MapActionContext';
 import WeatherCard from './cards/WeatherCard';
@@ -5,31 +6,67 @@ import SeasonCard from './cards/SeasonCard';
 import SolunarCard from './cards/SolunarCard';
 import AlertCard from './cards/AlertCard';
 import ConvergenceCard from './cards/ConvergenceCard';
+import PatternCard from './cards/PatternCard';
+import SourceCard from './cards/SourceCard';
 import { MapPin } from 'lucide-react';
 
 interface ChatMessageProps {
   message: ChatMessageType;
 }
 
-function formatMarkdown(text: string): string {
-  return text
-    // Strip URLs (no external links)
-    .replace(/https?:\/\/[^\s)]+/g, '')
-    // Headings: ## Header or ### Header
-    .replace(/^###\s+(.+)$/gm, '<span class="block text-[11px] font-semibold text-white/70 mt-2 mb-0.5">$1</span>')
-    .replace(/^##\s+(.+)$/gm, '<span class="block text-xs font-semibold text-white/80 mt-2 mb-0.5">$1</span>')
-    // Bold: **text**
-    .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-white/90 font-semibold">$1</strong>')
-    // Italic: *text*
-    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-    // Horizontal rules: ---
-    .replace(/^---$/gm, '<hr class="border-white/10 my-1.5" />')
-    // Unordered lists: - item
-    .replace(/^[-•]\s+(.+)$/gm, '<span class="block pl-2 before:content-[\'•\'] before:mr-1.5 before:text-white/30">$1</span>')
-    // Numbered lists: 1. item
-    .replace(/^\d+\.\s+(.+)$/gm, '<span class="block pl-2">$1</span>')
-    // Line breaks
-    .replace(/\n/g, '<br />');
+function processInline(text: string): (string | ReactElement)[] {
+  const result: (string | ReactElement)[] = [];
+  // Strip URLs
+  const cleaned = text.replace(/https?:\/\/[^\s)]+/g, '');
+  // Process bold and italic
+  const parts = cleaned.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.startsWith('**') && part.endsWith('**')) {
+      result.push(<strong key={i} className="text-white/90 font-semibold">{part.slice(2, -2)}</strong>);
+    } else if (part.startsWith('*') && part.endsWith('*') && !part.startsWith('**')) {
+      result.push(<em key={i}>{part.slice(1, -1)}</em>);
+    } else if (part) {
+      result.push(part);
+    }
+  }
+  return result;
+}
+
+function parseMarkdown(text: string): ReactNode[] {
+  const lines = text.split('\n');
+  const nodes: ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.match(/^###\s+(.+)$/)) {
+      const content = line.replace(/^###\s+/, '');
+      nodes.push(<span key={i} className="block text-[11px] font-semibold text-white/70 mt-2 mb-0.5">{processInline(content)}</span>);
+    } else if (line.match(/^##\s+(.+)$/)) {
+      const content = line.replace(/^##\s+/, '');
+      nodes.push(<span key={i} className="block text-xs font-semibold text-white/80 mt-2 mb-0.5">{processInline(content)}</span>);
+    } else if (line.match(/^---$/)) {
+      nodes.push(<hr key={i} className="border-white/10 my-1.5" />);
+    } else if (line.match(/^[-•]\s+(.+)$/)) {
+      const content = line.replace(/^[-•]\s+/, '');
+      nodes.push(
+        <span key={i} className="block pl-2">
+          <span className="mr-1.5 text-white/30">•</span>
+          {processInline(content)}
+        </span>
+      );
+    } else if (line.match(/^\d+\.\s+(.+)$/)) {
+      const content = line.replace(/^\d+\.\s+/, '');
+      nodes.push(<span key={i} className="block pl-2">{processInline(content)}</span>);
+    } else if (line.trim() === '') {
+      nodes.push(<br key={i} />);
+    } else {
+      nodes.push(<span key={i} className="block">{processInline(line)}</span>);
+    }
+  }
+
+  return nodes;
 }
 
 function renderCard(card: ChatCard, index: number) {
@@ -44,6 +81,10 @@ function renderCard(card: ChatCard, index: number) {
       return <AlertCard key={index} data={card.data} />;
     case 'convergence':
       return <ConvergenceCard key={index} {...(card.data as any)} />;
+    case 'pattern':
+      return <PatternCard key={index} data={card.data} />;
+    case 'source':
+      return <SourceCard key={index} data={card.data} />;
     default:
       return null;
   }
@@ -65,7 +106,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
-          <div className="chat-markdown leading-relaxed" dangerouslySetInnerHTML={{ __html: formatMarkdown(message.content) }} />
+          <div className="chat-markdown leading-relaxed">{parseMarkdown(message.content)}</div>
         )}
         {message.mapAction && (
           <button
