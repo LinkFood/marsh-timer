@@ -250,6 +250,12 @@ All tables have RLS. Service role bypasses for edge functions.
 
 All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
 
+## Disk Health Check
+
+Before starting any session, run: `df -h /`
+If available space is under 20GB, run: `sudo rm -rf /private/tmp/*`
+Then verify with `df -h /` again before proceeding.
+
 ## Rules
 
 - Mobile-first. Every feature must work well on phones.
@@ -264,6 +270,7 @@ All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84
 - Use `extensions.vector(512)` with `SET search_path = public, extensions` for vector ops.
 - Shared module change → redeploy every function that imports it.
 - Migration push requires `migration repair --status reverted` for JAC's migrations first.
+- **THE EMBEDDING LAW:** Every piece of data that enters the system MUST be embedded via Voyage AI → hunt_knowledge. No exceptions. Every cron output, every weather pattern, every user log, every ingested document. The embedding pipeline only grows — never shrinks, never skips. This is the core competitive moat. If data isn't being embedded, that's a bug.
 
 ## Map Intelligence Layer
 
