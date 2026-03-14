@@ -574,8 +574,8 @@ async function handleCompare(state1: string, state2: string, query: string, spec
   const supabase = createSupabaseClient();
 
   const [conv1, conv2, brain1, brain2] = await Promise.all([
-    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state1).order('date', { ascending: false }).limit(1).single(),
-    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state2).order('date', { ascending: false }).limit(1).single(),
+    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state1).order('date', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state2).order('date', { ascending: false }).limit(1).maybeSingle(),
     searchBrain({ query: `${species} hunting conditions ${state1}`, state_abbr: state1, limit: 3, min_similarity: 0.3 }),
     searchBrain({ query: `${species} hunting conditions ${state2}`, state_abbr: state2, limit: 3, min_similarity: 0.3 }),
   ]);
