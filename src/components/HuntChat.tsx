@@ -33,11 +33,18 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
               Ask me about hunting conditions in any state
             </p>
             <div className="flex flex-col gap-1.5 w-full max-w-[240px]">
-              {[
-                "Best states for mallards this week",
-                "Texas conditions today",
-                "Migration activity in Mississippi Flyway",
-              ].map((prompt) => (
+              {(stateAbbr
+                ? [
+                    `${stateAbbr} conditions today`,
+                    `Hunt score breakdown for ${stateAbbr}`,
+                    `${stateAbbr} season dates`,
+                  ]
+                : [
+                    "Best states for mallards this week",
+                    "Texas conditions today",
+                    "Migration activity in Mississippi Flyway",
+                  ]
+              ).map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => sendMessage(prompt)}

@@ -66,6 +66,24 @@ Running via nohup (~40 hrs). Check: `tail ~/marsh-timer/ebird-backfill.log` or q
 
 ## UP NEXT
 
+### Chat UX Overhaul — "The Brain Deserves a Better Face"
+The embedding pipeline and vector search are the moat — 5,000+ entries, hybrid search, pattern matching, historical context. But the chat output is raw markdown. It looks like a log file, not an intelligence briefing. The brain is smart; the mouth needs to match.
+
+**Problems:**
+- Responses render as flat markdown — no visual hierarchy, no cards, no data visualization
+- No distinction between data-backed insights vs. general responses
+- Doesn't leverage the rich structured data we already have (convergence scores, weather, solunar, patterns)
+- Chat lives in a sidebar tab — unclear how it relates to what's on the map
+
+**What "good" looks like:**
+- Structured response cards: weather snapshots, score breakdowns, pattern matches — not just text
+- Inline data viz: mini convergence bars, wind indicators, moon phase icons within responses
+- Source attribution: "Based on 3 matching patterns from Nov 2023" with expandable detail
+- Map integration: chat responses that highlight/fly-to relevant states
+- Conversational feel, not report feel — brief, punchy, visual
+
+**Scope:** Large — touches ChatMessage rendering, dispatcher response format, possibly new response card components. Core logic (embeddings, search, dispatcher routing) stays untouched.
+
 ### Flyway Corridors — Full Continental Extent
 All 4 flyway corridors + flow lines currently stop at US borders. Real flyways run from Arctic breeding grounds (Canada/Alaska) through the US to wintering grounds (Mexico, Caribbean, Central America). Extend polygon + flow line coordinates in `flywayPaths.ts`. Also extends Pacific Flyway to include Alaska.
 

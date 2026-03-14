@@ -26,6 +26,7 @@ import { useMigrationFront } from "@/hooks/useMigrationFront";
 import { useDUMapReports } from "@/hooks/useDUMapReports";
 import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
+import { MapActionProvider } from "@/contexts/MapActionContext";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -417,47 +418,53 @@ const Index = () => {
       />
 
       {/* Sidebar (desktop) / MobileSheet (mobile) */}
-      {isMobile ? (
-        <MobileSheet
-          level={level}
-          species={species}
-          stateAbbr={selectedState}
-          zoneSlug={zoneSlug}
-          onSelectState={handleSelectState}
-          onSelectZone={handleSelectZone}
-          onBack={handleBack}
-          onSwitchSpecies={handleSwitchSpecies}
-          favorites={speciesFavorites}
-          onToggleFavorite={toggleFavorite}
-          isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-          alerts={alerts}
-          weatherSnapshot={weatherCache}
-        />
-      ) : (
-        <Sidebar
-          level={level}
-          species={species}
-          stateAbbr={selectedState}
-          zoneSlug={zoneSlug}
-          onSelectState={handleSelectState}
-          onSelectZone={handleSelectZone}
-          onBack={handleBack}
-          onSwitchSpecies={handleSwitchSpecies}
-          favorites={speciesFavorites}
-          onToggleFavorite={toggleFavorite}
-          isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-          alerts={alerts}
-          weatherSnapshot={weatherCache}
-          convergenceTopStates={convergenceTopStates}
-          convergenceLoading={convergenceLoading}
-          convergenceScore={selectedConvergenceScore}
-          scoutReport={scoutReport}
-          scoutReportLoading={scoutReportLoading}
-          convergenceAlerts={convergenceAlerts}
-          expanded={sidebarExpanded}
-          onToggleExpanded={() => setSidebarExpanded(e => !e)}
-        />
-      )}
+      <MapActionProvider
+        flyTo={handleSelectState}
+        flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
+        setMapMode={setMapMode}
+      >
+        {isMobile ? (
+          <MobileSheet
+            level={level}
+            species={species}
+            stateAbbr={selectedState}
+            zoneSlug={zoneSlug}
+            onSelectState={handleSelectState}
+            onSelectZone={handleSelectZone}
+            onBack={handleBack}
+            onSwitchSpecies={handleSwitchSpecies}
+            favorites={speciesFavorites}
+            onToggleFavorite={toggleFavorite}
+            isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+            alerts={alerts}
+            weatherSnapshot={weatherCache}
+          />
+        ) : (
+          <Sidebar
+            level={level}
+            species={species}
+            stateAbbr={selectedState}
+            zoneSlug={zoneSlug}
+            onSelectState={handleSelectState}
+            onSelectZone={handleSelectZone}
+            onBack={handleBack}
+            onSwitchSpecies={handleSwitchSpecies}
+            favorites={speciesFavorites}
+            onToggleFavorite={toggleFavorite}
+            isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+            alerts={alerts}
+            weatherSnapshot={weatherCache}
+            convergenceTopStates={convergenceTopStates}
+            convergenceLoading={convergenceLoading}
+            convergenceScore={selectedConvergenceScore}
+            scoutReport={scoutReport}
+            scoutReportLoading={scoutReportLoading}
+            convergenceAlerts={convergenceAlerts}
+            expanded={sidebarExpanded}
+            onToggleExpanded={() => setSidebarExpanded(e => !e)}
+          />
+        )}
+      </MapActionProvider>
 
       {/* Map Mode Presets */}
       <MapPresets

@@ -12,7 +12,7 @@ export interface ChatMessage {
 }
 
 export interface ChatCard {
-  type: 'weather' | 'season' | 'solunar' | 'alert';
+  type: 'weather' | 'season' | 'solunar' | 'alert' | 'convergence';
   data: Record<string, unknown>;
 }
 

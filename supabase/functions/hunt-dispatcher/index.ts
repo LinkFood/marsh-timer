@@ -207,22 +207,32 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     return { response: `I don't have location data for ${stateAbbr} yet.`, cards: [] };
   }
 
-  // Call hunt-weather function
+  // Call hunt-weather function + fetch convergence in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const weatherRes = await fetch(weatherUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ lat: state.centroid_lat, lng: state.centroid_lng, state_abbr: stateAbbr }),
-  });
+  const [weatherRes, convergenceResult] = await Promise.all([
+    fetch(weatherUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ lat: state.centroid_lat, lng: state.centroid_lng, state_abbr: stateAbbr }),
+    }),
+    supabase
+      .from('hunt_convergence_scores')
+      .select('*')
+      .eq('state_abbr', stateAbbr)
+      .order('date', { ascending: false })
+      .limit(1)
+      .single(),
+  ]);
 
   if (!weatherRes.ok) {
     return { response: `Couldn't fetch weather for ${state.name}. Try again later.`, cards: [] };
   }
 
   const forecast = await weatherRes.json();
+  const convData = convergenceResult.data;
 
   // Parse current conditions from hourly data
   const hourly = forecast.hourly;
@@ -264,17 +274,37 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     max_tokens: 200,
   });
 
+  const cards: unknown[] = [{
+    type: 'weather',
+    data: {
+      temp,
+      wind_speed: wind,
+      precipitation: precip,
+      description: `${state.name} conditions`,
+    },
+  }];
+
+  if (convData) {
+    cards.push({
+      type: 'convergence',
+      data: {
+        stateAbbr: convData.state_abbr,
+        score: convData.score,
+        weatherComponent: convData.weather_component,
+        solunarComponent: convData.solunar_component,
+        migrationComponent: convData.migration_component,
+        birdcastComponent: convData.birdcast_component,
+        patternComponent: convData.pattern_component,
+        nationalRank: convData.national_rank,
+        reasoning: convData.reasoning,
+      },
+    });
+  }
+
   return {
     response: parseTextContent(weatherSummary),
-    cards: [{
-      type: 'weather',
-      data: {
-        temp,
-        wind_speed: wind,
-        precipitation: precip,
-        description: `${state.name} conditions`,
-      },
-    }],
+    cards,
+    mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
 
@@ -326,6 +356,7 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
         rating: solunar.dayRating,
       },
     }],
+    mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
 
@@ -334,11 +365,23 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     return { response: 'Which state are you asking about? Select one on the map or tell me.', cards: [] };
   }
 
-  const { data: seasons } = await supabase
-    .from('hunt_seasons')
-    .select('*')
-    .eq('species_id', species)
-    .eq('state_abbr', stateAbbr);
+  const [seasonsResult, convergenceResult] = await Promise.all([
+    supabase
+      .from('hunt_seasons')
+      .select('*')
+      .eq('species_id', species)
+      .eq('state_abbr', stateAbbr),
+    supabase
+      .from('hunt_convergence_scores')
+      .select('*')
+      .eq('state_abbr', stateAbbr)
+      .order('date', { ascending: false })
+      .limit(1)
+      .single(),
+  ]);
+
+  const seasons = seasonsResult.data;
+  const convData = convergenceResult.data;
 
   if (!seasons || seasons.length === 0) {
     return { response: `No ${species} season data found for ${stateAbbr}.`, cards: [] };
@@ -381,6 +424,23 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     messages: [{ role: 'user', content: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}` }],
     max_tokens: 200,
   });
+
+  if (convData) {
+    cards.push({
+      type: 'convergence',
+      data: {
+        stateAbbr: convData.state_abbr,
+        score: convData.score,
+        weatherComponent: convData.weather_component,
+        solunarComponent: convData.solunar_component,
+        migrationComponent: convData.migration_component,
+        birdcastComponent: convData.birdcast_component,
+        patternComponent: convData.pattern_component,
+        nationalRank: convData.national_rank,
+        reasoning: convData.reasoning,
+      },
+    });
+  }
 
   return {
     response: parseTextContent(seasonSummary),
