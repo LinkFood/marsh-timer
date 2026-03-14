@@ -118,9 +118,53 @@ export async function enrichWithPatternScan(
       .update({ metadata: updatedMetadata })
       .eq('id', entryId);
 
+    // Write pattern links to hunt_pattern_links
+    await writePatternLinks(entryId, result.matches, {
+      state_abbr: opts.state_abbr,
+      source_content_type: opts.exclude_content_type,
+    });
+
     console.log(`[brainScan] ${entryId}: ${result.matches.length} pattern matches found`);
   } catch (err) {
     // Non-fatal — scanning is best-effort
     console.warn('[brainScan] enrich failed (non-fatal):', err);
+  }
+}
+
+/**
+ * Write pattern links to hunt_pattern_links.
+ * One row per match linking the new entry to the historical match.
+ * Best-effort — failures are logged but don't block the pipeline.
+ */
+async function writePatternLinks(
+  sourceId: string,
+  matches: PatternMatch[],
+  opts: { state_abbr?: string; source_content_type?: string } = {}
+): Promise<void> {
+  if (matches.length === 0) return;
+
+  try {
+    const supabase = createSupabaseClient();
+
+    const rows = matches.map((m) => ({
+      source_id: sourceId,
+      matched_id: m.id,
+      similarity: m.similarity,
+      source_content_type: opts.source_content_type || null,
+      matched_content_type: m.content_type,
+      state_abbr: opts.state_abbr || null,
+    }));
+
+    const { error } = await supabase
+      .from('hunt_pattern_links')
+      .insert(rows);
+
+    if (error) {
+      console.warn('[brainScan] writePatternLinks insert error:', error.message);
+    } else {
+      console.log(`[brainScan] wrote ${rows.length} pattern links for ${sourceId}`);
+    }
+  } catch (err) {
+    console.warn('[brainScan] writePatternLinks failed (non-fatal):', err);
   }
 }
