@@ -17,7 +17,9 @@ export default function SourceCard({ data }: SourceCardProps) {
         <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Sources</span>
       </div>
       <p className="text-[10px] text-white/40">
-        Searched {vectorCount} entries{keywordCount > 0 ? `, ${keywordCount} keyword matches` : ''}
+        {vectorCount === 0 && keywordCount === 0
+          ? 'Brain searched — 0 matching entries'
+          : `Searched ${vectorCount} entries${keywordCount > 0 ? `, ${keywordCount} keyword matches` : ''}`}
       </p>
       {contentTypes.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1">

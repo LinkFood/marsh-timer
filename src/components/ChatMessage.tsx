@@ -8,7 +8,7 @@ import ConvergenceCard from './cards/ConvergenceCard';
 import PatternCard from './cards/PatternCard';
 import SourceCard from './cards/SourceCard';
 import PatternLinksCard from './cards/PatternLinksCard';
-import { MapPin, Compass } from 'lucide-react';
+import { MapPin, Compass, Database } from 'lucide-react';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -134,27 +134,52 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     );
   }
 
+  const brainCards = message.cards?.filter(c => c.type === 'pattern' || c.type === 'source') || [];
+  const otherCards = message.cards?.filter(c => c.type !== 'pattern' && c.type !== 'source') || [];
+
   return (
     <div className="flex items-start gap-2 mb-3 animate-in fade-in duration-300">
       <div className="flex-shrink-0 w-6 h-6 rounded-full bg-cyan-400/10 flex items-center justify-center mt-0.5">
         <Compass className="w-3.5 h-3.5 text-cyan-400/60" />
       </div>
-      <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 text-xs font-body bg-white/[0.04] text-white/80 border border-white/[0.08]">
-        <div className="chat-markdown leading-relaxed">{parseMarkdown(message.content)}</div>
-        {message.mapAction && (
-          <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-cyan-400/50">
-            <MapPin className="w-3 h-3" />
-            <span>Viewing {message.mapAction.target} on map</span>
+      <div className="max-w-[85%] space-y-2">
+        {/* Brain section — always shown for assistant messages */}
+        <div className="rounded-xl px-3.5 py-2.5 text-xs font-body bg-white/[0.04] border border-cyan-400/30">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Database size={10} className="text-cyan-400/60" />
+            <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-wider">From the Brain</span>
           </div>
-        )}
-        {message.cards && message.cards.length > 0 && (
-          <div className="mt-2 space-y-2">
-            {message.cards.map((card, i) => renderCard(card, i))}
+          {brainCards.length > 0 ? (
+            <div className="space-y-2">
+              {brainCards.map((card, i) => renderCard(card, i))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-white/40">Brain searched — no matching data found</p>
+          )}
+        </div>
+
+        {/* AI interpretation section */}
+        <div className="rounded-xl px-3.5 py-2.5 text-xs font-body bg-white/[0.04] text-white/80 border border-white/[0.08]">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Compass size={10} className="text-white/30" />
+            <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">AI Interpretation</span>
           </div>
-        )}
-        <p className="text-[9px] text-white/15 mt-1.5">
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </p>
+          <div className="chat-markdown leading-relaxed">{parseMarkdown(message.content)}</div>
+          {message.mapAction && (
+            <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-cyan-400/50">
+              <MapPin className="w-3 h-3" />
+              <span>Viewing {message.mapAction.target} on map</span>
+            </div>
+          )}
+          {otherCards.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {otherCards.map((card, i) => renderCard(card, i))}
+            </div>
+          )}
+          <p className="text-[9px] text-white/15 mt-1.5">
+            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
       </div>
     </div>
   );

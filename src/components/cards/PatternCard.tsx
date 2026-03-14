@@ -22,7 +22,20 @@ export default function PatternCard({ data }: PatternCardProps) {
   const patterns = (data.patterns as PatternMatch[]) || [];
   const [expanded, setExpanded] = useState(false);
 
-  if (patterns.length === 0) return null;
+  if (patterns.length === 0) {
+    return (
+      <div className="rounded-lg bg-amber-950/30 border border-amber-500/20 p-2.5">
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Fingerprint size={12} className="text-amber-400/50" />
+          <span className="text-[10px] font-semibold text-amber-300/50 uppercase tracking-wider">
+            Patterns
+          </span>
+        </div>
+        <p className="text-[10px] text-white/40">No matching patterns found in brain</p>
+        <p className="text-[9px] text-white/20 mt-1">Brain searched — 0 patterns matched</p>
+      </div>
+    );
+  }
 
   const visible = expanded ? patterns : patterns.slice(0, 2);
   const hiddenCount = patterns.length - 2;
@@ -59,6 +72,7 @@ export default function PatternCard({ data }: PatternCardProps) {
           {expanded ? 'Show less' : `Show ${hiddenCount} more`}
         </button>
       )}
+      <p className="text-[9px] text-white/20 mt-1.5">Brain searched — {patterns.length} pattern{patterns.length !== 1 ? 's' : ''} matched</p>
     </div>
   );
 }
