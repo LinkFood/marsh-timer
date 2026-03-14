@@ -711,6 +711,186 @@ const duckSpeciesEntries: PreparedEntry[] = [
     effective_date: null,
     richText: "common eider feeding hunting | dive for mussels crabs sea urchins, New England and eastern Canada tradition, layout boats, rough ocean, demanding",
   },
+
+  // Cinnamon Teal
+  {
+    title: "cinnamon teal: range and habitat",
+    content: "Cinnamon teal are a western US species, rarely seen east of the Great Plains. Males are brilliant cinnamon-red, one of the most colorful ducks in North America. They prefer shallow marshy ponds with emergent vegetation — cattails, bulrush, and sedges. Closely related to blue-winged teal.",
+    content_type: "species-behavior",
+    tags: ["duck", "cinnamon-teal", "range", "habitat", "western", "marsh", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "cinnamon teal range habitat | western US only, rarely east of Great Plains, brilliant cinnamon male, shallow marshy ponds, emergent vegetation",
+  },
+  {
+    title: "cinnamon teal: migration and behavior",
+    content: "Cinnamon teal migrate early like their close relative the blue-winged teal — most leave the US by October. They winter primarily in Mexico and Central America. Their early departure means they are mainly encountered during early teal seasons in September. Shallow, vegetated wetlands with muddy bottoms are key habitat.",
+    content_type: "species-behavior",
+    tags: ["duck", "cinnamon-teal", "migration", "early", "teal-season", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "cinnamon teal migration behavior | migrate early like blue-winged teal, leave by October, winter Mexico, mainly encountered early teal seasons",
+  },
+
+  // Greater Scaup
+  {
+    title: "greater scaup: identification and habitat",
+    content: "Greater scaup are larger than lesser scaup with a rounder head showing a green sheen (not purple like lesser scaup). They prefer saltwater bays, coastal estuaries, and the Great Lakes in winter. Breed on the tundra of Alaska and northern Canada. Often mixed with lesser scaup, making field ID one of the most difficult challenges in waterfowl identification.",
+    content_type: "species-behavior",
+    tags: ["duck", "greater-scaup", "identification", "habitat", "saltwater", "coastal", "tundra", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "greater scaup identification habitat | larger than lesser, rounder head green sheen, saltwater bays Great Lakes, breed Alaska/Canada tundra, hard to ID from lesser",
+  },
+  {
+    title: "greater scaup: winter distribution and feeding",
+    content: "Greater scaup concentrate on saltwater habitats in winter more than lesser scaup. Large rafts form on coastal bays from New England to the mid-Atlantic and on the Great Lakes. They dive for mollusks, crustaceans, and aquatic vegetation. Their preference for saltwater versus the lesser scaup's freshwater preference is the best field separation between the two species.",
+    content_type: "species-behavior",
+    tags: ["duck", "greater-scaup", "winter", "distribution", "saltwater", "diving", "feeding", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "greater scaup winter distribution feeding | saltwater more than lesser, coastal bays New England to mid-Atlantic, Great Lakes, dive for mollusks crustaceans",
+  },
+
+  // Lesser Scaup
+  {
+    title: "lesser scaup: abundance and identification",
+    content: "Lesser scaup are the most abundant diving duck in North America. Distinguished from greater scaup by a peaked (not rounded) head shape with a purple sheen (not green). In the field, head shape is the most reliable ID feature. Often called 'bluebill' by hunters alongside greater scaup.",
+    content_type: "species-behavior",
+    tags: ["duck", "lesser-scaup", "abundance", "identification", "bluebill", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "lesser scaup abundance identification | most abundant diving duck North America, peaked head purple sheen, head shape best field ID, bluebill",
+  },
+  {
+    title: "lesser scaup: habitat and flocking",
+    content: "Lesser scaup prefer freshwater lakes and marshes more than greater scaup, though there is significant overlap. They form huge rafts on reservoirs and large lakes, sometimes numbering tens of thousands. They are a major component of the late-season diving duck harvest in the Mississippi and Central flyways.",
+    content_type: "species-behavior",
+    tags: ["duck", "lesser-scaup", "habitat", "freshwater", "rafting", "reservoir", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "lesser scaup habitat flocking | prefer freshwater over saltwater, huge rafts on reservoirs tens of thousands, major late-season diving duck harvest",
+  },
+
+  // Harlequin Duck
+  {
+    title: "harlequin duck: habitat and range",
+    content: "Harlequin ducks breed on fast-flowing mountain streams in the Pacific Northwest and a small population in eastern Canada and northeastern US. In winter they move to rocky coastlines on both the Pacific and Atlantic. The eastern population is very small and endangered in some states. Spectacular slate-blue and chestnut plumage with white markings.",
+    content_type: "species-behavior",
+    tags: ["duck", "harlequin-duck", "habitat", "range", "mountain-streams", "rocky-coastline", "sea-duck", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "harlequin duck habitat range | breed fast-flowing mountain streams, winter rocky coastlines Pacific and Atlantic, eastern population small/endangered, spectacular plumage",
+  },
+  {
+    title: "harlequin duck: behavior and conservation",
+    content: "Harlequin ducks are sea ducks that thrive in turbulent water — crashing surf and whitewater rapids. They feed on aquatic invertebrates in fast-moving water by walking along the bottom. Very small population in eastern US makes them a conservation priority. Most hunters never encounter them. Harvest is closed or heavily restricted in many eastern states.",
+    content_type: "species-behavior",
+    tags: ["duck", "harlequin-duck", "behavior", "conservation", "sea-duck", "turbulent-water", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "harlequin duck behavior conservation | thrive in turbulent water surf and rapids, walk stream bottoms for invertebrates, eastern population conservation priority, restricted harvest",
+  },
+
+  // King Eider
+  {
+    title: "king eider: range and breeding",
+    content: "King eiders are Arctic specialists that breed on the tundra of northern Alaska and Canada. They winter primarily in the Bering Sea, with small numbers on the Atlantic coast from Newfoundland to New England. Larger and more colorful than common eiders — males have a distinctive orange frontal shield on the bill.",
+    content_type: "species-behavior",
+    tags: ["duck", "king-eider", "range", "arctic", "tundra", "bering-sea", "sea-duck", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "king eider range breeding | Arctic specialist, breed tundra Alaska/Canada, winter Bering Sea, small numbers Atlantic coast, orange frontal shield",
+  },
+  {
+    title: "king eider: hunting and accessibility",
+    content: "King eiders are rarely encountered by most waterfowl hunters due to their remote Arctic and subarctic range. They are a bucket-list sea duck for dedicated hunters, requiring trips to remote Alaska or northern Atlantic coast. They dive deeply for mollusks and crustaceans in cold ocean waters. Their plumage is among the most striking of any North American duck.",
+    content_type: "species-behavior",
+    tags: ["duck", "king-eider", "hunting", "remote", "sea-duck", "diving", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "king eider hunting accessibility | rarely encountered, bucket-list sea duck, remote Alaska or northern Atlantic, deep divers for mollusks, striking plumage",
+  },
+
+  // White-winged Scoter
+  {
+    title: "white-winged scoter: identification and habitat",
+    content: "White-winged scoter is the largest of the three scoter species. Distinguished by white wing patches (secondaries) visible in flight — the only scoter with this feature. Winter on both coasts and the Great Lakes. Breed in the boreal forests and prairie regions of western Canada.",
+    content_type: "species-behavior",
+    tags: ["duck", "white-winged-scoter", "identification", "habitat", "sea-duck", "coastal", "great-lakes", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "white-winged scoter identification habitat | largest scoter, white wing patches in flight, both coasts and Great Lakes, breed boreal/prairie Canada",
+  },
+  {
+    title: "white-winged scoter: feeding and migration",
+    content: "White-winged scoters dive for mussels and clams, crushing shells with powerful jaw muscles. They are late migrants — among the last ducks to move south in fall. Large rafts form offshore in winter, sometimes mixing with other scoter species. Sea duck hunting for scoters requires boats, heavy decoy spreads, and tolerance for rough ocean conditions.",
+    content_type: "species-behavior",
+    tags: ["duck", "white-winged-scoter", "feeding", "migration", "late", "mussels", "sea-duck", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "white-winged scoter feeding migration | dive for mussels and clams, late migrants, large offshore rafts, sea duck hunting requires boats and heavy gear",
+  },
+
+  // Black Scoter
+  {
+    title: "black scoter: identification and range",
+    content: "Black scoter males are entirely black with a bright orange knob at the base of the bill — the only all-black duck in North America. They winter on both coasts, preferring offshore waters. The least common scoter in most areas. Breed in boreal forests and tundra of Alaska and northern Canada.",
+    content_type: "species-behavior",
+    tags: ["duck", "black-scoter", "identification", "range", "sea-duck", "offshore", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "black scoter identification range | all-black male bright orange bill knob, both coasts offshore, least common scoter, breed boreal/tundra Alaska Canada",
+  },
+  {
+    title: "black scoter: behavior and hunting",
+    content: "Black scoters prefer offshore waters more than the other scoter species, making them the most difficult scoter to access for hunters. They dive for mollusks and crustaceans. Their flight is strong and direct. In some coastal areas they are locally common in winter, but overall they are the scoter species hunters encounter least frequently.",
+    content_type: "species-behavior",
+    tags: ["duck", "black-scoter", "behavior", "hunting", "offshore", "sea-duck", "diving", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "black scoter behavior hunting | most offshore of scoters, hardest to access, dive for mollusks crustaceans, least frequently encountered scoter",
+  },
+
+  // Fulvous Whistling-Duck
+  {
+    title: "fulvous whistling-duck: identification and range",
+    content: "Fulvous whistling-duck is a tropical species found in Texas, Louisiana, and Florida. Not a true 'duck' — more closely related to geese and swans. Distinctive upright posture with long legs, tawny-fulvous body, and a distinctive whistling call in flight. Prefer rice fields and shallow freshwater marshes.",
+    content_type: "species-behavior",
+    tags: ["duck", "fulvous-whistling-duck", "identification", "range", "tropical", "texas", "louisiana", "florida", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "fulvous whistling-duck identification range | tropical TX LA FL, not true duck related to geese/swans, upright posture long legs, whistling call, rice fields",
+  },
+  {
+    title: "fulvous whistling-duck: habitat and behavior",
+    content: "Fulvous whistling-ducks are strongly associated with rice agriculture — they feed in flooded rice fields and nest in dense rice and marsh vegetation. They are active at dawn and dusk but also feed nocturnally. Their range in the US is limited to the Gulf Coast states. Populations fluctuate and they are uncommon enough that many waterfowl hunters have never seen one.",
+    content_type: "species-behavior",
+    tags: ["duck", "fulvous-whistling-duck", "habitat", "rice", "nocturnal", "gulf-coast", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "fulvous whistling-duck habitat behavior | rice fields and marshes, feed dawn dusk and nocturnally, Gulf Coast only, uncommon, populations fluctuate",
+  },
+
+  // Black-bellied Whistling-Duck
+  {
+    title: "black-bellied whistling-duck: range expansion",
+    content: "Black-bellied whistling-ducks are increasingly common in Texas and expanding northward through the southern US. Distinctive with a black belly, bright pink bill, and long pink legs. They roost and nest in trees — often seen perched on fence posts, power lines, and in residential areas. Their range expansion northward is one of the most dramatic in North American waterfowl.",
+    content_type: "species-behavior",
+    tags: ["duck", "black-bellied-whistling-duck", "range", "expansion", "texas", "southern-us", "cavity-nester", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "black-bellied whistling-duck range expansion | increasingly common TX and south, expanding north, roost in trees, perch on fences, dramatic range expansion",
+  },
+  {
+    title: "black-bellied whistling-duck: nesting and behavior",
+    content: "Black-bellied whistling-ducks are cavity nesters that also use nest boxes readily. Their distinctive whistling call is loud and carries far. They are often seen in large flocks in agricultural areas, especially grain fields. Not truly migratory — most are year-round residents in their range. They are increasingly showing up in urban and suburban areas with suitable habitat.",
+    content_type: "species-behavior",
+    tags: ["duck", "black-bellied-whistling-duck", "nesting", "cavity", "behavior", "resident", "urban", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "black-bellied whistling-duck nesting behavior | cavity nesters use nest boxes, loud whistling call, large flocks ag fields, mostly resident, urban/suburban expansion",
+  },
 ];
 
 // ============================================================
@@ -830,6 +1010,92 @@ const gooseSpeciesEntries: PreparedEntry[] = [
     species: "goose",
     effective_date: null,
     richText: "specklebelly wariness decoying | less wary than Canadas, decoy to small spreads 12-36, yodel call, commit quickly",
+  },
+
+  // Cackling Goose
+  {
+    title: "cackling goose: identification and split",
+    content: "Cackling goose was split from Canada goose as a separate species in 2004. Smaller than Canada goose with a shorter neck, stubbier bill, and more compact body. Four subspecies, all breeding in Arctic Alaska and Canada. Primarily winter in the Pacific Flyway. Hunters must learn to distinguish them from small-bodied Canada goose subspecies — bag limits may differ.",
+    content_type: "species-behavior",
+    tags: ["goose", "cackling-goose", "identification", "species-split", "arctic", "pacific-flyway", "behavior", "knowledge"],
+    species: "goose",
+    effective_date: null,
+    richText: "cackling goose identification split | split from Canada goose 2004, smaller shorter neck stubbier bill, Arctic breeder, Pacific Flyway winter, separate bag limits",
+  },
+  {
+    title: "cackling goose: habitat and migration",
+    content: "Cackling geese breed on Arctic tundra in western Alaska and Canada. They winter primarily in Oregon's Willamette Valley and California's Central Valley, with some in the southern Great Plains. Their long-distance migration from the Arctic to the Pacific Flyway is one of the longest goose migrations. They feed in agricultural fields like other geese but prefer shorter grass and are often found in smaller flocks than Canada geese.",
+    content_type: "species-behavior",
+    tags: ["goose", "cackling-goose", "habitat", "migration", "arctic", "willamette", "california", "behavior", "knowledge"],
+    species: "goose",
+    effective_date: null,
+    richText: "cackling goose habitat migration | breed Arctic tundra, winter Willamette Valley and Central Valley CA, long-distance migration, shorter grass, smaller flocks",
+  },
+
+  // Ross's Goose
+  {
+    title: "ross's goose: identification and size",
+    content: "Ross's goose is the smallest white goose in North America — significantly smaller than a snow goose. Distinguished from snow goose by a shorter, stubbier bill that lacks the black 'grinning patch' along the bill edges. They are often mixed in with snow goose flocks, making them easy to overlook. Arctic breeders that winter primarily in California's Central Valley and along the Gulf Coast.",
+    content_type: "species-behavior",
+    tags: ["goose", "rosss-goose", "identification", "size", "snow-goose", "arctic", "behavior", "knowledge"],
+    species: "goose",
+    effective_date: null,
+    richText: "rosss goose identification size | smallest white goose, smaller than snow goose, no grinning patch on bill, mixed in snow goose flocks, Arctic breeder",
+  },
+  {
+    title: "ross's goose: habitat and hunting",
+    content: "Ross's geese winter primarily in California's Central Valley and along the Gulf Coast from Texas to Louisiana. They are often harvested incidentally by hunters targeting snow geese, since the two species flock together. Ross's goose populations have increased dramatically — like snow geese, they benefit from agricultural food sources. They count separately from snow geese in bag limits in most states.",
+    content_type: "species-behavior",
+    tags: ["goose", "rosss-goose", "habitat", "hunting", "california", "gulf-coast", "snow-goose", "behavior", "knowledge"],
+    species: "goose",
+    effective_date: null,
+    richText: "rosss goose habitat hunting | winter Central Valley CA and Gulf Coast, harvested with snow geese, populations increasing, separate bag limits",
+  },
+
+  // Brant
+  {
+    title: "brant: habitat and diet",
+    content: "Brant are small sea geese that prefer saltwater coastal bays and estuaries — they are almost never found on inland freshwater. They feed primarily on eelgrass and sea lettuce, making them one of the most habitat-specific geese. When eelgrass beds decline, brant populations suffer directly. Two subspecies: Atlantic brant on the East Coast and Black brant (Pacific brant) on the West Coast.",
+    content_type: "species-behavior",
+    tags: ["goose", "brant", "habitat", "diet", "eelgrass", "saltwater", "coastal", "sea-goose", "behavior", "knowledge"],
+    species: "goose",
+    effective_date: null,
+    richText: "brant habitat diet | small sea goose, saltwater bays and estuaries only, feed on eelgrass and sea lettuce, two subspecies Atlantic and Black/Pacific",
+  },
+  {
+    title: "brant: hunting and conservation",
+    content: "Brant hunting is a specialized coastal pursuit — hunters set up on tidal flats and shallow bays with large decoy spreads. Their dependence on eelgrass makes their population vulnerable to water quality and habitat changes. Atlantic brant concentrate in a few key bays (Barnegat Bay NJ, Great South Bay NY). Black brant winter from Alaska to Baja California. Bag limits are typically restrictive due to their narrow habitat requirements.",
+    content_type: "species-behavior",
+    tags: ["goose", "brant", "hunting", "conservation", "coastal", "tidal", "eelgrass", "behavior", "knowledge"],
+    species: "goose",
+    effective_date: null,
+    richText: "brant hunting conservation | specialized coastal pursuit, tidal flats and bays, depend on eelgrass, Atlantic concentrate Barnegat/Great South Bay, restrictive bag limits",
+  },
+];
+
+// ============================================================
+// OTHER HUNTABLE SPECIES (not duck or goose)
+// ============================================================
+
+const otherSpeciesEntries: PreparedEntry[] = [
+  // American Coot
+  {
+    title: "american coot: identification and classification",
+    content: "American coot is not a duck — it belongs to the rail family (Rallidae). However, it is legal to hunt during waterfowl season in most states. Distinguished by a white bill, dark slate-gray body, and lobed (not webbed) toes. They pump their head while swimming, unlike ducks. Often found in huge flocks on marshes and lake edges, sometimes numbering in the thousands.",
+    content_type: "species-behavior",
+    tags: ["coot", "american-coot", "identification", "rail", "waterfowl-season", "behavior", "knowledge"],
+    species: null,
+    effective_date: null,
+    richText: "american coot identification classification | not a duck — rail family, legal during waterfowl season, white bill, pumping head swim, lobed toes, huge flocks",
+  },
+  {
+    title: "american coot: habitat and hunting",
+    content: "American coots prefer marshes, lake edges, and ponds with abundant submerged and emergent vegetation. They are not prized table fare among most hunters but are legal to harvest and common in the bag. Coots are often found in enormous concentrations on open water — wigeon and other ducks frequently steal food from diving coots. They are reluctant to fly, preferring to run across the water surface to escape danger.",
+    content_type: "species-behavior",
+    tags: ["coot", "american-coot", "habitat", "hunting", "marsh", "lake", "behavior", "knowledge"],
+    species: null,
+    effective_date: null,
+    richText: "american coot habitat hunting | marshes lake edges ponds, not prized but legal, enormous concentrations, wigeon steal from coots, reluctant flyers run on water",
   },
 ];
 
@@ -995,13 +1261,15 @@ async function main() {
 
   const duckCount = await seedCategory("Duck Species Behavior", duckSpeciesEntries);
   const gooseCount = await seedCategory("Goose Species Behavior", gooseSpeciesEntries);
+  const otherCount = await seedCategory("Other Huntable Species", otherSpeciesEntries);
   const weatherCount = await seedCategory("Weather-Movement Rules", weatherMovementEntries);
   const habitatCount = await seedCategory("Water & Habitat Rules", waterHabitatEntries);
 
-  const total = duckCount + gooseCount + weatherCount + habitatCount;
+  const total = duckCount + gooseCount + otherCount + weatherCount + habitatCount;
   console.log(`\n=== COMPLETE ===`);
   console.log(`Duck species:     ${duckCount} entries`);
   console.log(`Goose species:    ${gooseCount} entries`);
+  console.log(`Other species:    ${otherCount} entries`);
   console.log(`Weather rules:    ${weatherCount} entries`);
   console.log(`Habitat rules:    ${habitatCount} entries`);
   console.log(`Total:            ${total} entries`);
