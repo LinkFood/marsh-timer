@@ -334,6 +334,8 @@ serve(async (req) => {
               content_type: meta.content_type,
               tags: meta.tags,
               state_abbr: meta.state_abbr,
+              species: null,
+              effective_date: (meta.metadata.date as string) || null,
               metadata: meta.metadata,
               embedding: embeddings[j],
             });

@@ -214,6 +214,8 @@ serve(async (req) => {
               tags: meta.states,
               embedding: embeddings[i],
               state_abbr: meta.state_abbr,
+              species: 'duck',
+              effective_date: meta.article_date || null,
               metadata: {
                 source: 'du_migration_alerts',
                 uuid: meta.uuid,

@@ -216,6 +216,8 @@ serve(async (req) => {
               content_type: 'du_report',
               tags: [abbr, 'du_map', 'migration'],
               state_abbr: abbr.length === 2 ? abbr : null,
+              species: 'duck',
+              effective_date: report.submitDate || null,
               metadata: {
                 source: 'du_migration_map',
                 report_id: report.reportID,
