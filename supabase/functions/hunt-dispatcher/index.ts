@@ -97,6 +97,52 @@ async function getRecentPatternLinks(stateAbbr: string | null, limit = 5): Promi
   }
 }
 
+// Check if a hunting season is currently open for a species/state
+async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ isOpen: boolean; nextOpen?: string; status: string }> {
+  try {
+    const supabase = createSupabaseClient();
+    const { data: seasons } = await supabase
+      .from('hunt_seasons')
+      .select('season_type, dates')
+      .eq('species_id', species)
+      .eq('state_abbr', stateAbbr);
+
+    if (!seasons || seasons.length === 0) return { isOpen: false, status: 'no data' };
+
+    const now = new Date();
+    for (const s of seasons) {
+      const dates = s.dates as Array<{ start?: string; end?: string; open?: string; close?: string }>;
+      for (const d of dates) {
+        const start = new Date(d.start || d.open || '');
+        const end = new Date(d.end || d.close || '');
+        if (now >= start && now <= end) {
+          return { isOpen: true, status: `${s.season_type} open until ${end.toLocaleDateString()}` };
+        }
+      }
+    }
+
+    // Find next opening
+    let nextOpen: Date | null = null;
+    for (const s of seasons) {
+      const dates = s.dates as Array<{ start?: string; end?: string; open?: string; close?: string }>;
+      for (const d of dates) {
+        const start = new Date(d.start || d.open || '');
+        if (start > now && (!nextOpen || start < nextOpen)) {
+          nextOpen = start;
+        }
+      }
+    }
+
+    return {
+      isOpen: false,
+      nextOpen: nextOpen ? nextOpen.toLocaleDateString() : undefined,
+      status: nextOpen ? `closed, opens ${nextOpen.toLocaleDateString()}` : 'closed',
+    };
+  } catch {
+    return { isOpen: false, status: 'unknown' };
+  }
+}
+
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -229,7 +275,7 @@ Classify the user's message intent and extract relevant parameters.
           // No state specified — handle as search (may be a comparative question)
           result = await handleSearch(query, resolvedSpecies, null);
         } else {
-          result = await handleWeather(supabase, resolvedState, query);
+          result = await handleWeather(supabase, resolvedState, query, resolvedSpecies);
         }
         break;
       case 'solunar':
@@ -277,7 +323,7 @@ Classify the user's message intent and extract relevant parameters.
   }
 });
 
-async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string) {
+async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string, species: string = 'duck') {
   if (!stateAbbr) {
     return { response: 'Which state are you interested in? Select one on the map or tell me.', cards: [] };
   }
@@ -294,7 +340,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   // Fetch weather + convergence + brain search in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const [weatherRes, convergenceResult, brainResults, patternLinks] = await Promise.all([
+  const [weatherRes, convergenceResult, brainResults, patternLinks, seasonStatus] = await Promise.all([
     fetch(weatherUrl, {
       method: 'POST',
       headers: {
@@ -320,6 +366,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       min_similarity: 0.4,
     }),
     getRecentPatternLinks(stateAbbr),
+    getSeasonStatus(species, stateAbbr),
   ]);
 
   if (!weatherRes.ok) {
@@ -358,7 +405,7 @@ CRITICAL RULES:
 3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
 4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
 5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"`,
-    messages: [{ role: 'user', content: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nBrain historical patterns (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}\n\nQuery: ${query}` }],
+    messages: [{ role: 'user', content: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}\n\nBrain historical patterns (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}\n\nQuery: ${query}` }],
     max_tokens: 200,
   });
 
@@ -610,9 +657,11 @@ CRITICAL RULES:
 async function handleCompare(state1: string, state2: string, query: string, species: string) {
   const supabase = createSupabaseClient();
 
-  const [conv1, conv2] = await Promise.all([
+  const [conv1, conv2, s1Status, s2Status] = await Promise.all([
     supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state1).order('date', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state2).order('date', { ascending: false }).limit(1).maybeSingle(),
+    getSeasonStatus(species, state1),
+    getSeasonStatus(species, state2),
   ]);
 
   const c1 = conv1.data;
@@ -621,6 +670,7 @@ async function handleCompare(state1: string, state2: string, query: string, spec
   let context = `Comparing ${state1} vs ${state2} for ${species} hunting:\n`;
   if (c1) context += `\n${state1}: Score ${c1.score}/100 (rank #${c1.national_rank}). Weather: ${c1.weather_component}/25, Solunar: ${c1.solunar_component}/15, Migration: ${c1.migration_component}/25, BirdCast: ${c1.birdcast_component}/20, Pattern: ${c1.pattern_component}/15. ${c1.reasoning}`;
   if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). Weather: ${c2.weather_component}/25, Solunar: ${c2.solunar_component}/15, Migration: ${c2.migration_component}/25, BirdCast: ${c2.birdcast_component}/20, Pattern: ${c2.pattern_component}/15. ${c2.reasoning}`;
+  context += `\n\nSeason status: ${state1}: ${s1Status.status} | ${state2}: ${s2Status.status}`;
 
   const response = await callClaude({
     model: CLAUDE_MODELS.haiku,
@@ -749,6 +799,7 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
   let topStatesContext = '';
   if (topStatesResult.data && topStatesResult.data.length > 0) {
     topStatesContext = `\n\nTop states by convergence score right now:\n${topStatesResult.data.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning}`).join('\n')}`;
+    topStatesContext += `\n\nNote: Check season dates before recommending — some of these states may have closed seasons right now.`;
   }
 
   const searchResponse = await callClaude({
