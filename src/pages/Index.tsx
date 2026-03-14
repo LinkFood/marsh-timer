@@ -24,6 +24,7 @@ import { useCountyGeoJSON } from "@/hooks/useCountyGeoJSON";
 import { useNWSAlerts } from "@/hooks/useNWSAlerts";
 import { useMigrationFront } from "@/hooks/useMigrationFront";
 import { useDUMapReports } from "@/hooks/useDUMapReports";
+import { useWeatherEvents } from "@/hooks/useWeatherEvents";
 import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
@@ -124,6 +125,7 @@ const Index = () => {
   const { alertsGeoJSON: nwsAlertsGeoJSON } = useNWSAlerts();
   const migrationFrontLine = useMigrationFront();
   const { geojson: duPinsGeoJSON } = useDUMapReports();
+  const { eventsGeoJSON: weatherEventsGeoJSON } = useWeatherEvents();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
   const { alerts } = useHuntAlerts();
@@ -412,6 +414,7 @@ const Index = () => {
           showRadar={showRadar}
           showDUPins={showDUPins}
           duPinsGeoJSON={duPinsGeoJSON}
+          weatherEventsGeoJSON={weatherEventsGeoJSON}
         />
       </ErrorBoundary>
 

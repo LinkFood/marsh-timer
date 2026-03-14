@@ -91,6 +91,10 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'du-pins-dots': new Set(),
   'du-pins-clusters': new Set(),
   'du-pins-cluster-count': new Set(),
+  // Weather events from METAR pipeline
+  'weather-event-circles': new Set(['weather', 'intel']),
+  'weather-event-pulse': new Set(['weather', 'intel']),
+  'weather-event-labels': new Set(['weather', 'intel']),
 };
 
 function tempToColor(tempF: number): string {
@@ -146,6 +150,7 @@ export interface MapViewProps {
   showRadar?: boolean;
   showDUPins?: boolean;
   duPinsGeoJSON?: FeatureCollection | null;
+  weatherEventsGeoJSON?: FeatureCollection | null;
 }
 
 export interface MapViewRef {
@@ -378,6 +383,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     showRadar = false,
     showDUPins = false,
     duPinsGeoJSON = null,
+    weatherEventsGeoJSON = null,
   },
   ref,
 ) {
@@ -1537,6 +1543,78 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Weather event markers from METAR pipeline
+      const weatherEventsEmpty: FeatureCollection = { type: "FeatureCollection", features: [] };
+      if (!map.getSource("weather-events")) {
+        map.addSource("weather-events", { type: "geojson", data: weatherEventsGeoJSON || weatherEventsEmpty });
+      }
+      if (!map.getLayer("weather-event-circles")) {
+        map.addLayer({
+          id: "weather-event-circles",
+          type: "circle",
+          source: "weather-events",
+          paint: {
+            "circle-radius": 8,
+            "circle-color": [
+              "match", ["get", "severity"],
+              "high", "#ef4444",
+              "medium", "#fb923c",
+              "low", "#facc15",
+              "#facc15",
+            ],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "rgba(255,255,255,0.3)",
+            "circle-opacity": 0.8,
+          },
+          layout: {
+            visibility: (mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("weather-event-pulse")) {
+        map.addLayer({
+          id: "weather-event-pulse",
+          type: "circle",
+          source: "weather-events",
+          paint: {
+            "circle-radius": 14,
+            "circle-color": "transparent",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": [
+              "match", ["get", "severity"],
+              "high", "rgba(239,68,68,0.5)",
+              "medium", "rgba(251,146,60,0.5)",
+              "low", "rgba(250,204,21,0.5)",
+              "rgba(250,204,21,0.5)",
+            ],
+            "circle-opacity": 0.5,
+          },
+          layout: {
+            visibility: (mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("weather-event-labels")) {
+        map.addLayer({
+          id: "weather-event-labels",
+          type: "symbol",
+          source: "weather-events",
+          layout: {
+            "text-field": ["get", "station"],
+            "text-size": 9,
+            "text-offset": [0, 1.5],
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-allow-overlap": false,
+            visibility: (mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": "rgba(255,255,255,0.7)",
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1,
+          },
+        });
+      }
+
       // Migration front line (animated dashed cyan line — Intel mode only)
       if (!map.getSource("migration-front")) {
         const frontData: FeatureCollection = migrationFrontLine
@@ -1640,7 +1718,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates, duPinsGeoJSON],
+    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates, duPinsGeoJSON, weatherEventsGeoJSON],
   );
 
   const initMap = useCallback(() => {
@@ -1910,6 +1988,32 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on("mouseenter", "nws-alert-fill", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "nws-alert-fill", () => { map.getCanvas().style.cursor = ""; });
 
+    // Weather event click — show popup with METAR details
+    map.on("click", "weather-event-circles", (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties || {};
+      const severityColors: Record<string, string> = { high: '#ef4444', medium: '#fb923c', low: '#facc15' };
+      const color = severityColors[props.severity] || '#facc15';
+      const time = props.timestamp ? new Date(props.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const html = `
+        <div style="max-width:260px;font-family:system-ui,sans-serif;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="background:${color};width:8px;height:8px;border-radius:50%;display:inline-block"></span>
+            <span style="font-weight:600;font-size:12px;color:#fff">${props.station}</span>
+            ${time ? `<span style="font-size:10px;color:rgba(255,255,255,0.4)">${time}</span>` : ''}
+          </div>
+          <div style="font-size:12px;font-weight:500;color:#fff;margin-bottom:4px;">${props.title || 'Weather Event'}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.7);line-height:1.4;">${props.content || ''}</div>
+        </div>
+      `;
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10 })
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(map);
+    });
+    map.on("mouseenter", "weather-event-circles", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "weather-event-circles", () => { map.getCanvas().style.cursor = ""; });
+
     // Cursor + popup
     map.on("mouseenter", "states-fill", (e) => {
       if (e.features?.[0]?.properties?.abbr) {
@@ -1972,6 +2076,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (map.getLayer("nws-alert-fill")) {
         const nwsOpacity = 0.15 + t * 0.2;
         map.setPaintProperty("nws-alert-fill", "fill-opacity", nwsOpacity);
+      }
+
+      // Weather event pulse (outer ring breathe)
+      if (map.getLayer("weather-event-pulse")) {
+        const weatherT = (Math.sin(Date.now() / 600) + 1) / 2;
+        map.setPaintProperty("weather-event-pulse", "circle-radius", 10 + weatherT * 8);
+        map.setPaintProperty("weather-event-pulse", "circle-opacity", 0.5 - weatherT * 0.4);
       }
 
       // Perfect Storm glow pulse (slow breathe)
@@ -2205,6 +2316,16 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       source.setData(nwsAlertsGeoJSON);
     }
   }, [nwsAlertsGeoJSON]);
+
+  // Update weather events data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const source = map.getSource("weather-events") as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(weatherEventsGeoJSON || { type: 'FeatureCollection', features: [] });
+    }
+  }, [weatherEventsGeoJSON]);
 
   // Update migration front line when data changes
   useEffect(() => {
