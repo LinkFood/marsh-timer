@@ -25,6 +25,9 @@ interface ConvergenceCardProps {
   migrationComponent: number;
   birdcastComponent: number;
   patternComponent: number;
+  waterComponent?: number;
+  photoperiodComponent?: number;
+  tideComponent?: number;
   nationalRank: number;
   reasoning: string;
   stateAbbr?: string;
@@ -36,6 +39,9 @@ const COMPONENTS = [
   { label: 'Migration', max: 25, key: 'migrationComponent', color: '#34d399' },
   { label: 'BirdCast', max: 20, key: 'birdcastComponent', color: '#06b6d4' },
   { label: 'Pattern', max: 15, key: 'patternComponent', color: '#f59e0b' },
+  { label: 'Water', max: 15, key: 'waterComponent', color: '#3b82f6' },
+  { label: 'Photoperiod', max: 10, key: 'photoperiodComponent', color: '#eab308' },
+  { label: 'Tide', max: 10, key: 'tideComponent', color: '#14b8a6', coastalOnly: true },
 ] as const;
 
 export default function ConvergenceCard({
@@ -45,6 +51,9 @@ export default function ConvergenceCard({
   migrationComponent,
   birdcastComponent,
   patternComponent,
+  waterComponent = 0,
+  photoperiodComponent = 0,
+  tideComponent = 0,
   nationalRank,
   reasoning,
   stateAbbr,
@@ -55,6 +64,9 @@ export default function ConvergenceCard({
     migrationComponent,
     birdcastComponent,
     patternComponent,
+    waterComponent,
+    photoperiodComponent,
+    tideComponent,
   };
 
   const [showGuide, setShowGuide] = useState(false);
@@ -87,8 +99,10 @@ export default function ConvergenceCard({
       </div>
 
       <div className="space-y-2">
-        {COMPONENTS.map(({ label, max, key, color: barColor }) => {
+        {COMPONENTS.map(({ label, max, key, color: barColor, ...rest }) => {
           const value = values[key];
+          const coastalOnly = 'coastalOnly' in rest && rest.coastalOnly;
+          if (coastalOnly && value === 0) return null;
           const pct = Math.min(100, Math.round((value / max) * 100));
           return (
             <div key={key}>

@@ -215,6 +215,9 @@ export default function Sidebar({
               migrationComponent={convergenceScore.migration_component}
               birdcastComponent={convergenceScore.birdcast_component}
               patternComponent={convergenceScore.pattern_component}
+              waterComponent={convergenceScore.water_component}
+              photoperiodComponent={convergenceScore.photoperiod_component}
+              tideComponent={convergenceScore.tide_component}
               nationalRank={convergenceScore.national_rank}
               reasoning={convergenceScore.reasoning}
               stateAbbr={stateAbbr}

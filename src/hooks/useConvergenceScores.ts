@@ -8,6 +8,9 @@ export interface ConvergenceScore {
   migration_component: number;
   pattern_component: number;
   birdcast_component: number;
+  water_component: number;
+  photoperiod_component: number;
+  tide_component: number;
   reasoning: string;
   national_rank: number;
 }
@@ -49,6 +52,9 @@ export function useConvergenceScores() {
           migration_component: row.migration_component,
           pattern_component: row.pattern_component,
           birdcast_component: row.birdcast_component ?? 0,
+          water_component: row.water_component ?? 0,
+          photoperiod_component: row.photoperiod_component ?? 0,
+          tide_component: row.tide_component ?? 0,
           reasoning: row.reasoning,
           national_rank: i + 1,
         }));
