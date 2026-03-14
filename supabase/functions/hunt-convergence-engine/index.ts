@@ -16,6 +16,9 @@ interface ScoreResult {
   migration: number;
   pattern: number;
   birdcast: number;
+  water: number;
+  photoperiod: number;
+  tide: number;
   score: number;
   reasoning: string;
   signals: Record<string, unknown>;
@@ -24,6 +27,19 @@ interface ScoreResult {
   migrationDetails: string;
   patternSummary: string;
   birdcastDetails: string;
+}
+
+// Coastal states that have tide data
+const COASTAL_STATES = new Set([
+  'ME','NH','MA','RI','CT','NY','NJ','DE','MD','VA','NC','SC','GA','FL',
+  'AL','MS','LA','TX','CA','OR','WA','AK',
+]);
+
+// Batch-fetched data caches (populated once, used per-state)
+interface BatchData {
+  water: Map<string, { trend: string }>;
+  photoperiod: Map<string, { below_13h: boolean; below_11h: boolean }>;
+  tide: Map<string, { avg_tidal_range_ft: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +286,98 @@ async function getBirdCastScore(
 }
 
 // ---------------------------------------------------------------------------
+// Batch fetch new data sources (3 queries total for all states)
+// ---------------------------------------------------------------------------
+
+async function fetchBatchData(
+  supabase: ReturnType<typeof createSupabaseClient>,
+): Promise<BatchData> {
+  const [waterRes, photoRes, tideRes] = await Promise.all([
+    supabase
+      .from('hunt_knowledge')
+      .select('state_abbr, metadata')
+      .eq('content_type', 'usgs-water')
+      .order('effective_date', { ascending: false })
+      .limit(500),
+    supabase
+      .from('hunt_knowledge')
+      .select('state_abbr, metadata')
+      .eq('content_type', 'photoperiod')
+      .order('effective_date', { ascending: false })
+      .limit(500),
+    supabase
+      .from('hunt_knowledge')
+      .select('state_abbr, metadata')
+      .eq('content_type', 'noaa-tide')
+      .order('effective_date', { ascending: false })
+      .limit(500),
+  ]);
+
+  // Build per-state maps (first match = most recent due to ordering)
+  const water = new Map<string, { trend: string }>();
+  if (waterRes.data) {
+    for (const row of waterRes.data) {
+      if (!water.has(row.state_abbr) && row.metadata?.trend) {
+        water.set(row.state_abbr, { trend: row.metadata.trend });
+      }
+    }
+  }
+
+  const photoperiod = new Map<string, { below_13h: boolean; below_11h: boolean }>();
+  if (photoRes.data) {
+    for (const row of photoRes.data) {
+      if (!photoperiod.has(row.state_abbr) && row.metadata) {
+        photoperiod.set(row.state_abbr, {
+          below_13h: !!row.metadata.below_13h,
+          below_11h: !!row.metadata.below_11h,
+        });
+      }
+    }
+  }
+
+  const tide = new Map<string, { avg_tidal_range_ft: number }>();
+  if (tideRes.data) {
+    for (const row of tideRes.data) {
+      if (!tide.has(row.state_abbr) && row.metadata?.avg_tidal_range_ft != null) {
+        tide.set(row.state_abbr, { avg_tidal_range_ft: row.metadata.avg_tidal_range_ft });
+      }
+    }
+  }
+
+  return { water, photoperiod, tide };
+}
+
+// ---------------------------------------------------------------------------
+// New component scorers (use batch data, no per-state queries)
+// ---------------------------------------------------------------------------
+
+function scoreWater(batchData: BatchData, stateAbbr: string): number {
+  const entry = batchData.water.get(stateAbbr);
+  if (!entry) return 5; // no data = neutral
+  if (entry.trend === 'rising') return 15;
+  if (entry.trend === 'stable') return 8;
+  if (entry.trend === 'falling') return 3;
+  return 5;
+}
+
+function scorePhotoperiod(batchData: BatchData, stateAbbr: string): number {
+  const entry = batchData.photoperiod.get(stateAbbr);
+  if (!entry) return 2;
+  if (entry.below_13h && !entry.below_11h) return 10; // fall migration trigger
+  if (entry.below_11h) return 5; // deep winter
+  return 2; // spring/summer
+}
+
+function scoreTide(batchData: BatchData, stateAbbr: string): number {
+  if (!COASTAL_STATES.has(stateAbbr)) return 0; // non-coastal, don't penalize
+  const entry = batchData.tide.get(stateAbbr);
+  if (!entry) return 4; // coastal but no data
+  if (entry.avg_tidal_range_ft > 6) return 10;
+  if (entry.avg_tidal_range_ft >= 3) return 7;
+  return 4;
+}
+
+// ---------------------------------------------------------------------------
 // Score a single state
 // ---------------------------------------------------------------------------
 
@@ -278,6 +386,7 @@ async function scoreState(
   stateAbbr: string,
   today: string,
   endDate: string,
+  batchData: BatchData,
 ): Promise<ScoreResult> {
   const stateName = STATE_NAMES[stateAbbr] || stateAbbr;
 
@@ -299,9 +408,16 @@ async function scoreState(
     migrationResult.details,
   );
 
-  const total = Math.min(100, Math.max(0,
-    weatherResult.score + solunarResult.score + migrationResult.score + patternResult.score + birdcastResult.score
-  ));
+  // New components from batch data (no async, already fetched)
+  const waterScore = scoreWater(batchData, stateAbbr);
+  const photoperiodScore = scorePhotoperiod(batchData, stateAbbr);
+  const tideScore = scoreTide(batchData, stateAbbr);
+
+  // Old 5 components max ~100, new 3 max ~35. Normalize to 0-100.
+  const rawSum = weatherResult.score + solunarResult.score + migrationResult.score
+    + patternResult.score + birdcastResult.score
+    + waterScore + photoperiodScore + tideScore;
+  const total = Math.min(100, Math.max(0, Math.round(rawSum * 100 / 135)));
 
   // Build reasoning
   const parts: string[] = [];
@@ -310,6 +426,9 @@ async function scoreState(
   if (migrationResult.score > 10) parts.push(`Migration elevated: ${migrationResult.details}`);
   if (birdcastResult.score > 5) parts.push(`BirdCast: ${birdcastResult.detail}`);
   if (patternResult.score > 5) parts.push(`Historical match: ${patternResult.summary}`);
+  if (waterScore >= 10) parts.push(`Water rising`);
+  if (photoperiodScore >= 8) parts.push(`Daylight in migration trigger zone`);
+  if (tideScore >= 7) parts.push(`Strong tidal range`);
   const reasoning = `Score ${total}/100. ${parts.join('. ')}.`;
 
   return {
@@ -319,6 +438,9 @@ async function scoreState(
     migration: migrationResult.score,
     pattern: patternResult.score,
     birdcast: birdcastResult.score,
+    water: waterScore,
+    photoperiod: photoperiodScore,
+    tide: tideScore,
     score: total,
     reasoning,
     signals: {
@@ -327,6 +449,9 @@ async function scoreState(
       migration: migrationResult.signals,
       pattern: patternResult.signals,
       birdcast: { detail: birdcastResult.detail },
+      water: batchData.water.get(stateAbbr) || null,
+      photoperiod: batchData.photoperiod.get(stateAbbr) || null,
+      tide: batchData.tide.get(stateAbbr) || null,
     },
     weatherDetails: weatherResult.details,
     moonPhase: solunarResult.moonPhase,
@@ -362,6 +487,13 @@ serve(async (req) => {
     const endDate = endDateObj.toISOString().split('T')[0];
 
     // -----------------------------------------------------------------------
+    // 0. Batch-fetch new data sources (water, photoperiod, tide) — 3 queries
+    // -----------------------------------------------------------------------
+    console.log(`[hunt-convergence-engine] Batch-fetching water/photoperiod/tide data`);
+    const batchData = await fetchBatchData(supabase);
+    console.log(`[hunt-convergence-engine] Batch data: water=${batchData.water.size} states, photoperiod=${batchData.photoperiod.size} states, tide=${batchData.tide.size} states`);
+
+    // -----------------------------------------------------------------------
     // 1. Score states in parallel batches of 10
     // -----------------------------------------------------------------------
     const allResults: ScoreResult[] = [];
@@ -371,7 +503,7 @@ serve(async (req) => {
       const batch = statesToScore.slice(i, i + BATCH_SIZE);
       console.log(`[hunt-convergence-engine] Scoring batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.join(',')}`);
       const batchResults = await Promise.all(
-        batch.map(abbr => scoreState(supabase, abbr, today, endDate))
+        batch.map(abbr => scoreState(supabase, abbr, today, endDate, batchData))
       );
       allResults.push(...batchResults);
     }
@@ -415,6 +547,9 @@ serve(async (req) => {
       migration_component: r.migration,
       pattern_component: r.pattern,
       birdcast_component: r.birdcast,
+      water_component: r.water,
+      photoperiod_component: r.photoperiod,
+      tide_component: r.tide,
       reasoning: r.reasoning,
       signals: r.signals,
       national_rank: (r as ScoreResult & { national_rank?: number }).national_rank ?? null,
