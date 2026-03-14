@@ -42,6 +42,8 @@ interface EBirdObs {
   locName: string;
 }
 
+type SpikeSeverity = 'moderate' | 'significant' | 'extreme' | 'lull' | null;
+
 interface StateResult {
   state: string;
   sightingCount: number;
@@ -49,7 +51,8 @@ interface StateResult {
   notableLocations: { name: string; count: number }[];
   baselineAvg: number;
   deviationPct: number;
-  isSpike: boolean;
+  severity: SpikeSeverity;
+  baselineInsufficient: boolean;
 }
 
 serve(async (req) => {
@@ -124,13 +127,34 @@ serve(async (req) => {
           const d = new Date(h.date);
           return getISOWeek(d) === currentWeek;
         });
-        const baselineAvg = baselineData.length > 0
-          ? baselineData.reduce((s, d) => s + d.sighting_count, 0) / baselineData.length
-          : 0;
 
-        // 7. Calculate deviation
-        const deviationPct = ((sightingCount - baselineAvg) / Math.max(baselineAvg, 1)) * 100;
-        const isSpike = deviationPct > 50;
+        // Minimum baseline threshold: need at least 3 data points
+        const baselineInsufficient = baselineData.length < 3;
+
+        let baselineAvg = 0;
+        let deviationPct = 0;
+        let severity: SpikeSeverity = null;
+
+        if (!baselineInsufficient && baselineData.length > 0) {
+          // Weighted baseline: 2024=2x, 2023=1.5x, older=1x
+          let weightedSum = 0;
+          let totalWeight = 0;
+          for (const d of baselineData) {
+            const year = new Date(d.date).getFullYear();
+            const weight = year === 2024 ? 2 : year === 2023 ? 1.5 : 1;
+            weightedSum += d.sighting_count * weight;
+            totalWeight += weight;
+          }
+          baselineAvg = weightedSum / totalWeight;
+
+          // 7. Calculate deviation + severity
+          deviationPct = ((sightingCount - baselineAvg) / Math.max(baselineAvg, 1)) * 100;
+
+          if (deviationPct > 200) severity = 'extreme';
+          else if (deviationPct > 100) severity = 'significant';
+          else if (deviationPct > 50) severity = 'moderate';
+          else if (deviationPct < -50) severity = 'lull';
+        }
 
         results.push({
           state,
@@ -139,10 +163,11 @@ serve(async (req) => {
           notableLocations,
           baselineAvg,
           deviationPct,
-          isSpike,
+          severity,
+          baselineInsufficient,
         });
 
-        console.log(`${LOG_PREFIX} ${state}: ${sightingCount} sightings, ${locationCount} locations, baseline=${baselineAvg.toFixed(1)}, deviation=${deviationPct.toFixed(1)}%${isSpike ? ' SPIKE' : ''}`);
+        console.log(`${LOG_PREFIX} ${state}: ${sightingCount} sightings, ${locationCount} locations, baseline=${baselineAvg.toFixed(1)}, deviation=${deviationPct.toFixed(1)}%${severity ? ` ${severity.toUpperCase()}` : ''}${baselineInsufficient ? ' (insufficient baseline)' : ''}`);
 
         // 1s delay between eBird API calls
         await sleep(1000);
@@ -169,8 +194,8 @@ serve(async (req) => {
       if (histErr) console.log(`${LOG_PREFIX} History upsert error: ${histErr.message}`);
     }
 
-    // 9. Insert spikes
-    const spikeResults = results.filter(r => r.isSpike);
+    // 9. Insert spikes (moderate, significant, extreme — not lulls)
+    const spikeResults = results.filter(r => r.severity && r.severity !== 'lull');
     if (spikeResults.length > 0) {
       const spikeRows = spikeResults.map(r => ({
         state_abbr: r.state,
@@ -195,17 +220,32 @@ serve(async (req) => {
     for (const r of results) {
       const stateName = STATE_NAMES[r.state] || r.state;
       const topLocs = r.notableLocations.map(l => l.name).join(', ');
-      const prefix = r.isSpike ? 'SPIKE migration' : 'migration';
-      const contentType = r.isSpike ? 'migration-spike' : 'migration-daily';
+
+      let prefix = 'migration';
+      let contentType = 'migration-daily';
+      let titlePrefix = '';
+      let tag = 'daily';
+
+      if (r.severity === 'lull') {
+        prefix = 'LULL migration';
+        contentType = 'migration-lull';
+        titlePrefix = 'LULL: ';
+        tag = 'lull';
+      } else if (r.severity) {
+        prefix = `SPIKE(${r.severity}) migration`;
+        contentType = `migration-spike-${r.severity}`;
+        titlePrefix = `SPIKE(${r.severity}): `;
+        tag = 'spike';
+      }
 
       const text = `${prefix} | ${stateName} | ${today} | species:duck sightings:${r.sightingCount} baseline:${r.baselineAvg.toFixed(1)} deviation:${r.deviationPct.toFixed(1)}% | ${topLocs}`;
 
       embedTexts.push(text);
       embedRows.push({
-        title: `${r.isSpike ? 'SPIKE: ' : ''}Duck migration ${stateName} ${today}`,
+        title: `${titlePrefix}Duck migration ${stateName} ${today}`,
         content: text,
         content_type: contentType,
-        tags: ['migration', r.state.toLowerCase(), 'duck', r.isSpike ? 'spike' : 'daily'],
+        tags: ['migration', r.state.toLowerCase(), 'duck', tag],
         state_abbr: r.state,
       });
     }
@@ -239,6 +279,7 @@ serve(async (req) => {
       states_requested: states.length,
       total_sightings: results.reduce((s, r) => s + r.sightingCount, 0),
       spikes_detected: spikeResults.length,
+      lulls_detected: results.filter(r => r.severity === 'lull').length,
       embeddings_created: embeddingsCreated,
     };
 
