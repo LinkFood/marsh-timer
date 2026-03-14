@@ -15,7 +15,7 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-const BATCH = 500;
+const BATCH = 50;
 
 async function main() {
   console.log("=== Moving du_report rows to hunt_knowledge_du ===");
