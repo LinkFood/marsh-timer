@@ -244,8 +244,9 @@ function detectChanges(
   const events: RealtimeEvent[] = [];
 
   // Time gap in hours between the two observations
-  const recentTime = new Date(recent.obsTime).getTime();
-  const olderTime = new Date(older.obsTime).getTime();
+  // obsTime from METAR API is Unix timestamp in SECONDS (not milliseconds)
+  const recentTime = typeof recent.obsTime === 'number' ? recent.obsTime * 1000 : new Date(recent.obsTime).getTime();
+  const olderTime = typeof older.obsTime === 'number' ? older.obsTime * 1000 : new Date(older.obsTime).getTime();
   const hoursGap = (recentTime - olderTime) / (1000 * 60 * 60);
   if (hoursGap < 1 || hoursGap > 6) return events; // need 1-6 hour window
 
@@ -257,7 +258,7 @@ function detectChanges(
     const olderF = cToF(older.temp);
     const tempDrop = olderF - recentF;
 
-    if (tempDrop > 15) {
+    if (tempDrop > 12) {
       events.push({
         station, state_abbr: stateAbbr,
         event_type: 'major-temp-drop',
@@ -266,7 +267,7 @@ function detectChanges(
         metadata: { temp_drop_f: Math.round(tempDrop), from_f: Math.round(olderF), to_f: Math.round(recentF), hours: hoursGap },
         timestamp: recent.obsTime,
       });
-    } else if (tempDrop > 8) {
+    } else if (tempDrop > 5) {
       events.push({
         station, state_abbr: stateAbbr,
         event_type: 'temp-drop',
@@ -282,7 +283,7 @@ function detectChanges(
   if (recent.wdir !== null && older.wdir !== null &&
       typeof recent.wdir === 'number' && typeof older.wdir === 'number') {
     const shift = windShiftDegrees(older.wdir, recent.wdir);
-    if (shift > 90) {
+    if (shift > 60) {
       events.push({
         station, state_abbr: stateAbbr,
         event_type: 'wind-shift',
@@ -300,7 +301,7 @@ function detectChanges(
     const olderMb = inHgToMb(older.altim);
     const pressureDelta = recentMb - olderMb;
 
-    if (pressureDelta < -3) {
+    if (pressureDelta < -2) {
       events.push({
         station, state_abbr: stateAbbr,
         event_type: 'pressure-drop',
