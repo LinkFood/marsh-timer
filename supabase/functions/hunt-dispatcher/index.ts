@@ -60,7 +60,7 @@ async function searchBrain(opts: {
         state_abbr: opts.state_abbr,
         species: opts.species,
         recency_weight: opts.recency_weight ?? 0.0,
-        exclude_du_report: opts.exclude_du_report ?? true,
+        exclude_du_report: opts.exclude_du_report ?? false,
         limit: opts.limit || 5,
       }),
     });
