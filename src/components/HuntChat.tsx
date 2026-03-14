@@ -1,7 +1,8 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { MessageSquare } from 'lucide-react';
 import type { Species } from '@/data/types';
 import { useChat } from '@/hooks/useChat';
+import { useMapAction } from '@/contexts/MapActionContext';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 
@@ -12,7 +13,17 @@ interface HuntChatProps {
 }
 
 export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps) {
-  const { messages, loading, sendMessage } = useChat(species, stateAbbr);
+  const { flyTo, setMapMode } = useMapAction();
+
+  const handleMapAction = useCallback((action: { type: string; target: string }) => {
+    if (action.type === 'flyTo') {
+      flyTo(action.target);
+    } else if (action.type === 'setMode') {
+      setMapMode(action.target as any);
+    }
+  }, [flyTo, setMapMode]);
+
+  const { messages, loading, sendMessage } = useChat(species, stateAbbr, handleMapAction);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
