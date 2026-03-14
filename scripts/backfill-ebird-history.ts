@@ -8,6 +8,8 @@
  * Optional:
  *   START_STATE=TX  — resume from a specific state
  *   YEAR=2023       — backfill a single year
+ *   START_YEAR=2022 — resume from a specific year within a state
+ *   START_MONTH=11  — resume from a specific month within a year (1-12)
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
@@ -15,6 +17,8 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const EBIRD_KEY = process.env.EBIRD_API_KEY;
 const START_STATE = process.env.START_STATE || null;
 const SINGLE_YEAR = process.env.YEAR ? parseInt(process.env.YEAR, 10) : null;
+const START_YEAR = process.env.START_YEAR ? parseInt(process.env.START_YEAR, 10) : null;
+const START_MONTH = process.env.START_MONTH ? parseInt(process.env.START_MONTH, 10) : null;
 
 if (!SERVICE_KEY) { console.error("SUPABASE_SERVICE_ROLE_KEY required"); process.exit(1); }
 if (!EBIRD_KEY) { console.error("EBIRD_API_KEY required"); process.exit(1); }
@@ -66,11 +70,39 @@ function getDatesToFetch(year: number): { y: number; m: number; d: number }[] {
 // Steady drip: 200 req/hr = 1 every 18s. We use 19s to stay safe.
 const DELAY_MS = 19000;
 
+const BACKOFF_DELAYS = [10000, 30000, 90000]; // 10s, 30s, 90s
+
 async function rateLimitedFetch(url: string): Promise<Response> {
   await new Promise((r) => setTimeout(r, DELAY_MS));
-  return fetch(url, {
-    headers: { "X-eBirdApiToken": EBIRD_KEY! },
-  });
+
+  for (let attempt = 0; attempt <= BACKOFF_DELAYS.length; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "X-eBirdApiToken": EBIRD_KEY! },
+      });
+      // Don't retry 4xx (client errors) — they're permanent
+      if (res.status >= 400 && res.status < 500) return res;
+      // Retry 5xx server errors
+      if (res.status >= 500 && attempt < BACKOFF_DELAYS.length) {
+        const delay = BACKOFF_DELAYS[attempt];
+        console.log(`  ${res.status} server error, retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      // Network errors (TypeError: fetch failed, DNS, timeout, etc.)
+      if (attempt < BACKOFF_DELAYS.length) {
+        const delay = BACKOFF_DELAYS[attempt];
+        console.log(`  Network error: ${err}. Retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err; // Exhausted retries, let caller handle
+    }
+  }
+  // Should never reach here, but satisfy TypeScript
+  throw new Error("Exhausted retries");
 }
 
 async function fetchDayObservations(
@@ -121,40 +153,92 @@ async function main() {
   console.log("=== Backfilling eBird Migration History ===");
 
   const years = SINGLE_YEAR ? [SINGLE_YEAR] : [2020, 2021, 2022, 2023, 2024];
-  let startFound = !START_STATE;
+  let startStateFound = !START_STATE;
+  let startYearFound = !START_YEAR;
+  let startMonthFound = !START_MONTH;
   let total = 0;
 
+  // Calculate total estimated requests for progress tracking
+  const activeStates = START_STATE ? STATES.slice(STATES.indexOf(START_STATE)) : STATES;
+  const datesPerYear = getDatesToFetch(2020).length; // ~36 dates per year
+  const totalEstimated = activeStates.length * years.length * datesPerYear;
+  let requestsCompleted = 0;
+  let errors = 0;
+  const startTime = Date.now();
+
+  console.log(`Estimated requests: ~${totalEstimated}`);
+  if (START_STATE) console.log(`Resuming from state: ${START_STATE}`);
+  if (START_YEAR) console.log(`Resuming from year: ${START_YEAR}`);
+  if (START_MONTH) console.log(`Resuming from month: ${START_MONTH}`);
+
   for (const stateAbbr of STATES) {
-    if (!startFound) {
-      if (stateAbbr === START_STATE) startFound = true;
+    if (!startStateFound) {
+      if (stateAbbr === START_STATE) startStateFound = true;
       else continue;
     }
 
     console.log(`\n${stateAbbr}:`);
 
     for (const year of years) {
+      // Year-level resume: skip years before START_YEAR (only for the first state)
+      if (!startYearFound) {
+        if (year === START_YEAR) startYearFound = true;
+        else continue;
+      }
+
       const dates = getDatesToFetch(year);
       let yearCount = 0;
 
       for (const { y, m, d } of dates) {
+        // Month-level resume: skip months before START_MONTH (only for the first year)
+        if (!startMonthFound) {
+          if (m === START_MONTH) startMonthFound = true;
+          else continue;
+        }
+
         const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
         try {
           const { sightingCount, locationCount, locations } = await fetchDayObservations(stateAbbr, y, m, d);
 
           if (sightingCount > 0) {
-            await upsertMigrationRow({
-              state_abbr: stateAbbr,
-              species: "duck",
-              date: dateStr,
-              sighting_count: sightingCount,
-              location_count: locationCount,
-              notable_locations: locations.length > 0 ? locations : null,
-            });
-            yearCount++;
+            try {
+              await upsertMigrationRow({
+                state_abbr: stateAbbr,
+                species: "duck",
+                date: dateStr,
+                sighting_count: sightingCount,
+                location_count: locationCount,
+                notable_locations: locations.length > 0 ? locations : null,
+              });
+              yearCount++;
+            } catch (upsertErr) {
+              errors++;
+              console.error(`  Upsert error ${stateAbbr} ${dateStr}: ${upsertErr}`);
+            }
           }
         } catch (err) {
+          errors++;
           console.error(`  Error ${stateAbbr} ${dateStr}: ${err}`);
+          // Non-fatal: continue to next date
+        }
+
+        requestsCompleted++;
+
+        // Progress log every 10 requests
+        if (requestsCompleted % 10 === 0) {
+          const elapsed = (Date.now() - startTime) / 1000;
+          const avgPerReq = elapsed / requestsCompleted;
+          const remaining = totalEstimated - requestsCompleted;
+          const etaSeconds = Math.round(remaining * avgPerReq);
+          const etaHours = Math.floor(etaSeconds / 3600);
+          const etaMinutes = Math.floor((etaSeconds % 3600) / 60);
+          console.log(
+            `  [Progress] ${requestsCompleted}/${totalEstimated} requests | ` +
+            `${errors} errors | ` +
+            `ETA: ${etaHours}h ${etaMinutes}m | ` +
+            `Avg: ${avgPerReq.toFixed(1)}s/req`
+          );
         }
       }
 
@@ -163,7 +247,8 @@ async function main() {
     }
   }
 
-  console.log(`\nDone! Total: ${total} migration history rows`);
+  const elapsed = Math.round((Date.now() - startTime) / 1000 / 60);
+  console.log(`\nDone! Total: ${total} migration history rows | ${errors} errors | ${elapsed} min`);
 }
 
 main().catch((err) => {
