@@ -573,21 +573,17 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
 async function handleCompare(state1: string, state2: string, query: string, species: string) {
   const supabase = createSupabaseClient();
 
-  const [conv1, conv2, brain1, brain2] = await Promise.all([
+  const [conv1, conv2] = await Promise.all([
     supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state1).order('date', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state2).order('date', { ascending: false }).limit(1).maybeSingle(),
-    searchBrain({ query: `${species} hunting conditions ${state1}`, state_abbr: state1, limit: 3, min_similarity: 0.3 }),
-    searchBrain({ query: `${species} hunting conditions ${state2}`, state_abbr: state2, limit: 3, min_similarity: 0.3 }),
   ]);
 
   const c1 = conv1.data;
   const c2 = conv2.data;
 
   let context = `Comparing ${state1} vs ${state2} for ${species} hunting:\n`;
-  if (c1) context += `\n${state1}: Score ${c1.score}/100 (rank #${c1.national_rank}). ${c1.reasoning}`;
-  if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). ${c2.reasoning}`;
-  if (brain1.length > 0) context += `\n\n${state1} brain data:\n${brain1.map(v => v.content).join('\n')}`;
-  if (brain2.length > 0) context += `\n\n${state2} brain data:\n${brain2.map(v => v.content).join('\n')}`;
+  if (c1) context += `\n${state1}: Score ${c1.score}/100 (rank #${c1.national_rank}). Weather: ${c1.weather_component}/25, Solunar: ${c1.solunar_component}/15, Migration: ${c1.migration_component}/25, BirdCast: ${c1.birdcast_component}/20, Pattern: ${c1.pattern_component}/15. ${c1.reasoning}`;
+  if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). Weather: ${c2.weather_component}/25, Solunar: ${c2.solunar_component}/15, Migration: ${c2.migration_component}/25, BirdCast: ${c2.birdcast_component}/20, Pattern: ${c2.pattern_component}/15. ${c2.reasoning}`;
 
   const response = await callClaude({
     model: CLAUDE_MODELS.haiku,
