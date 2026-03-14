@@ -1,4 +1,5 @@
 import {
+  useState,
   useEffect,
   useRef,
   useCallback,
@@ -403,8 +404,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const weatherCacheRef = useRef(weatherCache);
   const convergenceRef = useRef(convergenceScores);
   const mapModeRef = useRef(mapMode);
-  const yesterdayScoresRef = useRef<Map<string, number> | null>(null);
-  const yesterdayFetchedRef = useRef(false);
+  const [yesterdayScores, setYesterdayScores] = useState<Map<string, number> | null>(null);
 
   selectedStateRef.current = selectedState;
   weatherCacheRef.current = weatherCache;
@@ -1960,6 +1960,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // NWS alert click — show popup with details
     map.on("click", "nws-alert-fill", (e) => {
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties || {};
       const severity = props.severity || 'Minor';
@@ -1990,6 +1992,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // Weather event click — show popup with METAR details
     map.on("click", "weather-event-circles", (e) => {
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
       if (!e.features || e.features.length === 0) return;
       const props = e.features[0].properties || {};
       const severityColors: Record<string, string> = { high: '#ef4444', medium: '#fb923c', low: '#facc15' };
@@ -2094,7 +2098,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       // Intel mode: convergence heatmap breathing pulse (slow sine on fill-opacity)
       if (mapModeRef.current === 'intel' && map.getLayer("states-fill")) {
         const breatheT = (Math.sin(Date.now() / 1200) + 1) / 2;
-        const fillOpacity = 0.55 + breatheT * 0.15; // oscillates 0.55 - 0.70
+        const fillOpacity = 0.40 + breatheT * 0.35; // oscillates 0.40 - 0.75
         map.setPaintProperty("states-fill", "fill-opacity", fillOpacity);
       }
 
@@ -2343,9 +2347,6 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
   // Fetch yesterday's convergence scores for change indicators
   useEffect(() => {
-    if (yesterdayFetchedRef.current) return;
-    yesterdayFetchedRef.current = true;
-
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
     if (!supabaseUrl || !supabaseKey) return;
@@ -2354,18 +2355,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     yesterday.setDate(yesterday.getDate() - 1);
     const dateStr = yesterday.toISOString().split('T')[0];
 
+    let cancelled = false;
     fetch(`${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score&date=eq.${dateStr}`, {
       headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
     })
       .then(res => res.ok ? res.json() : [])
       .then((rows: { state_abbr: string; score: number }[]) => {
+        if (cancelled) return;
         const scores = new Map<string, number>();
         for (const row of rows) {
           scores.set(row.state_abbr, row.score);
         }
-        yesterdayScoresRef.current = scores;
+        setYesterdayScores(scores);
       })
       .catch(() => { /* non-critical — arrows just won't show */ });
+
+    return () => { cancelled = true; };
   }, []);
 
   // Update convergence score labels when scores change
@@ -2376,12 +2381,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const source = map.getSource("convergence-labels") as mapboxgl.GeoJSONSource | undefined;
     if (!source) return;
 
-    const yesterday = yesterdayScoresRef.current;
     const features: Feature[] = [];
     for (const [abbr, score] of convergenceScores) {
       const centroid = centroidsRef.current.get(abbr);
       if (centroid) {
-        const prevScore = yesterday?.get(abbr);
+        const prevScore = yesterdayScores?.get(abbr);
         const change = prevScore != null ? score - prevScore : 0;
         features.push({
           type: "Feature",
@@ -2409,7 +2413,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
       hotspotSource.setData({ type: "FeatureCollection", features: hotspotFeatures });
     }
-  }, [convergenceScores]);
+  }, [convergenceScores, yesterdayScores]);
 
   // Toggle overlay visibility
   useEffect(() => {
