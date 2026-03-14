@@ -484,7 +484,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
       .single(),
     searchBrain({
       query: `${species} hunting season regulations ${stateAbbr} ${query}`,
-      content_types: ['regulation', 'fact', 'usfws_hip', 'usfws_breeding'],
+      content_types: ['regulation', 'fact', 'usfws_hip', 'usfws_breeding', 'species-behavior', 'hunting-knowledge'],
       species: species,
       state_abbr: stateAbbr,
       recency_weight: 0.0,
