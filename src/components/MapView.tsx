@@ -67,6 +67,7 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   // Intel — convergence + migration
   'convergence-score-bg': new Set(['intel']),
   'convergence-score-label': new Set(['intel']),
+  'convergence-forming-label': new Set(['intel']),
   'convergence-pulse': new Set(['intel']),
   'migration-front-line': new Set(['intel']),
   'migration-front-label': new Set(['intel']),
@@ -395,10 +396,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const prevStyleRef = useRef<string>("dark");
   const weatherCacheRef = useRef(weatherCache);
   const convergenceRef = useRef(convergenceScores);
+  const mapModeRef = useRef(mapMode);
+  const yesterdayScoresRef = useRef<Map<string, number> | null>(null);
+  const yesterdayFetchedRef = useRef(false);
 
   selectedStateRef.current = selectedState;
   weatherCacheRef.current = weatherCache;
   convergenceRef.current = convergenceScores;
+  mapModeRef.current = mapMode;
   onSelectStateRef.current = onSelectState;
 
   const statesWithData = useMemo(
@@ -1360,7 +1365,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           minzoom: 3.5,
           maxzoom: 7,
           layout: {
-            "text-field": ["to-string", ["get", "score"]],
+            "text-field": [
+              "concat",
+              ["to-string", ["get", "score"]],
+              ["case",
+                [">=", ["get", "change"], 1], " \u25B2",
+                ["<=", ["get", "change"], -1], " \u25BC",
+                "",
+              ],
+            ],
             "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
             "text-size": [
               "step", ["get", "score"],
@@ -1382,6 +1395,31 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               61, "#fb923c",             // 61-80
               81, "#ef4444",             // 81+
             ],
+            "text-halo-color": "rgba(0,0,0,0.9)",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
+      // Convergence "FORMING" badge (score jumped 15+ points from yesterday)
+      if (!map.getLayer("convergence-forming-label")) {
+        map.addLayer({
+          id: "convergence-forming-label",
+          type: "symbol",
+          source: "convergence-labels",
+          minzoom: 3.5,
+          maxzoom: 7,
+          filter: [">=", ["get", "change"], 15],
+          layout: {
+            "text-field": "\u25B2 FORMING",
+            "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+            "text-size": 10,
+            "text-allow-overlap": true,
+            "text-offset": [0, 0.2],
+            visibility: mapMode === 'intel' ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": "#22d3ee",
             "text-halo-color": "rgba(0,0,0,0.9)",
             "text-halo-width": 1.5,
           },
@@ -1942,6 +1980,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.setPaintProperty("perfect-storm-glow", "fill-opacity", 0.15 + stormT * 0.2);
       }
 
+      // Intel mode: convergence heatmap breathing pulse (slow sine on fill-opacity)
+      if (mapModeRef.current === 'intel' && map.getLayer("states-fill")) {
+        const breatheT = (Math.sin(Date.now() / 1200) + 1) / 2;
+        const fillOpacity = 0.55 + breatheT * 0.15; // oscillates 0.55 - 0.70
+        map.setPaintProperty("states-fill", "fill-opacity", fillOpacity);
+      }
+
       // Animated wind flow dash-array (~10fps for performance)
       const now = Date.now();
       if (map.getLayer("wind-flow") && now - lastDashTimeRef.current > 100) {
@@ -2175,6 +2220,33 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
   }, [migrationFrontLine]);
 
+  // Fetch yesterday's convergence scores for change indicators
+  useEffect(() => {
+    if (yesterdayFetchedRef.current) return;
+    yesterdayFetchedRef.current = true;
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return;
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = yesterday.toISOString().split('T')[0];
+
+    fetch(`${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score&date=eq.${dateStr}`, {
+      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` },
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then((rows: { state_abbr: string; score: number }[]) => {
+        const scores = new Map<string, number>();
+        for (const row of rows) {
+          scores.set(row.state_abbr, row.score);
+        }
+        yesterdayScoresRef.current = scores;
+      })
+      .catch(() => { /* non-critical — arrows just won't show */ });
+  }, []);
+
   // Update convergence score labels when scores change
   useEffect(() => {
     const map = mapRef.current;
@@ -2183,14 +2255,17 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const source = map.getSource("convergence-labels") as mapboxgl.GeoJSONSource | undefined;
     if (!source) return;
 
+    const yesterday = yesterdayScoresRef.current;
     const features: Feature[] = [];
     for (const [abbr, score] of convergenceScores) {
       const centroid = centroidsRef.current.get(abbr);
       if (centroid) {
+        const prevScore = yesterday?.get(abbr);
+        const change = prevScore != null ? score - prevScore : 0;
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: centroid },
-          properties: { abbr, score, scoreColor: convergenceScoreColor(score) },
+          properties: { abbr, score, scoreColor: convergenceScoreColor(score), change },
         });
       }
     }
