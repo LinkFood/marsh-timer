@@ -17,7 +17,7 @@ const supaHeaders = {
   "Content-Type": "application/json",
 };
 
-const BATCH_SIZE = 5000;
+const BATCH_SIZE = 1000;
 
 const SPECIES_KEYWORDS = ["duck", "goose", "deer", "turkey", "dove"] as const;
 
@@ -98,18 +98,20 @@ function assignEffectiveDate(row: KnowledgeRow): string {
   return row.created_at.split("T")[0];
 }
 
-async function fetchBatch(): Promise<KnowledgeRow[]> {
-  const url = `${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,content_type,title,content,tags,metadata,created_at&species=is.null&effective_date=is.null&order=created_at.asc&limit=${BATCH_SIZE}`;
+async function fetchBatch(lastCreatedAt?: string): Promise<KnowledgeRow[]> {
+  // Use cursor-based pagination to avoid scanning already-updated rows
+  let url = `${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,content_type,title,content,tags,metadata,created_at&effective_date=is.null&order=created_at.asc&limit=${BATCH_SIZE}`;
+  if (lastCreatedAt) {
+    url += `&created_at=gte.${encodeURIComponent(lastCreatedAt)}`;
+  }
   const res = await fetch(url, { headers: supaHeaders });
   if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
 async function updateRow(id: string, species: string | null, effectiveDate: string): Promise<boolean> {
-  const body: Record<string, any> = { effective_date: effectiveDate };
-  if (species !== null) {
-    body.species = species;
-  }
+  // Always set both columns so the row is marked as processed
+  const body: Record<string, any> = { effective_date: effectiveDate, species: species };
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/hunt_knowledge?id=eq.${id}`,
@@ -131,10 +133,11 @@ async function main() {
 
   let totalUpdated = 0;
   let batchNum = 0;
+  let lastCreatedAt: string | undefined;
 
   while (true) {
     batchNum++;
-    const rows = await fetchBatch();
+    const rows = await fetchBatch(lastCreatedAt);
 
     if (rows.length === 0) {
       console.log("No more rows to process.");
@@ -158,6 +161,8 @@ async function main() {
     }
 
     totalUpdated += batchUpdated;
+    // Advance cursor to last row's created_at
+    lastCreatedAt = rows[rows.length - 1].created_at;
     console.log(`Batch ${batchNum}: updated ${batchUpdated} rows (${totalUpdated} total)`);
   }
 
