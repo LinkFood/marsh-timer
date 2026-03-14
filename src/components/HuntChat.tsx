@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { MessageSquare } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import type { Species } from '@/data/types';
 import { useChat } from '@/hooks/useChat';
 import { useMapAction } from '@/contexts/MapActionContext';
@@ -84,7 +84,7 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
       </div>
 
       {/* Input */}
-      <ChatInput onSend={sendMessage} loading={loading} />
+      <ChatInput onSend={sendMessage} loading={loading} stateAbbr={stateAbbr} />
     </div>
   );
 
