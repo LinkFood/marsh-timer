@@ -488,7 +488,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
       species: species,
       state_abbr: stateAbbr,
       recency_weight: 0.0,
-      exclude_du_report: true,
+      exclude_du_report: false,
       limit: 3,
       min_similarity: 0.35,
     }),
