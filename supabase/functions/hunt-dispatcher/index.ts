@@ -205,7 +205,12 @@ Classify the user's message intent and extract relevant parameters.
 
     switch (intent) {
       case 'weather':
-        result = await handleWeather(supabase, resolvedState, query);
+        if (!resolvedState) {
+          // No state specified — handle as search (may be a comparative question)
+          result = await handleSearch(query, resolvedSpecies, null);
+        } else {
+          result = await handleWeather(supabase, resolvedState, query);
+        }
         break;
       case 'solunar':
         result = await handleSolunar(supabase, resolvedState, query);
@@ -570,7 +575,11 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
   const mentionsDU = /\b(du|ducks unlimited|migration map)\b/i.test(query);
   const searchQuery = species !== 'duck' ? `${species} ${query}` : query;
 
-  const [brainResults, patternLinks] = await Promise.all([
+  // Check if this is a comparative query (no state, asking about "best" or "where")
+  const isComparative = !stateAbbr && /\b(best|top|where|which state|compare|recommend)\b/i.test(query);
+
+  const supabase = createSupabaseClient();
+  const [brainResults, patternLinks, topStatesResult] = await Promise.all([
     searchBrain({
       query: searchQuery,
       species: species,
@@ -581,6 +590,13 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
       min_similarity: 0.3,
     }),
     getRecentPatternLinks(stateAbbr),
+    isComparative
+      ? supabase
+          .from('hunt_convergence_scores')
+          .select('state_abbr, score, reasoning, national_rank')
+          .order('score', { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: null }),
   ]);
 
   const cards: unknown[] = [];
@@ -642,10 +658,15 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
     linksContext = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
   }
 
+  let topStatesContext = '';
+  if (topStatesResult.data && topStatesResult.data.length > 0) {
+    topStatesContext = `\n\nTop states by convergence score right now:\n${topStatesResult.data.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning}`).join('\n')}`;
+  }
+
   const searchResponse = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: `You are a hunting knowledge expert. Answer based on the provided context. Reference specific data and patterns when available. If the context doesn't have enough info, give your best general hunting knowledge answer. Be concise but informative.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.`,
-    messages: [{ role: 'user', content: `Context:\n${vectorContext}${linksContext}\n\nQuestion: ${query}` }],
+    messages: [{ role: 'user', content: `Context:\n${vectorContext}${linksContext}${topStatesContext}\n\nQuestion: ${query}` }],
     max_tokens: 300,
   });
 
