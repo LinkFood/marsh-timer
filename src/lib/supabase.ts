@@ -10,3 +10,4 @@ export const supabase = supabaseUrl && supabaseKey
 export const SUPABASE_FUNCTIONS_URL = supabaseUrl
   ? `${supabaseUrl}/functions/v1`
   : '';
+// QA build trigger Sat Mar 14 08:02:35 EDT 2026
