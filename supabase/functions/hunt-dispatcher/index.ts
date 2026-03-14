@@ -570,7 +570,54 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
   };
 }
 
+async function handleCompare(state1: string, state2: string, query: string, species: string) {
+  const supabase = createSupabaseClient();
+
+  const [conv1, conv2, brain1, brain2] = await Promise.all([
+    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state1).order('date', { ascending: false }).limit(1).single(),
+    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state2).order('date', { ascending: false }).limit(1).single(),
+    searchBrain({ query: `${species} hunting conditions ${state1}`, state_abbr: state1, limit: 3, min_similarity: 0.3 }),
+    searchBrain({ query: `${species} hunting conditions ${state2}`, state_abbr: state2, limit: 3, min_similarity: 0.3 }),
+  ]);
+
+  const c1 = conv1.data;
+  const c2 = conv2.data;
+
+  let context = `Comparing ${state1} vs ${state2} for ${species} hunting:\n`;
+  if (c1) context += `\n${state1}: Score ${c1.score}/100 (rank #${c1.national_rank}). ${c1.reasoning}`;
+  if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). ${c2.reasoning}`;
+  if (brain1.length > 0) context += `\n\n${state1} brain data:\n${brain1.map(v => v.content).join('\n')}`;
+  if (brain2.length > 0) context += `\n\n${state2} brain data:\n${brain2.map(v => v.content).join('\n')}`;
+
+  const response = await callClaude({
+    model: CLAUDE_MODELS.haiku,
+    system: `You are a hunting expert comparing two states. Use the provided convergence scores and brain data to give a clear recommendation. Format as a side-by-side comparison with a verdict. Be specific — cite scores, bird counts, and conditions. Never include external URLs.\nONLY reference data provided in the context. If data is missing for a state, say so.`,
+    messages: [{ role: 'user', content: `${context}\n\nQuestion: ${query}` }],
+    max_tokens: 400,
+  });
+
+  const cards: unknown[] = [];
+  if (c1) cards.push({ type: 'convergence', data: { stateAbbr: c1.state_abbr, score: c1.score, weatherComponent: c1.weather_component, solunarComponent: c1.solunar_component, migrationComponent: c1.migration_component, birdcastComponent: c1.birdcast_component, patternComponent: c1.pattern_component, nationalRank: c1.national_rank, reasoning: c1.reasoning } });
+  if (c2) cards.push({ type: 'convergence', data: { stateAbbr: c2.state_abbr, score: c2.score, weatherComponent: c2.weather_component, solunarComponent: c2.solunar_component, migrationComponent: c2.migration_component, birdcastComponent: c2.birdcast_component, patternComponent: c2.pattern_component, nationalRank: c2.national_rank, reasoning: c2.reasoning } });
+
+  return {
+    response: parseTextContent(response),
+    cards,
+    mapAction: { type: 'flyTo', target: c1 && c2 ? (c1.score >= c2.score ? state1 : state2) : state1 },
+  };
+}
+
 async function handleSearch(query: string, species: string = 'duck', stateAbbr?: string | null) {
+  // Check for comparison pattern (e.g., "compare AR vs LA", "TX or OK")
+  const compareMatch = query.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
+    || query.match(/(\w{2})\s+(?:vs?\.?|or|versus)\s+(\w{2})/i);
+
+  if (compareMatch) {
+    const s1 = compareMatch[1].toUpperCase();
+    const s2 = compareMatch[2].toUpperCase();
+    return handleCompare(s1, s2, query, species);
+  }
+
   // Determine if DU reports should be included
   const mentionsDU = /\b(du|ducks unlimited|migration map)\b/i.test(query);
   const searchQuery = species !== 'duck' ? `${species} ${query}` : query;
