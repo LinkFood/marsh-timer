@@ -20,10 +20,8 @@ if (!SERVICE_KEY) {
   console.error("SUPABASE_SERVICE_ROLE_KEY required");
   process.exit(1);
 }
-if (!VOYAGE_KEY) {
-  console.error("VOYAGE_API_KEY required");
-  process.exit(1);
-}
+const USE_EDGE_FN = !VOYAGE_KEY;
+if (USE_EDGE_FN) console.log("No VOYAGE_API_KEY — using hunt-generate-embedding edge function (slower)");
 
 const START_STATE = process.env.START_STATE || null;
 const START_MONTH = process.env.START_MONTH || null;
@@ -210,47 +208,50 @@ function round2(n: number): number {
 
 // ---------- Embedding ----------
 
+async function embedViaEdgeFn(text: string, retries = 3): Promise<number[]> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ text, input_type: "document" }),
+      });
+      if (res.ok) { const data = await res.json(); return data.embedding; }
+      if (res.status >= 500 && attempt < retries - 1) { await delay((attempt + 1) * 5000); continue; }
+      throw new Error(`Edge fn error: ${res.status} ${await res.text()}`);
+    } catch (err) {
+      if (attempt < retries - 1) { await delay((attempt + 1) * 10000); continue; }
+      throw err;
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
 async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
+  if (USE_EDGE_FN) {
+    const results: number[][] = [];
+    for (const text of texts) {
+      results.push(await embedViaEdgeFn(text, retries));
+      await delay(100);
+    }
+    return results;
+  }
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const res = await fetch("https://api.voyageai.com/v1/embeddings", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${VOYAGE_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "voyage-3-lite",
-          input: texts,
-          input_type: "document",
-        }),
+        headers: { Authorization: `Bearer ${VOYAGE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "voyage-3-lite", input: texts, input_type: "document" }),
       });
       if (res.ok) {
         const data = await res.json();
         return data.data.map((d: { embedding: number[] }) => d.embedding);
       }
-      if (res.status === 429 && attempt < retries - 1) {
-        const wait = (attempt + 1) * 30000;
-        console.log(`    Rate limited, waiting ${wait / 1000}s...`);
-        await delay(wait);
-        continue;
-      }
-      if (res.status >= 500 && attempt < retries - 1) {
-        const wait = (attempt + 1) * 5000;
-        console.log(
-          `    Retry ${attempt + 1}/${retries} after ${wait / 1000}s (${res.status})...`,
-        );
-        await delay(wait);
-        continue;
-      }
+      if (res.status === 429 && attempt < retries - 1) { await delay((attempt + 1) * 30000); continue; }
+      if (res.status >= 500 && attempt < retries - 1) { await delay((attempt + 1) * 5000); continue; }
       throw new Error(`Voyage error: ${res.status} ${await res.text()}`);
     } catch (err) {
-      if (attempt < retries - 1) {
-        const wait = (attempt + 1) * 10000;
-        console.log(`    Error, retrying in ${wait / 1000}s: ${err}`);
-        await delay(wait);
-        continue;
-      }
+      if (attempt < retries - 1) { await delay((attempt + 1) * 10000); continue; }
       throw err;
     }
   }
