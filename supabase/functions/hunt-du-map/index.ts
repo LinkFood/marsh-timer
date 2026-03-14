@@ -229,7 +229,7 @@ serve(async (req) => {
           }
 
           const { error: knErr } = await supabase
-            .from('hunt_knowledge')
+            .from('hunt_knowledge_du')
             .insert(batchRows);
 
           if (knErr) {
