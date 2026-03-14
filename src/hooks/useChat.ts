@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { SUPABASE_FUNCTIONS_URL } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -22,9 +22,31 @@ export function useChat(
   onMapAction?: (action: { type: string; target: string }) => void
 ) {
   const { session } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('hunt-chat-messages');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+      }
+    } catch {}
+    return [];
+  });
   const [loading, setLoading] = useState(false);
-  const sessionIdRef = useRef(crypto.randomUUID());
+  const sessionIdRef = useRef(() => {
+    const saved = sessionStorage.getItem('hunt-chat-session-id');
+    if (saved) return saved;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem('hunt-chat-session-id', id);
+    return id;
+  })();
+
+  // Persist messages to sessionStorage on every change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('hunt-chat-messages', JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || loading) return;
@@ -103,6 +125,8 @@ export function useChat(
   const clearMessages = useCallback(() => {
     setMessages([]);
     sessionIdRef.current = crypto.randomUUID();
+    sessionStorage.removeItem('hunt-chat-messages');
+    sessionStorage.setItem('hunt-chat-session-id', sessionIdRef.current);
   }, []);
 
   return { messages, loading, sendMessage, clearMessages };
