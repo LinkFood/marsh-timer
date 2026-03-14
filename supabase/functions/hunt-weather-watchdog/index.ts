@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -135,6 +136,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     console.log('[hunt-weather-watchdog] Starting daily weather watchdog run');
 
@@ -422,9 +424,26 @@ serve(async (req) => {
     };
     console.log('[hunt-weather-watchdog] Complete:', JSON.stringify(summary));
 
+    const endTime = Date.now();
+    await logCronRun({
+      functionName: 'hunt-weather-watchdog',
+      status: 'success',
+      summary,
+      durationMs: endTime - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-weather-watchdog] Fatal error:', error);
+
+    const endTime = Date.now();
+    await logCronRun({
+      functionName: 'hunt-weather-watchdog',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: endTime - startTime,
+    });
+
     return errorResponse(req, 'Internal server error', 500);
   }
 });
