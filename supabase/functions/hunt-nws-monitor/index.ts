@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { scanBrainOnWrite } from '../_shared/brainScan.ts';
 
 // NWS API supports filtering by event — fetch only hunting-relevant alerts
 // Split into batches to keep URLs under length limits
@@ -201,6 +202,24 @@ async function embedAlerts(
 
   const embeddings = await batchEmbed(texts, 'document');
 
+  // Query-on-write: scan brain for pattern matches on NWS alerts
+  const patternScans: Record<number, { pattern_matches: unknown[]; pattern_scan_at: string }> = {};
+  for (let idx = 0; idx < meta.length; idx++) {
+    try {
+      const scan = await scanBrainOnWrite(embeddings[idx], {
+        state_abbr: meta[idx].states[0] || undefined,
+        exclude_content_type: 'nws-alert',
+      });
+      if (scan.matches.length > 0) {
+        patternScans[idx] = {
+          pattern_matches: scan.matches,
+          pattern_scan_at: new Date().toISOString(),
+        };
+        console.log(`[hunt-nws-monitor] Brain scan: ${meta[idx].title} → ${scan.matches.length} pattern matches`);
+      }
+    } catch { /* scanning is best-effort */ }
+  }
+
   const knowledgeRows = meta.map((item, idx) => ({
     title: item.title,
     content: texts[idx],
@@ -215,6 +234,7 @@ async function embedAlerts(
       severity: item.severity,
       onset: item.onset,
       expires: item.expires,
+      ...(patternScans[idx] || {}),
     },
   }));
 

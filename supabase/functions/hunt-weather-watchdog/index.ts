@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { scanBrainOnWrite } from '../_shared/brainScan.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -322,6 +323,26 @@ serve(async (req) => {
       const embeddings = await batchEmbed(embedTexts, 'document');
 
       if (embeddings && embeddings.length === embedTexts.length) {
+        // Query-on-write: scan brain for pattern matches on weather events
+        for (let j = 0; j < embedMeta.length; j++) {
+          if (embedMeta[j].content_type === 'weather-event') {
+            try {
+              const scan = await scanBrainOnWrite(embeddings[j], {
+                state_abbr: embedMeta[j].state_abbr,
+                exclude_content_type: 'weather-event',
+              });
+              if (scan.matches.length > 0) {
+                embedMeta[j].metadata = {
+                  ...embedMeta[j].metadata,
+                  pattern_matches: scan.matches,
+                  pattern_scan_at: new Date().toISOString(),
+                };
+                console.log(`[hunt-weather-watchdog] Brain scan: ${embedMeta[j].title} → ${scan.matches.length} pattern matches`);
+              }
+            } catch { /* scanning is best-effort */ }
+          }
+        }
+
         // Upsert into hunt_knowledge in batches
         const KNOWLEDGE_BATCH = 50;
         for (let i = 0; i < embeddings.length; i += KNOWLEDGE_BATCH) {

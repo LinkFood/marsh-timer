@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { scanBrainOnWrite } from '../_shared/brainScan.ts';
 
 const LOG_PREFIX = '[hunt-migration-monitor]';
 
@@ -256,6 +257,25 @@ serve(async (req) => {
     if (embedTexts.length > 0) {
       try {
         const embeddings = await batchEmbed(embedTexts);
+
+        // Query-on-write: scan brain for pattern matches on migration spikes
+        for (let i = 0; i < embedRows.length; i++) {
+          if (embedRows[i].content_type.startsWith('migration-spike')) {
+            try {
+              const scan = await scanBrainOnWrite(embeddings[i], {
+                state_abbr: embedRows[i].state_abbr,
+                exclude_content_type: embedRows[i].content_type,
+              });
+              if (scan.matches.length > 0) {
+                (embedRows[i] as Record<string, unknown>).metadata = {
+                  pattern_matches: scan.matches,
+                  pattern_scan_at: new Date().toISOString(),
+                };
+                console.log(`${LOG_PREFIX} Brain scan: ${embedRows[i].title} → ${scan.matches.length} pattern matches`);
+              }
+            } catch { /* scanning is best-effort */ }
+          }
+        }
 
         const knowledgeRows = embedRows.map((row, i) => ({
           ...row,

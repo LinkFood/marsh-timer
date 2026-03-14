@@ -35,6 +35,44 @@ const INTENT_TOOLS = [
   },
 ];
 
+// Shared brain search helper — calls hunt-search with v2 filters
+async function searchBrain(opts: {
+  query: string;
+  content_types?: string[];
+  state_abbr?: string;
+  species?: string;
+  recency_weight?: number;
+  exclude_du_report?: boolean;
+  limit?: number;
+  min_similarity?: number;
+}): Promise<Array<{ title: string; content: string; similarity: number; content_type: string; state_abbr?: string; effective_date?: string; species?: string }>> {
+  try {
+    const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
+    const res = await fetch(searchUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        query: opts.query,
+        content_types: opts.content_types,
+        state_abbr: opts.state_abbr,
+        species: opts.species,
+        recency_weight: opts.recency_weight ?? 0.0,
+        exclude_du_report: opts.exclude_du_report ?? true,
+        limit: opts.limit || 5,
+      }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const minSim = opts.min_similarity ?? 0.3;
+    return (data.vector || []).filter((v: { similarity: number }) => v.similarity > minSim);
+  } catch {
+    return [];
+  }
+}
+
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -76,7 +114,7 @@ serve(async (req) => {
         response: rateCheck.error || 'Rate limit exceeded',
         cards: [],
         rateLimited: true,
-      }), { status: 200, headers }); // 200 so frontend shows the message
+      }), { status: 200, headers });
     }
 
     const supabase = createSupabaseClient();
@@ -126,7 +164,6 @@ Classify the user's message intent and extract relevant parameters.
 
     const toolUse = parseToolUse(classifyResponse);
     if (!toolUse) {
-      // Fallback: general response
       return respondGeneral(req, headers, message, ctxSpecies, ctxState, supabase, userId, sessionId, conversationContext);
     }
 
@@ -153,7 +190,7 @@ Classify the user's message intent and extract relevant parameters.
         result = await handleSeasonInfo(supabase, resolvedSpecies, resolvedState, query);
         break;
       case 'search':
-        result = await handleSearch(supabase, query, resolvedSpecies);
+        result = await handleSearch(query, resolvedSpecies, resolvedState);
         break;
       default:
         result = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
@@ -187,7 +224,7 @@ Classify the user's message intent and extract relevant parameters.
     return new Response(JSON.stringify({
       response: 'Sorry, I hit an error. Try again in a moment.',
       cards: [],
-    }), { status: 200, headers }); // 200 so frontend can show error message
+    }), { status: 200, headers });
   }
 });
 
@@ -196,7 +233,6 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     return { response: 'Which state are you interested in? Select one on the map or tell me.', cards: [] };
   }
 
-  // Get state centroid
   const { data: state } = await supabase
     .from('hunt_states')
     .select('centroid_lat, centroid_lng, name')
@@ -207,9 +243,9 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     return { response: `I don't have location data for ${stateAbbr} yet.`, cards: [] };
   }
 
-  // Call hunt-weather function + fetch convergence in parallel
+  // Fetch weather + convergence + brain search in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const [weatherRes, convergenceResult] = await Promise.all([
+  const [weatherRes, convergenceResult, brainResults] = await Promise.all([
     fetch(weatherUrl, {
       method: 'POST',
       headers: {
@@ -225,6 +261,15 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       .order('date', { ascending: false })
       .limit(1)
       .single(),
+    searchBrain({
+      query: `${state.name} duck hunting weather conditions ${query}`,
+      content_types: ['weather-event', 'weather-insight', 'weather-daily', 'weather-pattern'],
+      state_abbr: stateAbbr,
+      recency_weight: 0.5,
+      exclude_du_report: true,
+      limit: 5,
+      min_similarity: 0.4,
+    }),
   ]);
 
   if (!weatherRes.ok) {
@@ -234,7 +279,6 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   const forecast = await weatherRes.json();
   const convData = convergenceResult.data;
 
-  // Parse current conditions from hourly data
   const hourly = forecast.hourly;
   const now = new Date();
   const currentHour = now.getUTCHours();
@@ -242,41 +286,12 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   const wind = hourly?.wind_speed_10m?.[currentHour];
   const precip = hourly?.precipitation?.[currentHour];
 
-  // Search hunt_knowledge for weather-migration pattern insights
+  // Build pattern insight from brain results
   let patternInsight = '';
-  let weatherPatternMatches: Array<{ title: string; content: string; similarity: number; content_type: string }> = [];
-  try {
-    const conditionStr = `${state.name} duck hunting weather: ${temp}°F, wind ${wind} mph, precipitation ${precip}mm`;
-    const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
-    const searchRes = await fetch(searchUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-      },
-      body: JSON.stringify({ query: conditionStr, state_abbr: stateAbbr, limit: 3 }),
-    });
-    if (searchRes.ok) {
-      const searchData = await searchRes.json();
-      const allPatterns = (searchData.vector || [])
-        .filter((v: { similarity: number }) => v.similarity > 0.5) as Array<{ title: string; content: string; similarity: number; content_type?: string }>;
-      const patternContents = allPatterns.map((v) => v.content);
-      if (patternContents.length > 0) {
-        patternInsight = `\n\nHistorical patterns:\n${patternContents.join('\n')}`;
-      }
-      // Build pattern card for weather response
-      if (allPatterns.length > 0) {
-        weatherPatternMatches = allPatterns.slice(0, 5).map((v) => ({
-          title: v.title,
-          content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
-          similarity: v.similarity,
-          content_type: v.content_type || 'pattern',
-        }));
-      }
-    }
-  } catch { /* pattern matching is best-effort */ }
+  if (brainResults.length > 0) {
+    patternInsight = `\n\nHistorical patterns from the brain (${brainResults.length} matches):\n${brainResults.map(v => v.content).join('\n')}`;
+  }
 
-  // Build 3-day summary via Claude
   const weatherSummary = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: 'You are a hunting weather expert. Give a brief, practical hunting weather summary. Focus on wind, temperature changes, and precipitation that affect hunting. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown\'s own data.',
@@ -311,8 +326,18 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     });
   }
 
-  if (weatherPatternMatches.length > 0) {
-    cards.push({ type: 'pattern', data: { patterns: weatherPatternMatches } });
+  if (brainResults.length > 0) {
+    cards.push({
+      type: 'pattern',
+      data: {
+        patterns: brainResults.slice(0, 5).map(v => ({
+          title: v.title,
+          content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
+          similarity: v.similarity,
+          content_type: v.content_type,
+        })),
+      },
+    });
   }
 
   return {
@@ -338,15 +363,28 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
   }
 
   const today = new Date().toISOString().split('T')[0];
+
+  // Fetch solunar + brain search in parallel
   const solunarUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-solunar`;
-  const solunarRes = await fetch(solunarUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ lat: state.centroid_lat, lng: state.centroid_lng, date: today }),
-  });
+  const [solunarRes, brainResults] = await Promise.all([
+    fetch(solunarUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ lat: state.centroid_lat, lng: state.centroid_lng, date: today }),
+    }),
+    searchBrain({
+      query: `${state.name} solunar moon phase feeding times hunting ${query}`,
+      content_types: ['solunar-weekly', 'convergence-score', 'weather-pattern'],
+      state_abbr: stateAbbr,
+      recency_weight: 0.3,
+      exclude_du_report: true,
+      limit: 3,
+      min_similarity: 0.35,
+    }),
+  ]);
 
   if (!solunarRes.ok) {
     return { response: `Couldn't fetch solunar data for ${state.name}.`, cards: [] };
@@ -356,8 +394,13 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
   const solunar = data.solunar || {};
   const sunrise = data.sunrise || {};
 
+  let brainContext = '';
+  if (brainResults.length > 0) {
+    brainContext = ` Based on historical patterns: ${brainResults.map(v => v.content).join('; ').substring(0, 300)}`;
+  }
+
   return {
-    response: `Here's the solunar forecast for ${state.name} today. ${solunar.dayRating ? `Overall rating: ${solunar.dayRating}/5.` : ''} ${solunar.moonPhase ? `Moon phase: ${solunar.moonPhase}.` : ''}`,
+    response: `Here's the solunar forecast for ${state.name} today. ${solunar.dayRating ? `Overall rating: ${solunar.dayRating}/5.` : ''} ${solunar.moonPhase ? `Moon phase: ${solunar.moonPhase}.` : ''}${brainContext}`,
     cards: [{
       type: 'solunar',
       data: {
@@ -379,7 +422,8 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     return { response: 'Which state are you asking about? Select one on the map or tell me.', cards: [] };
   }
 
-  const [seasonsResult, convergenceResult] = await Promise.all([
+  // Fetch seasons + convergence + brain search in parallel
+  const [seasonsResult, convergenceResult, brainResults] = await Promise.all([
     supabase
       .from('hunt_seasons')
       .select('*')
@@ -392,6 +436,16 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
       .order('date', { ascending: false })
       .limit(1)
       .single(),
+    searchBrain({
+      query: `${species} hunting season regulations ${stateAbbr} ${query}`,
+      content_types: ['regulation', 'fact', 'usfws_hip', 'usfws_breeding'],
+      species: species,
+      state_abbr: stateAbbr,
+      recency_weight: 0.0,
+      exclude_du_report: true,
+      limit: 3,
+      min_similarity: 0.35,
+    }),
   ]);
 
   const seasons = seasonsResult.data;
@@ -401,7 +455,6 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     return { response: `No ${species} season data found for ${stateAbbr}.`, cards: [] };
   }
 
-  // Build cards for each season
   const now = new Date();
   const cards = seasons.map((s: Record<string, unknown>) => {
     const dates = s.dates as Array<{ start: string; end: string }>;
@@ -416,7 +469,6 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
         else if (daysUntil <= 90) status = 'upcoming';
       }
     }
-
     return {
       type: 'season',
       data: {
@@ -431,11 +483,15 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     };
   });
 
-  // Generate summary via Claude
+  let brainContext = '';
+  if (brainResults.length > 0) {
+    brainContext = `\n\nAdditional knowledge from the brain:\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
+  }
+
   const seasonSummary = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: 'You are a hunting season expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.\nONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don\'t have that specific data" rather than guessing.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown\'s own data.',
-    messages: [{ role: 'user', content: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}` }],
+    messages: [{ role: 'user', content: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}${brainContext}` }],
     max_tokens: 200,
   });
 
@@ -463,82 +519,73 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
   };
 }
 
-async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, query: string, species: string = 'duck') {
-  // Hybrid search: vector via hunt-search + keyword fallback
-  // Prepend species to query for better vector match on species-specific knowledge
+async function handleSearch(query: string, species: string = 'duck', stateAbbr?: string | null) {
+  // Determine if DU reports should be included
+  const mentionsDU = /\b(du|ducks unlimited|migration map)\b/i.test(query);
   const searchQuery = species !== 'duck' ? `${species} ${query}` : query;
-  let vectorContext = '';
+
+  const brainResults = await searchBrain({
+    query: searchQuery,
+    species: species,
+    state_abbr: stateAbbr || undefined,
+    recency_weight: 0.3,
+    exclude_du_report: !mentionsDU,
+    limit: 8,
+    min_similarity: 0.3,
+  });
+
   const cards: unknown[] = [];
-  try {
-    const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
-    const searchRes = await fetch(searchUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-      },
-      body: JSON.stringify({ query: searchQuery, limit: 8 }),
-    });
-    if (searchRes.ok) {
-      const searchData = await searchRes.json();
-      const allVector = (searchData.vector || []) as Array<{ title: string; content: string; similarity: number; content_type?: string }>;
-      const filteredVector = allVector.filter((v) => v.similarity > 0.3);
-      const vectorHits = filteredVector
-        .map((v) => `[${v.title}] ${v.content}`);
-      const factHits = (searchData.keywords?.facts || [])
-        .map((f: { species_id: string; state_name: string; facts: string[] }) => `${f.species_id} ${f.state_name}: ${f.facts.join('; ')}`);
-      const seasonHits = (searchData.keywords?.seasons || [])
-        .map((s: { species_id: string; state_name: string; season_type: string; notes: string }) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || ''}`);
-      vectorContext = [...vectorHits, ...factHits, ...seasonHits].join('\n');
+  let vectorContext = '';
 
-      // Build pattern card from top vector matches
-      const patternMatches = filteredVector
-        .filter((v) => v.similarity > 0.4)
-        .slice(0, 5)
-        .map((v) => ({
-          title: v.title,
-          content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
-          similarity: v.similarity,
-          content_type: v.content_type || 'unknown',
-        }));
-      if (patternMatches.length > 0) {
-        cards.push({ type: 'pattern', data: { patterns: patternMatches } });
-      }
+  if (brainResults.length > 0) {
+    vectorContext = brainResults.map(v => `[${v.title}] ${v.content}`).join('\n');
 
-      // Build source card
-      const keywordCount = (searchData.keywords?.facts?.length || 0) + (searchData.keywords?.seasons?.length || 0);
-      const contentTypes = [...new Set(filteredVector.map((v) => v.content_type || 'unknown'))];
-      const similarities = filteredVector.map((v) => v.similarity);
-      if (filteredVector.length > 0) {
-        cards.push({
-          type: 'source',
-          data: {
-            vectorCount: filteredVector.length,
-            keywordCount,
-            contentTypes,
-            similarityRange: [Math.min(...similarities), Math.max(...similarities)],
-          },
-        });
-      }
+    const patternMatches = brainResults
+      .filter(v => v.similarity > 0.4)
+      .slice(0, 5)
+      .map(v => ({
+        title: v.title,
+        content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
+        similarity: v.similarity,
+        content_type: v.content_type,
+      }));
+    if (patternMatches.length > 0) {
+      cards.push({ type: 'pattern', data: { patterns: patternMatches } });
     }
-  } catch { /* fall through to keyword only */ }
 
-  // Keyword fallback if vector search failed
+    const contentTypes = [...new Set(brainResults.map(v => v.content_type))];
+    const similarities = brainResults.map(v => v.similarity);
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: brainResults.length,
+        keywordCount: 0,
+        contentTypes,
+        similarityRange: [Math.min(...similarities), Math.max(...similarities)],
+      },
+    });
+  }
+
+  // Keyword fallback if brain returned nothing
   if (!vectorContext) {
-    const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
-    const [seasonsResult, factsResult] = await Promise.all([
-      supabase.from('hunt_seasons')
-        .select('species_id, state_abbr, state_name, season_type, zone, notes')
-        .or(`notes.ilike.%${escapedQuery}%,state_name.ilike.%${escapedQuery}%`)
-        .limit(5),
-      supabase.from('hunt_state_facts')
-        .select('species_id, state_name, facts')
-        .limit(5),
-    ]);
-    vectorContext = [
-      ...(seasonsResult.data || []).map((s: Record<string, unknown>) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || 'No notes'}`),
-      ...(factsResult.data || []).map((f: Record<string, unknown>) => `${f.species_id} ${f.state_name}: ${(f.facts as string[]).join('; ')}`),
-    ].join('\n');
+    try {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.84.0');
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+      const [seasonsResult, factsResult] = await Promise.all([
+        supabase.from('hunt_seasons')
+          .select('species_id, state_abbr, state_name, season_type, zone, notes')
+          .or(`notes.ilike.%${escapedQuery}%,state_name.ilike.%${escapedQuery}%`)
+          .limit(5),
+        supabase.from('hunt_state_facts')
+          .select('species_id, state_name, facts')
+          .limit(5),
+      ]);
+      vectorContext = [
+        ...(seasonsResult.data || []).map((s: Record<string, unknown>) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || 'No notes'}`),
+        ...(factsResult.data || []).map((f: Record<string, unknown>) => `${f.species_id} ${f.state_name}: ${(f.facts as string[]).join('; ')}`),
+      ].join('\n');
+    } catch { /* keyword search is best-effort */ }
   }
 
   const searchResponse = await callClaude({
@@ -555,11 +602,25 @@ async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, q
 }
 
 async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string) {
+  // Light brain search — only include if high-similarity matches exist
+  const brainResults = await searchBrain({
+    query: message,
+    recency_weight: 0.2,
+    exclude_du_report: true,
+    limit: 3,
+    min_similarity: 0.5,
+  });
+
+  let brainContext = '';
+  if (brainResults.length > 0) {
+    brainContext = `\n\nRelevant knowledge (cite if useful):\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
+  }
+
   const response = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: `You are the DuckCountdown AI — a friendly hunting season assistant. You help with US hunting seasons, weather, solunar data, and general hunting questions.
 Current context: species=${species}, state=${stateAbbr || 'none'}.${species !== 'duck' ? `\nThe user is asking about ${species} hunting. You have species-specific knowledge including ${species === 'deer' ? 'rut timing, moon phase correlations, cold snap triggers, barometric pressure effects, and wind patterns' : species === 'turkey' ? 'gobble peak timing, weather sensitivity, roosting behavior, and calling strategies' : species === 'dove' ? 'migration timing, field rotation patterns, weather windows, and wind thresholds' : `${species}-specific patterns and behavior`} for their state and region.` : ''}
-${conversationContext}
+${conversationContext}${brainContext}
 Be concise and helpful. 2-3 sentences max for casual chat.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.`,
     messages: [{ role: 'user', content: message }],
     max_tokens: 300,

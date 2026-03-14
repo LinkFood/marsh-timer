@@ -10,7 +10,17 @@ serve(async (req) => {
   try {
     if (req.method !== 'POST') return errorResponse(req, 'Method not allowed', 405);
 
-    const { query, species, state_abbr, limit: maxResults } = await req.json();
+    const {
+      query,
+      species,
+      state_abbr,
+      limit: maxResults,
+      content_types,
+      date_from,
+      date_to,
+      recency_weight,
+      exclude_du_report,
+    } = await req.json();
     if (!query) return errorResponse(req, 'query required');
 
     const supabase = createSupabaseClient();
@@ -31,10 +41,17 @@ serve(async (req) => {
     if (embedRes.ok) {
       const { embedding } = await embedRes.json();
       if (embedding) {
-        const { data } = await supabase.rpc('search_hunt_knowledge_by_embedding', {
+        const { data } = await supabase.rpc('search_hunt_knowledge_v2', {
           query_embedding: embedding,
           match_threshold: 0.3,
           match_count: resultLimit,
+          filter_content_types: content_types || null,
+          filter_state_abbr: state_abbr || null,
+          filter_species: species || null,
+          filter_date_from: date_from || null,
+          filter_date_to: date_to || null,
+          recency_weight: recency_weight ?? 0.0,
+          exclude_du_report: exclude_du_report ?? false,
         });
         vectorResults = data || [];
       }
@@ -47,7 +64,6 @@ serve(async (req) => {
       .select('species_id, state_name, facts')
       .limit(resultLimit);
 
-    // Also search seasons notes
     let seasonQuery = supabase
       .from('hunt_seasons')
       .select('species_id, state_abbr, state_name, season_type, zone, notes')
