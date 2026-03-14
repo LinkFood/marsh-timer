@@ -203,6 +203,26 @@ Classify the user's message intent and extract relevant parameters.
 
     let result: { response: string; cards: unknown[]; mapAction?: unknown };
 
+    // Intercept comparison queries BEFORE intent routing
+    const compareMatch = message.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
+      || message.match(/(\w{2})\s+vs\.?\s+(\w{2})/i);
+    if (compareMatch) {
+      const s1 = compareMatch[1].toUpperCase();
+      const s2 = compareMatch[2].toUpperCase();
+      // Validate they look like state abbreviations
+      if (s1.length === 2 && s2.length === 2 && s1 !== s2) {
+        result = await handleCompare(s1, s2, message, resolvedSpecies);
+
+        if (userId && sessionId) {
+          await supabase.from('hunt_conversations').insert([
+            { user_id: userId, session_id: sessionId, role: 'user', content: message },
+            { user_id: userId, session_id: sessionId, role: 'assistant', content: result.response, metadata: { cards: result.cards, intent: 'compare' } },
+          ]);
+        }
+        return new Response(JSON.stringify(result), { status: 200, headers });
+      }
+    }
+
     switch (intent) {
       case 'weather':
         if (!resolvedState) {
