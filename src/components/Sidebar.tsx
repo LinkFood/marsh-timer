@@ -7,6 +7,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   ArrowLeft,
+  Brain,
 } from "lucide-react";
 import type { Species } from "@/data/types";
 import type { HuntAlert } from "@/hooks/useHuntAlerts";
@@ -185,9 +186,20 @@ export default function Sidebar({
               <RecallCard recalls={recalls} loading={recallLoading} />
             </>
           ) : (
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center">
-              <p className="text-xs text-white/50 font-body">
-                Hunt intelligence is available for waterfowl species
+            <div className="flex flex-col items-center justify-center px-4 py-8">
+              <div className="w-12 h-12 rounded-full bg-white/[0.05] flex items-center justify-center mb-3">
+                <Brain className="w-6 h-6 text-white/30" />
+              </div>
+              <p className="text-sm font-heading text-white/60 mb-1">
+                {species.charAt(0).toUpperCase() + species.slice(1)} Intelligence
+              </p>
+              <p className="text-[11px] font-body text-white/40 text-center mb-2">
+                Coming soon — the brain is learning {species} patterns
+              </p>
+              <p className="text-[10px] font-body text-white/30 text-center">
+                Season dates and basic info are available now.
+                Full convergence scoring, weather patterns, and migration
+                tracking are being built for {species}.
               </p>
             </div>
           )}
@@ -228,9 +240,20 @@ export default function Sidebar({
           )}
           <RecallCard recalls={recalls} loading={recallLoading} />
           {!isWaterfowl && (
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center mb-3">
-              <p className="text-xs text-white/50 font-body">
-                Hunt intelligence is available for waterfowl species
+            <div className="flex flex-col items-center justify-center px-4 py-6 mb-3">
+              <div className="w-12 h-12 rounded-full bg-white/[0.05] flex items-center justify-center mb-3">
+                <Brain className="w-6 h-6 text-white/30" />
+              </div>
+              <p className="text-sm font-heading text-white/60 mb-1">
+                {species.charAt(0).toUpperCase() + species.slice(1)} Intelligence
+              </p>
+              <p className="text-[11px] font-body text-white/40 text-center mb-2">
+                Coming soon — the brain is learning {species} patterns
+              </p>
+              <p className="text-[10px] font-body text-white/30 text-center">
+                Season dates and basic info are available now.
+                Full convergence scoring, weather patterns, and migration
+                tracking are being built for {species}.
               </p>
             </div>
           )}

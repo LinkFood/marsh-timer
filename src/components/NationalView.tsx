@@ -169,8 +169,8 @@ export default function NationalView({
           </div>
         )}
 
-        {/* Convergence pattern activity */}
-        {convergenceTopStates && convergenceTopStates.length > 0 && (
+        {/* Convergence pattern activity — waterfowl only */}
+        {(species === 'duck' || species === 'goose') && convergenceTopStates && convergenceTopStates.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
               Pattern Activity

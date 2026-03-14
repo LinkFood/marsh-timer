@@ -195,7 +195,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
 
         {/* Right: Migration Index + User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {murmIndex && (
+          {(species === 'duck' || species === 'goose') && murmIndex && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.08]">
               <span className="text-[10px] text-white/40 font-body hidden sm:inline">Migration</span>
               <span className="text-xs font-mono font-semibold text-white/80">
