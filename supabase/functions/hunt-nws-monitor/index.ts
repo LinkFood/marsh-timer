@@ -208,6 +208,8 @@ async function embedAlerts(
     tags: item.tags,
     embedding: embeddings[idx],
     state_abbr: item.states[0] || null,
+    species: null,
+    effective_date: item.onset ? item.onset.split('T')[0] : null,
     metadata: {
       alert_id: item.alert_id,
       severity: item.severity,

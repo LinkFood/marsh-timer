@@ -266,6 +266,8 @@ serve(async (req) => {
         content,
         content_type: 'solunar-weekly',
         tags: ['solunar', 'moon', 'feeding'],
+        species: null,
+        effective_date: week.mondayDate || null,
       });
     }
 

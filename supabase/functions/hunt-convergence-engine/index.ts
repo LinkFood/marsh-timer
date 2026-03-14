@@ -468,6 +468,8 @@ serve(async (req) => {
             content_type: 'convergence-score',
             tags: [r.state_abbr, 'convergence', today],
             state_abbr: r.state_abbr,
+            species: null,
+            effective_date: today,
             metadata: { score: r.score, trigger, date: today },
             embedding: embeddings[idx],
           }));
