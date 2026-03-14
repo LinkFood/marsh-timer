@@ -250,6 +250,39 @@ serve(async (req) => {
         state_abbr: abbr,
         metadata: { source: 'open-meteo', date: yesterdayDate },
       });
+
+      // Embed forecast for next 2 days (day+1 and day+2 from the daily array)
+      const forecastDayOffsets = [1, 2];
+      for (const dayOffset of forecastDayOffsets) {
+        if (dayOffset >= dates.length) continue;
+        const forecastDate = daily.time[dayOffset];
+        const forecastHigh = Math.round(daily.temperature_2m_max[dayOffset]);
+        const forecastLow = Math.round(daily.temperature_2m_min[dayOffset]);
+        const forecastPrecip = daily.precipitation_sum[dayOffset].toFixed(1);
+        const forecastWind = Math.round(daily.wind_speed_10m_max[dayOffset]);
+        const forecastWindDir = degreesToCompass(daily.wind_direction_10m_dominant[dayOffset]);
+
+        const forecastText = `weather-forecast | ${abbr} | ${forecastDate} | predicted high:${forecastHigh}F low:${forecastLow}F | precip:${forecastPrecip}mm wind:${forecastWind}mph ${forecastWindDir}`;
+        embedTexts.push(forecastText);
+        embedMeta.push({
+          title: `${abbr} forecast ${forecastDate}`,
+          content: forecastText,
+          content_type: 'weather-forecast',
+          tags: [abbr, 'weather', 'forecast', forecastDate],
+          state_abbr: abbr,
+          metadata: {
+            source: 'open-meteo',
+            date: forecastDate,
+            forecast_made_on: yesterdayDate,
+            high_f: forecastHigh,
+            low_f: forecastLow,
+            precip_mm: Math.round(daily.precipitation_sum[dayOffset] * 10) / 10,
+            wind_mph: forecastWind,
+            wind_dir: Math.round(daily.wind_direction_10m_dominant[dayOffset]),
+            is_forecast: true,
+          },
+        });
+      }
     }
 
     // Build separate embeddings for each detected event
