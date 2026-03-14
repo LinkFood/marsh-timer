@@ -73,6 +73,30 @@ async function searchBrain(opts: {
   }
 }
 
+// Fetch recent pattern links for a state via RPC
+async function getRecentPatternLinks(stateAbbr: string | null, limit = 5): Promise<Array<{
+  source_title: string;
+  source_content_type: string;
+  matched_title: string;
+  matched_content_type: string;
+  matched_content: string;
+  similarity: number;
+  created_at: string;
+}>> {
+  if (!stateAbbr) return [];
+  try {
+    const supabase = createSupabaseClient();
+    const { data } = await supabase.rpc('get_recent_pattern_links', {
+      p_state_abbr: stateAbbr,
+      p_limit: limit,
+      p_hours_back: 72,
+    });
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -245,7 +269,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   // Fetch weather + convergence + brain search in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const [weatherRes, convergenceResult, brainResults] = await Promise.all([
+  const [weatherRes, convergenceResult, brainResults, patternLinks] = await Promise.all([
     fetch(weatherUrl, {
       method: 'POST',
       headers: {
@@ -270,6 +294,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       limit: 5,
       min_similarity: 0.4,
     }),
+    getRecentPatternLinks(stateAbbr),
   ]);
 
   if (!weatherRes.ok) {
@@ -292,10 +317,15 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     patternInsight = `\n\nHistorical patterns from the brain (${brainResults.length} matches):\n${brainResults.map(v => v.content).join('\n')}`;
   }
 
+  let linksInsight = '';
+  if (patternLinks.length > 0) {
+    linksInsight = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
+  }
+
   const weatherSummary = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: 'You are a hunting weather expert. Give a brief, practical hunting weather summary. Focus on wind, temperature changes, and precipitation that affect hunting. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown\'s own data.',
-    messages: [{ role: 'user', content: `Weather data for ${state.name}: Current temp ${temp}°F, wind ${wind} mph, precip ${precip}mm. Full hourly data available for 3 days.${patternInsight}\n\nQuery: ${query}` }],
+    messages: [{ role: 'user', content: `Weather data for ${state.name}: Current temp ${temp}°F, wind ${wind} mph, precip ${precip}mm. Full hourly data available for 3 days.${patternInsight}${linksInsight}\n\nQuery: ${query}` }],
     max_tokens: 200,
   });
 
@@ -335,6 +365,22 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
           content: v.content.length > 200 ? v.content.substring(0, 200) + '...' : v.content,
           similarity: v.similarity,
           content_type: v.content_type,
+        })),
+      },
+    });
+  }
+
+  if (patternLinks.length > 0) {
+    cards.push({
+      type: 'pattern-links',
+      data: {
+        links: patternLinks.slice(0, 5).map(l => ({
+          source: l.source_title,
+          sourceType: l.source_content_type,
+          matched: l.matched_title,
+          matchedType: l.matched_content_type,
+          similarity: l.similarity,
+          when: l.created_at,
         })),
       },
     });
@@ -524,15 +570,18 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
   const mentionsDU = /\b(du|ducks unlimited|migration map)\b/i.test(query);
   const searchQuery = species !== 'duck' ? `${species} ${query}` : query;
 
-  const brainResults = await searchBrain({
-    query: searchQuery,
-    species: species,
-    state_abbr: stateAbbr || undefined,
-    recency_weight: 0.3,
-    exclude_du_report: !mentionsDU,
-    limit: 8,
-    min_similarity: 0.3,
-  });
+  const [brainResults, patternLinks] = await Promise.all([
+    searchBrain({
+      query: searchQuery,
+      species: species,
+      state_abbr: stateAbbr || undefined,
+      recency_weight: 0.3,
+      exclude_du_report: !mentionsDU,
+      limit: 8,
+      min_similarity: 0.3,
+    }),
+    getRecentPatternLinks(stateAbbr),
+  ]);
 
   const cards: unknown[] = [];
   let vectorContext = '';
@@ -588,12 +637,33 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
     } catch { /* keyword search is best-effort */ }
   }
 
+  let linksContext = '';
+  if (patternLinks.length > 0) {
+    linksContext = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
+  }
+
   const searchResponse = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: `You are a hunting knowledge expert. Answer based on the provided context. Reference specific data and patterns when available. If the context doesn't have enough info, give your best general hunting knowledge answer. Be concise but informative.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.`,
-    messages: [{ role: 'user', content: `Context:\n${vectorContext}\n\nQuestion: ${query}` }],
+    messages: [{ role: 'user', content: `Context:\n${vectorContext}${linksContext}\n\nQuestion: ${query}` }],
     max_tokens: 300,
   });
+
+  if (patternLinks.length > 0) {
+    cards.push({
+      type: 'pattern-links',
+      data: {
+        links: patternLinks.slice(0, 5).map(l => ({
+          source: l.source_title,
+          sourceType: l.source_content_type,
+          matched: l.matched_title,
+          matchedType: l.matched_content_type,
+          similarity: l.similarity,
+          when: l.created_at,
+        })),
+      },
+    });
+  }
 
   return {
     response: parseTextContent(searchResponse),
