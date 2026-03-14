@@ -22,6 +22,7 @@ import HotspotRanking from "./HotspotRanking";
 import ConvergenceCard from "./cards/ConvergenceCard";
 import HuntLogForm from "./HuntLogForm";
 import HuntLogList from "./HuntLogList";
+import DUMigrationReports from "./DUMigrationReports";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -159,6 +160,7 @@ export default function Sidebar({
                 onSelectState={onSelectState}
                 loading={convergenceLoading}
               />
+              <DUMigrationReports />
             </>
           ) : (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center">
@@ -194,6 +196,9 @@ export default function Sidebar({
               reasoning={convergenceScore.reasoning}
               stateAbbr={stateAbbr}
             />
+          )}
+          {isWaterfowl && (
+            <DUMigrationReports currentState={stateAbbr} />
           )}
           {!isWaterfowl && (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center mb-3">
