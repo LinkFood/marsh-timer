@@ -297,6 +297,7 @@ Run `df -h /` at session start, before big builds (3+ files/agents), every 5+ co
 - Brand stays "DUCK COUNTDOWN" regardless of species selected.
 - All hunt_ tables share Supabase project with JAC Agent OS — never touch JAC tables.
 - Pin supabase-js to @2.84.0 in edge functions — unpinned @2 crashes Deno isolates.
+- **NEVER run more than 1 backfill pipe at a time.** Supabase Pro ($20/mo) has limited disk IO burst budget. Running 2+ pipes depletes it and throttles the entire database — queries timeout, site goes unresponsive. One pipe, one at a time. When it finishes, start the next. Check Supabase dashboard IO before starting any backfill. After large deletes, VACUUM the table when IO has recovered.
 - Never retry 4xx errors — only retry 5xx and network errors.
 - Use `extensions.vector(512)` with `SET search_path = public, extensions` for vector ops.
 - Shared module change -> redeploy every function that imports it.
