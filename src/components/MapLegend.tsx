@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Layers, ChevronDown, ChevronUp } from "lucide-react";
 import type { MapMode } from "@/components/MapView";
+import type { Species } from "@/data/types";
 
 interface MapLegendProps {
   mode: MapMode;
   sidebarExpanded?: boolean;
   isMobile?: boolean;
+  drillLevel?: "national" | "state" | "zone";
+  species?: Species;
 }
 
 interface LegendItem {
@@ -168,9 +171,32 @@ function IconRow({ item }: { item: LegendItem }) {
   );
 }
 
-export default function MapLegend({ mode, sidebarExpanded, isMobile }: MapLegendProps) {
+export default function MapLegend({ mode, sidebarExpanded, isMobile, drillLevel = "national", species = "duck" }: MapLegendProps) {
   const [collapsed, setCollapsed] = useState(!!isMobile);
   const content = LEGEND_CONTENT[mode];
+
+  const items = useMemo(() => {
+    const base = [...content.items];
+    const isDrilled = drillLevel === "state" || drillLevel === "zone";
+    if (!isDrilled) return base;
+
+    if (mode === "intel") {
+      base.push({ type: "icon", label: "County convergence", color: "#3b82f6" });
+    }
+
+    if (mode === "default") {
+      base.push(
+        { type: "icon", label: "Zone open", color: "#10b981" },
+        { type: "icon", label: "Zone closed", color: "#6b7280" },
+        { type: "icon", label: "Zone opening soon", color: "#f59e0b" },
+      );
+    }
+
+    // All modes when drilled in
+    base.push({ type: "icon", label: "County boundaries", color: "rgba(255,255,255,0.3)", line: true, dashed: true });
+
+    return base;
+  }, [content.items, mode, drillLevel]);
 
   const leftOffset = !isMobile && sidebarExpanded ? "calc(340px + 0.75rem)" : "0.75rem";
 
@@ -219,7 +245,7 @@ export default function MapLegend({ mode, sidebarExpanded, isMobile }: MapLegend
 
       {/* Items */}
       <div className="px-2.5 pb-2 flex flex-col gap-1.5">
-        {content.items.map((item, i) => (
+        {items.map((item, i) => (
           <div key={i}>
             {item.type === "scale" && item.stops ? (
               <div className="flex flex-col gap-0.5">

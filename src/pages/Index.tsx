@@ -491,6 +491,8 @@ const Index = () => {
         mode={mapMode}
         sidebarExpanded={sidebarExpanded}
         isMobile={isMobile}
+        drillLevel={level}
+        species={species}
       />
 
       {/* Elevation HUD */}
