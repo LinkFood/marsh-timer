@@ -2,7 +2,7 @@
 -- The partial index only got 12K tuples because work_mem was too low
 
 -- First increase work_mem for this session
-SET maintenance_work_mem = '512MB';
+SET maintenance_work_mem = '128MB';
 
 -- Drop and recreate the partial index with adequate memory
 SET search_path = public, extensions;
