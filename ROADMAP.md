@@ -52,58 +52,71 @@ Wind arrow scaling (arrowheads at line endpoints, speed-based sizing). Search fl
 
 ---
 
+### Chat UX Phase 1 & 2 ✅
+
+Phase 1: Map-chat bridge + convergence in chat. Phase 2: PatternCard (amber, vector similarity matches with confidence), SourceCard (muted, search coverage stats), safe JSX parseMarkdown(). Brain intelligence now visible in UI.
+
+### Flyway Corridors — Full Continental Extent ✅
+
+All 4 flyway corridors + flow lines extended from Arctic breeding grounds (Labrador, Manitoba, Alberta, Alaska ~65°N) through US to wintering grounds (Caribbean, Gulf, Mexico, Baja). Pacific Flyway includes Alaska.
+
+### DU Data Surfacing ✅
+
+DU Migration Reports sidebar component — grouped by state, activity level badges, relative dates, weather context. Collapsible per-state sections, auto-expand for current state. Waterfowl only, integrated at national (after HotspotRanking) and state (after ConvergenceCard) levels.
+
+### MapLegend Drill-Level Awareness ✅
+
+Legend appends context-specific items when drilled into state/zone: county convergence (intel mode), zone status indicators (default), county boundaries (all modes).
+
+### Migration Monitor Upgrade ✅
+
+Graduated severity (moderate/significant/extreme) replaces boolean isSpike. Weighted baseline favoring recent years. Requires 3+ data points for baseline. Detects migration lulls (>50% below baseline). Embeds with severity-specific content_types.
+
+### Species-Aware Intelligence (Partial) ✅
+
+Seed script generates ~230 embedded hunt_knowledge entries for deer (rut timing, moon phase, pressure, wind), turkey (gobble peaks, weather, roosting, calling), and dove (migration, field rotation, weather, wind). Dispatcher prepends species to search queries and adds species context to general system prompt.
+
+### eBird Backfill Resilience ✅
+
+Retry logic improvements to backfill script.
+
+---
+
 ## IN PROGRESS
+
+### eBird Backfill
+
+Running via nohup (~40 hrs). Check: `tail ~/marsh-timer/ebird-backfill.log` or query `hunt_migration_history`. ~50% done as of 2026-03-08.
 
 ### eBird Cluster Click Priority (Bug 3)
 
 Click priority fixed (eBird handlers intercept before state selection). Cluster zoom-to-expand action broken — `e.features` stale in async callback, fix deployed, awaiting verification.
 
-### eBird Backfill
-
-Running via nohup (~40 hrs). Check: `tail ~/marsh-timer/ebird-backfill.log` or query `hunt_migration_history`.
-
 ---
 
 ## UP NEXT
 
-### Chat UX Overhaul — "The Brain Deserves a Better Face"
-The embedding pipeline and vector search are the moat — 5,000+ entries, hybrid search, pattern matching, historical context. But the chat output is raw markdown. It looks like a log file, not an intelligence briefing. The brain is smart; the mouth needs to match.
-
-**Problems:**
-- Responses render as flat markdown — no visual hierarchy, no cards, no data visualization
-- No distinction between data-backed insights vs. general responses
-- Doesn't leverage the rich structured data we already have (convergence scores, weather, solunar, patterns)
-- Chat lives in a sidebar tab — unclear how it relates to what's on the map
-
-**What "good" looks like:**
-- Structured response cards: weather snapshots, score breakdowns, pattern matches — not just text
-- Inline data viz: mini convergence bars, wind indicators, moon phase icons within responses
-- Source attribution: "Based on 3 matching patterns from Nov 2023" with expandable detail
-- Map integration: chat responses that highlight/fly-to relevant states
-- Conversational feel, not report feel — brief, punchy, visual
-
-**Scope:** Large — touches ChatMessage rendering, dispatcher response format, possibly new response card components. Core logic (embeddings, search, dispatcher routing) stays untouched.
-
-### Flyway Corridors — Full Continental Extent
-All 4 flyway corridors + flow lines currently stop at US borders. Real flyways run from Arctic breeding grounds (Canada/Alaska) through the US to wintering grounds (Mexico, Caribbean, Central America). Extend polygon + flow line coordinates in `flywayPaths.ts`. Also extends Pacific Flyway to include Alaska.
-
-### DU Data Surfacing
-All DU data (55 articles + 7 seasons of map pins) is embedded but only surfaces via chat. Evaluate:
-- DU migration map pins as a visual layer on the map (toggle-controlled)
-- Dedicated "Migration Reports" section in sidebar
-- Verify DU content appears in state intel cards for waterfowl
-
 ### Post-eBird Backfill
 - **Pattern re-extraction:** Re-run `extract-patterns.ts` with full 5-year eBird + weather data. Current 348 patterns from partial data — could 3-5x.
-- **Migration monitor tuning:** Verify `hunt-migration-monitor` spike detection with full dataset.
+- **Migration monitor tuning:** Verify `hunt-migration-monitor` spike detection with full dataset (now with graduated severity levels).
+
+### Species Intelligence — Phase 2
+Knowledge is seeded and dispatcher is species-aware, but still needs:
+- Species-specific convergence scoring (rut phase for deer, gobble activity for turkey)
+- Species-specific map layers or visual indicators
+- Verify seed data surfaces correctly in chat for each species
+
+### Chat UX Phase 3 — Remaining Handlers
+PatternCard/SourceCard only wired for search + weather handlers. Still TODO:
+- General handler — could surface related patterns
+- Solunar handler — inline moon phase viz
+- Season handler — structured season card
 
 ### Map QA Suggestions
 | # | Suggestion | Effort |
 |---|-----------|--------|
-| 1 | Species-specific intel for deer/turkey (rut forecast, gobble activity) | Large — new data pipeline |
-| 2 | Drill-in fill color legend (score/status meaning) | Low |
-| 3 | Loading indicator for search fly-to | Low |
-| 4 | County boundary hint in zoom controls | Low |
+| 1 | Loading indicator for search fly-to | Low |
+| 2 | County boundary hint in zoom controls | Low |
 
 ---
 
