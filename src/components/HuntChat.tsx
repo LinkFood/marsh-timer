@@ -38,28 +38,38 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-hide p-3 space-y-1">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-white/40">
-            <MessageSquare size={24} className="mb-2 opacity-40" />
-            <p className="text-xs font-body text-center mb-3">
-              Ask me about hunting conditions in any state
+          <div className="flex flex-col items-center justify-center h-full px-4">
+            <div className="w-10 h-10 rounded-full bg-cyan-400/10 flex items-center justify-center mb-3">
+              <Compass size={20} className="text-cyan-400/60" />
+            </div>
+            <p className="text-sm font-heading text-white/70 mb-1">
+              Duck Countdown Brain
             </p>
-            <div className="flex flex-col gap-1.5 w-full max-w-[240px]">
+            <p className="text-[11px] font-body text-white/40 text-center mb-4">
+              {stateAbbr
+                ? `Ask me anything about hunting in ${stateAbbr}`
+                : 'Ask me about conditions, seasons, or patterns in any state'
+              }
+            </p>
+            <div className="flex flex-col gap-1.5 w-full max-w-[280px]">
               {(stateAbbr
                 ? [
-                    `${stateAbbr} conditions today`,
-                    `Hunt score breakdown for ${stateAbbr}`,
-                    `${stateAbbr} season dates`,
+                    `Weather conditions in ${stateAbbr}`,
+                    `Best duck species for ${stateAbbr} right now`,
+                    `${stateAbbr} season dates and bag limits`,
+                    `What patterns is the brain seeing in ${stateAbbr}?`,
                   ]
                 : [
-                    "Best states for mallards this week",
-                    "Texas conditions today",
-                    "Migration activity in Mississippi Flyway",
+                    "Where should I hunt this weekend?",
+                    "What's the migration index showing?",
+                    "Tell me about canvasback behavior",
+                    "Which states have the best conditions?",
                   ]
               ).map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => sendMessage(prompt)}
-                  className="text-[11px] font-body text-cyan-400/70 hover:text-cyan-400 bg-cyan-400/5 hover:bg-cyan-400/10 border border-cyan-400/10 rounded-lg px-3 py-1.5 text-left transition-colors"
+                  className="text-[11px] font-body text-white/60 hover:text-white/90 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] hover:border-white/[0.10] rounded-xl px-3 py-2 text-left transition-all duration-200"
                 >
                   {prompt}
                 </button>
@@ -71,13 +81,12 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
           <ChatMessage key={msg.id} message={msg} />
         ))}
         {loading && (
-          <div className="flex justify-start mb-2">
-            <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2">
-              <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
+          <div className="flex items-start gap-2 mb-3">
+            <div className="w-6 h-6 rounded-full bg-cyan-400/10 flex items-center justify-center mt-0.5">
+              <Compass className="w-3.5 h-3.5 text-cyan-400/60 animate-spin" style={{ animationDuration: '3s' }} />
+            </div>
+            <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl px-3.5 py-2.5">
+              <p className="text-[11px] text-white/40 font-body">Searching the brain...</p>
             </div>
           </div>
         )}
