@@ -431,6 +431,286 @@ const duckSpeciesEntries: PreparedEntry[] = [
     effective_date: null,
     richText: "scaup bluebill habitat feeding | large open water, massive rafts offshore, dive for invertebrates and vegetation, not in fields/timber",
   },
+
+  // Bufflehead
+  {
+    title: "bufflehead: size and flight",
+    content: "Bufflehead are the smallest diving duck in North America. Very fast flyers with a rapid wingbeat. They almost never decoy — they land where they want to land regardless of decoy placement. Late migrants, arriving after most puddle ducks have already settled in.",
+    content_type: "species-behavior",
+    tags: ["duck", "bufflehead", "flight", "diving", "size", "migration", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "bufflehead size flight | smallest diving duck North America, very fast rapid wingbeat, almost never decoy, late migrants",
+  },
+  {
+    title: "bufflehead: habitat and nesting",
+    content: "Bufflehead prefer protected coves, small ponds, and river backwaters. They nest exclusively in tree cavities, specifically old woodpecker holes — one of the few ducks that depend entirely on cavity nesting. Their small size allows them to use smaller cavities than other cavity-nesting ducks.",
+    content_type: "species-behavior",
+    tags: ["duck", "bufflehead", "habitat", "nesting", "cavity", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "bufflehead habitat nesting | protected coves, small ponds, river backwaters, nest exclusively in tree cavities, old woodpecker holes",
+  },
+
+  // Northern Shoveler
+  {
+    title: "northern shoveler: feeding behavior",
+    content: "Northern shovelers have a distinctive large spatulate bill used to filter small invertebrates and seeds from the water surface. They swim in circles — often in groups — to stir up food from the bottom. These spinning feeding formations are unique among ducks and easy to identify.",
+    content_type: "species-behavior",
+    tags: ["duck", "northern-shoveler", "feeding", "bill", "filter", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "northern shoveler feeding behavior | large spatulate bill, filter invertebrates and seeds, swim in circles to stir food, spinning formations",
+  },
+  {
+    title: "northern shoveler: habitat and hunting",
+    content: "Northern shovelers prefer shallow marshes with abundant floating vegetation. Not highly prized by hunters but very common in the bag. Often seen in spinning feeding formations on calm, shallow water. They are puddle ducks but feed more like a baleen whale — straining water through comb-like structures on their bill.",
+    content_type: "species-behavior",
+    tags: ["duck", "northern-shoveler", "habitat", "marsh", "hunting", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "northern shoveler habitat hunting | shallow marshes, floating vegetation, common in bag, not highly prized, filter feeders",
+  },
+
+  // Ring-necked Duck
+  {
+    title: "ring-necked duck: identification and habitat",
+    content: "Despite the name, the ring on a ring-necked duck's neck is nearly invisible in the field — they are identified by the white ring on the bill. Prefer wooded swamps, beaver ponds, and small lakes. One of the first diving ducks to arrive in fall, making them an early-season diving duck opportunity.",
+    content_type: "species-behavior",
+    tags: ["duck", "ring-necked-duck", "identification", "habitat", "diving", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "ring-necked duck identification habitat | ring invisible on neck, white ring on bill, wooded swamps, beaver ponds, first diving duck in fall",
+  },
+  {
+    title: "ring-necked duck: feeding and migration",
+    content: "Ring-necked ducks are diving ducks that feed in relatively shallow water — 3 to 6 feet. Strong migrants that move in large flocks. Unlike other diving ducks that prefer open water, ring-necks favor smaller, more sheltered water bodies surrounded by timber.",
+    content_type: "species-behavior",
+    tags: ["duck", "ring-necked-duck", "feeding", "migration", "diving", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "ring-necked duck feeding migration | dive in shallow 3-6 feet, strong migrants large flocks, prefer sheltered water over open",
+  },
+
+  // Mottled Duck
+  {
+    title: "mottled duck: residency and range",
+    content: "Mottled ducks are non-migratory — resident year-round along the Gulf Coast (Texas, Louisiana, Florida). They are the 'original' Gulf Coast duck before mallards expanded south. Very similar in appearance to female mallards, making field identification challenging.",
+    content_type: "species-behavior",
+    tags: ["duck", "mottled-duck", "resident", "gulf-coast", "non-migratory", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "mottled duck residency range | non-migratory, resident Gulf Coast TX LA FL, original Gulf Coast duck, similar to female mallard",
+  },
+  {
+    title: "mottled duck: conservation and behavior",
+    content: "Mottled ducks are a critical conservation concern due to hybridization with released mallards — genetic swamping threatens the species. Most active at dawn and dusk. Prefer coastal marshes and rice prairies. Hunting pressure on mottled ducks is carefully managed due to declining pure populations.",
+    content_type: "species-behavior",
+    tags: ["duck", "mottled-duck", "conservation", "hybridization", "mallard", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "mottled duck conservation | hybridization with mallards threatens species, dawn and dusk active, coastal marshes, rice prairies",
+  },
+
+  // American Black Duck
+  {
+    title: "american black duck: range and wariness",
+    content: "American black duck is the primary puddle duck of the Atlantic Flyway. Very wary — significantly harder to hunt than mallards. They prefer tidal salt marshes, wooded swamps, and beaver flowages. Respond well to calling in timber and marshes but are extremely cautious about decoy spreads.",
+    content_type: "species-behavior",
+    tags: ["duck", "american-black-duck", "atlantic-flyway", "wary", "habitat", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "american black duck range wariness | primary Atlantic Flyway puddle duck, very wary, harder than mallards, salt marshes, wooded swamps",
+  },
+  {
+    title: "american black duck: population decline",
+    content: "American black duck populations are declining due to mallard competition and habitat loss. They hybridize extensively with mallards, and the expanding mallard range into traditional black duck territory accelerates this problem. Bag limits are typically restrictive — often one per day.",
+    content_type: "species-behavior",
+    tags: ["duck", "american-black-duck", "population", "decline", "mallard", "hybridization", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "american black duck population decline | declining from mallard competition and habitat loss, extensive hybridization, restrictive bag limits",
+  },
+
+  // Common Goldeneye
+  {
+    title: "common goldeneye: flight and identification",
+    content: "Common goldeneye — nicknamed 'whistler' — named for the distinctive whistling sound of its wings in flight. This wing noise is audible before the bird is visible, giving hunters an early warning. Arrive late in migration, typically November-December, well into the regular season.",
+    content_type: "species-behavior",
+    tags: ["duck", "common-goldeneye", "whistler", "flight", "wing-noise", "migration", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "common goldeneye flight identification | whistler, whistling wing sound, audible before visible, late migrants November-December",
+  },
+  {
+    title: "common goldeneye: habitat and behavior",
+    content: "Common goldeneye prefer large rivers, lakes, and coastal bays. Diving duck that feeds on aquatic invertebrates. Nest in tree cavities. Often found in small groups rather than large rafts, unlike scaup. They are hardy cold-weather ducks, often the last to leave northern waters before freeze-up.",
+    content_type: "species-behavior",
+    tags: ["duck", "common-goldeneye", "habitat", "diving", "rivers", "lakes", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "common goldeneye habitat behavior | large rivers lakes coastal bays, dive for invertebrates, tree cavity nesters, small groups, cold-hardy",
+  },
+
+  // Barrow's Goldeneye
+  {
+    title: "barrow's goldeneye: range and identification",
+    content: "Barrow's goldeneye is the western counterpart to common goldeneye with a very limited range compared to its cousin. Distinguished from common goldeneye by a crescent-shaped (not round) white face patch. Prefer mountain lakes and rivers in summer, moving to coastal waters in winter.",
+    content_type: "species-behavior",
+    tags: ["duck", "barrows-goldeneye", "range", "identification", "western", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "barrows goldeneye range identification | western counterpart to common goldeneye, crescent face patch not round, limited range, mountain lakes",
+  },
+  {
+    title: "barrow's goldeneye: habitat",
+    content: "Barrow's goldeneye breed on mountain lakes and rivers in the Pacific Northwest and western Canada. In winter they move to coastal waters. Their limited range means most hunters will never encounter them — they are a specialty bird for western waterfowlers.",
+    content_type: "species-behavior",
+    tags: ["duck", "barrows-goldeneye", "habitat", "mountain", "coastal", "western", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "barrows goldeneye habitat | mountain lakes rivers Pacific Northwest, winter coastal waters, limited range, specialty western bird",
+  },
+
+  // Hooded Merganser
+  {
+    title: "hooded merganser: identification and habitat",
+    content: "Hooded merganser is the smallest merganser with a spectacular fan-shaped crest. Prefer wooded swamps, beaver ponds, and small streams. Nest in tree cavities. Often encountered unexpectedly while hunting wood ducks — they share the same habitat preferences.",
+    content_type: "species-behavior",
+    tags: ["duck", "hooded-merganser", "crest", "habitat", "swamp", "beaver-pond", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "hooded merganser identification habitat | smallest merganser, spectacular crest, wooded swamps, beaver ponds, encountered while hunting woodies",
+  },
+  {
+    title: "hooded merganser: feeding and flight",
+    content: "Hooded mergansers are fish-eating ducks — meat has a strong, fishy flavor that most hunters don't prefer. Fast, agile flyers through timber corridors. Their serrated bill is designed for gripping slippery fish. Despite not being prized table fare, they are beautiful birds and legal to harvest.",
+    content_type: "species-behavior",
+    tags: ["duck", "hooded-merganser", "feeding", "fish", "flight", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "hooded merganser feeding flight | fish-eating, strong flavor, fast agile in timber, serrated bill for gripping fish",
+  },
+
+  // Common Merganser
+  {
+    title: "common merganser: size and habitat",
+    content: "Common merganser is the largest merganser — nearly goose-sized. Prefer large rivers and lakes. Primarily fish-eating with a serrated bill for gripping prey. Often seen swimming in long lines together. Not traditionally targeted by duck hunters but legal in most states.",
+    content_type: "species-behavior",
+    tags: ["duck", "common-merganser", "size", "habitat", "fish", "rivers", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "common merganser size habitat | largest merganser goose-sized, large rivers and lakes, fish-eating, swim in long lines, legal but not targeted",
+  },
+  {
+    title: "common merganser: behavior",
+    content: "Common mergansers are powerful divers that pursue fish underwater. They can stay submerged for extended periods. In winter, they concentrate on open water below dams and in river tailwaters where fish are concentrated. Their large size makes them easy to identify in flight.",
+    content_type: "species-behavior",
+    tags: ["duck", "common-merganser", "diving", "fish", "winter", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "common merganser behavior | powerful divers, pursue fish underwater, concentrate below dams and tailwaters in winter, large easy to ID",
+  },
+
+  // Red-breasted Merganser
+  {
+    title: "red-breasted merganser: habitat and identification",
+    content: "Red-breasted mergansers prefer saltwater — coastal bays, estuaries, and the Great Lakes. Distinguished from common merganser by a shaggy, unkempt crest and thinner bill. Late migrants that arrive on wintering grounds well into the season.",
+    content_type: "species-behavior",
+    tags: ["duck", "red-breasted-merganser", "habitat", "saltwater", "coastal", "identification", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "red-breasted merganser habitat identification | prefer saltwater, coastal bays estuaries Great Lakes, shaggy crest, thinner bill, late migrants",
+  },
+  {
+    title: "red-breasted merganser: flock behavior",
+    content: "Red-breasted mergansers often raft up in large groups offshore. They are fish-eating ducks that feed cooperatively — groups will herd fish together before diving. Sea duck hunting for mergansers is a specialty pursuit, not mainstream duck hunting.",
+    content_type: "species-behavior",
+    tags: ["duck", "red-breasted-merganser", "flock", "feeding", "cooperative", "sea-duck", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "red-breasted merganser flock behavior | large rafts offshore, cooperative fish herding, sea duck specialty pursuit",
+  },
+
+  // Ruddy Duck
+  {
+    title: "ruddy duck: identification and behavior",
+    content: "Ruddy duck is a stiff-tailed duck that often holds its tail erect. Blue bill in breeding season. Very reluctant to fly — strongly prefers diving to escape danger rather than taking flight. This makes them unique among ducks and frustrating to flush.",
+    content_type: "species-behavior",
+    tags: ["duck", "ruddy-duck", "identification", "stiff-tail", "diving", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "ruddy duck identification behavior | stiff-tailed, holds tail erect, blue bill breeding, prefers diving over flying to escape, reluctant flyer",
+  },
+  {
+    title: "ruddy duck: habitat and feeding",
+    content: "Ruddy ducks prefer large marshes with dense emergent vegetation. Diving duck that feeds by straining mud through its bill, similar to shovelers but underwater. Not prized by hunters but legal to harvest. They are small, compact ducks that sit very low in the water.",
+    content_type: "species-behavior",
+    tags: ["duck", "ruddy-duck", "habitat", "marsh", "feeding", "diving", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "ruddy duck habitat feeding | large marshes, dense vegetation, strain mud through bill underwater, not prized, sit low in water",
+  },
+
+  // Long-tailed Duck (Oldsquaw)
+  {
+    title: "long-tailed duck: diving and habitat",
+    content: "Long-tailed duck (formerly Oldsquaw) is a sea duck that winters on the Great Lakes and coastal waters. One of the deepest diving ducks ever recorded — depths exceeding 200 feet. Prefer offshore open water, making them difficult to access for most hunters.",
+    content_type: "species-behavior",
+    tags: ["duck", "long-tailed-duck", "oldsquaw", "diving", "deep", "sea-duck", "habitat", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "long-tailed duck diving habitat | sea duck, Great Lakes and coastal, deepest diving duck 200+ feet, prefer offshore open water",
+  },
+  {
+    title: "long-tailed duck: flight and identification",
+    content: "Long-tailed ducks are very fast flyers. Males have distinctive long tail feathers. They are cold-weather specialists — completely at home in frigid northern waters and rough seas. Their vocalizations are loud and distinctive, carrying long distances over open water.",
+    content_type: "species-behavior",
+    tags: ["duck", "long-tailed-duck", "oldsquaw", "flight", "identification", "cold-weather", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "long-tailed duck flight identification | very fast flyers, long tail feathers males, cold-weather specialists, loud distinctive calls",
+  },
+
+  // Surf Scoter
+  {
+    title: "surf scoter: habitat and feeding",
+    content: "Surf scoter is a sea duck with a distinctive colorful bill. Winter on both coasts and the Great Lakes. Prefer rocky coastline and offshore waters. Feed by diving for mussels and clams, crushing shells with powerful jaw muscles.",
+    content_type: "species-behavior",
+    tags: ["duck", "surf-scoter", "sea-duck", "habitat", "coastal", "feeding", "mussels", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "surf scoter habitat feeding | sea duck, colorful bill, both coasts and Great Lakes, rocky coastline, dive for mussels and clams",
+  },
+  {
+    title: "surf scoter: hunting",
+    content: "Surf scoters are not traditionally hunted by most duck hunters — sea duck hunting is a specialty pursuit requiring boats, cold-weather gear, and knowledge of offshore waters. They decoy better than most sea ducks, responding to scoter decoy spreads set near rocky points and jetties.",
+    content_type: "species-behavior",
+    tags: ["duck", "surf-scoter", "sea-duck", "hunting", "specialty", "decoys", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "surf scoter hunting | specialty sea duck pursuit, need boats and cold gear, decoy near rocky points and jetties, better than most sea ducks",
+  },
+
+  // Common Eider
+  {
+    title: "common eider: size and range",
+    content: "Common eider is the largest duck in North America. Arctic breeding, winters on northern coastlines from Maine to Alaska. Prized historically for eiderdown insulation — the softest natural insulating material known. Very large and slow-flying with a distinctive flight silhouette.",
+    content_type: "species-behavior",
+    tags: ["duck", "common-eider", "size", "arctic", "range", "eiderdown", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "common eider size range | largest duck North America, Arctic breeding, winter northern coastlines, eiderdown insulation, large slow-flying",
+  },
+  {
+    title: "common eider: feeding and hunting tradition",
+    content: "Common eiders feed on mussels, crabs, and sea urchins by diving in coastal waters. Sea duck hunting for eiders is a long tradition in New England and eastern Canada — hunters use layout boats and large decoy spreads in rough ocean conditions. It is one of the most demanding forms of waterfowl hunting.",
+    content_type: "species-behavior",
+    tags: ["duck", "common-eider", "feeding", "mussels", "sea-duck", "hunting", "tradition", "behavior", "knowledge"],
+    species: "duck",
+    effective_date: null,
+    richText: "common eider feeding hunting | dive for mussels crabs sea urchins, New England and eastern Canada tradition, layout boats, rough ocean, demanding",
+  },
 ];
 
 // ============================================================
