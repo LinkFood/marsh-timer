@@ -13,10 +13,13 @@ interface MurmurationData {
 export function useMurmurationIndex() {
   const [data, setData] = useState<MurmurationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    async function fetch() {
+    async function fetchData() {
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
         const res = await window.fetch(`${SUPABASE_FUNCTIONS_URL}/hunt-murmuration-index`, {
           method: 'POST',
           headers: {
@@ -24,15 +27,22 @@ export function useMurmurationIndex() {
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
           },
           body: '{}',
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
         if (res.ok) setData(await res.json());
-      } catch { /* silent */ }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.warn('Request timed out: murmuration index');
+        }
+        setError(true);
+      }
       setLoading(false);
     }
-    fetch();
-    const interval = setInterval(fetch, 30 * 60 * 1000);
+    fetchData();
+    const interval = setInterval(fetchData, 30 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
-  return { data, loading };
+  return { data, loading, error };
 }

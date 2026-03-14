@@ -27,6 +27,7 @@ import { useDUMapReports } from "@/hooks/useDUMapReports";
 import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -120,7 +121,7 @@ const Index = () => {
   const [mapZoom, setMapZoom] = useState(3.5);
   const weatherTiles = useWeatherTiles();
   const countyGeoJSON = useCountyGeoJSON();
-  const nwsAlertsGeoJSON = useNWSAlerts();
+  const { alertsGeoJSON: nwsAlertsGeoJSON } = useNWSAlerts();
   const migrationFrontLine = useMigrationFront();
   const { geojson: duPinsGeoJSON } = useDUMapReports();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
@@ -381,32 +382,38 @@ const Index = () => {
   return (
     <div className="h-[100dvh] w-screen overflow-hidden relative">
       {/* Map background */}
-      <MapView
-        ref={mapRef}
-        species={species}
-        selectedState={selectedState}
-        onSelectState={handleSelectState}
-        onDrillUp={handleDrillUp}
-        showFlyways={showFlyways}
-        isSatellite={isSatellite}
-        show3D={show3D}
-        isMobile={isMobile}
-        weatherTiles={weatherTiles}
-        countyGeoJSON={countyGeoJSON}
-        sightingsGeoJSON={sightingsGeoJSON}
-        weatherCache={weatherCache}
-        onElevation={setElevation}
-        onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
-        mapMode={mapMode}
-        convergenceScores={activeConvergenceScores}
-        perfectStormStates={perfectStormStates}
-        nwsAlertsGeoJSON={nwsAlertsGeoJSON}
-        migrationFrontLine={migrationFrontLine}
-        scrubDate={scrubDate}
-        showRadar={showRadar}
-        showDUPins={showDUPins}
-        duPinsGeoJSON={duPinsGeoJSON}
-      />
+      <ErrorBoundary fallback={
+        <div className="flex items-center justify-center h-full w-full bg-background">
+          <p className="text-xs font-body text-white/40">Map failed to load. Refresh to try again.</p>
+        </div>
+      }>
+        <MapView
+          ref={mapRef}
+          species={species}
+          selectedState={selectedState}
+          onSelectState={handleSelectState}
+          onDrillUp={handleDrillUp}
+          showFlyways={showFlyways}
+          isSatellite={isSatellite}
+          show3D={show3D}
+          isMobile={isMobile}
+          weatherTiles={weatherTiles}
+          countyGeoJSON={countyGeoJSON}
+          sightingsGeoJSON={sightingsGeoJSON}
+          weatherCache={weatherCache}
+          onElevation={setElevation}
+          onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+          mapMode={mapMode}
+          convergenceScores={activeConvergenceScores}
+          perfectStormStates={perfectStormStates}
+          nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+          migrationFrontLine={migrationFrontLine}
+          scrubDate={scrubDate}
+          showRadar={showRadar}
+          showDUPins={showDUPins}
+          duPinsGeoJSON={duPinsGeoJSON}
+        />
+      </ErrorBoundary>
 
       {/* Header */}
       <HeaderBar
@@ -418,53 +425,59 @@ const Index = () => {
       />
 
       {/* Sidebar (desktop) / MobileSheet (mobile) */}
-      <MapActionProvider
-        flyTo={handleSelectState}
-        flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
-        setMapMode={setMapMode}
-      >
-        {isMobile ? (
-          <MobileSheet
-            level={level}
-            species={species}
-            stateAbbr={selectedState}
-            zoneSlug={zoneSlug}
-            onSelectState={handleSelectState}
-            onSelectZone={handleSelectZone}
-            onBack={handleBack}
-            onSwitchSpecies={handleSwitchSpecies}
-            favorites={speciesFavorites}
-            onToggleFavorite={toggleFavorite}
-            isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-            alerts={alerts}
-            weatherSnapshot={weatherCache}
-          />
-        ) : (
-          <Sidebar
-            level={level}
-            species={species}
-            stateAbbr={selectedState}
-            zoneSlug={zoneSlug}
-            onSelectState={handleSelectState}
-            onSelectZone={handleSelectZone}
-            onBack={handleBack}
-            onSwitchSpecies={handleSwitchSpecies}
-            favorites={speciesFavorites}
-            onToggleFavorite={toggleFavorite}
-            isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-            alerts={alerts}
-            weatherSnapshot={weatherCache}
-            convergenceTopStates={convergenceTopStates}
-            convergenceLoading={convergenceLoading}
-            convergenceScore={selectedConvergenceScore}
-            scoutReport={scoutReport}
-            scoutReportLoading={scoutReportLoading}
-            convergenceAlerts={convergenceAlerts}
-            expanded={sidebarExpanded}
-            onToggleExpanded={() => setSidebarExpanded(e => !e)}
-          />
-        )}
-      </MapActionProvider>
+      <ErrorBoundary fallback={
+        <div className="fixed top-12 left-0 bottom-0 w-[340px] z-20 glass-panel border-r border-white/[0.06] flex items-center justify-center">
+          <p className="text-xs font-body text-white/40">Sidebar failed to load. Refresh to try again.</p>
+        </div>
+      }>
+        <MapActionProvider
+          flyTo={handleSelectState}
+          flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
+          setMapMode={setMapMode}
+        >
+          {isMobile ? (
+            <MobileSheet
+              level={level}
+              species={species}
+              stateAbbr={selectedState}
+              zoneSlug={zoneSlug}
+              onSelectState={handleSelectState}
+              onSelectZone={handleSelectZone}
+              onBack={handleBack}
+              onSwitchSpecies={handleSwitchSpecies}
+              favorites={speciesFavorites}
+              onToggleFavorite={toggleFavorite}
+              isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+              alerts={alerts}
+              weatherSnapshot={weatherCache}
+            />
+          ) : (
+            <Sidebar
+              level={level}
+              species={species}
+              stateAbbr={selectedState}
+              zoneSlug={zoneSlug}
+              onSelectState={handleSelectState}
+              onSelectZone={handleSelectZone}
+              onBack={handleBack}
+              onSwitchSpecies={handleSwitchSpecies}
+              favorites={speciesFavorites}
+              onToggleFavorite={toggleFavorite}
+              isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+              alerts={alerts}
+              weatherSnapshot={weatherCache}
+              convergenceTopStates={convergenceTopStates}
+              convergenceLoading={convergenceLoading}
+              convergenceScore={selectedConvergenceScore}
+              scoutReport={scoutReport}
+              scoutReportLoading={scoutReportLoading}
+              convergenceAlerts={convergenceAlerts}
+              expanded={sidebarExpanded}
+              onToggleExpanded={() => setSidebarExpanded(e => !e)}
+            />
+          )}
+        </MapActionProvider>
+      </ErrorBoundary>
 
       {/* Map Mode Presets */}
       <MapPresets

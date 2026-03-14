@@ -23,6 +23,7 @@ const REFRESH_MS = 15 * 60 * 1000; // 15 minutes
 
 export function useNWSAlerts() {
   const [alertsGeoJSON, setAlertsGeoJSON] = useState<FeatureCollection | null>(null);
+  const [error, setError] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -30,12 +31,16 @@ export function useNWSAlerts() {
 
     async function fetchAlerts() {
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
         const res = await fetch(NWS_URL, {
           headers: {
             'User-Agent': 'DuckCountdown/1.0 (duckcountdown.com)',
             'Accept': 'application/geo+json',
           },
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
         if (!res.ok) return;
         const data = await res.json() as FeatureCollection;
 
@@ -60,8 +65,11 @@ export function useNWSAlerts() {
         }));
 
         setAlertsGeoJSON({ type: 'FeatureCollection', features });
-      } catch {
-        // Silently fail — NWS API can be flaky
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.warn('Request timed out: NWS alerts');
+        }
+        setError(true);
       }
     }
 
@@ -74,5 +82,5 @@ export function useNWSAlerts() {
     };
   }, []);
 
-  return alertsGeoJSON;
+  return { alertsGeoJSON, error };
 }

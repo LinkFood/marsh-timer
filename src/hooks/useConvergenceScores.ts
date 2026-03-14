@@ -27,6 +27,7 @@ export function useConvergenceScores() {
   const [scores, setScores] = useState<Map<string, ConvergenceScore>>(new Map());
   const [topStates, setTopStates] = useState<ConvergenceScore[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -35,11 +36,14 @@ export function useConvergenceScores() {
 
     async function fetchScores() {
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
         const date = todayISO();
         const res = await fetch(
           `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?date=eq.${date}&select=*&order=score.desc`,
-          { headers: { apikey: SUPABASE_KEY } }
+          { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
         );
+        clearTimeout(timeout);
         if (!res.ok) return;
         const data: any[] = await res.json();
 
@@ -65,8 +69,11 @@ export function useConvergenceScores() {
 
         setScores(map);
         setTopStates(ranked.slice(0, 10));
-      } catch {
-        // silent fail
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.warn('Request timed out: convergence scores');
+        }
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -79,5 +86,5 @@ export function useConvergenceScores() {
     return () => clearInterval(interval);
   }, []);
 
-  return { scores, topStates, loading };
+  return { scores, topStates, loading, error };
 }

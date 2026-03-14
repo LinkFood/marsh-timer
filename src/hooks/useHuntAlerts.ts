@@ -19,6 +19,7 @@ const REFRESH_MS = 60 * 60 * 1000; // 60 minutes
 export function useHuntAlerts() {
   const [alerts, setAlerts] = useState<HuntAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -32,7 +33,10 @@ export function useHuntAlerts() {
 
     async function fetchAlerts() {
       try {
-        const res = await fetch(url);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled) {
@@ -43,8 +47,11 @@ export function useHuntAlerts() {
               : [];
           setAlerts(list);
         }
-      } catch {
-        // Graceful — return empty, don't crash
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.warn('Request timed out: hunt alerts');
+        }
+        if (!cancelled) setError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -59,5 +66,5 @@ export function useHuntAlerts() {
     };
   }, []);
 
-  return { alerts, loading };
+  return { alerts, loading, error };
 }
