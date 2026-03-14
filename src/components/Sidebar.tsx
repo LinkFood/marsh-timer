@@ -25,6 +25,8 @@ import ConvergenceCard from "./cards/ConvergenceCard";
 import HuntLogForm from "./HuntLogForm";
 import HuntLogList from "./HuntLogList";
 import DUMigrationReports from "./DUMigrationReports";
+import RecallCard from "./RecallCard";
+import { useRecall } from "@/hooks/useRecall";
 
 type DrillLevel = "national" | "state" | "zone";
 
@@ -106,6 +108,7 @@ export default function Sidebar({
 }: SidebarProps) {
   const [activeTab, setActiveTab] = useState<TabId>("intel");
   const { user, session } = useAuth();
+  const { data: recalls, loading: recallLoading } = useRecall(stateAbbr, species);
   const { logs, loading: logsLoading, submitLog, deleteLog } = useHuntLogs(
     user?.id ?? null,
     session?.access_token ?? null
@@ -179,6 +182,7 @@ export default function Sidebar({
                 loading={convergenceLoading}
               />
               <DUMigrationReports />
+              <RecallCard recalls={recalls} loading={recallLoading} />
             </>
           ) : (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center">
@@ -219,6 +223,7 @@ export default function Sidebar({
           {isWaterfowl && (
             <DUMigrationReports currentState={stateAbbr} />
           )}
+          <RecallCard recalls={recalls} loading={recallLoading} />
           {!isWaterfowl && (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-4 text-center mb-3">
               <p className="text-xs text-white/50 font-body">
