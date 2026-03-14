@@ -102,19 +102,132 @@ function latLonToState(lat: number, lon: number): string | null {
 // METAR fetch
 // ---------------------------------------------------------------------------
 
-const METAR_URL = 'https://aviationweather.gov/api/data/metar?ids=all&format=json&taf=false&hours=3';
+// Key ASOS stations — 3-5 per state, covering major hunting regions + metro areas
+// ~200 stations total, fetched in batches of 40 (API ID limit per request)
+const METAR_STATIONS = [
+  // AL
+  'KBHM','KMOB','KHSV',
+  // AK
+  'PANC','PAFA',
+  // AZ
+  'KPHX','KTUS',
+  // AR — key duck state
+  'KLIT','KFSM','KJBR','KPBF',
+  // CA
+  'KLAX','KSFO','KSMF','KFAT',
+  // CO
+  'KDEN','KCOS',
+  // CT
+  'KBDL',
+  // DE
+  'KILG',
+  // FL
+  'KMIA','KJAX','KTLH','KTPA',
+  // GA
+  'KATL','KSAV',
+  // HI
+  'PHNL',
+  // ID
+  'KBOI',
+  // IL
+  'KORD','KSPI',
+  // IN
+  'KIND',
+  // IA
+  'KDSM','KDBQ',
+  // KS
+  'KICT','KTOP',
+  // KY
+  'KSDF','KLEX',
+  // LA — key duck state
+  'KMSY','KSHV','KLFT','KLCH',
+  // ME
+  'KPWM',
+  // MD
+  'KBWI',
+  // MA
+  'KBOS',
+  // MI
+  'KDTW','KGRR',
+  // MN
+  'KMSP','KDLH',
+  // MS — key duck state
+  'KJAN','KGPT','KGLH',
+  // MO
+  'KSTL','KMCI',
+  // MT
+  'KBIL','KGTF',
+  // NE
+  'KOMA','KLNK',
+  // NV
+  'KLAS','KRNO',
+  // NH
+  'KMHT',
+  // NJ
+  'KEWR',
+  // NM
+  'KABQ',
+  // NY
+  'KJFK','KBUF','KSYR',
+  // NC
+  'KRDU','KCLT',
+  // ND
+  'KFAR','KBIS',
+  // OH
+  'KCLE','KCMH',
+  // OK
+  'KOKC','KTUL',
+  // OR
+  'KPDX','KMED',
+  // PA
+  'KPHL','KPIT',
+  // RI
+  'KPVD',
+  // SC
+  'KCHS','KCAE',
+  // SD
+  'KFSD','KRAP',
+  // TN
+  'KBNA','KMEM',
+  // TX — key duck state
+  'KDFW','KIAH','KSAT','KCRP','KBPT',
+  // UT
+  'KSLC',
+  // VT
+  'KBTV',
+  // VA
+  'KRIC','KORF',
+  // WA
+  'KSEA','KGEG',
+  // WV
+  'KCRW',
+  // WI
+  'KMKE','KMSN',
+  // WY
+  'KCYS',
+];
+
+const METAR_BASE = 'https://aviationweather.gov/api/data/metar';
+const BATCH_SIZE = 40; // API handles ~40 IDs per request comfortably
 
 async function fetchMetars(): Promise<MetarObs[]> {
-  const res = await fetch(METAR_URL);
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`METAR API error ${res.status}: ${body.slice(0, 200)}`);
+  const allObs: MetarObs[] = [];
+
+  for (let i = 0; i < METAR_STATIONS.length; i += BATCH_SIZE) {
+    const batch = METAR_STATIONS.slice(i, i + BATCH_SIZE);
+    const ids = batch.join(',');
+    const url = `${METAR_BASE}?ids=${ids}&format=json&taf=false&hours=3`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (Array.isArray(data)) allObs.push(...data);
+    } catch (err) {
+      console.warn(`[hunt-weather-realtime] METAR batch fetch error: ${err}`);
+    }
   }
-  const data = await res.json();
-  if (!Array.isArray(data)) {
-    throw new Error('METAR API returned non-array response');
-  }
-  return data as MetarObs[];
+
+  return allObs;
 }
 
 // ---------------------------------------------------------------------------
