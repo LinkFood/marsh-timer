@@ -199,6 +199,8 @@ serve(async (req: Request) => {
                 tags: meta.tags,
                 state_abbr: meta.state_abbr,
                 metadata: meta.metadata,
+                species: null,
+                effective_date: dateStr || null,
                 embedding: embeddings[j],
               });
             }

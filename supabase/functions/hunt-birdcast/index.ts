@@ -295,6 +295,8 @@ serve(async (req) => {
                 tags: meta.tags,
                 state_abbr: meta.state_abbr,
                 metadata: meta.metadata,
+                species: 'duck',
+                effective_date: today || null,
                 embedding: embeddings[j],
               });
             }

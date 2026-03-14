@@ -247,6 +247,8 @@ serve(async (req) => {
         content_type: contentType,
         tags: ['migration', r.state.toLowerCase(), 'duck', tag],
         state_abbr: r.state,
+        species: 'duck',
+        effective_date: today,
       });
     }
 
