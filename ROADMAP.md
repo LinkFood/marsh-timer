@@ -61,10 +61,12 @@ Say "do 1" or "do 3" and I build it.
 - **Effort:** Medium (modify hunt-weather-watchdog to embed forecasts, not just actuals)
 - **Impact:** The brain can now compare prediction vs reality on every weather event.
 
-### 3. Sharpen Weather to Hourly
-**Front passages happen in hours, not days.** The weather watchdog currently does daily snapshots. Upgrade to detect specific front passages: temp drop rate, wind shift timing, barometric pressure rate-of-change. "Front crossed AR/MO border at 2am, 18°F drop in 4 hours."
-- **Effort:** Medium-High (3-4 hours, modify weather watchdog + new event detection)
-- **Impact:** Weather goes from "it got cold" to "here's exactly when and how fast the front hit."
+### 3. Real-Time Weather — The Nervous System (PRIORITY)
+**Weather is the chokehold. The brain can't "feel" fronts by checking once a day.**
+- Phase A (FREE): Build `hunt-weather-realtime` using NWS METAR/ASOS API. 950 airport stations, 1-minute observations, no auth. Cron every 15 minutes. Build front detection: rolling 3-hour window on temp rate-of-change, wind shift, pressure drop. Every detected front → embed → query-on-write → pattern link. **Prove the brain can feel weather changes.**
+- Phase B (PAID): If Phase A works, upgrade to Synoptic Data ($300-950/mo). 170,000 stations, 2-5 min latency, push streaming. The brain goes from 950 eyes to 170,000.
+- **Effort:** High (Phase A = 4-6 hours. Phase B = 2-3 hours after validation)
+- **Impact:** This is the difference between a research engine and the grandpa on the porch. Everything else depends on this.
 
 ### 4. Wire New Data Into Convergence Engine
 **The convergence score (0-100) doesn't know about water, photoperiod, or tides yet.** Wire USGS water levels, photoperiod thresholds, and tidal patterns into the scoring formula. When water + weather + light + migration all converge, the score should reflect it.
