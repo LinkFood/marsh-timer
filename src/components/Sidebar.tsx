@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Crosshair,
   MessageSquare,
@@ -12,6 +12,8 @@ import type { Species } from "@/data/types";
 import type { HuntAlert } from "@/hooks/useHuntAlerts";
 import { useAuth } from "@/hooks/useAuth";
 import { useHuntLogs } from "@/hooks/useHuntLogs";
+import { getSeasonsForSpecies, getPrimarySeasonForState } from "@/data/seasons";
+import { getSeasonStatus } from "@/lib/seasonUtils";
 import NationalView from "./NationalView";
 import StateView from "./StateView";
 import ZoneView from "./ZoneView";
@@ -109,6 +111,22 @@ export default function Sidebar({
     session?.access_token ?? null
   );
 
+  // Detect off-season: no open or soon seasons for this species
+  const isOffSeason = useMemo(() => {
+    const now = new Date();
+    const all = getSeasonsForSpecies(species);
+    const seen = new Set<string>();
+    for (const s of all) {
+      if (seen.has(s.abbreviation)) continue;
+      seen.add(s.abbreviation);
+      const primary = getPrimarySeasonForState(species, s.abbreviation);
+      if (!primary) continue;
+      const status = getSeasonStatus(primary, now);
+      if (status === "open" || status === "soon") return false;
+    }
+    return true;
+  }, [species]);
+
   // Reset to intel tab when drill level changes
   useEffect(() => {
     setActiveTab("intel");
@@ -176,6 +194,7 @@ export default function Sidebar({
             onToggleFavorite={onToggleFavorite}
             alerts={alerts}
             weatherSnapshot={weatherSnapshot}
+            convergenceTopStates={convergenceTopStates}
           />
         </>
       );
@@ -304,7 +323,7 @@ export default function Sidebar({
       <div className="h-10 flex items-center px-3 border-b border-white/[0.06] shrink-0">
         {level === "national" ? (
           <span className="text-xs font-display tracking-widest text-white/60">
-            {species.toUpperCase()} INTEL
+            {isOffSeason ? "OFF-SEASON INTEL" : `${species.toUpperCase()} INTEL`}
           </span>
         ) : (
           <button

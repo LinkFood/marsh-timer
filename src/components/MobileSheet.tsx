@@ -183,6 +183,7 @@ export default function MobileSheet({
               onToggleFavorite={onToggleFavorite}
               alerts={alerts}
               weatherSnapshot={weatherSnapshot}
+              convergenceTopStates={convergenceTopStates}
             />
           </>
         );

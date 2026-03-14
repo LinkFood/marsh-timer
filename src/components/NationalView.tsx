@@ -13,6 +13,12 @@ interface NationalViewProps {
   onToggleFavorite: (species: Species, abbr: string) => void;
   alerts?: HuntAlert[];
   weatherSnapshot?: Map<string, { temp: number; wind: number }>;
+  convergenceTopStates?: Array<{
+    state_abbr: string;
+    score: number;
+    reasoning: string;
+    national_rank: number;
+  }>;
 }
 
 export default function NationalView({
@@ -22,6 +28,7 @@ export default function NationalView({
   onToggleFavorite,
   alerts,
   weatherSnapshot,
+  convergenceTopStates,
 }: NationalViewProps) {
   const [, setTick] = useState(0);
 
@@ -107,6 +114,9 @@ export default function NationalView({
         <span className="text-[10px] uppercase tracking-[0.15em] text-white/40 font-body font-semibold">
           Off-Season Intel
         </span>
+        <p className="text-[10px] font-body text-cyan-400/40 mt-0.5">
+          No seasons open — the brain is still watching
+        </p>
 
         {/* Next season countdown */}
         {nextOpening && (
@@ -159,8 +169,27 @@ export default function NationalView({
           </div>
         )}
 
+        {/* Convergence pattern activity */}
+        {convergenceTopStates && convergenceTopStates.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+              Pattern Activity
+            </p>
+            {convergenceTopStates.slice(0, 5).map((s) => (
+              <button
+                key={s.state_abbr}
+                onClick={() => onSelectState(s.state_abbr)}
+                className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] transition-colors text-left"
+              >
+                <span className="text-xs text-white/70">{s.state_abbr}</span>
+                <span className="text-xs font-mono text-cyan-400/70">{s.score}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Fallback if no data at all */}
-        {!nextOpening && topAlerts.length === 0 && scoutingStates.length === 0 && (
+        {!nextOpening && topAlerts.length === 0 && scoutingStates.length === 0 && (!convergenceTopStates || convergenceTopStates.length === 0) && (
           <span className="text-[10px] text-white/30 font-body">
             All {sorted.length} seasons closed
           </span>
