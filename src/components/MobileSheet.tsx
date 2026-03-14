@@ -298,12 +298,20 @@ export default function MobileSheet({
       >
         {activeTab === "info" && infoContent}
         {activeTab === "chat" && (
-          <ErrorBoundary fallback={
+          <ErrorBoundary fallback={(reset) => (
             <div className="flex flex-col items-center justify-center h-full text-white/40 p-4">
               <p className="text-xs font-body mb-2">Brain temporarily unavailable</p>
-              <p className="text-[10px]">Try again in a moment</p>
+              <button
+                onClick={() => {
+                  try { sessionStorage.removeItem('hunt-chat-messages'); } catch {}
+                  reset();
+                }}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 mt-1"
+              >
+                Retry
+              </button>
             </div>
-          }>
+          )}>
             <HuntChat species={species} stateAbbr={stateAbbr} isMobile={true} />
           </ErrorBoundary>
         )}

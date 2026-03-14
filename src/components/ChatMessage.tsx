@@ -134,8 +134,9 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     );
   }
 
-  const brainCards = message.cards?.filter(c => c.type === 'pattern' || c.type === 'source') || [];
-  const otherCards = message.cards?.filter(c => c.type !== 'pattern' && c.type !== 'source') || [];
+  const cards = Array.isArray(message.cards) ? message.cards : [];
+  const brainCards = cards.filter(c => c.type === 'pattern' || c.type === 'source');
+  const otherCards = cards.filter(c => c.type !== 'pattern' && c.type !== 'source');
 
   return (
     <div className="flex items-start gap-2 mb-3 animate-in fade-in duration-300">
