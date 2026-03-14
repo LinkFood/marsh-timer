@@ -233,6 +233,8 @@ serve(async (req) => {
               content: pattern,
               content_type: contentType,
               tags: ["duck", stateName.toLowerCase(), "weather", "migration", "pattern"],
+              species: "duck",
+              effective_date: null,
               embedding,
             }, { onConflict: 'title' });
 

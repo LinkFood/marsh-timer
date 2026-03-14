@@ -119,6 +119,8 @@ serve(async (req: Request) => {
         content_type: 'hunt_log',
         title: `Hunt Log: ${species} in ${state_abbr} on ${date}`,
         content: embeddingText,
+        species: species || null,
+        effective_date: date || null,
         embedding,
         metadata: { hunt_log_id: log.id, user_id: userId, species, state_abbr, date },
       });

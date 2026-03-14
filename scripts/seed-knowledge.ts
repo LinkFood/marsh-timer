@@ -105,6 +105,8 @@ async function upsertKnowledgeBatch(entries: {
     content: e.content,
     content_type: e.content_type,
     tags: e.tags,
+    species: e.species,
+    effective_date: e.effective_date,
     embedding: JSON.stringify(e.embedding),
   }));
 
@@ -123,6 +125,8 @@ interface PreparedEntry {
   content: string;
   content_type: string;
   tags: string[];
+  species: string | null;
+  effective_date: string | null;
   richText: string;
 }
 
@@ -135,6 +139,8 @@ async function processBatch(batch: PreparedEntry[]): Promise<number> {
     content: e.content,
     content_type: e.content_type,
     tags: e.tags,
+    species: e.species,
+    effective_date: e.effective_date,
     embedding: embeddings[i],
   }));
 
@@ -157,6 +163,8 @@ async function seedFacts() {
         content: fact,
         content_type: "fact",
         tags: [row.species_id, row.state_name.toLowerCase()],
+        species: row.species_id,
+        effective_date: null,
         richText: `${title} | ${row.species_id} | ${row.state_name} | ${fact}`,
       });
     }
@@ -196,6 +204,8 @@ async function seedRegLinks() {
       content,
       content_type: "regulation",
       tags: [row.species_id, row.state_abbr.toLowerCase(), "regulation"],
+      species: row.species_id,
+      effective_date: null,
       richText: `${title} | regulation link | ${row.species_id}, ${row.state_abbr} | ${content}`,
     };
   });
