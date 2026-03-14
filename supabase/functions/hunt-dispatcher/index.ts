@@ -153,7 +153,7 @@ Classify the user's message intent and extract relevant parameters.
         result = await handleSeasonInfo(supabase, resolvedSpecies, resolvedState, query);
         break;
       case 'search':
-        result = await handleSearch(supabase, query);
+        result = await handleSearch(supabase, query, resolvedSpecies);
         break;
       default:
         result = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
@@ -463,8 +463,10 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
   };
 }
 
-async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, query: string) {
+async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, query: string, species: string = 'duck') {
   // Hybrid search: vector via hunt-search + keyword fallback
+  // Prepend species to query for better vector match on species-specific knowledge
+  const searchQuery = species !== 'duck' ? `${species} ${query}` : query;
   let vectorContext = '';
   const cards: unknown[] = [];
   try {
@@ -475,7 +477,7 @@ async function handleSearch(supabase: ReturnType<typeof createSupabaseClient>, q
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
       },
-      body: JSON.stringify({ query, limit: 8 }),
+      body: JSON.stringify({ query: searchQuery, limit: 8 }),
     });
     if (searchRes.ok) {
       const searchData = await searchRes.json();
@@ -556,7 +558,7 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
   const response = await callClaude({
     model: CLAUDE_MODELS.haiku,
     system: `You are the DuckCountdown AI — a friendly hunting season assistant. You help with US hunting seasons, weather, solunar data, and general hunting questions.
-Current context: species=${species}, state=${stateAbbr || 'none'}.
+Current context: species=${species}, state=${stateAbbr || 'none'}.${species !== 'duck' ? `\nThe user is asking about ${species} hunting. You have species-specific knowledge including ${species === 'deer' ? 'rut timing, moon phase correlations, cold snap triggers, barometric pressure effects, and wind patterns' : species === 'turkey' ? 'gobble peak timing, weather sensitivity, roosting behavior, and calling strategies' : species === 'dove' ? 'migration timing, field rotation patterns, weather windows, and wind thresholds' : `${species}-specific patterns and behavior`} for their state and region.` : ''}
 ${conversationContext}
 Be concise and helpful. 2-3 sentences max for casual chat.\nNever include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.`,
     messages: [{ role: 'user', content: message }],
