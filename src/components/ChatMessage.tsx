@@ -1,6 +1,5 @@
 import type { ReactNode, ReactElement } from 'react';
 import type { ChatMessage as ChatMessageType, ChatCard } from '@/hooks/useChat';
-import { useMapAction } from '@/contexts/MapActionContext';
 import WeatherCard from './cards/WeatherCard';
 import SeasonCard from './cards/SeasonCard';
 import SolunarCard from './cards/SolunarCard';
@@ -8,6 +7,7 @@ import AlertCard from './cards/AlertCard';
 import ConvergenceCard from './cards/ConvergenceCard';
 import PatternCard from './cards/PatternCard';
 import SourceCard from './cards/SourceCard';
+import PatternLinksCard from './cards/PatternLinksCard';
 import { MapPin } from 'lucide-react';
 
 interface ChatMessageProps {
@@ -85,13 +85,14 @@ function renderCard(card: ChatCard, index: number) {
       return <PatternCard key={index} data={card.data} />;
     case 'source':
       return <SourceCard key={index} data={card.data} />;
+    case 'pattern-links':
+      return <PatternLinksCard key={index} data={card.data as any} />;
     default:
       return null;
   }
 }
 
 export default function ChatMessage({ message }: ChatMessageProps) {
-  const { flyTo } = useMapAction();
   const isUser = message.role === 'user';
 
   return (
@@ -109,13 +110,10 @@ export default function ChatMessage({ message }: ChatMessageProps) {
           <div className="chat-markdown leading-relaxed">{parseMarkdown(message.content)}</div>
         )}
         {message.mapAction && (
-          <button
-            onClick={() => flyTo(message.mapAction!.target)}
-            className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-full text-xs font-medium bg-cyan-400/10 text-cyan-400 hover:bg-cyan-400/20 transition-colors"
-          >
+          <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-cyan-400/50">
             <MapPin className="w-3 h-3" />
-            View {message.mapAction.target} on map
-          </button>
+            <span>Viewing {message.mapAction.target} on map</span>
+          </div>
         )}
         {message.cards && message.cards.length > 0 && (
           <div className="mt-2 space-y-2">

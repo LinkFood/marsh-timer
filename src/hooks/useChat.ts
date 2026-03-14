@@ -12,11 +12,15 @@ export interface ChatMessage {
 }
 
 export interface ChatCard {
-  type: 'weather' | 'season' | 'solunar' | 'alert' | 'convergence' | 'pattern' | 'source';
+  type: 'weather' | 'season' | 'solunar' | 'alert' | 'convergence' | 'pattern' | 'source' | 'pattern-links';
   data: Record<string, unknown>;
 }
 
-export function useChat(species: string, stateAbbr: string | null) {
+export function useChat(
+  species: string,
+  stateAbbr: string | null,
+  onMapAction?: (action: { type: string; target: string }) => void
+) {
   const { session } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,6 +74,19 @@ export function useChat(species: string, stateAbbr: string | null) {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, assistantMsg]);
+
+      // Auto-trigger map actions
+      if (data.mapAction && onMapAction) {
+        onMapAction(data.mapAction);
+      }
+
+      // Infer mode from card types
+      const cardTypes = (data.cards || []).map((c: any) => c.type);
+      if (cardTypes.includes('weather')) {
+        onMapAction?.({ type: 'setMode', target: 'weather' });
+      } else if (cardTypes.includes('pattern') || cardTypes.includes('pattern-links')) {
+        onMapAction?.({ type: 'setMode', target: 'intel' });
+      }
     } catch (err) {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -81,7 +98,7 @@ export function useChat(species: string, stateAbbr: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [loading, session, species, stateAbbr]);
+  }, [loading, session, species, stateAbbr, onMapAction]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
