@@ -27,6 +27,7 @@ import HuntLogForm from "./HuntLogForm";
 import HuntLogList from "./HuntLogList";
 import DUMigrationReports from "./DUMigrationReports";
 import RecallCard from "./RecallCard";
+import ErrorBoundary from "./ErrorBoundary";
 import { useRecall } from "@/hooks/useRecall";
 
 type DrillLevel = "national" | "state" | "zone";
@@ -403,7 +404,14 @@ export default function Sidebar({
       >
         {activeTab === "intel" && renderIntelContent()}
         {activeTab === "chat" && (
-          <HuntChat species={species} stateAbbr={stateAbbr} isMobile={false} />
+          <ErrorBoundary fallback={
+            <div className="flex flex-col items-center justify-center h-full text-white/40 p-4">
+              <p className="text-xs font-body mb-2">Brain temporarily unavailable</p>
+              <p className="text-[10px]">Try again in a moment</p>
+            </div>
+          }>
+            <HuntChat species={species} stateAbbr={stateAbbr} isMobile={false} />
+          </ErrorBoundary>
         )}
         {activeTab === "alerts" && renderAlertsContent()}
         {activeTab === "log" && renderLogContent()}

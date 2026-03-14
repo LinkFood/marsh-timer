@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -24,16 +24,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 const App = () => (
   <BrowserRouter>
-    <AuthGate>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/:first" element={<Index />} />
-        <Route path="/:first/:second" element={<Index />} />
-        <Route path="/:first/:second/:third" element={<Index />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </AuthGate>
+    <AuthProvider>
+      <AuthGate>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/:first" element={<Index />} />
+          <Route path="/:first/:second" element={<Index />} />
+          <Route path="/:first/:second/:third" element={<Index />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AuthGate>
+    </AuthProvider>
   </BrowserRouter>
 );
 

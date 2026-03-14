@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -9,7 +10,18 @@ interface HuntProfile {
   avatar_url: string | null;
 }
 
-export function useAuth() {
+interface AuthContextValue {
+  user: User | null;
+  session: Session | null;
+  profile: HuntProfile | null;
+  loading: boolean;
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<HuntProfile | null>(null);
@@ -72,5 +84,17 @@ export function useAuth() {
     setProfile(null);
   }, []);
 
-  return { user, session, profile, loading, signIn, signOut };
+  return (
+    <AuthContext.Provider value={{ user, session, profile, loading, signIn, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return ctx;
 }

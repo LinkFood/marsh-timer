@@ -8,6 +8,7 @@ import NationalView from "./NationalView";
 import StateView from "./StateView";
 import ZoneView from "./ZoneView";
 import HuntChat from "./HuntChat";
+import ErrorBoundary from "./ErrorBoundary";
 import HuntAlerts from "./HuntAlerts";
 import HuntLogForm from "./HuntLogForm";
 import HuntLogList from "./HuntLogList";
@@ -297,7 +298,14 @@ export default function MobileSheet({
       >
         {activeTab === "info" && infoContent}
         {activeTab === "chat" && (
-          <HuntChat species={species} stateAbbr={stateAbbr} isMobile={true} />
+          <ErrorBoundary fallback={
+            <div className="flex flex-col items-center justify-center h-full text-white/40 p-4">
+              <p className="text-xs font-body mb-2">Brain temporarily unavailable</p>
+              <p className="text-[10px]">Try again in a moment</p>
+            </div>
+          }>
+            <HuntChat species={species} stateAbbr={stateAbbr} isMobile={true} />
+          </ErrorBoundary>
         )}
         {activeTab === "log" && logContent}
       </div>
