@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // NWS API supports filtering by event — fetch only hunting-relevant alerts
 // Split into batches to keep URLs under length limits
@@ -48,6 +49,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     console.log('[hunt-nws-monitor] Starting NWS alert scan');
 
@@ -86,11 +88,18 @@ serve(async (req) => {
         .lt('expires', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
       console.log(`[hunt-nws-monitor] No relevant alerts. Cleaned ${expiredCount ?? 0} expired.`);
-      return successResponse(req, {
+      const summary = {
         new_alerts: 0,
         total_active: 0,
         expired_cleaned: expiredCount ?? 0,
+      };
+      await logCronRun({
+        functionName: 'hunt-nws-monitor',
+        status: 'success',
+        summary,
+        durationMs: Date.now() - startTime,
       });
+      return successResponse(req, summary);
     }
 
     const supabase = createSupabaseClient();
@@ -165,9 +174,21 @@ serve(async (req) => {
     };
 
     console.log('[hunt-nws-monitor] Complete:', result);
+    await logCronRun({
+      functionName: 'hunt-nws-monitor',
+      status: 'success',
+      summary: result,
+      durationMs: Date.now() - startTime,
+    });
     return successResponse(req, result);
   } catch (error) {
     console.error('[hunt-nws-monitor]', error);
+    await logCronRun({
+      functionName: 'hunt-nws-monitor',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });

@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { generateEmbedding, batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -469,6 +470,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
     const trigger = body.trigger || 'daily';
@@ -639,9 +641,21 @@ serve(async (req) => {
     };
 
     console.log('[hunt-convergence-engine] Complete:', JSON.stringify(summary));
+    await logCronRun({
+      functionName: 'hunt-convergence-engine',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-convergence-engine] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-convergence-engine',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });

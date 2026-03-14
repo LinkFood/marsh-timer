@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -188,6 +189,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     console.log('[hunt-birdcast] Starting BirdCast scraper run');
 
@@ -345,9 +347,22 @@ serve(async (req) => {
     };
     console.log('[hunt-birdcast] Complete:', JSON.stringify(summary));
 
+    await logCronRun({
+      functionName: 'hunt-birdcast',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-birdcast] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-birdcast',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });

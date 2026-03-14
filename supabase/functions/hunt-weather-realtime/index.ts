@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -331,6 +332,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     console.log('[hunt-weather-realtime] Starting METAR observation scan');
 
@@ -417,6 +419,12 @@ serve(async (req) => {
         run_at: new Date().toISOString(),
       };
       console.log('[hunt-weather-realtime] No significant events detected');
+      await logCronRun({
+        functionName: 'hunt-weather-realtime',
+        status: 'success',
+        summary,
+        durationMs: Date.now() - startTime,
+      });
       return successResponse(req, summary);
     }
 
@@ -543,9 +551,22 @@ serve(async (req) => {
     };
     console.log(`[hunt-weather-realtime] Complete: Scanned ${stationObs.size} stations, detected ${allEvents.length} events in ${statesWithEvents.size} states`);
 
+    await logCronRun({
+      functionName: 'hunt-weather-realtime',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-weather-realtime] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-weather-realtime',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });

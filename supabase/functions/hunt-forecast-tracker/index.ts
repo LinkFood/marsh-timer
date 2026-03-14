@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,6 +27,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     const yesterday = getYesterday();
     console.log(`[hunt-forecast-tracker] Scoring forecast accuracy for ${yesterday}`);
@@ -249,9 +251,22 @@ serve(async (req) => {
 
     console.log(`[hunt-forecast-tracker] Scored ${comparisons.length} states. Average accuracy: ${avgScore}/100. Worst: ${worst.stateAbbr} (${worst.score}/100).`);
 
+    await logCronRun({
+      functionName: 'hunt-forecast-tracker',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-forecast-tracker] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-forecast-tracker',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });

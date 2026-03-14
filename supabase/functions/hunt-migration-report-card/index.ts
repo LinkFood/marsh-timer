@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,6 +39,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     const today = getToday();
     const sevenDaysAgo = daysAgo(7);
@@ -236,9 +238,22 @@ serve(async (req) => {
 
     console.log(`[hunt-migration-report-card] Graded ${embedTexts.length} states. Confirmed:${gradeCounts.confirmed} Missed:${gradeCounts.missed} Surprise:${gradeCounts.surprise} Quiet:${gradeCounts.quiet}`);
 
+    await logCronRun({
+      functionName: 'hunt-migration-report-card',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-migration-report-card] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-migration-report-card',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });

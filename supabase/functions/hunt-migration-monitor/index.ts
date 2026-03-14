@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 const LOG_PREFIX = '[hunt-migration-monitor]';
 
@@ -60,6 +61,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     const ebirdKey = Deno.env.get('EBIRD_API_KEY');
     if (!ebirdKey) return errorResponse(req, 'EBIRD_API_KEY not configured', 500);
@@ -306,9 +308,21 @@ serve(async (req) => {
     };
 
     console.log(`${LOG_PREFIX} Done: ${JSON.stringify(summary)}`);
+    await logCronRun({
+      functionName: 'hunt-migration-monitor',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
     return successResponse(req, summary);
   } catch (err) {
     console.log(`${LOG_PREFIX} Fatal error: ${err.message}`);
+    await logCronRun({
+      functionName: 'hunt-migration-monitor',
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, err.message, 500);
   }
 });

@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_NAMES } from '../_shared/states.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -107,6 +108,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     const supabase = createSupabaseClient();
     const now = new Date();
@@ -234,12 +236,25 @@ serve(async (req) => {
 
     console.log(`[hunt-scout-report] Done: ${briefsGenerated} generated, ${briefsDelivered} delivered`);
 
-    return successResponse(req, {
+    const summary = {
       briefs_generated: briefsGenerated,
       briefs_delivered: briefsDelivered,
+    };
+    await logCronRun({
+      functionName: 'hunt-scout-report',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
     });
+    return successResponse(req, summary);
   } catch (err) {
     console.error('[hunt-scout-report] Fatal error:', err);
+    await logCronRun({
+      functionName: 'hunt-scout-report',
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, err instanceof Error ? err.message : 'Unknown error', 500);
   }
 });

@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS, STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 const NASA_POWER_BASE = 'https://power.larc.nasa.gov/api/temporal/daily/point';
 const NASA_PARAMS = 'T2M,T2M_MAX,T2M_MIN,ALLSKY_SFC_SW_DWN,CLOUD_AMT,WS10M,PS,PRECTOTCORR';
@@ -231,10 +232,22 @@ serve(async (req: Request) => {
     };
 
     console.log(`[hunt-nasa-power] Done.`, JSON.stringify(result));
+    await logCronRun({
+      functionName: 'hunt-nasa-power',
+      status: 'success',
+      summary: result,
+      durationMs: Date.now() - startTime,
+    });
     return successResponse(req, result);
 
   } catch (err) {
     console.error('[hunt-nasa-power] Fatal error:', err);
+    await logCronRun({
+      functionName: 'hunt-nasa-power',
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, err instanceof Error ? err.message : 'Internal error', 500);
   }
 });

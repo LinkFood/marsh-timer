@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,6 +47,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     const { weekStart, weekEnd } = getWeekRange();
     console.log(`[hunt-convergence-report-card] Grading week ${weekStart} to ${weekEnd}`);
@@ -267,9 +269,22 @@ serve(async (req) => {
 
     console.log(`[hunt-convergence-report-card] Graded ${states.length} states. Tracking: ${tracking}, Over: ${over}, Under: ${under}. Embedded: ${embeddingsCreated}.`);
 
+    await logCronRun({
+      functionName: 'hunt-convergence-report-card',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-convergence-report-card] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-convergence-report-card',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });
