@@ -1,0 +1,438 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { handleCors } from '../_shared/cors.ts';
+import { successResponse, errorResponse } from '../_shared/response.ts';
+import { createSupabaseClient } from '../_shared/supabase.ts';
+import { STATE_CENTROIDS } from '../_shared/states.ts';
+import { batchEmbed } from '../_shared/embedding.ts';
+import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface MetarObs {
+  icaoId: string;
+  lat: number;
+  lon: number;
+  temp: number | null;     // Celsius
+  dewp: number | null;     // Celsius
+  wdir: number | null;     // degrees (0-360) or "VRB"
+  wspd: number | null;     // knots
+  altim: number | null;    // inches Hg
+  visib: number | null;    // statute miles
+  obsTime: string;         // ISO 8601
+  rawOb?: string;
+}
+
+interface RealtimeEvent {
+  station: string;
+  state_abbr: string;
+  event_type: string;
+  details: string;
+  severity: 'high' | 'medium' | 'low';
+  metadata: Record<string, unknown>;
+  timestamp: string;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Celsius to Fahrenheit */
+function cToF(c: number): number {
+  return Math.round((c * 9 / 5 + 32) * 10) / 10;
+}
+
+/** Knots to MPH */
+function ktsToMph(kts: number): number {
+  return Math.round(kts * 1.15078 * 10) / 10;
+}
+
+/** Inches of Hg to millibars */
+function inHgToMb(inHg: number): number {
+  return Math.round(inHg * 33.8639 * 10) / 10;
+}
+
+/** Compass direction from degrees */
+function degreesToCompass(deg: number): string {
+  if (deg >= 337 || deg < 23) return 'N';
+  if (deg < 68) return 'NE';
+  if (deg < 113) return 'E';
+  if (deg < 158) return 'SE';
+  if (deg < 203) return 'S';
+  if (deg < 248) return 'SW';
+  if (deg < 293) return 'W';
+  return 'NW';
+}
+
+/** Angular difference between two compass bearings (0-180) */
+function windShiftDegrees(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
+/**
+ * Find the closest US state for a lat/lon using haversine distance
+ * to state centroids. Returns null if the station is too far from
+ * any state centroid (>500km — likely non-CONUS/non-US).
+ */
+function latLonToState(lat: number, lon: number): string | null {
+  let bestAbbr: string | null = null;
+  let bestDist = Infinity;
+
+  for (const [abbr, centroid] of Object.entries(STATE_CENTROIDS)) {
+    const dLat = (lat - centroid.lat) * Math.PI / 180;
+    const dLon = (lon - centroid.lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat * Math.PI / 180) * Math.cos(centroid.lat * Math.PI / 180) *
+      Math.sin(dLon / 2) ** 2;
+    const dist = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 6371; // km
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestAbbr = abbr;
+    }
+  }
+
+  // Skip stations too far from any US state centroid (non-US stations)
+  if (bestDist > 500) return null;
+  return bestAbbr;
+}
+
+// ---------------------------------------------------------------------------
+// METAR fetch
+// ---------------------------------------------------------------------------
+
+const METAR_URL = 'https://aviationweather.gov/api/data/metar?ids=all&format=json&taf=false&hours=3';
+
+async function fetchMetars(): Promise<MetarObs[]> {
+  const res = await fetch(METAR_URL);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`METAR API error ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  if (!Array.isArray(data)) {
+    throw new Error('METAR API returned non-array response');
+  }
+  return data as MetarObs[];
+}
+
+// ---------------------------------------------------------------------------
+// Change detection
+// ---------------------------------------------------------------------------
+
+function detectChanges(
+  station: string,
+  stateAbbr: string,
+  recent: MetarObs,
+  older: MetarObs,
+): RealtimeEvent[] {
+  const events: RealtimeEvent[] = [];
+
+  // Time gap in hours between the two observations
+  const recentTime = new Date(recent.obsTime).getTime();
+  const olderTime = new Date(older.obsTime).getTime();
+  const hoursGap = (recentTime - olderTime) / (1000 * 60 * 60);
+  if (hoursGap < 1 || hoursGap > 6) return events; // need 1-6 hour window
+
+  const hoursLabel = `${hoursGap.toFixed(1)}h`;
+
+  // --- Temperature drop ---
+  if (recent.temp !== null && older.temp !== null) {
+    const recentF = cToF(recent.temp);
+    const olderF = cToF(older.temp);
+    const tempDrop = olderF - recentF;
+
+    if (tempDrop > 15) {
+      events.push({
+        station, state_abbr: stateAbbr,
+        event_type: 'major-temp-drop',
+        details: `Temp dropped ${Math.round(tempDrop)}F in ${hoursLabel}: ${Math.round(olderF)}F -> ${Math.round(recentF)}F`,
+        severity: 'high',
+        metadata: { temp_drop_f: Math.round(tempDrop), from_f: Math.round(olderF), to_f: Math.round(recentF), hours: hoursGap },
+        timestamp: recent.obsTime,
+      });
+    } else if (tempDrop > 8) {
+      events.push({
+        station, state_abbr: stateAbbr,
+        event_type: 'temp-drop',
+        details: `Temp dropped ${Math.round(tempDrop)}F in ${hoursLabel}: ${Math.round(olderF)}F -> ${Math.round(recentF)}F`,
+        severity: 'medium',
+        metadata: { temp_drop_f: Math.round(tempDrop), from_f: Math.round(olderF), to_f: Math.round(recentF), hours: hoursGap },
+        timestamp: recent.obsTime,
+      });
+    }
+  }
+
+  // --- Wind direction shift ---
+  if (recent.wdir !== null && older.wdir !== null &&
+      typeof recent.wdir === 'number' && typeof older.wdir === 'number') {
+    const shift = windShiftDegrees(older.wdir, recent.wdir);
+    if (shift > 90) {
+      events.push({
+        station, state_abbr: stateAbbr,
+        event_type: 'wind-shift',
+        details: `Wind shifted ${Math.round(shift)} deg in ${hoursLabel}: ${degreesToCompass(older.wdir)} -> ${degreesToCompass(recent.wdir)}`,
+        severity: shift > 135 ? 'high' : 'medium',
+        metadata: { shift_degrees: Math.round(shift), from_dir: older.wdir, to_dir: recent.wdir, hours: hoursGap },
+        timestamp: recent.obsTime,
+      });
+    }
+  }
+
+  // --- Pressure changes ---
+  if (recent.altim !== null && older.altim !== null) {
+    const recentMb = inHgToMb(recent.altim);
+    const olderMb = inHgToMb(older.altim);
+    const pressureDelta = recentMb - olderMb;
+
+    if (pressureDelta < -3) {
+      events.push({
+        station, state_abbr: stateAbbr,
+        event_type: 'pressure-drop',
+        details: `Pressure dropped ${Math.abs(pressureDelta).toFixed(1)}mb in ${hoursLabel}: ${olderMb.toFixed(0)}mb -> ${recentMb.toFixed(0)}mb`,
+        severity: pressureDelta < -6 ? 'high' : 'medium',
+        metadata: { pressure_change_mb: Math.round(pressureDelta * 10) / 10, from_mb: olderMb, to_mb: recentMb, hours: hoursGap },
+        timestamp: recent.obsTime,
+      });
+    } else if (pressureDelta > 3) {
+      events.push({
+        station, state_abbr: stateAbbr,
+        event_type: 'pressure-rise',
+        details: `Pressure rose ${pressureDelta.toFixed(1)}mb in ${hoursLabel}: ${olderMb.toFixed(0)}mb -> ${recentMb.toFixed(0)}mb (front passage)`,
+        severity: pressureDelta > 6 ? 'high' : 'medium',
+        metadata: { pressure_change_mb: Math.round(pressureDelta * 10) / 10, from_mb: olderMb, to_mb: recentMb, hours: hoursGap },
+        timestamp: recent.obsTime,
+      });
+    }
+  }
+
+  return events;
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+serve(async (req) => {
+  const corsResponse = handleCors(req);
+  if (corsResponse) return corsResponse;
+
+  try {
+    console.log('[hunt-weather-realtime] Starting METAR observation scan');
+
+    const supabase = createSupabaseClient();
+
+    // -----------------------------------------------------------------
+    // 1. Fetch METAR observations (last 3 hours, all US stations)
+    // -----------------------------------------------------------------
+    const metars = await fetchMetars();
+    console.log(`[hunt-weather-realtime] Fetched ${metars.length} METAR observations`);
+
+    // -----------------------------------------------------------------
+    // 2. Group observations by station, keep only US stations
+    // -----------------------------------------------------------------
+    const stationObs: Map<string, { state: string; obs: MetarObs[] }> = new Map();
+
+    for (const m of metars) {
+      // Only K-prefix stations (CONUS ASOS/AWOS) + P-prefix (AK/HI)
+      if (!m.icaoId || (!m.icaoId.startsWith('K') && !m.icaoId.startsWith('P'))) continue;
+      if (m.lat == null || m.lon == null) continue;
+
+      const state = latLonToState(m.lat, m.lon);
+      if (!state) continue;
+
+      if (!stationObs.has(m.icaoId)) {
+        stationObs.set(m.icaoId, { state, obs: [] });
+      }
+      stationObs.get(m.icaoId)!.obs.push(m);
+    }
+
+    console.log(`[hunt-weather-realtime] ${stationObs.size} US stations with observations`);
+
+    // -----------------------------------------------------------------
+    // 3. Detect significant weather changes at each station
+    // -----------------------------------------------------------------
+    const allEvents: RealtimeEvent[] = [];
+    const statesWithEvents = new Set<string>();
+
+    for (const [stationId, { state, obs }] of stationObs) {
+      if (obs.length < 2) continue;
+
+      // Sort by time ascending
+      obs.sort((a, b) => new Date(a.obsTime).getTime() - new Date(b.obsTime).getTime());
+
+      const oldest = obs[0];
+      const newest = obs[obs.length - 1];
+
+      const stationEvents = detectChanges(stationId, state, newest, oldest);
+
+      // If 2+ triggers at same station, upgrade to front-passage
+      if (stationEvents.length >= 2) {
+        const types = stationEvents.map(e => e.event_type).join('+');
+        stationEvents.push({
+          station: stationId,
+          state_abbr: state,
+          event_type: 'front-passage',
+          details: `Multiple signals at ${stationId}: ${types}`,
+          severity: 'high',
+          metadata: {
+            component_events: types,
+            component_count: stationEvents.length,
+          },
+          timestamp: newest.obsTime,
+        });
+      }
+
+      if (stationEvents.length > 0) {
+        statesWithEvents.add(state);
+        allEvents.push(...stationEvents);
+      }
+    }
+
+    console.log(`[hunt-weather-realtime] Detected ${allEvents.length} events across ${statesWithEvents.size} states`);
+
+    // -----------------------------------------------------------------
+    // 4. If no events, log and exit
+    // -----------------------------------------------------------------
+    if (allEvents.length === 0) {
+      const summary = {
+        stations_scanned: stationObs.size,
+        events_detected: 0,
+        states_affected: 0,
+        embeddings_created: 0,
+        run_at: new Date().toISOString(),
+      };
+      console.log('[hunt-weather-realtime] No significant events detected');
+      return successResponse(req, summary);
+    }
+
+    // -----------------------------------------------------------------
+    // 5. Build embed texts for each event
+    // -----------------------------------------------------------------
+    const today = new Date().toISOString().split('T')[0];
+    const embedTexts: string[] = [];
+    const embedMeta: {
+      title: string;
+      content: string;
+      content_type: string;
+      tags: string[];
+      state_abbr: string;
+      metadata: Record<string, unknown>;
+    }[] = [];
+
+    for (const evt of allEvents) {
+      // Build structured embed text
+      const parts: string[] = [
+        `weather-realtime`,
+        evt.state_abbr,
+        evt.station,
+        evt.timestamp,
+        `type:${evt.event_type}`,
+      ];
+
+      if (evt.metadata.temp_drop_f) {
+        parts.push(`temp_change:${evt.metadata.temp_drop_f}F/${evt.metadata.hours}h`);
+      }
+      if (evt.metadata.shift_degrees) {
+        parts.push(`wind_shift:${degreesToCompass(evt.metadata.from_dir as number)}->${degreesToCompass(evt.metadata.to_dir as number)}`);
+      }
+      if (evt.metadata.pressure_change_mb) {
+        parts.push(`pressure_change:${evt.metadata.pressure_change_mb}mb/${evt.metadata.hours}h`);
+      }
+
+      const embedText = parts.join(' | ');
+      embedTexts.push(embedText);
+      embedMeta.push({
+        title: `${evt.state_abbr} ${evt.event_type} ${evt.station} ${today}`,
+        content: embedText,
+        content_type: 'weather-realtime',
+        tags: [evt.state_abbr, 'weather', 'realtime', evt.event_type, evt.station],
+        state_abbr: evt.state_abbr,
+        metadata: {
+          source: 'nws-metar',
+          station: evt.station,
+          date: today,
+          severity: evt.severity,
+          ...evt.metadata,
+        },
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // 6. Embed into hunt_knowledge
+    // -----------------------------------------------------------------
+    console.log(`[hunt-weather-realtime] Embedding ${embedTexts.length} events`);
+    let embeddingsCreated = 0;
+
+    const embeddings = await batchEmbed(embedTexts, 'document');
+
+    if (embeddings && embeddings.length === embedTexts.length) {
+      // Query-on-write: brain scan for cross-domain pattern matches
+      for (let j = 0; j < embedMeta.length; j++) {
+        try {
+          const scan = await scanBrainOnWrite(embeddings[j], {
+            state_abbr: embedMeta[j].state_abbr,
+            exclude_content_type: 'weather-realtime',
+          });
+          if (scan.matches.length > 0) {
+            embedMeta[j].metadata = {
+              ...embedMeta[j].metadata,
+              pattern_matches: scan.matches,
+              pattern_scan_at: new Date().toISOString(),
+            };
+            console.log(`[hunt-weather-realtime] Brain scan: ${embedMeta[j].title} -> ${scan.matches.length} pattern matches`);
+          }
+        } catch { /* scanning is best-effort */ }
+      }
+
+      // Insert into hunt_knowledge in batches of 50
+      const KNOWLEDGE_BATCH = 50;
+      for (let i = 0; i < embeddings.length; i += KNOWLEDGE_BATCH) {
+        const batchRows = [];
+        for (let j = i; j < Math.min(i + KNOWLEDGE_BATCH, embeddings.length); j++) {
+          const meta = embedMeta[j];
+          batchRows.push({
+            title: meta.title,
+            content: meta.content,
+            content_type: meta.content_type,
+            tags: meta.tags,
+            state_abbr: meta.state_abbr,
+            species: null,
+            effective_date: today,
+            metadata: meta.metadata,
+            embedding: embeddings[j],
+          });
+        }
+        const { error: knErr } = await supabase
+          .from('hunt_knowledge')
+          .insert(batchRows);
+        if (knErr) {
+          console.error(`[hunt-weather-realtime] Knowledge insert error (batch ${i / KNOWLEDGE_BATCH}):`, knErr);
+        } else {
+          embeddingsCreated += batchRows.length;
+        }
+      }
+    } else {
+      console.error(`[hunt-weather-realtime] Embedding count mismatch: expected ${embedTexts.length}, got ${embeddings?.length ?? 0}`);
+    }
+
+    // -----------------------------------------------------------------
+    // 7. Summary
+    // -----------------------------------------------------------------
+    const summary = {
+      stations_scanned: stationObs.size,
+      events_detected: allEvents.length,
+      states_affected: statesWithEvents.size,
+      embeddings_created: embeddingsCreated,
+      event_types: [...new Set(allEvents.map(e => e.event_type))],
+      run_at: new Date().toISOString(),
+    };
+    console.log(`[hunt-weather-realtime] Complete: Scanned ${stationObs.size} stations, detected ${allEvents.length} events in ${statesWithEvents.size} states`);
+
+    return successResponse(req, summary);
+  } catch (error) {
+    console.error('[hunt-weather-realtime] Fatal error:', error);
+    return errorResponse(req, 'Internal server error', 500);
+  }
+});
