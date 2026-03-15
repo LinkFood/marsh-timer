@@ -68,22 +68,25 @@ USDA crop data, USGS water levels, soil moisture, ice cover, burn maps, zoology 
 ```
 src/
   components/
+    TerminalShell.tsx        # Layout orchestrator — ticker, tabs, brain panel, canvas area
+    LiveTicker.tsx           # Scrolling live feed — convergence, weather, NWS, hunt alerts, migration index
+    CanvasTabs.tsx           # Canvas tab bar — Map/Data/History/Screener (desktop top, mobile bottom + Brain)
+    BrainPanel.tsx           # Left panel (320px) — chat + collapsible intel drawer with season info
     MapView.tsx              # Map command center — see file for full layer list
     HeaderBar.tsx            # Brand + species pills + search + UserMenu
-    Sidebar.tsx              # Desktop sidebar (Intel/Chat/Alerts tabs)
-    MobileSheet.tsx          # Mobile bottom sheet with drag-snap
-    NationalView.tsx         # State cards + off-season intel
-    StateView.tsx            # State detail: season tabs, facts, reg links
-    ZoneView.tsx             # Zone detail
+    Sidebar.tsx              # RETIRED — replaced by BrainPanel (kept for reference)
+    MobileSheet.tsx          # RETIRED — replaced by mobile CanvasTabs + brain overlay (kept for reference)
+    NationalView.tsx         # State cards + off-season intel (rendered in BrainPanel intel drawer)
+    StateView.tsx            # State detail: season tabs, facts, reg links (rendered in BrainPanel intel drawer)
+    ZoneView.tsx             # Zone detail (rendered in BrainPanel intel drawer)
     MapPresets.tsx            # Map mode selector + toggles
-    HotspotRanking.tsx       # Top 10 states by convergence
-    ScoutReport.tsx          # Daily AI scout brief
-    LiveTicker.tsx           # Scrolling ticker
-    HuntChat.tsx / ChatInput.tsx / ChatMessage.tsx  # Chat UI
+    HotspotRanking.tsx       # Top 10 states by convergence (rendered in BrainPanel intel drawer)
+    ScoutReport.tsx          # Daily AI scout brief (rendered in BrainPanel intel drawer)
+    HuntChat.tsx / ChatInput.tsx / ChatMessage.tsx  # Chat UI (rendered in BrainPanel)
     MapPopup.tsx / SightingPopup.tsx  # Map popups
     TimelineScrubber.tsx     # Time machine: 30d back / 7d forward
     MapLegend.tsx            # Contextual floating legend
-    HuntAlerts.tsx           # Proactive weather alerts
+    HuntAlerts.tsx           # Proactive weather alerts (shown in LiveTicker)
     cards/                   # ConvergenceCard, WeatherCard, SeasonCard, SolunarCard, AlertCard
   pages/
     Index.tsx                # Main page: map + header + sidebar/sheet
@@ -148,7 +151,7 @@ interface HuntingSeason {
 
 ## Features
 
-5 species (Duck 50 states, Goose/Deer/Turkey/Dove 10 each). Species selector in header. Desktop left sidebar with Intel/Chat/Alerts tabs. Mobile bottom sheet with drag-snap. Convergence heatmap colors states by hunt score 0-100. Hotspot ranking (top 10). Daily AI scout report. Per-state convergence card with component breakdown + rank. Season type tabs, split season dates, verification badges. Cross-species nav links. Per-species map colors. Species-qualified favorites. Legacy URL redirects. Species-aware OG tags.
+5 species (Duck 50 states, Goose/Deer/Turkey/Dove 10 each). Species selector in header. Bloomberg-style terminal layout: live ticker → canvas tabs → brain panel (320px left, chat + intel drawer) + canvas area (map default, Data/History/Screener coming). Mobile: bottom tab bar with Brain overlay. Convergence heatmap colors states by hunt score 0-100. Hotspot ranking (top 10). Daily AI scout report. Per-state convergence card with component breakdown + rank. Season type tabs, split season dates, verification badges. Cross-species nav links. Per-species map colors. Species-qualified favorites. Legacy URL redirects. Species-aware OG tags.
 
 Map layers: convergence heatmap, weather radar, eBird sightings (clusters + heatmap), pressure isobars, NWS alert polygons, dawn/dusk terminator, flyway corridors, migration front line, convergence hotspots, wind flow lines, time machine scrubber, elevation HUD, location search. See `MapView.tsx` for full layer implementation.
 
