@@ -19,12 +19,13 @@ Same RPC, same filters, same vector space. When a cold front hits Arkansas, the 
 
 ## Brain State
 
-~65K entries in hunt_knowledge. Breakdown:
-- ~58K DU migration pins (89%)
-- Rest: weather events, migration spikes, NWS alerts, NASA POWER, solunar, convergence scores, birdcast, facts, regulations
-- Only 8 weather-pattern entries
-- 3 of 5 dispatcher handlers don't search the brain
-- Species-specific behavioral knowledge is almost zero for ducks/geese
+~103K entries in hunt_knowledge (DU separation complete — 0 du_report remaining). Heading to 1M+.
+- Weather events, migration spikes, NWS alerts, NASA POWER, solunar, convergence scores, birdcast, facts, regulations, species behavioral knowledge (152 entries across 39 waterfowl + deer/turkey/dove)
+- IVFFlat index working. Search returns species knowledge.
+- Brain honesty: chat splits into "FROM THE BRAIN" (cyan, cards) + "AI INTERPRETATION" (LLM text)
+- 15 crons active, convergence engine running daily
+- Backfill pipes in progress: eBird, USDA crops, USGS water, NOAA tides, NOAA ACIS, photoperiod
+- Pattern extraction pending (needs eBird backfill to complete first — the big unlock)
 
 ## Brain V2
 
@@ -89,7 +90,7 @@ src/
     HuntAlerts.tsx           # Proactive weather alerts (shown in LiveTicker)
     cards/                   # ConvergenceCard, WeatherCard, SeasonCard, SolunarCard, AlertCard
   pages/
-    Index.tsx                # Main page: map + header + sidebar/sheet
+    Index.tsx                # Main page: map + header + terminal shell (all hooks live here)
     Auth.tsx                 # Google OAuth sign-in
     NotFound.tsx             # Themed 404
   data/                      # types.ts, speciesConfig.ts, fips.ts, flyways.ts, seasons/,
