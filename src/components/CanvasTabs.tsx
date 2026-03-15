@@ -51,7 +51,7 @@ function CanvasTabs({ active, onChange, isMobile, showBrain, onToggleBrain }: Ca
   }
 
   return (
-    <div className="h-9 glass-panel border-b border-white/[0.06] flex items-center px-4 gap-1">
+    <div className="h-9 glass-panel border-b border-white/[0.06] flex items-center pl-[336px] pr-4 gap-1">
       {TABS.map((tab) => {
         const Icon = tab.icon;
         const isActive = active === tab.id;

@@ -198,7 +198,7 @@ export default function MapLegend({ mode, sidebarExpanded, isMobile, drillLevel 
     return base;
   }, [content.items, mode, drillLevel]);
 
-  const leftOffset = !isMobile && sidebarExpanded ? "calc(340px + 0.75rem)" : "0.75rem";
+  const leftOffset = !isMobile && sidebarExpanded ? "calc(320px + 0.75rem)" : "0.75rem";
 
   if (collapsed) {
     return (

@@ -74,7 +74,7 @@ export default function MapPresets({
     "w-8 h-8 rounded-full flex items-center justify-center transition-colors text-white/50 hover:text-white/80 border border-white/[0.06] bg-[rgba(10,15,30,0.85)] backdrop-blur-[12px]";
 
   return (
-    <div className="fixed right-3 z-20 flex flex-col items-end gap-2 top-1/2 -translate-y-1/2 max-sm:top-auto max-sm:bottom-[300px] max-sm:translate-y-0">
+    <div className="fixed right-3 z-20 flex flex-col items-end gap-2 top-1/2 -translate-y-1/2 max-sm:top-auto max-sm:bottom-16 max-sm:translate-y-0">
       {/* Mode selector */}
       <div className={`${panelClass} p-1 flex max-sm:flex-row sm:flex-col gap-0.5`}>
         {modes.map(({ key, label, icon: Icon }) => {

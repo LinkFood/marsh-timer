@@ -5,7 +5,6 @@ import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
 import UserMenu from './UserMenu';
-import { useMurmurationIndex } from '@/hooks/useMurmurationIndex';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
@@ -34,7 +33,6 @@ interface HeaderBarProps {
 }
 
 const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHelpOpen }: HeaderBarProps) => {
-  const { data: murmIndex } = useMurmurationIndex();
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
@@ -193,23 +191,8 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
           })}
         </div>
 
-        {/* Right: Migration Index + User + Search */}
+        {/* Right: User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {(species === 'duck' || species === 'goose') && murmIndex && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.08]">
-              <span className="text-[10px] text-white/40 font-body hidden sm:inline">Migration</span>
-              <span className="text-xs font-mono font-semibold text-white/80">
-                {murmIndex.index}
-              </span>
-              <span className={`text-[10px] ${
-                murmIndex.direction === 'up' ? 'text-green-400' :
-                murmIndex.direction === 'down' ? 'text-red-400' : 'text-white/30'
-              }`}>
-                {murmIndex.direction === 'up' ? '\u25B2' : murmIndex.direction === 'down' ? '\u25BC' : '\u2014'}
-                {murmIndex.change_pct !== 0 ? ` ${Math.abs(murmIndex.change_pct).toFixed(0)}%` : ''}
-              </span>
-            </div>
-          )}
           {onHelpOpen && (
             <button
               onClick={onHelpOpen}
