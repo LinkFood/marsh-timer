@@ -48,6 +48,10 @@ interface TerminalShellProps {
     pattern_component: number;
     national_rank: number;
     reasoning: string;
+    birdcast_component?: number;
+    water_component?: number;
+    photoperiod_component?: number;
+    tide_component?: number;
   } | null;
   scoutReport?: { brief_text: string; created_at: string } | null;
   scoutReportLoading?: boolean;

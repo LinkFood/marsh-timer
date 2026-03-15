@@ -431,12 +431,22 @@ const Index = () => {
       />
 
       {/* Terminal Shell — new layout */}
-      <MapActionProvider
-        flyTo={handleSelectState}
-        flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
-        setMapMode={setMapMode}
-      >
-        <TerminalShell
+      <ErrorBoundary fallback={
+        <div className="fixed top-12 left-0 right-0 bottom-0 z-20 flex items-center justify-center glass-panel">
+          <div className="text-center">
+            <p className="text-sm font-body text-white/40 mb-2">Terminal failed to load.</p>
+            <button onClick={() => window.location.reload()} className="text-xs text-cyan-400 hover:text-cyan-300">
+              Reload
+            </button>
+          </div>
+        </div>
+      }>
+        <MapActionProvider
+          flyTo={handleSelectState}
+          flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
+          setMapMode={setMapMode}
+        >
+          <TerminalShell
           activeCanvas={activeCanvas}
           onCanvasChange={setActiveCanvas}
           species={species}
@@ -562,7 +572,8 @@ const Index = () => {
             </div>
           )}
         </TerminalShell>
-      </MapActionProvider>
+        </MapActionProvider>
+      </ErrorBoundary>
 
       {/* Help Modal */}
       <HelpModal open={helpModal.open} onClose={helpModal.close} />
