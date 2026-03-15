@@ -1,0 +1,199 @@
+import { useState } from 'react';
+import { Database, ChevronDown, ChevronUp, X } from 'lucide-react';
+import type { Species } from '@/data/types';
+import type { HuntAlert } from '@/hooks/useHuntAlerts';
+import HuntChat from './HuntChat';
+import ScoutReport from './ScoutReport';
+import HotspotRanking from './HotspotRanking';
+import ConvergenceCard from './cards/ConvergenceCard';
+import ErrorBoundary from './ErrorBoundary';
+
+interface BrainPanelProps {
+  species: Species;
+  selectedState: string | null;
+  level: 'national' | 'state' | 'zone';
+  zoneSlug: string | null;
+  onSelectState: (abbr: string) => void;
+  onSelectZone: (slug: string) => void;
+  onBack: () => void;
+  onSwitchSpecies: (species: Species) => void;
+  favorites: string[];
+  onToggleFavorite: (species: Species, abbr: string) => void;
+  isFavorite: boolean;
+  alerts: HuntAlert[];
+  weatherSnapshot?: Map<string, { temp: number; wind: number }>;
+  convergenceTopStates?: Array<{
+    state_abbr: string;
+    score: number;
+    reasoning: string;
+    national_rank: number;
+  }>;
+  convergenceLoading?: boolean;
+  convergenceScore?: {
+    score: number;
+    weather_component: number;
+    solunar_component: number;
+    migration_component: number;
+    pattern_component: number;
+    national_rank: number;
+    reasoning: string;
+    birdcast_component?: number;
+    water_component?: number;
+    photoperiod_component?: number;
+    tide_component?: number;
+  } | null;
+  scoutReport?: { brief_text: string; created_at: string } | null;
+  scoutReportLoading?: boolean;
+  convergenceAlerts?: Array<{
+    state_abbr: string;
+    alert_type: string;
+    message: string;
+    score_before: number;
+    score_after: number;
+    created_at: string;
+  }>;
+  isMobile?: boolean;
+  onClose?: () => void;
+}
+
+export default function BrainPanel({
+  species,
+  selectedState,
+  level,
+  onSelectState,
+  convergenceTopStates,
+  convergenceLoading,
+  convergenceScore,
+  scoutReport,
+  scoutReportLoading,
+  convergenceAlerts,
+  isMobile,
+  onClose,
+}: BrainPanelProps) {
+  const [intelOpen, setIntelOpen] = useState(true);
+  const isWaterfowl = species === 'duck' || species === 'goose';
+
+  const containerClass = isMobile
+    ? 'fixed inset-0 top-12 z-40 glass-panel flex flex-col'
+    : 'w-80 h-full glass-panel border-r border-white/[0.06] flex flex-col';
+
+  return (
+    <div className={containerClass}>
+      {/* Header */}
+      <div className="h-7 flex items-center px-3 border-b border-white/[0.06] shrink-0">
+        <Database size={14} className="text-cyan-400" />
+        <span className="text-[10px] font-display tracking-widest text-white/60 ml-1.5">
+          BRAIN
+        </span>
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 ml-2" />
+        <div className="flex-1" />
+        {isMobile && (
+          <button
+            onClick={() => onClose?.()}
+            className="p-0.5 text-white/40 hover:text-white/70 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Chat Area */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <ErrorBoundary
+          fallback={
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-white/50 text-sm px-4 text-center">
+              <p>Brain temporarily unavailable</p>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('hunt-chat-messages');
+                  window.location.reload();
+                }}
+                className="px-3 py-1.5 text-xs border border-white/20 rounded hover:border-white/40 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          }
+        >
+          <HuntChat
+            species={species}
+            stateAbbr={selectedState}
+            isMobile={isMobile ?? false}
+          />
+        </ErrorBoundary>
+      </div>
+
+      {/* Intel Drawer */}
+      <div
+        className="h-7 flex items-center justify-between px-3 border-t border-white/[0.06] cursor-pointer shrink-0"
+        onClick={() => setIntelOpen(!intelOpen)}
+      >
+        <span className="text-[10px] font-display tracking-widest text-white/40">
+          INTEL
+        </span>
+        {intelOpen ? (
+          <ChevronUp size={12} className="text-white/30" />
+        ) : (
+          <ChevronDown size={12} className="text-white/30" />
+        )}
+      </div>
+
+      {intelOpen && (
+        <div className="overflow-y-auto scrollbar-hide p-2 max-h-[40vh]">
+          {isWaterfowl ? (
+            <>
+              {level === 'national' && (
+                <>
+                  <ScoutReport
+                    briefText={scoutReport?.brief_text}
+                    loading={scoutReportLoading ?? false}
+                  />
+                  <HotspotRanking
+                    states={convergenceTopStates || []}
+                    onSelectState={onSelectState}
+                    loading={convergenceLoading}
+                  />
+                </>
+              )}
+              {level === 'state' && convergenceScore && (
+                <ConvergenceCard
+                  score={convergenceScore.score}
+                  weatherComponent={convergenceScore.weather_component}
+                  solunarComponent={convergenceScore.solunar_component}
+                  migrationComponent={convergenceScore.migration_component}
+                  birdcastComponent={convergenceScore.birdcast_component}
+                  patternComponent={convergenceScore.pattern_component}
+                  waterComponent={convergenceScore.water_component}
+                  photoperiodComponent={convergenceScore.photoperiod_component}
+                  tideComponent={convergenceScore.tide_component}
+                  nationalRank={convergenceScore.national_rank}
+                  reasoning={convergenceScore.reasoning}
+                  stateAbbr={selectedState}
+                />
+              )}
+              {convergenceAlerts && convergenceAlerts.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {convergenceAlerts.map((alert, i) => (
+                    <div
+                      key={`${alert.state_abbr}-${alert.created_at}-${i}`}
+                      className="px-2 py-1.5 rounded border border-white/[0.06] bg-white/[0.02] text-[10px] text-white/50"
+                    >
+                      <span className="text-cyan-400 font-medium">
+                        {alert.state_abbr}
+                      </span>{' '}
+                      {alert.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-8 text-white/30 text-xs">
+              Coming soon
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
