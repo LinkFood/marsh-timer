@@ -29,6 +29,7 @@ import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
 import DataCanvas from "@/components/DataCanvas";
+import HistoryCanvas from "@/components/HistoryCanvas";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 type DrillLevel = "national" | "state" | "zone";
@@ -123,6 +124,8 @@ const Index = () => {
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);
   const [activeCanvas, setActiveCanvas] = useState<CanvasId>('map');
+  const prevCanvasRef = useRef<CanvasId>('map');
+  const prevMapModeRef = useRef<MapMode>('default');
 
   // Data hooks
   const weatherTiles = useWeatherTiles();
@@ -270,6 +273,18 @@ const Index = () => {
     setSelectedState(parsed.stateAbbr);
     setZoneSlug(parsed.zoneSlug);
   }, [parsed.species, parsed.stateAbbr, parsed.zoneSlug]);
+
+  // Auto-switch to Intel mode for History tab (convergence heatmap)
+  useEffect(() => {
+    if (activeCanvas === 'history' && prevCanvasRef.current !== 'history') {
+      prevMapModeRef.current = mapMode;
+      setMapMode('intel');
+    } else if (activeCanvas !== 'history' && prevCanvasRef.current === 'history') {
+      setMapMode(prevMapModeRef.current);
+      setScrubDate(null); // reset to live when leaving history
+    }
+    prevCanvasRef.current = activeCanvas;
+  }, [activeCanvas, mapMode, setMapMode]);
 
   // Reset flyway toggle when switching to non-flyway species
   useEffect(() => {
@@ -570,17 +585,23 @@ const Index = () => {
               isMobile={isMobile}
               onSelectState={handleSelectState}
             />
+          ) : activeCanvas === 'history' ? (
+            <HistoryCanvas
+              onDateChange={setScrubDate}
+              isMobile={isMobile}
+              convergenceScores={activeConvergenceScores}
+              isLoading={scrubLoading}
+            />
           ) : (
             <div className="fixed inset-0 top-28 flex items-center justify-center z-10" style={{ left: isMobile ? 0 : 320 }}>
               <div className="text-center glass-panel rounded-xl px-8 py-6 border border-white/[0.06]">
                 <p className="text-xs font-mono text-cyan-400/60 mb-2">
-                  {activeCanvas === 'history' && '// replay engine — time-lapse, historical patterns'}
-                  {activeCanvas === 'screener' && '// conditions builder — backtest, filter, score'}
+                  // conditions builder — backtest, filter, score
                 </p>
                 <p className="text-lg font-display text-white/30 tracking-wider uppercase mb-1">
-                  {activeCanvas}
+                  Screener
                 </p>
-                <p className="text-[10px] font-body text-white/15 tracking-widest uppercase">Phase {activeCanvas === 'history' ? '3' : '4'}</p>
+                <p className="text-[10px] font-body text-white/15 tracking-widest uppercase">Phase 4</p>
               </div>
             </div>
           )}
