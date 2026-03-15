@@ -9,8 +9,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
 import type { MapViewRef, MapMode } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
-import Sidebar from "@/components/Sidebar";
-import MobileSheet from "@/components/MobileSheet";
+import TerminalShell from "@/components/TerminalShell";
 import MapPresets from "@/components/MapPresets";
 import MapLegend from "@/components/MapLegend";
 import { useWeatherTiles } from "@/hooks/useWeatherTiles";
@@ -25,12 +24,14 @@ import { useNWSAlerts } from "@/hooks/useNWSAlerts";
 import { useMigrationFront } from "@/hooks/useMigrationFront";
 import { useDUMapReports } from "@/hooks/useDUMapReports";
 import { useWeatherEvents } from "@/hooks/useWeatherEvents";
+import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
 import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 type DrillLevel = "national" | "state" | "zone";
+type CanvasId = 'map' | 'data' | 'history' | 'screener';
 
 const Index = () => {
   const { first, second, third } = useParams<{
@@ -120,6 +121,9 @@ const Index = () => {
   const [elevation, setElevation] = useState<number | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);
+  const [activeCanvas, setActiveCanvas] = useState<CanvasId>('map');
+
+  // Data hooks
   const weatherTiles = useWeatherTiles();
   const countyGeoJSON = useCountyGeoJSON();
   const { alertsGeoJSON: nwsAlertsGeoJSON } = useNWSAlerts();
@@ -132,14 +136,13 @@ const Index = () => {
   const { scores: convergenceScores, topStates: convergenceTopStates, loading: convergenceLoading } = useConvergenceScores();
   const { report: scoutReport, loading: scoutReportLoading } = useScoutReport();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
-  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const { data: murmurationIndex } = useMurmurationIndex();
   const helpModal = useHelpModal();
   const [scrubDate, setScrubDate] = useState<Date | null>(null);
   const [scrubScores, setScrubScores] = useState<Map<string, number> | null>(null);
   const [scrubLoading, setScrubLoading] = useState(false);
 
   // Build convergence score map for MapView (abbr -> score number)
-  // MUST be defined before activeConvergenceScores which depends on it
   const convergenceScoreMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const [abbr, data] of convergenceScores) {
@@ -383,7 +386,7 @@ const Index = () => {
 
   return (
     <div className="h-[100dvh] w-screen overflow-hidden relative">
-      {/* Map background */}
+      {/* Map background — always rendered, positioned behind terminal shell */}
       <ErrorBoundary fallback={
         <div className="flex items-center justify-center h-full w-full bg-background">
           <p className="text-xs font-body text-white/40">Map failed to load. Refresh to try again.</p>
@@ -427,144 +430,134 @@ const Index = () => {
         onHelpOpen={helpModal.show}
       />
 
-      {/* Sidebar (desktop) / MobileSheet (mobile) */}
-      <ErrorBoundary fallback={
-        <div className="fixed top-12 left-0 bottom-0 w-[340px] z-20 glass-panel border-r border-white/[0.06] flex items-center justify-center">
-          <p className="text-xs font-body text-white/40">Sidebar failed to load. Refresh to try again.</p>
-        </div>
-      }>
-        <MapActionProvider
-          flyTo={handleSelectState}
-          flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
-          setMapMode={setMapMode}
+      {/* Terminal Shell — new layout */}
+      <MapActionProvider
+        flyTo={handleSelectState}
+        flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
+        setMapMode={setMapMode}
+      >
+        <TerminalShell
+          activeCanvas={activeCanvas}
+          onCanvasChange={setActiveCanvas}
+          species={species}
+          selectedState={selectedState}
+          level={level}
+          zoneSlug={zoneSlug}
+          onSelectState={handleSelectState}
+          onSelectZone={handleSelectZone}
+          onBack={handleBack}
+          onSwitchSpecies={handleSwitchSpecies}
+          favorites={speciesFavorites}
+          onToggleFavorite={toggleFavorite}
+          isFavorite={selectedState ? isFavorite(species, selectedState) : false}
+          alerts={alerts}
+          weatherSnapshot={weatherCache}
+          convergenceTopStates={convergenceTopStates}
+          convergenceLoading={convergenceLoading}
+          convergenceScore={selectedConvergenceScore}
+          scoutReport={scoutReport}
+          scoutReportLoading={scoutReportLoading}
+          convergenceAlerts={convergenceAlerts}
+          tickerConvergenceAlerts={convergenceAlerts}
+          tickerWeatherEventsGeoJSON={weatherEventsGeoJSON}
+          tickerNWSAlertsGeoJSON={nwsAlertsGeoJSON}
+          tickerHuntAlerts={alerts}
+          tickerMurmurationIndex={murmurationIndex}
+          isMobile={isMobile}
         >
-          {isMobile ? (
-            <MobileSheet
-              level={level}
-              species={species}
-              stateAbbr={selectedState}
-              zoneSlug={zoneSlug}
-              onSelectState={handleSelectState}
-              onSelectZone={handleSelectZone}
-              onBack={handleBack}
-              onSwitchSpecies={handleSwitchSpecies}
-              favorites={speciesFavorites}
-              onToggleFavorite={toggleFavorite}
-              isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-              alerts={alerts}
-              weatherSnapshot={weatherCache}
-            />
+          {/* Canvas content — map tab (others coming later) */}
+          {activeCanvas === 'map' ? (
+            <>
+              <MapPresets
+                mode={mapMode}
+                onSetMode={setMapMode}
+                onZoomIn={() => mapRef.current?.zoomIn()}
+                onZoomOut={() => mapRef.current?.zoomOut()}
+                onGeolocate={handleGeolocate}
+                show3D={show3D}
+                onToggle3D={() => setShow3D((s) => !s)}
+                isSatellite={isSatellite}
+                onToggleSatellite={() => setIsSatellite((s) => !s)}
+                showFlyways={showFlyways}
+                onToggleFlyways={() => setShowFlyways((f) => !f)}
+                showFlywayOption={isFlywaySpecies(species)}
+                showRadar={showRadar}
+                onToggleRadar={() => setShowRadar((r) => !r)}
+                showDUPins={showDUPins}
+                onToggleDUPins={() => setShowDUPins((d) => !d)}
+              />
+
+              <MapLegend
+                mode={mapMode}
+                sidebarExpanded={!isMobile}
+                isMobile={isMobile}
+                drillLevel={level}
+                species={species}
+              />
+
+              {show3D && elevation !== null && mapZoom > 8 && (
+                <div
+                  className="fixed bottom-6 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
+                  style={{ left: isMobile ? '1rem' : 'calc(320px + 1rem)' }}
+                >
+                  <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
+                  <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
+                </div>
+              )}
+
+              {mapMode === 'intel' && (
+                <TimelineScrubber
+                  onDateChange={setScrubDate}
+                  sidebarOffset={isMobile ? 0 : 320}
+                />
+              )}
+
+              {mapMode === 'intel' && isViewingHistory && (
+                <div
+                  className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
+                  style={{
+                    bottom: '48px',
+                    left: isMobile ? '1rem' : 'calc(320px + 1rem)',
+                  }}
+                >
+                  <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Viewing</span>
+                  <span className="text-xs text-cyan-400 font-body font-medium">
+                    {scrubDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                  {scrubLoading && (
+                    <span className="text-[10px] text-white/30 ml-2">Loading...</span>
+                  )}
+                  {!scrubLoading && scrubScores && scrubScores.size === 0 && (
+                    <span className="text-[10px] text-white/30 ml-2">No data</span>
+                  )}
+                </div>
+              )}
+
+              {mapMode === 'intel' && isFutureDate && (
+                <div
+                  className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
+                  style={{
+                    bottom: '48px',
+                    left: isMobile ? '1rem' : 'calc(320px + 1rem)',
+                  }}
+                >
+                  <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Forecast</span>
+                  <span className="text-xs text-white/50 font-body font-medium">Not available</span>
+                </div>
+              )}
+            </>
           ) : (
-            <Sidebar
-              level={level}
-              species={species}
-              stateAbbr={selectedState}
-              zoneSlug={zoneSlug}
-              onSelectState={handleSelectState}
-              onSelectZone={handleSelectZone}
-              onBack={handleBack}
-              onSwitchSpecies={handleSwitchSpecies}
-              favorites={speciesFavorites}
-              onToggleFavorite={toggleFavorite}
-              isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-              alerts={alerts}
-              weatherSnapshot={weatherCache}
-              convergenceTopStates={convergenceTopStates}
-              convergenceLoading={convergenceLoading}
-              convergenceScore={selectedConvergenceScore}
-              scoutReport={scoutReport}
-              scoutReportLoading={scoutReportLoading}
-              convergenceAlerts={convergenceAlerts}
-              expanded={sidebarExpanded}
-              onToggleExpanded={() => setSidebarExpanded(e => !e)}
-            />
+            <div className="fixed inset-0 top-28 flex items-center justify-center z-10" style={{ left: isMobile ? 0 : 320 }}>
+              <div className="text-center">
+                <p className="text-sm font-display text-white/40 tracking-wider uppercase mb-1">
+                  {activeCanvas.charAt(0).toUpperCase() + activeCanvas.slice(1)}
+                </p>
+                <p className="text-xs font-body text-white/20">Coming soon</p>
+              </div>
+            </div>
           )}
-        </MapActionProvider>
-      </ErrorBoundary>
-
-      {/* Map Mode Presets */}
-      <MapPresets
-        mode={mapMode}
-        onSetMode={setMapMode}
-        onZoomIn={() => mapRef.current?.zoomIn()}
-        onZoomOut={() => mapRef.current?.zoomOut()}
-        onGeolocate={handleGeolocate}
-        show3D={show3D}
-        onToggle3D={() => setShow3D((s) => !s)}
-        isSatellite={isSatellite}
-        onToggleSatellite={() => setIsSatellite((s) => !s)}
-        showFlyways={showFlyways}
-        onToggleFlyways={() => setShowFlyways((f) => !f)}
-        showFlywayOption={isFlywaySpecies(species)}
-        showRadar={showRadar}
-        onToggleRadar={() => setShowRadar((r) => !r)}
-        showDUPins={showDUPins}
-        onToggleDUPins={() => setShowDUPins((d) => !d)}
-      />
-
-      {/* Map Legend */}
-      <MapLegend
-        mode={mapMode}
-        sidebarExpanded={sidebarExpanded}
-        isMobile={isMobile}
-        drillLevel={level}
-        species={species}
-      />
-
-      {/* Elevation HUD */}
-      {show3D && elevation !== null && mapZoom > 8 && (
-        <div
-          className="fixed bottom-6 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06] transition-all duration-300"
-          style={{ left: !isMobile && sidebarExpanded ? 'calc(340px + 1rem)' : '1rem' }}
-        >
-          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
-          <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
-        </div>
-      )}
-
-      {/* Timeline Scrubber — Intel mode only */}
-      {mapMode === 'intel' && (
-        <TimelineScrubber
-          onDateChange={setScrubDate}
-          sidebarOffset={!isMobile && sidebarExpanded ? 340 : 0}
-        />
-      )}
-
-      {/* Viewing indicator for non-today dates */}
-      {mapMode === 'intel' && isViewingHistory && (
-        <div
-          className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
-          style={{
-            bottom: '48px',
-            left: !isMobile && sidebarExpanded ? 'calc(340px + 1rem)' : '1rem',
-          }}
-        >
-          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Viewing</span>
-          <span className="text-xs text-cyan-400 font-body font-medium">
-            {scrubDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </span>
-          {scrubLoading && (
-            <span className="text-[10px] text-white/30 ml-2">Loading...</span>
-          )}
-          {!scrubLoading && scrubScores && scrubScores.size === 0 && (
-            <span className="text-[10px] text-white/30 ml-2">No data</span>
-          )}
-        </div>
-      )}
-
-      {/* Future date indicator */}
-      {mapMode === 'intel' && isFutureDate && (
-        <div
-          className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
-          style={{
-            bottom: '48px',
-            left: !isMobile && sidebarExpanded ? 'calc(340px + 1rem)' : '1rem',
-          }}
-        >
-          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Forecast</span>
-          <span className="text-xs text-white/50 font-body font-medium">Not available</span>
-        </div>
-      )}
+        </TerminalShell>
+      </MapActionProvider>
 
       {/* Help Modal */}
       <HelpModal open={helpModal.open} onClose={helpModal.close} />

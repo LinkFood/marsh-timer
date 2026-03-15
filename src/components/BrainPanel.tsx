@@ -75,7 +75,7 @@ export default function BrainPanel({
 
   const containerClass = isMobile
     ? 'fixed inset-0 top-12 z-40 glass-panel flex flex-col'
-    : 'w-80 h-full glass-panel border-r border-white/[0.06] flex flex-col';
+    : 'h-full flex flex-col';
 
   return (
     <div className={containerClass}>
@@ -100,20 +100,20 @@ export default function BrainPanel({
       {/* Chat Area */}
       <div className="flex-1 min-h-0 flex flex-col">
         <ErrorBoundary
-          fallback={
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-white/50 text-sm px-4 text-center">
-              <p>Brain temporarily unavailable</p>
+          fallback={(reset) => (
+            <div className="flex flex-col items-center justify-center h-full text-white/40 p-4">
+              <p className="text-xs font-body mb-2">Brain temporarily unavailable</p>
               <button
                 onClick={() => {
-                  sessionStorage.removeItem('hunt-chat-messages');
-                  window.location.reload();
+                  try { sessionStorage.removeItem('hunt-chat-messages'); } catch {}
+                  reset();
                 }}
-                className="px-3 py-1.5 text-xs border border-white/20 rounded hover:border-white/40 transition-colors"
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 mt-1"
               >
                 Retry
               </button>
             </div>
-          }
+          )}
         >
           <HuntChat
             species={species}
