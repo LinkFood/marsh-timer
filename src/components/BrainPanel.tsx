@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Database, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Database, ChevronDown, ChevronUp, X, ArrowLeft } from 'lucide-react';
 import type { Species } from '@/data/types';
 import type { HuntAlert } from '@/hooks/useHuntAlerts';
 import HuntChat from './HuntChat';
 import ScoutReport from './ScoutReport';
 import HotspotRanking from './HotspotRanking';
 import ConvergenceCard from './cards/ConvergenceCard';
+import StateView from './StateView';
+import ZoneView from './ZoneView';
 import ErrorBoundary from './ErrorBoundary';
 
 interface BrainPanelProps {
@@ -60,7 +62,13 @@ export default function BrainPanel({
   species,
   selectedState,
   level,
+  zoneSlug,
   onSelectState,
+  onSelectZone,
+  onBack,
+  onSwitchSpecies,
+  onToggleFavorite,
+  isFavorite,
   convergenceTopStates,
   convergenceLoading,
   convergenceScore,
@@ -81,10 +89,24 @@ export default function BrainPanel({
     <div className={containerClass}>
       {/* Header */}
       <div className="h-7 flex items-center px-3 border-b border-white/[0.06] shrink-0">
-        <Database size={14} className="text-cyan-400" />
-        <span className="text-[10px] font-display tracking-widest text-white/60 ml-1.5">
-          BRAIN
-        </span>
+        {level !== 'national' ? (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 text-white/60 hover:text-white/80 transition-colors"
+          >
+            <ArrowLeft size={12} />
+            <span className="text-[11px] font-display font-bold text-white/90 uppercase">
+              {selectedState}
+            </span>
+          </button>
+        ) : (
+          <>
+            <Database size={14} className="text-cyan-400" />
+            <span className="text-[10px] font-display tracking-widest text-white/60 ml-1.5">
+              BRAIN
+            </span>
+          </>
+        )}
         <span className="w-1.5 h-1.5 rounded-full bg-green-400 ml-2" />
         <div className="flex-1" />
         {isMobile && (
@@ -140,22 +162,31 @@ export default function BrainPanel({
 
       {intelOpen && (
         <div className="overflow-y-auto scrollbar-hide p-2 max-h-[40vh]">
-          {isWaterfowl ? (
+          {/* National-level intel */}
+          {level === 'national' && isWaterfowl && (
             <>
-              {level === 'national' && (
-                <>
-                  <ScoutReport
-                    briefText={scoutReport?.brief_text}
-                    loading={scoutReportLoading ?? false}
-                  />
-                  <HotspotRanking
-                    states={convergenceTopStates || []}
-                    onSelectState={onSelectState}
-                    loading={convergenceLoading}
-                  />
-                </>
-              )}
-              {level === 'state' && convergenceScore && (
+              <ScoutReport
+                briefText={scoutReport?.brief_text}
+                loading={scoutReportLoading ?? false}
+              />
+              <HotspotRanking
+                states={convergenceTopStates || []}
+                onSelectState={onSelectState}
+                loading={convergenceLoading}
+              />
+            </>
+          )}
+
+          {level === 'national' && !isWaterfowl && (
+            <div className="flex items-center justify-center py-6 text-white/30 text-xs font-body">
+              {species.charAt(0).toUpperCase() + species.slice(1)} intelligence coming soon
+            </div>
+          )}
+
+          {/* State-level intel */}
+          {level === 'state' && selectedState && (
+            <>
+              {isWaterfowl && convergenceScore && (
                 <ConvergenceCard
                   score={convergenceScore.score}
                   weatherComponent={convergenceScore.weather_component}
@@ -171,25 +202,42 @@ export default function BrainPanel({
                   stateAbbr={selectedState}
                 />
               )}
-              {convergenceAlerts && convergenceAlerts.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {convergenceAlerts.map((alert, i) => (
-                    <div
-                      key={`${alert.state_abbr}-${alert.created_at}-${i}`}
-                      className="px-2 py-1.5 rounded border border-white/[0.06] bg-white/[0.02] text-[10px] text-white/50"
-                    >
-                      <span className="text-cyan-400 font-medium">
-                        {alert.state_abbr}
-                      </span>{' '}
-                      {alert.message}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <StateView
+                species={species}
+                abbreviation={selectedState}
+                onBack={onBack}
+                onSelectZone={onSelectZone}
+                onSwitchSpecies={onSwitchSpecies}
+                isFavorite={isFavorite}
+                onToggleFavorite={onToggleFavorite}
+              />
             </>
-          ) : (
-            <div className="flex items-center justify-center py-8 text-white/30 text-xs">
-              Coming soon
+          )}
+
+          {/* Zone-level intel */}
+          {level === 'zone' && selectedState && zoneSlug && (
+            <ZoneView
+              species={species}
+              abbreviation={selectedState}
+              zoneSlug={zoneSlug}
+              onBack={onBack}
+            />
+          )}
+
+          {/* Convergence alerts */}
+          {convergenceAlerts && convergenceAlerts.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {convergenceAlerts.map((alert, i) => (
+                <div
+                  key={`${alert.state_abbr}-${alert.created_at}-${i}`}
+                  className="px-2 py-1.5 rounded border border-white/[0.06] bg-white/[0.02] text-[10px] text-white/50"
+                >
+                  <span className="text-cyan-400 font-medium">
+                    {alert.state_abbr}
+                  </span>{' '}
+                  {alert.message}
+                </div>
+              ))}
             </div>
           )}
         </div>
