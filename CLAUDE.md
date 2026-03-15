@@ -87,6 +87,9 @@ src/
     MapPopup.tsx / SightingPopup.tsx  # Map popups
     TimelineScrubber.tsx     # Time machine: 30d back / 7d forward
     MapLegend.tsx            # Contextual floating legend
+    DataCanvas.tsx           # Data tab: 6-card dashboard (migration index, hotspots, alerts, distribution, scout, stats)
+    HistoryCanvas.tsx        # History tab: 30-day replay player with play/pause/speed/seek
+    ScreenerCanvas.tsx       # Screener tab: sortable/filterable state convergence table
     HuntAlerts.tsx           # Proactive weather alerts (shown in LiveTicker)
     cards/                   # ConvergenceCard, WeatherCard, SeasonCard, SolunarCard, AlertCard
   pages/
