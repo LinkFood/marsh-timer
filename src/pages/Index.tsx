@@ -30,6 +30,7 @@ import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
 import DataCanvas from "@/components/DataCanvas";
 import HistoryCanvas from "@/components/HistoryCanvas";
+import ScreenerCanvas from "@/components/ScreenerCanvas";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 type DrillLevel = "national" | "state" | "zone";
@@ -593,17 +594,12 @@ const Index = () => {
               isLoading={scrubLoading}
             />
           ) : (
-            <div className="fixed inset-0 top-28 flex items-center justify-center z-10" style={{ left: isMobile ? 0 : 320 }}>
-              <div className="text-center glass-panel rounded-xl px-8 py-6 border border-white/[0.06]">
-                <p className="text-xs font-mono text-cyan-400/60 mb-2">
-                  // conditions builder — backtest, filter, score
-                </p>
-                <p className="text-lg font-display text-white/30 tracking-wider uppercase mb-1">
-                  Screener
-                </p>
-                <p className="text-[10px] font-body text-white/15 tracking-widest uppercase">Phase 4</p>
-              </div>
-            </div>
+            <ScreenerCanvas
+              species={species}
+              convergenceScores={convergenceScores}
+              onSelectState={handleSelectState}
+              isMobile={isMobile}
+            />
           )}
         </TerminalShell>
         </MapActionProvider>
