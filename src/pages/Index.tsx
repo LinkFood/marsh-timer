@@ -28,6 +28,7 @@ import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
 import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
+import DataCanvas from "@/components/DataCanvas";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 type DrillLevel = "national" | "state" | "zone";
@@ -556,18 +557,30 @@ const Index = () => {
                 </div>
               )}
             </>
+          ) : activeCanvas === 'data' ? (
+            <DataCanvas
+              species={species}
+              selectedState={selectedState}
+              convergenceScores={convergenceScores}
+              convergenceTopStates={convergenceTopStates}
+              convergenceAlerts={convergenceAlerts}
+              huntAlerts={alerts}
+              scoutReport={scoutReport}
+              murmurationIndex={murmurationIndex}
+              isMobile={isMobile}
+              onSelectState={handleSelectState}
+            />
           ) : (
             <div className="fixed inset-0 top-28 flex items-center justify-center z-10" style={{ left: isMobile ? 0 : 320 }}>
               <div className="text-center glass-panel rounded-xl px-8 py-6 border border-white/[0.06]">
                 <p className="text-xs font-mono text-cyan-400/60 mb-2">
-                  {activeCanvas === 'data' && '// dashboard grid — cards, charts, live metrics'}
                   {activeCanvas === 'history' && '// replay engine — time-lapse, historical patterns'}
                   {activeCanvas === 'screener' && '// conditions builder — backtest, filter, score'}
                 </p>
                 <p className="text-lg font-display text-white/30 tracking-wider uppercase mb-1">
                   {activeCanvas}
                 </p>
-                <p className="text-[10px] font-body text-white/15 tracking-widest uppercase">Phase {activeCanvas === 'data' ? '2' : activeCanvas === 'history' ? '3' : '4'}</p>
+                <p className="text-[10px] font-body text-white/15 tracking-widest uppercase">Phase {activeCanvas === 'history' ? '3' : '4'}</p>
               </div>
             </div>
           )}
