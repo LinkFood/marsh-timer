@@ -143,41 +143,51 @@ const LiveTicker = ({
     return deduped;
   }, [convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON, huntAlerts, murmurationIndex]);
 
-  if (items.length === 0) {
-    return (
-      <div className="h-7 glass-panel border-b border-white/[0.06] flex items-center justify-center">
-        <span className="text-[10px] font-body text-white/20 tracking-widest uppercase">LIVE FEED</span>
-      </div>
-    );
-  }
+  // Scale animation: ~2s per item, min 15s, max 60s
+  const duration = Math.min(60, Math.max(15, items.length * 2));
 
   return (
-    <div className="h-7 glass-panel border-b border-white/[0.06] overflow-hidden relative">
+    <div className="h-7 glass-panel border-b border-white/[0.06] overflow-hidden relative flex items-center">
       <style>{`@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
-      <div
-        className="flex items-center h-full whitespace-nowrap"
-        style={{
-          animation: 'ticker-scroll 30s linear infinite',
-          animationPlayState: isHovered ? 'paused' : 'running',
-        }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        {[...items, ...items].map((item, i) => {
-          const Icon = ICONS[item.icon];
-          const colorClass = SEVERITY_COLORS[item.severity];
-          return (
-            <Fragment key={`${item.id}-${i}`}>
-              {i > 0 && <span className="text-white/20 mx-3">·</span>}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Icon size={12} className={colorClass} />
-                <span className={`text-[10px] font-body ${colorClass}`}>{item.text}</span>
-                <span className="text-[10px] text-white/30">{timeAgo(item.timestamp)}</span>
-              </div>
-            </Fragment>
-          );
-        })}
+
+      {/* LIVE indicator */}
+      <div className="flex items-center gap-1.5 px-3 shrink-0 z-10 border-r border-white/[0.06]">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+        <span className="text-[9px] font-mono text-white/40 tracking-wider">LIVE</span>
       </div>
+
+      {items.length === 0 ? (
+        <span className="text-[10px] font-body text-white/20 tracking-widest uppercase ml-4">
+          Scanning data feeds...
+        </span>
+      ) : (
+        <div className="overflow-hidden flex-1">
+          <div
+            className="flex items-center h-full whitespace-nowrap"
+            style={{
+              animation: `ticker-scroll ${duration}s linear infinite`,
+              animationPlayState: isHovered ? 'paused' : 'running',
+            }}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+          >
+            {[...items, ...items].map((item, i) => {
+              const Icon = ICONS[item.icon];
+              const colorClass = SEVERITY_COLORS[item.severity];
+              return (
+                <Fragment key={`${item.id}-${i}`}>
+                  {i > 0 && <span className="text-white/20 mx-3">·</span>}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Icon size={12} className={colorClass} />
+                    <span className={`text-[10px] font-body ${colorClass}`}>{item.text}</span>
+                    <span className="text-[10px] text-white/30">{timeAgo(item.timestamp)}</span>
+                  </div>
+                </Fragment>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
