@@ -585,6 +585,7 @@ const Index = () => {
               murmurationIndex={murmurationIndex}
               isMobile={isMobile}
               onSelectState={handleSelectState}
+              onBack={handleBack}
             />
           ) : activeCanvas === 'history' ? (
             <HistoryCanvas

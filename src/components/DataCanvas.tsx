@@ -6,6 +6,7 @@ import Sparkline from '@/components/charts/Sparkline';
 import StackedArea from '@/components/charts/StackedArea';
 import { useConvergenceHistoryAll, useConvergenceHistory } from '@/hooks/useConvergenceHistory';
 import { useBrainActivity } from '@/hooks/useBrainActivity';
+import StateProfile from '@/components/StateProfile';
 
 interface DataCanvasProps {
   species: Species;
@@ -18,6 +19,10 @@ interface DataCanvasProps {
     pattern_component: number;
     national_rank: number;
     reasoning: string;
+    birdcast_component?: number;
+    water_component?: number;
+    photoperiod_component?: number;
+    tide_component?: number;
   }>;
   convergenceTopStates: Array<{
     state_abbr: string;
@@ -45,6 +50,7 @@ interface DataCanvasProps {
   } | null;
   isMobile: boolean;
   onSelectState: (abbr: string) => void;
+  onBack: () => void;
 }
 
 function CardHeader({ icon: Icon, title, right }: {
@@ -376,6 +382,7 @@ export default function DataCanvas({
   murmurationIndex,
   isMobile,
   onSelectState,
+  onBack,
 }: DataCanvasProps) {
   const { historyMap } = useConvergenceHistoryAll(14);
 
@@ -399,6 +406,21 @@ export default function DataCanvas({
     }
     return avgs;
   }, [historyMap, murmurationIndex]);
+
+  // Show StateProfile when a state is selected
+  if (selectedState) {
+    const score = convergenceScores.get(selectedState) || null;
+    return (
+      <StateProfile
+        stateAbbr={selectedState}
+        species={species}
+        convergenceScore={score}
+        convergenceAlerts={convergenceAlerts}
+        onBack={onBack}
+        isMobile={isMobile}
+      />
+    );
+  }
 
   return (
     <div
