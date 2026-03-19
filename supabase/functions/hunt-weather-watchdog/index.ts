@@ -63,64 +63,72 @@ function detectEvents(
     const date = dates[i];
 
     // Cold front: temp drop >15F between consecutive days
-    const tempDrop = highs[i - 1] - highs[i];
+    const hi = highs[i] ?? 0;
+    const hiPrev = highs[i - 1] ?? 0;
+    const tempDrop = hiPrev - hi;
     if (tempDrop > 15) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'cold_front',
         event_date: date,
-        details: `High drops ${Math.round(tempDrop)}F: ${Math.round(highs[i - 1])}F -> ${Math.round(highs[i])}F`,
+        details: `High drops ${Math.round(tempDrop)}F: ${Math.round(hiPrev)}F -> ${Math.round(hi)}F`,
         severity: tempDrop > 25 ? 'high' : 'medium',
-        metadata: { temp_drop_f: Math.round(tempDrop), prev_high: Math.round(highs[i - 1]), new_high: Math.round(highs[i]) },
+        metadata: { temp_drop_f: Math.round(tempDrop), prev_high: Math.round(hiPrev), new_high: Math.round(hi) },
       });
     }
 
     // Pressure drop: >3mb between consecutive days
-    const pressureDrop = pressures[i - 1] - pressures[i];
+    const pCur = pressures[i] ?? 0;
+    const pPrev = pressures[i - 1] ?? 0;
+    const pressureDrop = pPrev - pCur;
     if (pressureDrop > 3) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'pressure_drop',
         event_date: date,
-        details: `Pressure drops ${pressureDrop.toFixed(1)}mb: ${pressures[i - 1].toFixed(0)}mb -> ${pressures[i].toFixed(0)}mb`,
+        details: `Pressure drops ${pressureDrop.toFixed(1)}mb: ${pPrev.toFixed(0)}mb -> ${pCur.toFixed(0)}mb`,
         severity: pressureDrop > 6 ? 'high' : 'medium',
-        metadata: { pressure_drop_mb: Math.round(pressureDrop * 10) / 10, prev_pressure: Math.round(pressures[i - 1]), new_pressure: Math.round(pressures[i]) },
+        metadata: { pressure_drop_mb: Math.round(pressureDrop * 10) / 10, prev_pressure: Math.round(pPrev), new_pressure: Math.round(pCur) },
       });
     }
 
     // High wind: >20mph any day
-    if (winds[i] > 20) {
+    const wind = winds[i] ?? 0;
+    if (wind > 20) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'high_wind',
         event_date: date,
-        details: `Wind gusts to ${Math.round(winds[i])}mph`,
-        severity: winds[i] > 35 ? 'high' : 'medium',
-        metadata: { wind_mph: Math.round(winds[i]) },
+        details: `Wind gusts to ${Math.round(wind)}mph`,
+        severity: wind > 35 ? 'high' : 'medium',
+        metadata: { wind_mph: Math.round(wind) },
       });
     }
 
     // First freeze: temp_low drops below 32F when previous day was above
-    if (lows[i] < 32 && lows[i - 1] >= 32) {
+    const lo = lows[i] ?? 0;
+    const loPrev = lows[i - 1] ?? 0;
+    if (lo < 32 && loPrev >= 32) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'first_freeze',
         event_date: date,
-        details: `First freeze: low ${Math.round(lows[i])}F (prev day ${Math.round(lows[i - 1])}F)`,
-        severity: lows[i] < 20 ? 'high' : 'medium',
-        metadata: { low_f: Math.round(lows[i]), prev_low_f: Math.round(lows[i - 1]) },
+        details: `First freeze: low ${Math.round(lo)}F (prev day ${Math.round(loPrev)}F)`,
+        severity: lo < 20 ? 'high' : 'medium',
+        metadata: { low_f: Math.round(lo), prev_low_f: Math.round(loPrev) },
       });
     }
 
     // Heavy precip: >10mm any day
-    if (precip[i] > 10) {
+    const pp = precip[i] ?? 0;
+    if (pp > 10) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'heavy_precip',
         event_date: date,
-        details: `Heavy precipitation: ${precip[i].toFixed(1)}mm`,
-        severity: precip[i] > 25 ? 'high' : 'medium',
-        metadata: { precip_mm: Math.round(precip[i] * 10) / 10 },
+        details: `Heavy precipitation: ${pp.toFixed(1)}mm`,
+        severity: pp > 25 ? 'high' : 'medium',
+        metadata: { precip_mm: Math.round(pp * 10) / 10 },
       });
     }
   }
@@ -142,28 +150,45 @@ serve(async (req) => {
 
     const supabase = createSupabaseClient();
     const entries = Object.entries(STATE_CENTROIDS);
-    const lats = entries.map(([, s]) => s.lat).join(",");
-    const lngs = entries.map(([, s]) => s.lng).join(",");
 
     // -----------------------------------------------------------------------
-    // 1. Bulk Open-Meteo fetch — all 50 states in one request
+    // 1. Bulk Open-Meteo fetch — 2 batches of 25 states to avoid TLS errors
     // -----------------------------------------------------------------------
-    const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,pressure_msl_mean,weather_code,cloud_cover_mean&temperature_unit=fahrenheit&wind_speed_unit=mph&past_days=1&forecast_days=16`;
+    const midpoint = Math.ceil(entries.length / 2);
+    const batch1Entries = entries.slice(0, midpoint);
+    const batch2Entries = entries.slice(midpoint);
 
-    console.log('[hunt-weather-watchdog] Fetching Open-Meteo bulk forecast');
-    const weatherRes = await fetch(meteoUrl);
-    if (!weatherRes.ok) {
-      const errText = await weatherRes.text();
-      console.error('[hunt-weather-watchdog] Open-Meteo error:', weatherRes.status, errText);
-      return errorResponse(req, 'Weather API error', 502);
+    async function fetchBatch(batchEntries: typeof entries, batchLabel: string): Promise<unknown[]> {
+      const batchLats = batchEntries.map(([, s]) => s.lat).join(",");
+      const batchLngs = batchEntries.map(([, s]) => s.lng).join(",");
+      const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${batchLats}&longitude=${batchLngs}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_direction_10m_dominant,pressure_msl_mean,weather_code,cloud_cover_mean&temperature_unit=fahrenheit&wind_speed_unit=mph&past_days=1&forecast_days=16`;
+
+      console.log(`[hunt-weather-watchdog] Fetching Open-Meteo ${batchLabel} (${batchEntries.length} states)`);
+      let weatherRes = await fetch(meteoUrl);
+
+      if (!weatherRes.ok) {
+        const errText = await weatherRes.text();
+        console.warn(`[hunt-weather-watchdog] ${batchLabel} failed (${weatherRes.status}): ${errText} — retrying in 2s`);
+        await new Promise(r => setTimeout(r, 2000));
+        weatherRes = await fetch(meteoUrl);
+        if (!weatherRes.ok) {
+          const retryErr = await weatherRes.text();
+          throw new Error(`${batchLabel} failed after retry: ${weatherRes.status} ${retryErr}`);
+        }
+      }
+
+      const meteoData = await weatherRes.json();
+      const results: unknown[] = Array.isArray(meteoData) ? meteoData : [meteoData];
+      if (results.length !== batchEntries.length) {
+        throw new Error(`${batchLabel} count mismatch: expected ${batchEntries.length}, got ${results.length}`);
+      }
+      return results;
     }
 
-    const meteoData = await weatherRes.json();
-    const forecasts: unknown[] = Array.isArray(meteoData) ? meteoData : [meteoData];
-    if (forecasts.length !== entries.length) {
-      console.error(`[hunt-weather-watchdog] Expected ${entries.length} forecasts, got ${forecasts.length}`);
-      return errorResponse(req, `Forecast count mismatch: expected ${entries.length}, got ${forecasts.length}`, 502);
-    }
+    const forecasts1 = await fetchBatch(batch1Entries, 'batch 1/2');
+    await new Promise(r => setTimeout(r, 1000));
+    const forecasts2 = await fetchBatch(batch2Entries, 'batch 2/2');
+    const forecasts: unknown[] = [...forecasts1, ...forecasts2];
 
     console.log(`[hunt-weather-watchdog] Received forecasts for ${forecasts.length} states`);
 
@@ -192,19 +217,19 @@ serve(async (req) => {
       // Upsert yesterday's actual into hunt_weather_history
       const yesterdayIdx = 0;
       const yesterdayDate = dates[yesterdayIdx];
-      const hiF = Math.round(daily.temperature_2m_max[yesterdayIdx] * 10) / 10;
-      const loF = Math.round(daily.temperature_2m_min[yesterdayIdx] * 10) / 10;
+      const hiF = Math.round((daily.temperature_2m_max[yesterdayIdx] ?? 0) * 10) / 10;
+      const loF = Math.round((daily.temperature_2m_min[yesterdayIdx] ?? 0) * 10) / 10;
       historyRows.push({
         state_abbr: abbr,
         date: yesterdayDate,
         temp_high_f: hiF,
         temp_low_f: loF,
         temp_avg_f: Math.round(((hiF + loF) / 2) * 10) / 10,
-        wind_speed_max_mph: Math.round(daily.wind_speed_10m_max[yesterdayIdx] * 10) / 10,
-        wind_direction_dominant: Math.round(daily.wind_direction_10m_dominant[yesterdayIdx]),
-        pressure_avg_msl: Math.round(daily.pressure_msl_mean[yesterdayIdx] * 10) / 10,
-        precipitation_total_mm: Math.round(daily.precipitation_sum[yesterdayIdx] * 10) / 10,
-        cloud_cover_avg: Math.round(daily.cloud_cover_mean[yesterdayIdx]),
+        wind_speed_max_mph: Math.round((daily.wind_speed_10m_max[yesterdayIdx] ?? 0) * 10) / 10,
+        wind_direction_dominant: Math.round(daily.wind_direction_10m_dominant[yesterdayIdx] ?? 0),
+        pressure_avg_msl: Math.round((daily.pressure_msl_mean[yesterdayIdx] ?? 0) * 10) / 10,
+        precipitation_total_mm: Math.round((daily.precipitation_sum[yesterdayIdx] ?? 0) * 10) / 10,
+        cloud_cover_avg: Math.round(daily.cloud_cover_mean[yesterdayIdx] ?? 0),
       });
 
       // All 16 forecast days (index 1..16) into hunt_weather_forecast
@@ -212,14 +237,14 @@ serve(async (req) => {
         forecastRows.push({
           state_abbr: abbr,
           date: dates[d],
-          temp_high_f: Math.round(daily.temperature_2m_max[d] * 10) / 10,
-          temp_low_f: Math.round(daily.temperature_2m_min[d] * 10) / 10,
-          precipitation_mm: Math.round(daily.precipitation_sum[d] * 10) / 10,
-          wind_speed_max_mph: Math.round(daily.wind_speed_10m_max[d] * 10) / 10,
-          wind_direction_dominant: Math.round(daily.wind_direction_10m_dominant[d]),
-          pressure_msl: Math.round(daily.pressure_msl_mean[d] * 10) / 10,
-          weather_code: daily.weather_code[d],
-          cloud_cover_pct: Math.round(daily.cloud_cover_mean[d]),
+          temp_high_f: Math.round((daily.temperature_2m_max[d] ?? 0) * 10) / 10,
+          temp_low_f: Math.round((daily.temperature_2m_min[d] ?? 0) * 10) / 10,
+          precipitation_mm: Math.round((daily.precipitation_sum[d] ?? 0) * 10) / 10,
+          wind_speed_max_mph: Math.round((daily.wind_speed_10m_max[d] ?? 0) * 10) / 10,
+          wind_direction_dominant: Math.round(daily.wind_direction_10m_dominant[d] ?? 0),
+          pressure_msl: Math.round((daily.pressure_msl_mean[d] ?? 0) * 10) / 10,
+          weather_code: daily.weather_code[d] ?? 0,
+          cloud_cover_pct: Math.round(daily.cloud_cover_mean[d] ?? 0),
           updated_at: new Date().toISOString(),
         });
       }
@@ -229,12 +254,12 @@ serve(async (req) => {
       allEvents.push(...stateEvents);
 
       // Build embedding text for yesterday's snapshot
-      const windDir = degreesToCompass(daily.wind_direction_10m_dominant[yesterdayIdx]);
-      const windMph = Math.round(daily.wind_speed_10m_max[yesterdayIdx]);
-      const hi = Math.round(daily.temperature_2m_max[yesterdayIdx]);
-      const lo = Math.round(daily.temperature_2m_min[yesterdayIdx]);
-      const precipMm = daily.precipitation_sum[yesterdayIdx].toFixed(1);
-      const pressureMb = Math.round(daily.pressure_msl_mean[yesterdayIdx]);
+      const windDir = degreesToCompass(daily.wind_direction_10m_dominant[yesterdayIdx] ?? 0);
+      const windMph = Math.round(daily.wind_speed_10m_max[yesterdayIdx] ?? 0);
+      const hi = Math.round(daily.temperature_2m_max[yesterdayIdx] ?? 0);
+      const lo = Math.round(daily.temperature_2m_min[yesterdayIdx] ?? 0);
+      const precipMm = (daily.precipitation_sum[yesterdayIdx] ?? 0).toFixed(1);
+      const pressureMb = Math.round(daily.pressure_msl_mean[yesterdayIdx] ?? 0);
 
       // Check if there were any events on this date for this state
       const dayEvents = stateEvents.filter(e => e.event_date === yesterdayDate);
@@ -258,11 +283,11 @@ serve(async (req) => {
       for (const dayOffset of forecastDayOffsets) {
         if (dayOffset >= dates.length) continue;
         const forecastDate = daily.time[dayOffset];
-        const forecastHigh = Math.round(daily.temperature_2m_max[dayOffset]);
-        const forecastLow = Math.round(daily.temperature_2m_min[dayOffset]);
-        const forecastPrecip = daily.precipitation_sum[dayOffset].toFixed(1);
-        const forecastWind = Math.round(daily.wind_speed_10m_max[dayOffset]);
-        const forecastWindDir = degreesToCompass(daily.wind_direction_10m_dominant[dayOffset]);
+        const forecastHigh = Math.round(daily.temperature_2m_max[dayOffset] ?? 0);
+        const forecastLow = Math.round(daily.temperature_2m_min[dayOffset] ?? 0);
+        const forecastPrecip = (daily.precipitation_sum[dayOffset] ?? 0).toFixed(1);
+        const forecastWind = Math.round(daily.wind_speed_10m_max[dayOffset] ?? 0);
+        const forecastWindDir = degreesToCompass(daily.wind_direction_10m_dominant[dayOffset] ?? 0);
 
         const forecastText = `weather-forecast | ${abbr} | ${forecastDate} | predicted high:${forecastHigh}F low:${forecastLow}F | precip:${forecastPrecip}mm wind:${forecastWind}mph ${forecastWindDir}`;
         embedTexts.push(forecastText);
@@ -278,9 +303,9 @@ serve(async (req) => {
             forecast_made_on: yesterdayDate,
             high_f: forecastHigh,
             low_f: forecastLow,
-            precip_mm: Math.round(daily.precipitation_sum[dayOffset] * 10) / 10,
+            precip_mm: Math.round((daily.precipitation_sum[dayOffset] ?? 0) * 10) / 10,
             wind_mph: forecastWind,
-            wind_dir: Math.round(daily.wind_direction_10m_dominant[dayOffset]),
+            wind_dir: Math.round(daily.wind_direction_10m_dominant[dayOffset] ?? 0),
             is_forecast: true,
           },
         });
