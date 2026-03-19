@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -121,6 +122,7 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
+  const startTime = Date.now();
   try {
     console.log('[hunt-du-map] Starting weekly DU map report fetch');
 
@@ -271,9 +273,22 @@ serve(async (req) => {
     };
     console.log('[hunt-du-map] Complete:', JSON.stringify(summary));
 
+    await logCronRun({
+      functionName: 'hunt-du-map',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+
     return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-du-map] Fatal error:', error);
+    await logCronRun({
+      functionName: 'hunt-du-map',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
     return errorResponse(req, 'Internal server error', 500);
   }
 });
