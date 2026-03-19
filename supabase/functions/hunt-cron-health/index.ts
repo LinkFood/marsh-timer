@@ -10,12 +10,23 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
-    // Get latest run for each function
+    // Expected cron names — query per function so high-frequency crons
+    // (weather-realtime) don't push others out of a global LIMIT
+    const cronNames = [
+      'hunt-weather-watchdog', 'hunt-weather-realtime', 'hunt-nws-monitor',
+      'hunt-migration-monitor', 'hunt-birdcast', 'hunt-nasa-power',
+      'hunt-convergence-engine', 'hunt-scout-report', 'hunt-convergence-alerts',
+      'hunt-forecast-tracker', 'hunt-migration-report-card',
+      'hunt-convergence-report-card', 'hunt-du-map', 'hunt-du-alerts',
+    ];
+
+    // Fetch last 5 runs per function in one query using IN filter + higher limit
     const { data: logs, error } = await supabase
       .from('hunt_cron_log')
       .select('*')
+      .in('function_name', cronNames)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(cronNames.length * 5);
 
     if (error) {
       console.error('[hunt-cron-health] Query error:', error);
