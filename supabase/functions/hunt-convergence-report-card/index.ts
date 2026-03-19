@@ -65,6 +65,12 @@ serve(async (req) => {
 
     if (scoreErr) {
       console.error('[hunt-convergence-report-card] Score query error:', scoreErr);
+      await logCronRun({
+        functionName: 'hunt-convergence-report-card',
+        status: 'error',
+        errorMessage: scoreErr.message,
+        durationMs: Date.now() - startTime,
+      });
       return errorResponse(req, 'Score query failed', 500);
     }
 

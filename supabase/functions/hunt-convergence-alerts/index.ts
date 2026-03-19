@@ -74,7 +74,14 @@ serve(async (req) => {
 
     if (todayScores.length === 0) {
       console.log('[hunt-convergence-alerts] No scores for today, skipping');
-      return successResponse(req, { alerts_triggered: 0, users_notified: 0 });
+      const summary = { alerts_triggered: 0, users_notified: 0, skipped: 'no scores for today' };
+      await logCronRun({
+        functionName: 'hunt-convergence-alerts',
+        status: 'success',
+        summary,
+        durationMs: Date.now() - startTime,
+      });
+      return successResponse(req, summary);
     }
 
     // Build yesterday lookup
