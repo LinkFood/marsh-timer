@@ -167,7 +167,9 @@ serve(async (req) => {
 
     if (allReports.length === 0) {
       console.log('[hunt-du-map] No reports found in last 7 days');
-      return successResponse(req, { reports: 0, embedded: 0, range: `${startStr} to ${end}` });
+      const summary = { reports: 0, embedded: 0, range: `${startStr} to ${end}` };
+      await logCronRun({ functionName: 'hunt-du-map', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     console.log(`[hunt-du-map] Total reports fetched: ${allReports.length}`);

@@ -70,7 +70,9 @@ serve(async (req) => {
 
     if (!scoreRows || scoreRows.length === 0) {
       console.log('[hunt-convergence-report-card] No convergence scores found for the week');
-      return successResponse(req, { message: 'No convergence scores found', graded: 0 });
+      const summary = { message: 'No convergence scores found', graded: 0 };
+      await logCronRun({ functionName: 'hunt-convergence-report-card', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     // Group scores by state

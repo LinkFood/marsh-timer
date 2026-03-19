@@ -51,7 +51,9 @@ serve(async (req) => {
 
     if (!forecastRows || forecastRows.length === 0) {
       console.log(`[hunt-forecast-tracker] No forecast entries found for ${yesterday}`);
-      return successResponse(req, { message: `No forecasts found for ${yesterday}`, scored: 0 });
+      const summary = { message: `No forecasts found for ${yesterday}`, scored: 0 };
+      await logCronRun({ functionName: 'hunt-forecast-tracker', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     console.log(`[hunt-forecast-tracker] Found ${forecastRows.length} forecast entries`);
@@ -72,7 +74,9 @@ serve(async (req) => {
     const forecastStates = Object.keys(forecastByState);
     if (forecastStates.length === 0) {
       console.log('[hunt-forecast-tracker] No forecast entries with structured metadata');
-      return successResponse(req, { message: 'No structured forecasts found', scored: 0 });
+      const summary = { message: 'No structured forecasts found', scored: 0 };
+      await logCronRun({ functionName: 'hunt-forecast-tracker', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     // -------------------------------------------------------------------
@@ -91,7 +95,9 @@ serve(async (req) => {
 
     if (!actualRows || actualRows.length === 0) {
       console.log(`[hunt-forecast-tracker] No actual weather data for ${yesterday}`);
-      return successResponse(req, { message: `No actual weather for ${yesterday}`, scored: 0 });
+      const summary = { message: `No actual weather for ${yesterday}`, scored: 0 };
+      await logCronRun({ functionName: 'hunt-forecast-tracker', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     console.log(`[hunt-forecast-tracker] Found ${actualRows.length} actual weather entries`);
@@ -145,7 +151,9 @@ serve(async (req) => {
 
     if (comparisons.length === 0) {
       console.log('[hunt-forecast-tracker] No overlapping forecast/actual pairs');
-      return successResponse(req, { message: 'No overlapping data', scored: 0 });
+      const summary = { message: 'No overlapping data', scored: 0 };
+      await logCronRun({ functionName: 'hunt-forecast-tracker', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     // -------------------------------------------------------------------

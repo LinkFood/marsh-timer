@@ -64,7 +64,9 @@ serve(async (req) => {
 
     if (!convergenceRows || convergenceRows.length === 0) {
       console.log(`[hunt-migration-report-card] No convergence scores found for ${sevenDaysAgo}`);
-      return successResponse(req, { message: `No convergence scores for ${sevenDaysAgo}`, graded: 0 });
+      const summary = { message: `No convergence scores for ${sevenDaysAgo}`, graded: 0 };
+      await logCronRun({ functionName: 'hunt-migration-report-card', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     console.log(`[hunt-migration-report-card] Found ${convergenceRows.length} convergence scores from ${sevenDaysAgo}`);
@@ -177,7 +179,9 @@ serve(async (req) => {
 
     if (embedTexts.length === 0) {
       console.log('[hunt-migration-report-card] No states to grade');
-      return successResponse(req, { message: 'No states to grade', graded: 0 });
+      const summary = { message: 'No states to grade', graded: 0 };
+      await logCronRun({ functionName: 'hunt-migration-report-card', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     // -------------------------------------------------------------------

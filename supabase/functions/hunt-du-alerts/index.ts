@@ -122,7 +122,9 @@ serve(async (req) => {
     console.log(`[hunt-du-alerts] Found ${newAlerts.length} new migration alerts`);
 
     if (newAlerts.length === 0) {
-      return successResponse(req, { new_articles: 0, embedded: 0, run_at: new Date().toISOString() });
+      const summary = { new_articles: 0, embedded: 0, run_at: new Date().toISOString() };
+      await logCronRun({ functionName: 'hunt-du-alerts', status: 'success', summary, durationMs: Date.now() - startTime });
+      return successResponse(req, summary);
     }
 
     // 4. Process each new alert
