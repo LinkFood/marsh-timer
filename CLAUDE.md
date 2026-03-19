@@ -19,13 +19,28 @@ Same RPC, same filters, same vector space. When a cold front hits Arkansas, the 
 
 ## Brain State
 
-~103K entries in hunt_knowledge (DU separation complete — 0 du_report remaining). Heading to 1M+.
-- Weather events, migration spikes, NWS alerts, NASA POWER, solunar, convergence scores, birdcast, facts, regulations, species behavioral knowledge (152 entries across 39 waterfowl + deer/turkey/dove)
+~212K entries in hunt_knowledge. Heading to 1M+.
+- Weather events, migration spikes, NWS alerts, NASA POWER, solunar, convergence scores, birdcast, drought, photoperiod, USGS water, NOAA tides, climate normals, facts, regulations, species behavioral knowledge (152 entries across 39 waterfowl + deer/turkey/dove)
 - IVFFlat index working. Search returns species knowledge.
 - Brain honesty: chat splits into "FROM THE BRAIN" (cyan, cards) + "AI INTERPRETATION" (LLM text)
-- 15 crons active, convergence engine running daily
-- Backfill pipes in progress: eBird, USDA crops, USGS water, NOAA tides, NOAA ACIS, photoperiod
+- 14 crons active, all logging to hunt_cron_log via logCronRun. Cron health endpoint at hunt-cron-health.
+- Convergence engine running daily, real-time weather every 15 min, NWS alerts every 3hr
+- Backfill pipes in progress: eBird history, USDA crops, NOAA ACIS
 - Pattern extraction pending (needs eBird backfill to complete first — the big unlock)
+
+## Cron Monitoring
+
+All 14 crons write to `hunt_cron_log` via `logCronRun` from `_shared/cronLog.ts`. The `hunt-cron-health` endpoint queries this table.
+
+**CRITICAL:** Every early-return path in a cron function MUST call `logCronRun` before returning. If a function short-circuits (e.g., "no data found"), it still needs to log — otherwise the health dashboard shows "never_run" and we lose visibility.
+
+**Check cron health every session:**
+```bash
+SERVICE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd 2>/dev/null | grep service_role | awk '{print $NF}')
+curl -s "https://rvhyotvklfowklzjahdd.supabase.co/functions/v1/hunt-cron-health" -H "Authorization: Bearer $SERVICE_KEY"
+```
+
+If any cron shows "error" or "late", investigate immediately. If "never_run" after 48 hours, the function likely has an early-return path missing logCronRun.
 
 ## Brain V2
 
@@ -209,26 +224,38 @@ npm run test      # Vitest
 | hunt_convergence_alerts | Score spike alerts |
 | hunt_solunar_precomputed | 365-day precomputed solunar data |
 | hunt_nws_alerts | Filtered NWS severe weather alerts |
+| hunt_weather_forecast | 16-day forecast per state (upserted daily by watchdog) |
+| hunt_weather_events | Detected weather events (cold fronts, pressure drops, etc.) |
+| hunt_cron_log | Cron execution log (function_name, status, summary, duration_ms) |
 
 All tables have RLS. Service role bypasses for edge functions.
 
-## Edge Functions
+## Edge Functions (29 total)
 
 ### Brain Writers (embed into hunt_knowledge)
 
 | Function | Purpose | Schedule |
 |----------|---------|----------|
-| hunt-du-map | DU migration map pins -> embed | cron |
-| hunt-du-alerts | DU migration alert articles -> embed | cron |
-| hunt-weather-watchdog | 50-state forecast + hunting events -> embed | daily 0 6 * * * |
-| hunt-migration-monitor | eBird spike detection -> embed | 0-20/5 7 * * * |
-| hunt-birdcast | BirdCast radar migration -> embed | cron |
-| hunt-nasa-power | NASA POWER satellite data -> embed | daily 30/33 6 * * * |
+| hunt-du-map | DU migration map pins -> embed | weekly Mon 12pm UTC |
+| hunt-du-alerts | DU migration alert articles -> embed | weekly Mon 6am UTC |
+| hunt-weather-watchdog | 50-state forecast (2 batches of 25) + hunting events -> embed | daily 6am UTC |
+| hunt-weather-realtime | ASOS station monitoring (130 stations) for fronts/pressure/wind | every 15 min |
+| hunt-migration-monitor | eBird spike detection (5 batches of 10 states) -> embed | daily 7:00-7:20 UTC |
+| hunt-birdcast | BirdCast radar migration -> embed | daily 10am UTC |
+| hunt-nasa-power | NASA POWER satellite data (2 batches of 25) -> embed | daily 6:30/6:33 UTC |
 | hunt-nws-monitor | NWS filtered alerts -> embed | every 3hr |
-| hunt-solunar-precompute | 365-day solunar calendar -> embed | weekly |
-| hunt-convergence-engine | 4-component scoring -> embed | daily 0 8 * * * |
+| hunt-solunar-precompute | 365-day solunar calendar -> embed | weekly Sun 6am UTC |
+| hunt-convergence-engine | 4-component scoring -> embed | daily 8am UTC |
 | hunt-extract-patterns | Cross-ref migration+weather -> Sonnet extraction -> embed | manual |
 | hunt-log | User interaction logging -> embed | on demand |
+
+### Brain Graders (self-scoring)
+
+| Function | Purpose | Schedule |
+|----------|---------|----------|
+| hunt-forecast-tracker | Forecast vs actual accuracy scoring -> embed | daily 10am UTC |
+| hunt-migration-report-card | Convergence prediction grading -> embed | daily 11am UTC |
+| hunt-convergence-report-card | Weekly convergence model performance -> embed | weekly Sun noon UTC |
 
 ### Brain Readers (search hunt_knowledge)
 
@@ -245,10 +272,15 @@ All tables have RLS. Service role bypasses for edge functions.
 | hunt-generate-embedding | Voyage AI 512-dim embedding (used by writers) |
 | hunt-weather | Open-Meteo 3-day forecast with cache |
 | hunt-solunar | Solunar + sunrise/sunset with cache |
-| hunt-scout-report | Daily AI scout brief from convergence data (0 9 * * *) |
-| hunt-convergence-alerts | Score spike detection + notifications (15 8 * * *) |
+| hunt-scout-report | Daily AI scout brief from convergence data (daily 9am UTC) |
+| hunt-convergence-alerts | Score spike detection + notifications (daily 8:15am UTC) |
+| hunt-cron-health | Cron health dashboard — queries hunt_cron_log per-function |
+| hunt-drought-monitor | US Drought Monitor ingestion |
+| hunt-inaturalist | iNaturalist observation ingestion |
 
 All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
+
+All cron functions MUST import `logCronRun` from `_shared/cronLog.ts` and call it on EVERY exit path (success, error, AND early returns with no data). The `hunt-cron-health` endpoint depends on these logs.
 
 ## Data Pipeline
 
@@ -272,23 +304,32 @@ eBird Historical (5 years) + Open-Meteo Archive (5 years)
 
 ## Data Sources
 
-### Tier 1 — Live & Integrated
+### Live & Integrated
 
 | Source | Pipeline |
 |--------|----------|
-| eBird (Cornell Lab) | Live sightings on map + historical backfill via hunt-migration-monitor |
+| eBird (Cornell Lab) | Live sightings on map + spike detection via hunt-migration-monitor |
 | RainViewer | Live radar overlay (frontend only) |
-| Open-Meteo | Live forecast + 5-year archive via hunt-weather-watchdog |
+| Open-Meteo | Live forecast (2x25 batch) + 5-year archive via hunt-weather-watchdog |
+| ASOS/METAR | Real-time 130-station weather via hunt-weather-realtime (every 15 min) |
 | NASA POWER | Satellite solar/cloud data via hunt-nasa-power |
-| NWS API | Severe weather alerts via hunt-nws-monitor |
+| NWS API | Severe weather alerts via hunt-nws-monitor (every 3hr) |
+| BirdCast | Radar migration intensity via hunt-birdcast |
+| DU Migration | Map pins (hunt-du-map) + alert articles (hunt-du-alerts) |
+| US Drought Monitor | Weekly drought severity via hunt-drought-monitor |
+| iNaturalist | Deer/turkey/dove observations via hunt-inaturalist |
+| Photoperiod | Daylight calculations (35K entries, backfill complete) |
+| USGS Water | Water levels (19K entries, backfill partial) |
+| NOAA Tides | Tide readings (17K entries, backfill partial) |
+| NOAA ACIS | Climate normals (800 entries, backfill partial) |
 
-### Tier 2 — Ready to Build
+### Ready to Build
 
-DU Migration Alerts (JSON, no auth, READY), USFWS Flyway Data Books / Breeding Survey / HIP Harvest (PDF, public domain, READY), BirdCast Radar + DU Migration Map (undocumented APIs, NEEDS RECON).
+USDA Crop Progress (script built, cron not deployed), Great Lakes ice (GLERL), NOAA Snow Cover (SNODAS), CPC Temperature Outlooks, NASA NDVI, National Phenology Network, NIFC Active Fires, State DNR harvest reports.
 
-### Tier 3 — Deferred (Legal Risk)
+### Deferred (Legal Risk)
 
-DuckHuntingChat.com, Refuge Forums, Migration Station USA — all deferred. Use clean USFWS sources first.
+DuckHuntingChat.com, Refuge Forums, Migration Station USA — use clean USFWS sources first.
 
 ## Disk Health Check
 

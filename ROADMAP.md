@@ -1,6 +1,6 @@
 # Duck Countdown — Master Roadmap
 
-Last updated: 2026-03-14 (night)
+Last updated: 2026-03-19
 
 ## The Thesis
 
@@ -16,55 +16,32 @@ The grandpa on the porch. 60 years of watching the sky, the creek, and the acorn
 
 ---
 
-## CURRENT STATE (2026-03-14 night)
+## CURRENT STATE (2026-03-19)
 
-**Brain:** 104,704 entries in hunt_knowledge. All embedded via Voyage AI 512-dim vectors. IVFFlat index working.
-
-### Brain Contents Breakdown:
-| Count | Type | What it is |
-|------:|------|-----------|
-| 32,952 | usgs-water | USGS water levels |
-| 28,617 | noaa-tide | NOAA tide readings |
-| 27,087 | photoperiod | Daylight calculations |
-| 5,001 | du_report | DU migration reports |
-| 1,885 | weather-event | METAR front passages |
-| 1,803 | weather-realtime | Live weather snapshots |
-| 1,442 | fact | State facts |
-| 1,314 | climate-normal | NOAA climate normals |
-| 914 | nws-alert | NWS severe weather |
-| 450 | birdcast-daily | BirdCast radar migration |
-| 449 | regulation | Regulation links |
-| 425 | nasa-daily | NASA POWER satellite |
-| 361 | usfws_hip | USFWS HIP harvest |
-| 340 | weather-insight | Weather insights |
-| 311 | usfws_harvest | Federal harvest stats |
-| 214 | usfws_breeding | USFWS breeding surveys |
-| 194 | species-behavior | Species knowledge (152 entries, 39 waterfowl + deer/turkey/dove) |
-| 186 | migration-daily | Daily migration observations |
-| 150 | crop-data | USDA crop data |
-| 139+ | migration-spike* | eBird-derived spikes |
-| 100 | convergence-score | Convergence scores |
-| 72 | du_alert | DU alerts |
-| 53 | solunar-weekly | Solunar data |
-| 39 | hunting-knowledge | General hunting knowledge |
-| 23 | murmuration-index | Continental migration pulse |
-| 8 | weather-pattern | Cross-referenced patterns |
+**Brain:** 212,291 entries in hunt_knowledge. All embedded via Voyage AI 512-dim vectors. IVFFlat index working. Doubled since last update.
 
 ### Structured Tables:
 | Table | Rows | Date Range |
 |-------|-----:|-----------|
-| hunt_knowledge | 104,704 | All time |
-| hunt_weather_history | 45,400 | Sept 2020 → March 2026 (all 50 states) |
-| hunt_migration_history | 7,909 | Sept 2020 → March 2026 (partial states, AK-CA) |
-| hunt_convergence_scores | 350 | March 8-14, 2026 (7 days × 50 states) |
+| hunt_knowledge | 212,291 | All time |
+| hunt_weather_history | 45,450 | Sept 2020 → March 2026 (all 50 states) |
+| hunt_migration_history | 8,149 | Sept 2020 → March 2026 (partial states) |
+| hunt_convergence_scores | 600 | March 8-19, 2026 (12 days × 50 states) |
 | hunt_seasons | 482 | 2025-2026 season data |
 
 ### Infrastructure:
-- 15 crons active (nws-monitor, birdcast, convergence-alerts confirmed healthy)
-- 30 edge functions deployed
+- 14 crons active — ALL logging to hunt_cron_log, ALL healthy as of 2026-03-19
+- 29 edge functions deployed
 - Compute: Small (2GB RAM, 2-core ARM)
-- Disk: 36GB gp3, 2.16GB used
-- Supabase IO budget: RECOVERED as of tonight
+- Disk: 36GB gp3
+- Supabase IO budget: Healthy
+
+### Cron Health (as of 2026-03-19)
+All 14 crons verified healthy. Fixed this session:
+- Weather watchdog was failing daily (Open-Meteo TLS errors) — split into 2 batches of 25 + null guards
+- 9 functions had no cron logging — added logCronRun to all functions + all early-return paths
+- Health endpoint was capped at 100 global entries (weather-realtime dominated) — changed to per-function query
+- **CHECK CRON HEALTH EVERY SESSION.** Run the hunt-cron-health endpoint.
 
 ---
 
@@ -131,13 +108,14 @@ Full recon saved at `.claude/agent-memory/idea-machine/data_source_recon_v2.md`.
 16. **Movebank GPS tracking** — actual tagged animal movements
 17. **NIFC Active Fire / Prescribed Burns** — dove/turkey habitat
 
-### Existing Pipes (status):
-- eBird backfill: Partial (AK-CA in hunt_migration_history). Key rotated — new key `ql314ikts0me`. Resume from OR when ready.
+### Existing Pipes (status as of 2026-03-19):
+- **Photoperiod:** DONE (35,077 entries). UT/VT/WV failed — re-run with `START_STATE=UT` to fill gaps.
+- **Drought Monitor:** DONE (8,400 entries). All 50 states, 168 weeks.
+- eBird backfill: Partial (AK-CA in hunt_migration_history). Key `ql314ikts0me`. Resume from OR.
 - USDA CropScape: 110 counties done
-- Photoperiod: 72% done
-- USGS Water: 19K rows done
-- NOAA Tides: 17K rows done
-- NOAA ACIS: 800 done
+- USGS Water: 19K rows done. Resume from CA.
+- NOAA Tides: 17K rows done. Resume from station 53/223.
+- NOAA ACIS: 800 done. Resume from last state.
 - **RULE: ONE PIPE AT A TIME.**
 
 ### Pattern Re-Extraction
@@ -180,8 +158,8 @@ Map-chat bridge, convergence in chat, PatternCard, SourceCard, PatternLinksCard,
 
 | Timeframe | Corpus Size | What It Knows |
 |-----------|------------|---------------|
-| Today (2026-03-14) | ~104,000 | 104K embeddings, 15 crons, 30 edge functions, 8-component convergence engine, terminal UI |
-| After new data sources | ~200,000+ | + drought, snow, ice, iNaturalist, satellite, expanded eBird, DNR harvest |
+| Today (2026-03-19) | ~212,000 | 212K embeddings, 14 crons (all healthy), 29 edge functions, convergence engine, terminal UI |
+| After remaining pipes | ~300,000+ | + snow, ice, expanded eBird, DNR harvest, NDVI, phenology |
 | After pattern extraction | ~205,000+ | + 1,000-5,000 cross-referenced weather-migration patterns |
 | After all pipes finish | ~500,000+ | + water levels, tides, photoperiod, climate normals, crop data backfills complete |
 | After 1 full season | ~1,000,000+ | + daily accumulation + user logs + pattern links + report cards |
