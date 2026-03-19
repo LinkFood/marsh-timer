@@ -3,7 +3,7 @@ import type { Species } from '@/data/types';
 import type { HuntAlert } from '@/hooks/useHuntAlerts';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { FeatureCollection } from 'geojson';
-import LiveTicker from './LiveTicker';
+import BrainHeartbeat from './BrainHeartbeat';
 import CanvasTabs from './CanvasTabs';
 import BrainPanel from './BrainPanel';
 
@@ -142,7 +142,7 @@ export default function TerminalShell({
       <>
         {/* Ticker — fixed bar below header */}
         <div className="fixed top-12 left-0 right-0 z-20">
-          <LiveTicker {...tickerProps} />
+          <BrainHeartbeat {...tickerProps} />
         </div>
 
         {/* Canvas area — children (map overlays) float via their own fixed positioning */}
@@ -174,7 +174,7 @@ export default function TerminalShell({
     <>
       {/* Ticker — fixed bar below header */}
       <div className="fixed top-12 left-0 right-0 z-20">
-        <LiveTicker {...tickerProps} />
+        <BrainHeartbeat {...tickerProps} />
       </div>
 
       {/* Canvas tabs — fixed below ticker */}
