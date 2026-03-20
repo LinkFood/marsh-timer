@@ -12,7 +12,7 @@ The grandpa on the porch. 60 years of watching the sky, the creek, and the acorn
 
 **Everything through the gate gets embedded.** The pipeline only grows. If data isn't being embedded, it's a bug.
 
-**Five species. That's the moat.** Duck, goose, deer, turkey, dove. Deer and birds with wings. Get these working well first. Fish and elk are future expansion.
+**Five species is the starting point, not the ceiling.** Duck, goose, deer, turkey, dove today. But the real moat is the cross-domain vector space — weather + water + vegetation + animal movement + acoustic + satellite in one searchable brain. Fish, elk, marine life, pollinators, bats — same engine, same vectors, different queries.
 
 ---
 
@@ -85,28 +85,60 @@ Replaced fixed terminal shell with composable panel-based deck. Full frontend re
 
 ### Data Pipeline Queue (build one at a time):
 
-#### Tier 1 — Fastest Wins
-1. **US Drought Monitor** — REST API, no auth, weekly, all 5 species
-2. **iNaturalist** — REST API, no auth, deer/turkey/dove (currently data-starved)
-3. **eBird expanded endpoints** — Status & Trends, hotspots, notable observations, regional stats (key: `ql314ikts0me`)
-4. **NASA GIBS satellite imagery** — free, no auth, daily MODIS tiles for map layer + embedding
-5. **NOAA Snow Cover (SNODAS)** — daily, hardest migration signal for waterfowl
+#### Tier 1 — Fastest Wins (existing)
+1. **eBird expanded endpoints** — Status & Trends, hotspots, notable observations (key: `ql314ikts0me`)
+2. **NASA GIBS satellite imagery** — free, no auth, daily MODIS tiles for map layer + embedding
+3. **NOAA Snow Cover (SNODAS)** — daily, hardest migration signal for waterfowl
+4. **USDA Crop Progress** — already have NASS API key `25B05F81-1582-3D5D-A4F1-D13D00FCE7D1`
 
-#### Tier 2 — Massive Unlock
-6. **State DNR harvest reports** — Arkansas daily waterfowl, other states weekly/seasonal
-7. **Great Lakes ice cover (GLERL)** — daily CSV, staging area signal
-8. **USACE pool levels** — managed habitat, Mississippi flyway insider signal
-9. **USDA Crop Progress** — already have NASS API key `25B05F81-1582-3D5D-A4F1-D13D00FCE7D1`
-10. **NASA NDVI / AppEEARS** — vegetation health, 16-day composites (turkey, deer, dove)
-11. **USDA Mast Surveys** — acorn/mast crop reports (deer movement trigger)
-12. **National Phenology Network** — green-up, leaf-off, frost timing
+#### Tier 2 — High-Impact Animal Data (NEW)
+5. **Movebank GPS tracking** — 2.5B GPS locations, REST API, free. Movement vectors: speed, bearing, altitude, stopovers. THE unlock for "why they moved."
+6. **BirdWeather / BirdNET** — 5,000 always-on microphones detecting nocturnal migration in real time. Hours of lead time over eBird. Public API.
+7. **GBIF** — 2.6B records, single API. Aggregates eBird, iNat, museums, government surveys. One pipe replaces many.
+8. **Motus Wildlife Tracking** — 1,800 radio towers, birds + bats + dragonflies. Near-real-time, signal strength = altitude.
+9. **Wildlife Insights (Google)** — 30M+ camera trap images, AI-classified, API. 1,000+ projects.
+10. **Ocean Tracking Network** — 3,000 acoustic receivers, fish/shark/turtle tracks, ERDDAP API.
 
-#### Tier 3 — Bloomberg Terminal Flex
-13. **CPC 6-14 Day Outlooks** — macro temperature predictor
-14. **SPC Severe Weather Outlooks** — migration trigger prediction
-15. **NEXRAD Roost Departures** — morning bird locations from radar
-16. **Movebank GPS tracking** — actual tagged animal movements
-17. **NIFC Active Fire / Prescribed Burns** — dove/turkey habitat
+#### Tier 3 — Easy Wins, Huge Signal (NEW)
+11. **USDA SCAN/SNOTEL soil temperature** — 2,000 stations, free CSV. Soil temp drives spring phenology better than air temp.
+12. **PhenoCam Network** — 700 cameras, free API, computed vegetation index. Green-down = deer rut trigger.
+13. **Journey North** — Bulk CSV, decades of first-arrival dates. Pure phenological calibration.
+14. **FeederWatch (Cornell)** — Irruptive species = harsh condition signal.
+15. **USA National Phenology Network** — Pheno Forecast maps, predicted emergence timing.
+16. **River ice-out dates** — Controls spring waterfowl arrival, decades of historical data.
+
+#### Tier 4 — Massive Unlock (existing + new)
+17. **State DNR harvest reports** — Arkansas daily waterfowl, other states weekly/seasonal
+18. **Great Lakes ice cover (GLERL)** — daily CSV, staging area signal
+19. **USACE pool levels** — managed habitat, Mississippi flyway insider signal
+20. **NASA NDVI / AppEEARS** — vegetation health, 16-day composites (turkey, deer, dove)
+21. **CPC 6-14 Day Outlooks** — macro temperature predictor
+22. **NIFC Active Fire / Prescribed Burns** — dove/turkey habitat
+
+#### Tier 5 — Government Gold (NEW)
+23. **USFWS Waterfowl Breeding Population Survey** — Gold standard since 1955.
+24. **Christmas Bird Count (Audubon)** — 120+ years midwinter distribution.
+25. **North American Breeding Bird Survey (USGS)** — 58 years population trends.
+26. **Midwinter Waterfowl Survey (USFWS)** — January aerial counts by flyway.
+27. **NEON** — 81 standardized sites: small mammals, birds, beetles, ticks, phenocams. Open API.
+
+#### Tier 6 — Acoustic & Marine (NEW)
+28. **NABat (USGS bat monitoring)** — Echolocation acoustic detectors. Bat activity = live barometer.
+29. **Whale Alert / Whale Map** — Real-time whale acoustic + sighting data, NOAA hydrophones.
+30. **Arbimon (Rainforest Connection)** — 100K+ sites, birds + frogs + insects + mammals from sound.
+31. **ERDDAP (NOAA)** — Unified ocean data API: SST, chlorophyll, currents, salinity.
+32. **Global Fishing Watch** — Vessel tracking as proxy for marine predator distribution.
+
+#### Tier 7 — Wildcards (NEW)
+33. **Roadkill observation systems** — Involuntary census, zero observer bias.
+34. **Mushroom Observer** — Fungal fruiting as moisture + temp proxy. API available.
+35. **USGS Wildlife Disease Surveillance** — HPAI/CWD outbreaks change movement patterns.
+36. **VIIRS Light Pollution** — Artificial light affects nocturnal migration + mammal activity.
+37. **Airport Wildlife Hazard Assessments** — Detailed seasonal species inventories.
+38. **Cicada emergence tracking** — Soil temp calibration + food bonanza signal.
+
+#### Meta-Play: Environmental State Vectors
+Nightly composite embedding per county: ALL available signals concatenated into one fingerprint. Search for historical days with similar fingerprints across ALL dimensions simultaneously. Not 50 separate signals — one unified biological-environmental state space. **This is the product nobody else can build.**
 
 ### Existing Pipes (status as of 2026-03-19):
 - **Photoperiod:** DONE (35,077 entries). UT/VT/WV failed — re-run with `START_STATE=UT` to fill gaps.
@@ -147,13 +179,18 @@ Map-chat bridge, convergence in chat, PatternCard, SourceCard, PatternLinksCard,
 
 ## FUTURE HORIZON
 
-- **Native app (iOS/Android):** Push notifications for convergence spikes
+- **Native app (iOS/Android):** Push notifications for convergence spikes + anomaly alerts
 - **Ghost Clock:** Predicted migration arrival countdown based on upstream patterns
 - **Flyway Dominoes:** Animated migration cascade visualization
 - **Solunar Autopsy:** Test solunar theory vs actual eBird data at scale
-- **Fish & Elk:** Same engine, different species config + data sources (massive effort, future)
-- **Premium tiers:** Free = season lookup. Paid = brain access
-- **The Wire:** Crowdsourced real-time reports
+- **Anomaly Detection:** Brain spots the weird thing before anyone asks — "crows are early this year" + here's why
+- **Environmental State Vectors:** County-level daily fingerprints for holistic pattern matching
+- **Movebank Integration:** GPS movement vectors fused with environmental conditions
+- **Acoustic Layer:** BirdWeather nocturnal migration detection — alerts before dawn
+- **Marine Expansion:** Ocean Tracking Network + ERDDAP + Fishing Watch = fishing intelligence
+- **Cross-Kingdom:** Insects, pollinators, bats, reptiles — same brain, different biological sensors
+- **Premium tiers:** Free = season lookup. Paid = brain access + anomaly alerts
+- **The Wire:** Crowdsourced real-time reports feeding back into the brain
 
 ---
 
@@ -161,11 +198,13 @@ Map-chat bridge, convergence in chat, PatternCard, SourceCard, PatternLinksCard,
 
 | Timeframe | Corpus Size | What It Knows |
 |-----------|------------|---------------|
-| Today (2026-03-19) | ~212,000 | 212K embeddings, 14 crons (all healthy), 29 edge functions, convergence engine, terminal UI |
-| After remaining pipes | ~300,000+ | + snow, ice, expanded eBird, DNR harvest, NDVI, phenology |
-| After pattern extraction | ~205,000+ | + 1,000-5,000 cross-referenced weather-migration patterns |
-| After all pipes finish | ~500,000+ | + water levels, tides, photoperiod, climate normals, crop data backfills complete |
-| After 1 full season | ~1,000,000+ | + daily accumulation + user logs + pattern links + report cards |
-| After 2 seasons | ~2,000,000+ | Self-reinforcing: predictions linked to outcomes, patterns of patterns |
+| Today (2026-03-19) | ~219,000 | Weather, migration, tides, water, drought, photoperiod, climate, solunar, species behavior, crops |
+| After current pipes | ~300,000+ | + USGS water (all 50), NOAA tides, ACIS climate, USDA crops complete |
+| After Tier 2-3 | ~500,000+ | + Movebank GPS tracks, BirdWeather acoustic, GBIF, soil temp, PhenoCam, phenology |
+| After pattern extraction | ~510,000+ | + 1,000-5,000 cross-referenced weather-migration patterns |
+| After government gold | ~750,000+ | + 70 years of USFWS surveys, CBC, BBS, NEON |
+| After acoustic + marine | ~1,000,000+ | + bat monitoring, whale tracking, ocean data, fishing vessel proxies |
+| After 1 full season | ~2,000,000+ | + daily accumulation + user logs + pattern links + report cards |
+| After environmental state vectors | ∞ | Every county, every day, one fingerprint. Historical pattern matching across ALL dimensions. |
 
-**Every day it gets wider. Nobody can catch up.**
+**This isn't a hunting app. It's a biological pattern recognition engine. Every day it gets wider. Nobody can catch up.**
