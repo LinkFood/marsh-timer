@@ -106,8 +106,8 @@ serve(async (req: Request) => {
     // Build embedding text
     const weatherStr = weather
       ? `weather:temp:${weather.temp_high_f}/${weather.temp_low_f} wind:${weather.wind_direction_dominant}@${weather.wind_speed_max_mph} pressure:${weather.pressure_avg_msl}`
-      : 'weather:unknown';
-    const moonStr = solunar ? `moon:${solunar.moon_phase}` : 'moon:unknown';
+      : '';
+    const moonStr = solunar ? `moon:${solunar.moon_phase}` : '';
     const notesStr = notes ? ` | ${notes}` : '';
     const embeddingText = `hunt_log | ${state_abbr} | ${date} | ${species} | harvest:${harvest_count} | ${weatherStr} | ${moonStr}${notesStr}`;
 

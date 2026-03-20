@@ -1,5 +1,5 @@
 import { useMemo, Suspense, useRef, useState, useCallback, useEffect } from 'react';
-import { GridLayout } from 'react-grid-layout';
+import GridLayout from 'react-grid-layout';
 import type { Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
