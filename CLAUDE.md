@@ -83,55 +83,48 @@ USDA crop data, USGS water levels, soil moisture, ice cover, burn maps, zoology 
 
 ```
 src/
+  contexts/
+    DeckContext.tsx           # Species, selectedState, chat/layers/panelAdd toggles
+    LayerContext.tsx          # User-toggleable map layers (replaces LAYER_MODES)
+    MapActionContext.tsx      # flyTo, flyToCoords, setMapMode for panel→map interaction
+  layout/
+    DeckLayout.tsx            # Top-level: heartbeat → map region → panel dock → bottom bar
+    MapRegion.tsx             # Resizable map container (drag divider, localStorage height)
+    PanelDock.tsx             # Desktop: react-grid-layout (12 cols, drag/resize)
+    PanelDockMobile.tsx       # Mobile: vertically stacked panels
+    BottomBar.tsx             # Category quick-access + add panel + mobile toggles
+  panels/
+    PanelTypes.ts             # PanelDef, PanelInstance, DeckState interfaces
+    PanelRegistry.ts          # All 16 panels cataloged (lazy-loaded)
+    PanelWrapper.tsx          # Panel chrome: drag handle, title, minimize, close
+    PanelAddMenu.tsx          # Searchable panel catalog dropdown
+    [16 panel components]     # Each owns its own hooks — no prop drilling
+  layers/
+    LayerTypes.ts             # LayerDef, LayerPreset interfaces
+    LayerRegistry.ts          # 27 layers in 5 categories + 4 presets
+    LayerPicker.tsx           # Searchable/categorized slide-out toggle panel
+    useLayerState.ts          # Re-export of useLayerContext
   components/
-    TerminalShell.tsx        # Layout orchestrator — ticker, tabs, brain panel, canvas area
-    LiveTicker.tsx           # Scrolling live feed — convergence, weather, NWS, hunt alerts, migration index
-    CanvasTabs.tsx           # Canvas tab bar — Map/Data/History/Screener (desktop top, mobile bottom + Brain)
-    BrainPanel.tsx           # Left panel (320px) — chat + collapsible intel drawer with season info
-    MapView.tsx              # Map command center — see file for full layer list
-    HeaderBar.tsx            # Brand + species pills + search + UserMenu
-    Sidebar.tsx              # RETIRED — replaced by BrainPanel (kept for reference)
-    MobileSheet.tsx          # RETIRED — replaced by mobile CanvasTabs + brain overlay (kept for reference)
-    NationalView.tsx         # State cards + off-season intel (rendered in BrainPanel intel drawer)
-    StateView.tsx            # State detail: season tabs, facts, reg links (rendered in BrainPanel intel drawer)
-    ZoneView.tsx             # Zone detail (rendered in BrainPanel intel drawer)
-    MapPresets.tsx            # Map mode selector + toggles
-    HotspotRanking.tsx       # Top 10 states by convergence (rendered in BrainPanel intel drawer)
-    ScoutReport.tsx          # Daily AI scout brief (rendered in BrainPanel intel drawer)
-    HuntChat.tsx / ChatInput.tsx / ChatMessage.tsx  # Chat UI (rendered in BrainPanel)
+    MapView.tsx               # Mapbox GL — accepts visibleMapboxLayers from LayerContext
+    HeaderBar.tsx             # Brand + action buttons (add, layers, chat, help, search)
+    BrainHeartbeat.tsx        # Live status bar: embeddings, crons, activity
+    HuntChat.tsx              # AI chat (rendered inside ChatPanel)
     MapPopup.tsx / SightingPopup.tsx  # Map popups
-    TimelineScrubber.tsx     # Time machine: 30d back / 7d forward
-    MapLegend.tsx            # Contextual floating legend
-    DataCanvas.tsx           # Data tab: 6-card dashboard (migration index, hotspots, alerts, distribution, scout, stats)
-    HistoryCanvas.tsx        # History tab: 30-day replay player with play/pause/speed/seek
-    ScreenerCanvas.tsx       # Screener tab: sortable/filterable state convergence table
-    HuntAlerts.tsx           # Proactive weather alerts (shown in LiveTicker)
-    cards/                   # ConvergenceCard, WeatherCard, SeasonCard, SolunarCard, AlertCard
+    cards/                    # ConvergenceCard, WeatherCard, SeasonCard, SolunarCard, AlertCard
+    charts/                   # Sparkline, StackedArea
   pages/
-    Index.tsx                # Main page: map + header + terminal shell (all hooks live here)
-    Auth.tsx                 # Google OAuth sign-in
-    NotFound.tsx             # Themed 404
-  data/                      # types.ts, speciesConfig.ts, fips.ts, flyways.ts, seasons/,
-                             # stateFacts.ts, regulationLinks.ts, flywayPaths.ts
-  lib/                       # seasonUtils.ts, isobars.ts, terminator.ts, migrationFront.ts,
-                             # supabase.ts, ebird.ts
-  hooks/                     # useAuth, useChat, useHuntContext, useFavorites, useRadarTiles,
-                             # useEBirdMapSightings, useHuntAlerts, useNationalWeather,
-                             # useConvergenceScores, useScoutReport, useConvergenceAlerts,
-                             # useSolunar, useNWSAlerts, useMigrationFront, useIsMobile
+    Index.tsx                 # Thin orchestrator: providers + DeckLayout + MapWithLayers
+    Auth.tsx                  # Google OAuth sign-in
+    NotFound.tsx              # Themed 404
+  hooks/                      # 33 data hooks — panels import directly
+  data/                       # types, speciesConfig, seasons, flyways, fips
+  lib/                        # seasonUtils, isobars, terminator, migrationFront, supabase, ebird
 supabase/
-  functions/
-    _shared/                 # cors.ts, response.ts, supabase.ts, auth.ts, anthropic.ts, rateLimit.ts
-    hunt-dispatcher/         # THE BRAIN: intent classify + route (Haiku)
-    hunt-search/             # Hybrid vector + keyword search
-    hunt-generate-embedding/ # Voyage AI 512-dim embedding
-    hunt-weather/            # Open-Meteo weather with cache
-    hunt-solunar/            # Solunar + sunrise with cache
-    hunt-alerts/             # Proactive weather alerts + pattern matching
-  migrations/                # SQL migrations
-  config.toml                # Function configs (all verify_jwt = false)
-scripts/                     # seed-knowledge.ts, backfill-weather-history.ts, backfill-ebird-history.ts, extract-patterns.ts
-middleware.ts                # Vercel Edge Middleware: OG tags, legacy redirects
+  functions/                  # 29 edge functions (see below)
+  migrations/                 # SQL migrations
+  config.toml                 # Function configs (all verify_jwt = false)
+scripts/                      # Backfill scripts
+middleware.ts                 # Vercel Edge Middleware: OG tags, legacy redirects
 ```
 
 ## Data Model
@@ -170,9 +163,11 @@ interface HuntingSeason {
 
 ## Features
 
-5 species (Duck 50 states, Goose/Deer/Turkey/Dove 10 each). Species selector in header. Bloomberg-style terminal layout: live ticker → canvas tabs → brain panel (320px left, chat + intel drawer) + canvas area (map default, Data/History/Screener coming). Mobile: bottom tab bar with Brain overlay. Convergence heatmap colors states by hunt score 0-100. Hotspot ranking (top 10). Daily AI scout report. Per-state convergence card with component breakdown + rank. Season type tabs, split season dates, verification badges. Cross-species nav links. Per-species map colors. Species-qualified favorites. Legacy URL redirects. Species-aware OG tags.
+Composable panel-based intelligence platform. Map always visible at top (resizable). 16 drag/resize panels below in react-grid-layout grid. 27 user-toggleable map layers with 4 presets (Scout, Weather, Intel, Terrain). AI chat slide-out. Species is a filter concept, not navigation.
 
-Map layers: convergence heatmap, weather radar, eBird sightings (clusters + heatmap), pressure isobars, NWS alert polygons, dawn/dusk terminator, flyway corridors, migration front line, convergence hotspots, wind flow lines, time machine scrubber, elevation HUD, location search. See `MapView.tsx` for full layer implementation.
+**Panels:** Convergence Scores, Convergence Alerts, Scout Report, Hunt Alerts, State Profile, Migration Index, eBird Feed, DU Reports, State Screener, Weather Events, NWS Alerts, Weather Forecast, Solunar, History Replay, Convergence History, Brain Activity.
+
+**Map layers:** Convergence heatmap, weather radar, eBird sightings (clusters + heatmap), pressure isobars, NWS alert polygons, dawn/dusk terminator, flyway corridors, migration front, wind flow, weather events, perfect storm, DU pins, wetlands, water, parks, trails, agriculture, land cover, contours, counties, temperature, 3D terrain, satellite.
 
 ## Season Statuses
 
