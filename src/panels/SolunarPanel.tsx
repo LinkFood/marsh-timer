@@ -74,24 +74,22 @@ export default function SolunarPanel({}: PanelComponentProps) {
         {selectedState} - SOLUNAR
       </div>
 
-      {/* Moon Phase */}
-      <div className="flex items-center gap-3">
-        <Moon size={20} className="text-yellow-300" />
-        <div>
+      {/* Moon + Sun grid */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.06]">
+          <Moon size={16} className="text-yellow-300 mb-1" />
           <div className="text-xs font-mono text-white/90">{String(moonPhase)}</div>
-          <div className="text-[10px] font-mono text-white/40">{Math.round(Number(moonIllum))}% illumination</div>
+          <div className="text-[10px] font-mono text-white/40">{Math.round(Number(moonIllum))}%</div>
         </div>
-      </div>
-
-      {/* Sun times */}
-      <div className="flex gap-4">
-        <div className="flex items-center gap-1.5">
-          <Sunrise size={12} className="text-orange-400" />
-          <span className="text-[10px] font-mono text-white/70">{formatTime(sunriseTime)}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Sunset size={12} className="text-orange-400/60" />
-          <span className="text-[10px] font-mono text-white/70">{formatTime(sunsetTime)}</span>
+        <div className="bg-white/[0.03] rounded-lg p-2.5 border border-white/[0.06]">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Sunrise size={12} className="text-orange-400" />
+            <span className="text-[10px] font-mono text-white/70">{formatTime(sunriseTime)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Sunset size={12} className="text-orange-400/60" />
+            <span className="text-[10px] font-mono text-white/70">{formatTime(sunsetTime)}</span>
+          </div>
         </div>
       </div>
 
