@@ -29,8 +29,13 @@ The grandpa on the porch. 60 years of watching the sky, the creek, and the acorn
 | hunt_convergence_scores | 600 | March 8-19, 2026 (12 days × 50 states) |
 | hunt_seasons | 482 | 2025-2026 season data |
 
+### Frontend:
+- 111 source files. 14 components, 21 panel files, 5 layout, 4 layer, 3 contexts, 27 hooks.
+- Composable panel-based deck layout with react-grid-layout.
+- 27 user-toggleable map layers. 16 lazy-loaded panels. AI chat slide-out.
+
 ### Infrastructure:
-- 14 crons active — ALL logging to hunt_cron_log, ALL healthy as of 2026-03-19
+- 14 crons active — ALL logging to hunt_cron_log
 - 29 edge functions deployed
 - Compute: Small (2GB RAM, 2-core ARM)
 - Disk: 36GB gp3
@@ -45,43 +50,38 @@ All 14 crons verified healthy. Fixed this session:
 
 ---
 
-## WHAT SHIPPED TONIGHT (2026-03-14 night session)
+## WHAT SHIPPED (2026-03-19 night session)
 
-### Bloomberg Terminal UX Overhaul — COMPLETE
-Replaced sidebar-with-tabs layout with a full terminal shell. All 4 tabs live.
+### Composable Panel Intelligence Platform — COMPLETE
+Replaced fixed terminal shell with composable panel-based deck. Full frontend rebuild.
 
-**New Components:**
-- `TerminalShell.tsx` — Layout orchestrator (fixed positioning, not CSS grid — grid blocks map pointer events)
-- `LiveTicker.tsx` — Scrolling live feed with pulsing LIVE dot, convergence/weather/NWS/hunt alerts, migration index. Adaptive scroll speed, hover-pause, severity colors.
-- `CanvasTabs.tsx` — Desktop top bar + mobile bottom bar. Map/Data/History/Screener + Brain (mobile only)
-- `BrainPanel.tsx` — Chat (always visible) + collapsible Intel drawer with ScoutReport, HotspotRanking, ConvergenceCard, StateView, ZoneView. Back nav when drilled in.
-- `DataCanvas.tsx` — 6-card dashboard: Migration Index, Top 10 Hotspots (clickable), Alert Feed, Score Distribution histogram, Scout Brief, Quick Stats
-- `HistoryCanvas.tsx` — 30-day replay player. Play/pause, 0.5x-4x speed, step/skip, seek bar. Auto-switches map to Intel mode. Drives existing scrubDate mechanism for convergence heatmap animation.
-- `ScreenerCanvas.tsx` — Sortable/filterable state convergence table. Sort by score/weather/migration/solunar/pattern. Filter by minimums. Click to fly to state. HOT/WARM/MILD/COOL badges.
+**New Architecture:**
+- `DeckContext.tsx` — species, selectedState, chat/layers/panelAdd toggles, category filter
+- `LayerContext.tsx` — 27 user-toggleable map layers replacing old LAYER_MODES system. 4 presets.
+- `DeckLayout.tsx` → `MapRegion.tsx` (resizable) → `PanelDock.tsx` (react-grid-layout) → `BottomBar.tsx`
+- `PanelRegistry.ts` — 16 lazy-loaded panels in 4 categories
+- `LayerPicker.tsx` — searchable/categorized slide-out. `ChatPanel.tsx` — AI chat slide-out.
+- `PanelWrapper.tsx` — drag handle, minimize, close. `PanelAddMenu.tsx` — searchable catalog.
 
-**Modified:**
-- `Index.tsx` — Swapped Sidebar/MobileSheet for TerminalShell. Added activeCanvas state, useMurmurationIndex, ErrorBoundary around shell. Auto-Intel-mode for History tab.
-- `HeaderBar.tsx` — Removed migration index (moved to LiveTicker), cleaned up unused imports
-- `MapLegend.tsx` — Fixed sidebar offset from 340px to 320px
-- `MapPresets.tsx` — Fixed mobile bottom position for new bottom tab bar
+**16 Panels:** Convergence Scores, Convergence Alerts, Scout Report, Hunt Alerts, State Profile, Migration Index, eBird Feed, DU Reports, State Screener, Weather Events, NWS Alerts, Weather Forecast, Solunar, History Replay, Convergence History, Brain Activity.
 
-**Retired (not deleted):**
-- `Sidebar.tsx` — replaced by BrainPanel
-- `MobileSheet.tsx` — replaced by mobile CanvasTabs + brain overlay
+**Key decisions:**
+- Map is NOT a panel — fixed region above panel grid, always visible
+- Species is a filter dropdown, not tab navigation
+- Each panel owns its own hooks (no prop drilling)
+- visibleMapboxLayers from LayerContext drives MapView directly
+- Layout persists to localStorage
+- BottomBar category filters (All/Intel/Migration/Weather/Analytics)
 
-### Data Recon — 30 New Sources Identified
-Full recon saved at `.claude/agent-memory/idea-machine/data_source_recon_v2.md`. Key findings:
-- Deer and turkey have almost ZERO real-time data feeds (iNaturalist fills this gap)
-- No snow/ice data (hardest migration signal — NOHRSC and GLERL are free, daily)
-- No drought data (US Drought Monitor — free REST API, weekly, no auth)
-- State DNR harvest reports are ground truth (Arkansas publishes DAILY waterfowl harvest)
-- NASA GIBS provides free daily satellite imagery that plugs directly into Mapbox
+**Deleted:** 25 old components + 7 orphaned hooks (~5,300 lines removed). Net: -4,100 lines.
+
+**Prior: Bloomberg Terminal UX (2026-03-14)** — TerminalShell, LiveTicker, CanvasTabs, BrainPanel, DataCanvas, HistoryCanvas, ScreenerCanvas. All replaced and deleted by deck rebuild.
 
 ---
 
-## PRIORITY: FEED THE BEAST
+## PRIORITY: VISUAL POLISH + FEED THE BEAST
 
-**UX is done. The job now is finding and embedding data.** Possibly for a long time. The more information embedded, the smarter the brain gets. Every data source makes every other data source more valuable through cross-referencing.
+**Deck is built. Needs visual verification and iteration.** James hasn't confirmed the live site looks right yet. Data ingestion continues in parallel.
 
 ### Data Pipeline Queue (build one at a time):
 
@@ -125,8 +125,11 @@ When eBird backfill finishes → run `scripts/extract-patterns.ts`. Current: 8 w
 
 ## SHIPPED (prior sessions)
 
+### Composable Deck Platform (2026-03-19 night) ✅
+Full frontend rebuild — panel-based intelligence platform. 16 panels, 27 layers, react-grid-layout. See above.
+
 ### Bloomberg Terminal UX (2026-03-14 night) ✅
-Terminal shell with live ticker, 4 canvas tabs, brain panel, replay player, screener. See above.
+Terminal shell with live ticker, 4 canvas tabs, brain panel, replay player, screener. Replaced by deck platform.
 
 ### Brain V2 + Full Loop (2026-03-13/14) ✅
 60+ commits. IVFFlat index, DU separation, pattern linker, forecast tracking, report cards, real-time weather, murmuration index, recall, compare mode, brain honesty, season awareness, species library, chat UX, error handling, cron monitoring.

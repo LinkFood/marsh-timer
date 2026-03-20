@@ -68,6 +68,7 @@ USDA crop data, USGS water levels, soil moisture, ice cover, burn maps, zoology 
 | Framework | React 18, TypeScript, Vite |
 | Styling | Tailwind CSS |
 | Map | Mapbox GL JS (satellite-streets-v12, 3D terrain) |
+| Panel Layout | react-grid-layout (drag/resize panels) |
 | Animation | Framer Motion |
 | Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`, `/auth`) |
 | Icons | Lucide React |
@@ -116,7 +117,7 @@ src/
     Index.tsx                 # Thin orchestrator: providers + DeckLayout + MapWithLayers
     Auth.tsx                  # Google OAuth sign-in
     NotFound.tsx              # Themed 404
-  hooks/                      # 33 data hooks — panels import directly
+  hooks/                      # 27 data hooks — panels import directly
   data/                       # types, speciesConfig, seasons, flyways, fips
   lib/                        # seasonUtils, isobars, terminator, migrationFront, supabase, ebird
 supabase/
