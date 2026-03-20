@@ -25,6 +25,7 @@ export const PANEL_REGISTRY: PanelDef[] = [
   { id: 'history-replay', label: 'History Replay', category: 'analytics', description: '30-day replay controls', defaultW: 6, defaultH: 4, component: lazy(() => import('./HistoryReplayPanel')) },
   { id: 'convergence-history', label: 'Convergence History', category: 'analytics', description: 'Trend charts', defaultW: 4, defaultH: 4, component: lazy(() => import('./ConvergenceHistoryPanel')) },
   { id: 'brain-activity', label: 'Brain Activity', category: 'analytics', description: 'Cron health + brain stats', defaultW: 4, defaultH: 4, component: lazy(() => import('./BrainActivityPanel')) },
+  { id: 'brain-search', label: 'Brain Search', category: 'intelligence', description: 'Search 212K+ brain entries', defaultW: 4, defaultH: 5, component: lazy(() => import('./BrainSearchPanel')) },
 ];
 
 export const PANEL_MAP = new Map(PANEL_REGISTRY.map(p => [p.id, p]));

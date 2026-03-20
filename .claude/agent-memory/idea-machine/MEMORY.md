@@ -5,6 +5,8 @@
 
 ## Data Source Research
 - See `data_source_recon_v2.md` — 30 untapped free public data sources for wildlife movement intelligence. Tiered by impact. Generated 2026-03-14.
+- See `data_source_recon_v3_beyond.md` (in `~/.claude/agent-memory/idea-machine/`) — 43 unconventional/proxy sources. FAA strikes, deer-vehicle, power grid, phenocam, acoustic, Canada/Mexico. Generated 2026-03-14.
+- See `data_source_recon_v4_biological_pattern_engine.md` — 50 NEW sources for expanded "biological pattern engine" vision. GPS tracking, acoustic, camera traps, marine, insects, phenology, government surveys, research DBs, wildcards, plus "environmental state vector" meta-architecture. Generated 2026-03-19.
 
 ## User Preferences
 - James thinks like a trader building a terminal. Data density > pretty UI.
@@ -12,6 +14,7 @@
 - Loves cross-referencing signals: "last N times this happened, here's what followed."
 - Wants the product to feel ALIVE — data flowing, brain reacting.
 - 5 species: duck, goose, deer, turkey, dove. Duck/goose are strongest. Deer/turkey/dove need more data sources badly.
+- 2026-03-19: James declared vision BIGGER THAN HUNTING — "biological pattern engine." Animals as environmental sensors, every kingdom, cross-species. This is the new north star alongside the Bloomberg Terminal metaphor.
 
 ## Brainstorm History
 - See `brainstorm_ux_visualization_2026_03_19.md` — 15 specific ideas for surfacing 213K data points. Core problem: data trapped in vectors, UI is 6 static cards. Top recommendations: sparklines everywhere, convergence decomposition chart, brain activity monitor.
