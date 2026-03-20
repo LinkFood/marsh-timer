@@ -46,21 +46,24 @@ export default function ConvergenceAlertsPanel({}: PanelComponentProps) {
           <button
             key={`${a.state_abbr}-${i}`}
             onClick={() => handleClick(a.state_abbr)}
-            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full"
+            className={`flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full border-l-2 ${isSurge ? 'border-emerald-400' : 'border-red-400'}`}
           >
-            <span className={`text-xs mt-0.5 ${isSurge ? 'text-green-400' : 'text-red-400'}`}>
-              {isSurge ? '\u25B2' : '\u25BC'}
-            </span>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-mono text-white/90">{a.state_abbr}</span>
+                <span className={`text-sm font-mono font-bold ${isSurge ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {isSurge ? '\u25B2' : '\u25BC'}
+                </span>
+                <span className="text-xs font-mono text-white/90 font-medium">{a.state_abbr}</span>
                 <span className="text-[10px] text-white/40 font-mono">
                   {a.score_before} → {a.score_after}
                 </span>
+                <span className={`text-[10px] font-mono px-1 rounded ${isSurge ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
+                  {isSurge ? '+' : ''}{a.score_after - a.score_before}
+                </span>
               </div>
-              <p className="text-[10px] text-white/50 truncate">{a.message}</p>
+              <p className="text-[10px] text-white/40 mt-0.5 truncate">{a.message}</p>
             </div>
-            <span className="text-[10px] text-white/30 whitespace-nowrap mt-0.5">
+            <span className="text-[9px] font-mono text-white/20 whitespace-nowrap mt-0.5">
               {timeAgo(a.created_at)}
             </span>
           </button>

@@ -36,7 +36,7 @@ export default function HuntAlertsPanel({}: PanelComponentProps) {
           <button
             key={i}
             onClick={() => flyTo(alert.stateAbbr)}
-            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full"
+            className={`flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full border-l-2 ${alert.severity === 'high' ? 'border-red-400' : 'border-orange-400'}`}
           >
             <AlertTriangle size={14} className="text-amber-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
