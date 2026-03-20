@@ -23,7 +23,7 @@ export default function PanelDockMobile() {
         if (!def) return null;
         const Component = def.component;
         return (
-          <div key={p.instanceId}>
+          <div key={p.instanceId} className="min-h-[200px]">
             <PanelWrapper
               panelId={p.panelId}
               instanceId={p.instanceId}

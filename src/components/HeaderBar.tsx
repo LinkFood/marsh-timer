@@ -160,7 +160,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
           <select
             value={species}
             onChange={e => onSelectSpecies(e.target.value as Species)}
-            className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[10px] font-display uppercase tracking-widest text-white/70 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 cursor-pointer appearance-none"
+            className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[9px] sm:text-[10px] font-display uppercase tracking-widest text-white/70 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 cursor-pointer appearance-none"
             style={{ backgroundImage: 'none' }}
           >
             {SPECIES_ORDER.map(sp => (

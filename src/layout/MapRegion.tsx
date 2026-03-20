@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { GripHorizontal } from 'lucide-react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const STORAGE_KEY = 'dc-map-height';
 const MIN_HEIGHT = 200;
@@ -10,7 +11,7 @@ function getMaxHeight() {
   return Math.round(window.innerHeight - 48 - 28 - 40 - 100);
 }
 
-function loadHeight(): number {
+function loadHeight(mobile = false): number {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -18,8 +19,9 @@ function loadHeight(): number {
       if (h >= MIN_HEIGHT && h <= getMaxHeight()) return h;
     }
   } catch { /* ignore */ }
-  // Default to 45% of available space (viewport minus header/heartbeat/bottombar)
-  return Math.round((window.innerHeight - 48 - 28 - 40) * 0.45);
+  // Default to 35% on mobile, 45% on desktop
+  const ratio = mobile ? 0.35 : 0.45;
+  return Math.round((window.innerHeight - 48 - 28 - 40) * ratio);
 }
 
 interface MapRegionProps {
@@ -27,7 +29,8 @@ interface MapRegionProps {
 }
 
 export default function MapRegion({ children }: MapRegionProps) {
-  const [height, setHeight] = useState(loadHeight);
+  const isMobile = useIsMobile();
+  const [height, setHeight] = useState(() => loadHeight(typeof window !== 'undefined' && window.innerWidth < 768));
   const dragging = useRef(false);
   const startY = useRef(0);
   const startHeight = useRef(0);

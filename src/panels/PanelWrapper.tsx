@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { GripVertical, Minus, X } from 'lucide-react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface PanelWrapperProps {
   panelId: string;
@@ -11,15 +12,18 @@ interface PanelWrapperProps {
 
 export default function PanelWrapper({ panelId, instanceId, label, children, onClose }: PanelWrapperProps) {
   const [minimized, setMinimized] = useState(false);
+  const isMobile = useIsMobile();
 
   return (
     <div className="h-full flex flex-col glass-panel border border-white/[0.06] rounded overflow-hidden">
       {/* Title bar */}
       <div className="shrink-0 h-6 flex items-center gap-1 px-1.5 border-b border-white/[0.06] bg-white/[0.02]">
-        {/* Drag handle */}
-        <div className="panel-drag-handle cursor-grab active:cursor-grabbing flex items-center">
-          <GripVertical className="w-3 h-3 text-white/20" />
-        </div>
+        {/* Drag handle (desktop only) */}
+        {!isMobile && (
+          <div className="panel-drag-handle cursor-grab active:cursor-grabbing flex items-center">
+            <GripVertical className="w-3 h-3 text-white/20" />
+          </div>
+        )}
 
         {/* Label */}
         <span className="flex-1 text-[10px] font-display text-white/60 truncate uppercase tracking-wider">
