@@ -152,6 +152,8 @@ export interface MapViewProps {
   showDUPins?: boolean;
   duPinsGeoJSON?: FeatureCollection | null;
   weatherEventsGeoJSON?: FeatureCollection | null;
+  /** Set of Mapbox layer IDs that should be visible — when provided, overrides LAYER_MODES */
+  visibleMapboxLayers?: Set<string>;
 }
 
 export interface MapViewRef {
@@ -385,6 +387,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     showDUPins = false,
     duPinsGeoJSON = null,
     weatherEventsGeoJSON = null,
+    visibleMapboxLayers,
   },
   ref,
 ) {
@@ -2446,23 +2449,29 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
 
-    // --- BLOCK 1: Layer visibility (driven by LAYER_MODES master map) ---
-    for (const [layerId, modes] of Object.entries(LAYER_MODES)) {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', modes.has(mapMode) ? 'visible' : 'none');
+    // --- BLOCK 1: Layer visibility ---
+    if (visibleMapboxLayers) {
+      // New path: LayerContext drives visibility directly
+      for (const [layerId] of Object.entries(LAYER_MODES)) {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', visibleMapboxLayers.has(layerId) ? 'visible' : 'none');
+        }
       }
+    } else {
+      // Legacy path: mode-driven (fallback)
+      for (const [layerId, modes] of Object.entries(LAYER_MODES)) {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', modes.has(mapMode) ? 'visible' : 'none');
+        }
+      }
+      if (map.getLayer('radar-overlay')) {
+        map.setLayoutProperty('radar-overlay', 'visibility', showRadar ? 'visible' : 'none');
+      }
+      const duVis = showDUPins ? 'visible' : 'none';
+      if (map.getLayer('du-pins-dots')) map.setLayoutProperty('du-pins-dots', 'visibility', duVis);
+      if (map.getLayer('du-pins-clusters')) map.setLayoutProperty('du-pins-clusters', 'visibility', duVis);
+      if (map.getLayer('du-pins-cluster-count')) map.setLayoutProperty('du-pins-cluster-count', 'visibility', duVis);
     }
-
-    // Radar toggle override — force radar-overlay visible/hidden based on showRadar prop
-    if (map.getLayer('radar-overlay')) {
-      map.setLayoutProperty('radar-overlay', 'visibility', showRadar ? 'visible' : 'none');
-    }
-
-    // DU pins toggle override
-    const duVis = showDUPins ? 'visible' : 'none';
-    if (map.getLayer('du-pins-dots')) map.setLayoutProperty('du-pins-dots', 'visibility', duVis);
-    if (map.getLayer('du-pins-clusters')) map.setLayoutProperty('du-pins-clusters', 'visibility', duVis);
-    if (map.getLayer('du-pins-cluster-count')) map.setLayoutProperty('du-pins-cluster-count', 'visibility', duVis);
 
     // --- BLOCK 2: State fill coloring (separate from visibility) ---
     if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
@@ -2537,7 +2546,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
 
     // --- BLOCK 3: Wind flow + isobar data generation ---
-    const showWind = LAYER_MODES['wind-flow'].has(mapMode);
+    const showWind = visibleMapboxLayers ? visibleMapboxLayers.has('wind-flow') : LAYER_MODES['wind-flow'].has(mapMode);
     if (showWind && weatherCache && weatherCache.size > 0) {
       const lineFeatures: Feature[] = [];
       const pointFeatures: Feature[] = [];
@@ -2617,7 +2626,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (map.getLayer("perfect-storm-ring")) {
       map.setFilter("perfect-storm-ring", stormFilter);
     }
-  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar, showDUPins]);
+  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar, showDUPins, visibleMapboxLayers]);
 
   // Auto-activate layers on zoom (waterways at state zoom in scout/intel)
   useEffect(() => {
@@ -2626,7 +2635,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     const onZoom = () => {
       const zoom = map.getZoom();
-      if (mapMode === 'scout' || mapMode === 'intel') {
+      // Show waterways/water at state zoom when those layers are enabled
+      const waterwayEnabled = visibleMapboxLayers ? visibleMapboxLayers.has('waterway-lines') : (mapMode === 'scout' || mapMode === 'intel');
+      if (waterwayEnabled) {
         const vis = zoom >= 7 ? 'visible' : 'none';
         if (map.getLayer('waterway-lines')) map.setLayoutProperty('waterway-lines', 'visibility', vis);
         if (map.getLayer('water-fill')) map.setLayoutProperty('water-fill', 'visibility', vis);
@@ -2635,7 +2646,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     map.on('zoom', onZoom);
     return () => { map.off('zoom', onZoom); };
-  }, [mapMode]);
+  }, [mapMode, visibleMapboxLayers]);
 
   // Dawn/dusk terminator: update every 60 seconds
   useEffect(() => {

@@ -259,7 +259,7 @@ function MapWithLayers({
   weatherEventsGeoJSON,
   onMoveEnd,
 }: any) {
-  const { isSatellite, is3D, isLayerOn } = useLayerContext();
+  const { isSatellite, is3D, isLayerOn, visibleMapboxLayers } = useLayerContext();
 
   return (
     <ErrorBoundary fallback={
@@ -291,6 +291,7 @@ function MapWithLayers({
         showDUPins={isLayerOn('du-pins')}
         duPinsGeoJSON={duPinsGeoJSON}
         weatherEventsGeoJSON={weatherEventsGeoJSON}
+        visibleMapboxLayers={visibleMapboxLayers}
       />
     </ErrorBoundary>
   );

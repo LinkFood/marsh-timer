@@ -172,27 +172,8 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
           </span>
         </div>
 
-        {/* Center: Species pills */}
-        <div className="flex items-center gap-0.5 sm:gap-1">
-          {SPECIES_ORDER.map(sp => {
-            const config = speciesConfig[sp];
-            const isActive = sp === species;
-            const count = counts[sp];
-            return (
-              <button
-                key={sp}
-                onClick={() => onSelectSpecies(sp)}
-                className={`px-3 py-1.5 text-xs font-medium tracking-wide uppercase transition-all ${
-                  isActive
-                    ? "text-cyan-400 border-b-2 border-cyan-400"
-                    : "text-white/50 hover:text-white/80"
-                }`}
-              >
-                {config.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Center: spacer */}
+        <div className="flex-1" />
 
         {/* Right: Actions + User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
