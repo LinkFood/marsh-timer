@@ -226,7 +226,7 @@ npm run test      # Vitest
 
 All tables have RLS. Service role bypasses for edge functions.
 
-## Edge Functions (29 total)
+## Edge Functions (30 total)
 
 ### Brain Writers (embed into hunt_knowledge)
 
@@ -244,6 +244,7 @@ All tables have RLS. Service role bypasses for edge functions.
 | hunt-convergence-engine | 4-component scoring -> embed | daily 8am UTC |
 | hunt-extract-patterns | Cross-ref migration+weather -> Sonnet extraction -> embed | manual |
 | hunt-log | User interaction logging -> embed | on demand |
+| hunt-power-outage | ODIN/DOE real-time power outage data by state -> embed | on demand |
 
 ### Brain Graders (self-scoring)
 

@@ -471,6 +471,12 @@ verify_jwt = false
 [functions.hunt-historical-news]
 verify_jwt = false
 
+[functions.hunt-query-signal]
+verify_jwt = false
+
+[functions.hunt-power-outage]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
