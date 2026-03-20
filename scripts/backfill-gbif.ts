@@ -28,7 +28,7 @@ const supaHeaders = {
 };
 
 const GBIF_BASE = "https://api.gbif.org/v1/occurrence/search";
-const RATE_LIMIT_MS = 500;
+const RATE_LIMIT_MS = 1500;
 
 // --- Target species ---
 
