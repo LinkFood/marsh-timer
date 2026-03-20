@@ -2,20 +2,24 @@
  * Backfill Chronicling America historical newspaper data into hunt_knowledge
  * 100+ years of digitized wildlife/hunting columns from US newspapers
  *
+ * Uses LOC Collections API (chroniclingamerica.loc.gov redirects to Cloudflare challenge)
+ *
  * Usage:
- *   SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/backfill-historical-news.ts
+ *   SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-historical-news.ts
  *   START_PAGE=100 npx tsx scripts/backfill-historical-news.ts
+ *   START_TERM=3 npx tsx scripts/backfill-historical-news.ts  (skip first N search terms)
+ *
+ * Uses hunt-generate-embedding edge function (no local Voyage key needed)
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const VOYAGE_KEY = process.env.VOYAGE_API_KEY!;
 
 if (!SERVICE_KEY) { console.error("SUPABASE_SERVICE_ROLE_KEY required"); process.exit(1); }
-if (!VOYAGE_KEY) { console.error("VOYAGE_API_KEY required"); process.exit(1); }
 
 const START_PAGE = parseInt(process.env.START_PAGE || "1");
 const MAX_PAGES = parseInt(process.env.MAX_PAGES || "500");
+const START_TERM = parseInt(process.env.START_TERM || "0");
 
 const SEARCH_TERMS = [
   { term: "duck migration", species: "duck" },
@@ -30,33 +34,64 @@ const SEARCH_TERMS = [
   { term: "wildlife migration pattern", species: null },
 ];
 
+// Keywords that indicate the article is actually about wildlife/hunting (not noise)
+const RELEVANCE_KEYWORDS = [
+  "duck", "goose", "geese", "waterfowl", "mallard", "teal", "pintail", "canvasback",
+  "deer", "buck", "doe", "whitetail", "antler",
+  "turkey", "gobbler", "tom",
+  "dove", "mourning dove",
+  "hunting", "hunter", "hunt", "season", "bag limit", "flyway",
+  "migration", "migrating", "migratory", "flight", "flock",
+  "wildlife", "game bird", "game warden", "sportsman", "sportsmen",
+];
+
 const STATE_ABBRS: Record<string, string> = {
-  "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
-  "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
-  "Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS",
-  "Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA",
-  "Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT",
-  "Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ",
-  "New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH",
-  "Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI",
-  "South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT",
-  "Vermont":"VT","Virginia":"VA","Washington":"WA","West Virginia":"WV",
-  "Wisconsin":"WI","Wyoming":"WY",
-  "District of Columbia":"DC",
+  "alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
+  "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA",
+  "idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA","kansas":"KS",
+  "kentucky":"KY","louisiana":"LA","maine":"ME","maryland":"MD","massachusetts":"MA",
+  "michigan":"MI","minnesota":"MN","mississippi":"MS","missouri":"MO","montana":"MT",
+  "nebraska":"NE","nevada":"NV","new hampshire":"NH","new jersey":"NJ",
+  "new mexico":"NM","new york":"NY","north carolina":"NC","north dakota":"ND","ohio":"OH",
+  "oklahoma":"OK","oregon":"OR","pennsylvania":"PA","rhode island":"RI",
+  "south carolina":"SC","south dakota":"SD","tennessee":"TN","texas":"TX","utah":"UT",
+  "vermont":"VT","virginia":"VA","washington":"WA","west virginia":"WV",
+  "wisconsin":"WI","wyoming":"WY",
+  "district of columbia":"DC",
 };
+
+function isRelevant(text: string): boolean {
+  const lower = text.toLowerCase();
+  let matches = 0;
+  for (const kw of RELEVANCE_KEYWORDS) {
+    if (lower.includes(kw)) matches++;
+    if (matches >= 2) return true;
+  }
+  return false;
+}
+
+function extractState(locations: string[]): string | null {
+  for (const loc of locations) {
+    const lower = loc.toLowerCase().trim();
+    if (STATE_ABBRS[lower]) return STATE_ABBRS[lower];
+  }
+  return null;
+}
 
 async function embed(texts: string[]): Promise<number[][]> {
   const results: number[][] = [];
-  for (let i = 0; i < texts.length; i += 20) {
-    const chunk = texts.slice(i, i + 20);
-    const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+  for (const text of texts) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${VOYAGE_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "voyage-3-lite", input: chunk, input_type: "document" }),
+      headers: {
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
     });
-    if (!res.ok) throw new Error(`Voyage ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Embedding ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    for (const item of data.data) results.push(item.embedding);
+    results.push(data.embedding);
   }
   return results;
 }
@@ -75,58 +110,75 @@ async function upsertBatch(entries: Array<{ text: string; meta: Record<string, a
     },
     body: JSON.stringify(rows),
   });
-  if (!res.ok) { console.error(`  Upsert error: ${res.status}`); return 0; }
+  if (!res.ok) { console.error(`  Upsert error: ${res.status} ${await res.text()}`); return 0; }
   return rows.length;
+}
+
+async function fetchPage(query: string, page: number): Promise<any> {
+  const encoded = encodeURIComponent(query);
+  const url = `https://www.loc.gov/collections/chronicling-america/?q=${encoded}&fo=json&c=20&sp=${page}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    if (res.status === 429) {
+      console.log("  Rate limited, waiting 60s...");
+      await new Promise(r => setTimeout(r, 60000));
+      return fetchPage(query, page);
+    }
+    throw new Error(`LOC API ${res.status}`);
+  }
+
+  const text = await res.text();
+  // Check for Cloudflare challenge page
+  if (text.includes("Just a moment") || text.includes("challenge-platform")) {
+    throw new Error("Cloudflare challenge detected — API blocked");
+  }
+
+  return JSON.parse(text);
 }
 
 async function main() {
   let totalEmbedded = 0;
+  let totalSkipped = 0;
 
-  for (const search of SEARCH_TERMS) {
-    console.log(`\nSearching: "${search.term}"`);
+  const terms = SEARCH_TERMS.slice(START_TERM);
+  console.log(`Starting backfill. ${terms.length} search terms, pages ${START_PAGE}-${MAX_PAGES}, 20 results/page`);
+
+  for (let ti = 0; ti < terms.length; ti++) {
+    const search = terms[ti];
+    console.log(`\n[${ti + 1 + START_TERM}/${SEARCH_TERMS.length}] Searching: "${search.term}"`);
 
     for (let page = START_PAGE; page <= MAX_PAGES; page++) {
       try {
-        const encoded = encodeURIComponent(search.term);
-        const url = `https://chroniclingamerica.loc.gov/search/pages/results/?andtext=${encoded}&format=json&page=${page}`;
-
-        const res = await fetch(url);
-        if (!res.ok) {
-          if (res.status === 429) {
-            console.log("  Rate limited, waiting 30s...");
-            await new Promise(r => setTimeout(r, 30000));
-            continue;
-          }
-          break; // No more pages
+        const data = await fetchPage(search.term, page);
+        const results = data.results || [];
+        if (results.length === 0) {
+          console.log(`  Page ${page}: no more results`);
+          break;
         }
-
-        const data = await res.json();
-        const items = data.items || [];
-        if (items.length === 0) break;
 
         const entries: Array<{ text: string; meta: Record<string, any> }> = [];
 
-        for (const item of items) {
-          const title = item.title || "";
+        for (const item of results) {
+          const title = (item.title || "").replace(/\s+/g, " ").trim();
           const date = item.date || "";
-          const snippet = (item.ocr_eng || "").slice(0, 500).replace(/\n+/g, " ").trim();
+          const descriptions: string[] = Array.isArray(item.description) ? item.description : [];
+          const snippet = descriptions.join(" ").slice(0, 500).replace(/\s+/g, " ").trim();
+          const locations: string[] = Array.isArray(item.location) ? item.location : [];
+
           if (!snippet || snippet.length < 50) continue;
 
-          // Extract state
-          const stateNames = Object.keys(STATE_ABBRS);
-          let stateAbbr: string | null = null;
-          for (const sn of stateNames) {
-            if (title.includes(sn) || (item.state || []).includes(sn)) {
-              stateAbbr = STATE_ABBRS[sn];
-              break;
-            }
+          // Filter: must be relevant to wildlife/hunting
+          const combined = `${title} ${snippet}`;
+          if (!isRelevant(combined)) {
+            totalSkipped++;
+            continue;
           }
 
-          // Parse date (format: YYYYMMDD)
-          let isoDate = "";
-          if (date.length === 8) {
-            isoDate = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
-          }
+          const stateAbbr = extractState(locations);
+
+          // Date is already ISO format from this API (YYYY-MM-DD)
+          const isoDate = date.match(/^\d{4}-\d{2}-\d{2}$/) ? date : null;
 
           const text = [
             `historical-newspaper | ${title}`,
@@ -156,24 +208,30 @@ async function main() {
           });
         }
 
-        // Embed and upsert
+        // Embed and upsert in chunks of 20
         for (let i = 0; i < entries.length; i += 20) {
           const chunk = entries.slice(i, i + 20);
           const n = await upsertBatch(chunk);
           totalEmbedded += n;
         }
 
-        console.log(`  Page ${page}: ${entries.length} articles, ${totalEmbedded} total embedded`);
+        console.log(`  Page ${page}: ${entries.length} relevant / ${results.length} total, ${totalEmbedded} embedded (${totalSkipped} skipped)`);
 
-        // Be gentle with Library of Congress
-        await new Promise(r => setTimeout(r, 1500));
-      } catch (err) {
+        // Be gentle — 3s between pages to avoid LOC rate limits
+        await new Promise(r => setTimeout(r, 3000));
+      } catch (err: any) {
+        if (err.message?.includes("Cloudflare")) {
+          console.error(`  FATAL: ${err.message}`);
+          console.log(`\nStopped at term ${ti + START_TERM} "${search.term}" page ${page}. Resume with START_TERM=${ti + START_TERM} START_PAGE=${page}`);
+          console.log(`Total embedded: ${totalEmbedded}`);
+          process.exit(1);
+        }
         console.error(`  Page ${page}: ${err}`);
       }
     }
   }
 
-  console.log(`\nDone. Total embedded: ${totalEmbedded}`);
+  console.log(`\nDone. Total embedded: ${totalEmbedded}, skipped: ${totalSkipped}`);
 }
 
 main().catch(console.error);
