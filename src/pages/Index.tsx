@@ -271,7 +271,38 @@ function MapWithLayers({
   onMoveEnd,
 }: any) {
   const { isSatellite, is3D, isLayerOn, visibleMapboxLayers } = useLayerContext();
+  const { historyDate } = useDeck();
   const [elevation, setElevation] = useState<number | null>(null);
+  const [historyScores, setHistoryScores] = useState<Map<string, number> | null>(null);
+
+  // Fetch historical convergence scores when historyDate changes
+  useEffect(() => {
+    if (!historyDate) {
+      setHistoryScores(null);
+      return;
+    }
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return;
+
+    let cancelled = false;
+    fetch(
+      `${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score&date=eq.${historyDate}`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    )
+      .then(r => r.json())
+      .then((rows: Array<{ state_abbr: string; score: number }>) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        const map = new Map<string, number>();
+        for (const row of rows) map.set(row.state_abbr, row.score);
+        setHistoryScores(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [historyDate]);
+
+  // Use history scores when replaying, otherwise live
+  const activeScores = historyScores ?? convergenceScores;
 
   return (
     <ErrorBoundary fallback={
@@ -296,7 +327,7 @@ function MapWithLayers({
         onMoveEnd={onMoveEnd}
         onElevation={setElevation}
         mapMode="intel"
-        convergenceScores={convergenceScores}
+        convergenceScores={activeScores}
         perfectStormStates={perfectStormStates}
         nwsAlertsGeoJSON={nwsAlertsGeoJSON}
         migrationFrontLine={migrationFrontLine}

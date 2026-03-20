@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { useConvergenceTimeline } from '@/hooks/useConvergenceTimeline';
+import { useDeck } from '@/contexts/DeckContext';
 import Sparkline from '@/components/charts/Sparkline';
 import type { PanelComponentProps } from './PanelTypes';
 
@@ -8,6 +9,7 @@ const SPEEDS = [0.5, 1, 2, 4];
 
 export default function HistoryReplayPanel({}: PanelComponentProps) {
   const { dailyAverages, loading } = useConvergenceTimeline();
+  const { setHistoryDate } = useDeck();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(1); // default 1x
@@ -35,6 +37,14 @@ export default function HistoryReplayPanel({}: PanelComponentProps) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [playing, speed, totalDays]);
+
+  // Push current date to DeckContext for map convergence heatmap
+  useEffect(() => {
+    if (totalDays === 0) return;
+    const dateStr = dailyAverages[currentIndex]?.date ?? null;
+    setHistoryDate(dateStr);
+    return () => setHistoryDate(null); // clear on unmount
+  }, [currentIndex, totalDays, dailyAverages, setHistoryDate]);
 
   const togglePlay = useCallback(() => setPlaying(p => !p), []);
   const skipBack = useCallback(() => {

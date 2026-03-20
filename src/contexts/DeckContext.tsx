@@ -20,6 +20,9 @@ interface DeckContextValue {
   togglePanelAdd: () => void;
   activeCategory: CategoryFilter;
   setActiveCategory: (cat: CategoryFilter) => void;
+  /** History replay date — when set, map shows historical convergence scores */
+  historyDate: string | null;
+  setHistoryDate: (date: string | null) => void;
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -43,6 +46,7 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
   const [layerPickerOpen, setLayerPickerOpen] = useState(false);
   const [panelAddOpen, setPanelAddOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
+  const [historyDate, setHistoryDate] = useState<string | null>(null);
 
   const toggleChat = useCallback(() => setChatOpen(o => !o), []);
   const toggleLayerPicker = useCallback(() => setLayerPickerOpen(o => !o), []);
@@ -55,7 +59,8 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     layerPickerOpen, setLayerPickerOpen, toggleLayerPicker,
     panelAddOpen, setPanelAddOpen, togglePanelAdd,
     activeCategory, setActiveCategory,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory]);
+    historyDate, setHistoryDate,
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }
