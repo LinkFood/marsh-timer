@@ -106,7 +106,10 @@ async function fetchUSGS(
     `${USGS_BASE}?format=json&stateCd=${stateAbbr}&parameterCd=00065` +
     `&startDT=${startDT}&endDT=${endDT}&siteType=ST&siteStatus=active`;
 
-  const res = await fetch(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  const res = await fetch(url, { signal: controller.signal });
+  clearTimeout(timeout);
   if (!res.ok) {
     const text = await res.text();
     // USGS returns 404 when no data found for the query — not a real error
