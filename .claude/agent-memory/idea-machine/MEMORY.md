@@ -7,6 +7,7 @@
 - See `data_source_recon_v2.md` — 30 untapped free public data sources for wildlife movement intelligence. Tiered by impact. Generated 2026-03-14.
 - See `data_source_recon_v3_beyond.md` (in `~/.claude/agent-memory/idea-machine/`) — 43 unconventional/proxy sources. FAA strikes, deer-vehicle, power grid, phenocam, acoustic, Canada/Mexico. Generated 2026-03-14.
 - See `data_source_recon_v4_biological_pattern_engine.md` — 50 NEW sources for expanded "biological pattern engine" vision. GPS tracking, acoustic, camera traps, marine, insects, phenology, government surveys, research DBs, wildcards, plus "environmental state vector" meta-architecture. Generated 2026-03-19.
+- See `data_source_recon_v5_insane_asylum.md` — 75 NET-NEW ideas across 10 categories: proxy signals, social media sensors, economic signals, infrastructure bio-sensors, historical/cultural data, unused predictive inputs, platform-as-sensor, wild connections, emergent product features, monetization angles. Key themes: every human system touching nature = inadvertent sensor, economic behavior = highest-fidelity signal, macro climate indices give multi-week lead times, county-level intelligence is the monetizable resolution, B2B may be bigger than B2C. Generated 2026-03-19.
 
 ## User Preferences
 - James thinks like a trader building a terminal. Data density > pretty UI.
