@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { FeatureCollection } from "geojson";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -10,12 +10,8 @@ const EMPTY_FC: FeatureCollection = { type: "FeatureCollection", features: [] };
 export function useDUMapReports(stateAbbr?: string | null, days = 30) {
   const [geojson, setGeojson] = useState<FeatureCollection>(EMPTY_FC);
   const [loading, setLoading] = useState(true);
-  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-
     async function fetchReports() {
       try {
         const cutoff = new Date();
@@ -72,7 +68,7 @@ export function useDUMapReports(stateAbbr?: string | null, days = 30) {
       fetchReports();
     }, STALE_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [stateAbbr, days]);
 
   return { geojson, loading };
 }

@@ -37,9 +37,9 @@ export default function StateProfilePanel({}: PanelComponentProps) {
   const convergenceAlerts = Array.isArray(alerts) ? alerts.map((a: any) => ({
     state_abbr: a.state_abbr ?? '',
     alert_type: a.alert_type ?? '',
-    message: a.message ?? '',
-    score_before: a.score_before ?? 0,
-    score_after: a.score_after ?? 0,
+    reasoning: a.reasoning ?? '',
+    previous_score: a.previous_score ?? 0,
+    score: a.score ?? 0,
     created_at: a.created_at ?? '',
   })) : [];
 

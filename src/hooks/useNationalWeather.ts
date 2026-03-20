@@ -28,7 +28,6 @@ export function useNationalWeather() {
 
   useEffect(() => {
     if (fetchedRef.current) return;
-    fetchedRef.current = true;
 
     async function fetchAll() {
       const states = Object.entries(STATE_COORDS);
@@ -78,6 +77,7 @@ export function useNationalWeather() {
         }
 
         setCache(newCache);
+        fetchedRef.current = true;
       } catch {
         // silent fail
       }

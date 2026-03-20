@@ -17,7 +17,6 @@ export function useHistoryEvents(days = 30) {
 
   useEffect(() => {
     if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
-    fetchedRef.current = true;
 
     const since = new Date();
     since.setDate(since.getDate() - days);
@@ -59,6 +58,7 @@ export function useHistoryEvents(days = 30) {
         });
 
         setEvents(parsed);
+        fetchedRef.current = true;
       })
       .catch(() => {})
       .finally(() => {

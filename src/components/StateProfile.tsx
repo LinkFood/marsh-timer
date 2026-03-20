@@ -72,9 +72,9 @@ interface StateProfileProps {
   convergenceAlerts: Array<{
     state_abbr: string;
     alert_type: string;
-    message: string;
-    score_before: number;
-    score_after: number;
+    reasoning: string;
+    previous_score: number;
+    score: number;
     created_at: string;
   }>;
   onBack: () => void;
@@ -399,11 +399,7 @@ export default function StateProfile({
 
   return (
     <div
-      className={`fixed z-10 overflow-y-auto scrollbar-hide p-4 glass-panel ${
-        isMobile
-          ? 'top-[76px] left-0 right-0 bottom-11'
-          : 'top-[112px] left-80 right-0 bottom-0'
-      }`}
+      className="relative h-full w-full overflow-y-auto scrollbar-hide p-4 glass-panel"
     >
       <div className="max-w-4xl mx-auto space-y-3">
         {/* Header */}
@@ -508,19 +504,19 @@ export default function StateProfile({
           ) : (
             <div className="space-y-1.5">
               {stateAlerts.slice(0, 10).map((alert, i) => {
-                const delta = alert.score_after - alert.score_before;
+                const delta = alert.score - alert.previous_score;
                 const dotColor = delta >= 15 ? 'bg-red-500' : delta >= 8 ? 'bg-amber-500' : 'bg-cyan-500';
                 return (
                   <div key={i} className="flex items-start gap-2">
                     <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
                     <div className="min-w-0 flex-1">
                       <span className="text-[11px] font-mono text-white/70">
-                        {delta > 0 ? '\u25B2' : '\u25BC'} {Math.abs(delta)} &rarr; {alert.score_after}
+                        {delta > 0 ? '\u25B2' : '\u25BC'} {Math.abs(delta)} &rarr; {alert.score}
                       </span>
                       <span className="text-[10px] text-white/30 ml-2">
                         {alert.alert_type}
                       </span>
-                      <p className="text-[10px] font-body text-white/25 mt-0.5 truncate">{alert.message}</p>
+                      <p className="text-[10px] font-body text-white/25 mt-0.5 truncate">{alert.reasoning}</p>
                     </div>
                     <span className="text-[9px] font-mono text-white/20 shrink-0">
                       {new Date(alert.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}

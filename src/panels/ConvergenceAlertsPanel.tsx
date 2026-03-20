@@ -41,7 +41,7 @@ export default function ConvergenceAlertsPanel({}: PanelComponentProps) {
   return (
     <div className="flex flex-col gap-1 overflow-y-auto h-full p-2">
       {alerts.map((a, i) => {
-        const isSurge = a.alert_type === 'surge' || a.score_after > a.score_before;
+        const isSurge = a.alert_type === 'surge' || a.score > a.previous_score;
         return (
           <button
             key={`${a.state_abbr}-${i}`}
@@ -55,13 +55,13 @@ export default function ConvergenceAlertsPanel({}: PanelComponentProps) {
                 </span>
                 <span className="text-xs font-mono text-white/90 font-medium">{a.state_abbr}</span>
                 <span className="text-[10px] text-white/40 font-mono">
-                  {a.score_before} → {a.score_after}
+                  {a.previous_score} → {a.score}
                 </span>
                 <span className={`text-[10px] font-mono px-1 rounded ${isSurge ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
-                  {isSurge ? '+' : ''}{a.score_after - a.score_before}
+                  {isSurge ? '+' : ''}{a.score - a.previous_score}
                 </span>
               </div>
-              <p className="text-[10px] text-white/40 mt-0.5 truncate">{a.message}</p>
+              <p className="text-[10px] text-white/40 mt-0.5 truncate">{a.reasoning}</p>
             </div>
             <span className="text-[9px] font-mono text-white/20 whitespace-nowrap mt-0.5">
               {timeAgo(a.created_at)}

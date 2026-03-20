@@ -3,9 +3,9 @@ import { useState, useEffect, useRef } from "react";
 export interface ConvergenceAlert {
   state_abbr: string;
   alert_type: string;
-  message: string;
-  score_before: number;
-  score_after: number;
+  reasoning: string;
+  previous_score: number;
+  score: number;
   created_at: string;
 }
 
@@ -30,7 +30,6 @@ export function useConvergenceAlerts() {
 
   useEffect(() => {
     if (fetchedRef.current) return;
-    fetchedRef.current = true;
 
     async function fetchAlerts() {
       try {
@@ -57,12 +56,13 @@ export function useConvergenceAlerts() {
           data.map((row: any) => ({
             state_abbr: row.state_abbr,
             alert_type: row.alert_type,
-            message: row.message,
-            score_before: row.score_before,
-            score_after: row.score_after,
+            reasoning: row.reasoning,
+            previous_score: row.previous_score,
+            score: row.score,
             created_at: row.created_at,
           }))
         );
+        fetchedRef.current = true;
       } catch {
         // silent fail
       } finally {

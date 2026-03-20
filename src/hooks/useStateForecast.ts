@@ -28,7 +28,6 @@ export function useStateForecast(stateAbbr: string | null) {
     }
 
     if (fetchedRef.current === stateAbbr) return;
-    fetchedRef.current = stateAbbr;
 
     setLoading(true);
     const controller = new AbortController();
@@ -52,6 +51,7 @@ export function useStateForecast(stateAbbr: string | null) {
               weather_code: r.weather_code ?? 0,
             }))
           );
+          fetchedRef.current = stateAbbr;
         }
       })
       .catch(() => {})

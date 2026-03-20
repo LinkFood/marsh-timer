@@ -27,7 +27,6 @@ export function useConvergenceTimeline(days = 30) {
 
   useEffect(() => {
     if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
-    fetchedRef.current = true;
 
     const since = new Date();
     since.setDate(since.getDate() - days);
@@ -49,6 +48,7 @@ export function useConvergenceTimeline(days = 30) {
             date: String(r.date ?? ''),
             score: Number(r.score ?? 0),
           })));
+          fetchedRef.current = true;
         }
       })
       .catch(() => {})

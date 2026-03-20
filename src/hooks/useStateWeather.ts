@@ -24,7 +24,6 @@ export function useStateWeather(stateAbbr: string | null) {
     }
 
     if (fetchedRef.current === stateAbbr) return;
-    fetchedRef.current = stateAbbr;
 
     setLoading(true);
     const controller = new AbortController();
@@ -49,6 +48,7 @@ export function useStateWeather(stateAbbr: string | null) {
               }))
               .reverse() // chronological order
           );
+          fetchedRef.current = stateAbbr;
         }
       })
       .catch(() => {})

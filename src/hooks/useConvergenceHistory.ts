@@ -29,7 +29,6 @@ export function useConvergenceHistory(stateAbbr: string | null, days = 30) {
 
     // Don't refetch for same state
     if (fetchedRef.current === stateAbbr) return;
-    fetchedRef.current = stateAbbr;
 
     setLoading(true);
 
@@ -59,6 +58,7 @@ export function useConvergenceHistory(stateAbbr: string | null, days = 30) {
             photoperiod_component: r.photoperiod_component ?? 0,
             tide_component: r.tide_component ?? 0,
           })));
+          fetchedRef.current = stateAbbr;
         }
       })
       .catch(() => {})
@@ -81,7 +81,6 @@ export function useConvergenceHistoryAll(days = 14) {
 
   useEffect(() => {
     if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
-    fetchedRef.current = true;
 
     const since = new Date();
     since.setDate(since.getDate() - days);
@@ -104,6 +103,7 @@ export function useConvergenceHistoryAll(days = 14) {
           map.set(row.state_abbr, arr);
         }
         setHistoryMap(map);
+        fetchedRef.current = true;
       })
       .catch(() => {})
       .finally(() => {

@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { PanelInstance, DeckState } from '@/panels/PanelTypes';
 import { DEFAULT_LAYOUT } from '@/panels/PanelTypes';
 
 const STORAGE_KEY = 'dc-deck-v2';
+const DECK_CHANGE_EVENT = 'dc-deck-change';
 
 function loadDeck(): PanelInstance[] {
   try {
@@ -20,6 +21,7 @@ function loadDeck(): PanelInstance[] {
 function saveDeck(panels: PanelInstance[]) {
   const state: DeckState = { panels, version: 1 };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  window.dispatchEvent(new Event(DECK_CHANGE_EVENT));
 }
 
 let instanceCounter = 0;
@@ -28,6 +30,15 @@ export function useDeckLayout() {
   const [panels, setPanels] = useState<PanelInstance[]>(loadDeck);
   const panelsRef = useRef(panels);
   panelsRef.current = panels;
+
+  useEffect(() => {
+    const handler = () => {
+      const fresh = loadDeck();
+      setPanels(fresh);
+    };
+    window.addEventListener(DECK_CHANGE_EVENT, handler);
+    return () => window.removeEventListener(DECK_CHANGE_EVENT, handler);
+  }, []);
 
   const addPanel = useCallback((panelId: string, defaultW = 4, defaultH = 4) => {
     instanceCounter++;
