@@ -4,11 +4,11 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 
 const STORAGE_KEY = 'dc-map-height';
 const MIN_HEIGHT = 200;
-const DEFAULT_RATIO = 0.5;
+const MIN_PANEL_SPACE = 250;
 
 function getMaxHeight() {
-  // Account for header (48px), heartbeat (~28px), bottom bar (40px), min panel space (100px)
-  return Math.round(window.innerHeight - 48 - 28 - 40 - 100);
+  // Account for header (48px), heartbeat (~28px), bottom bar (40px), min panel space
+  return Math.round(window.innerHeight - 48 - 28 - 40 - MIN_PANEL_SPACE);
 }
 
 function loadHeight(mobile = false): number {
@@ -19,8 +19,8 @@ function loadHeight(mobile = false): number {
       if (h >= MIN_HEIGHT && h <= getMaxHeight()) return h;
     }
   } catch { /* ignore */ }
-  // Default to 35% on mobile, 45% on desktop
-  const ratio = mobile ? 0.35 : 0.45;
+  // Default to 35% on mobile, 40% on desktop
+  const ratio = mobile ? 0.35 : 0.40;
   return Math.round((window.innerHeight - 48 - 28 - 40) * ratio);
 }
 

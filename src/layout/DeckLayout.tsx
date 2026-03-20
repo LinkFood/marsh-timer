@@ -61,7 +61,7 @@ export default function DeckLayout({
       </ErrorBoundary>
 
       {/* Panel dock — fills remaining space */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-[200px] overflow-hidden">
         <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
           {isMobile ? <PanelDockMobile /> : <PanelDock />}
         </ErrorBoundary>
