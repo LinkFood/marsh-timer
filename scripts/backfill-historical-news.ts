@@ -114,22 +114,23 @@ async function upsertBatch(entries: Array<{ text: string; meta: Record<string, a
   return rows.length;
 }
 
-async function fetchPage(query: string, page: number): Promise<any> {
+async function fetchPage(query: string, page: number, attempt = 1): Promise<any> {
   const encoded = encodeURIComponent(query);
   const url = `https://www.loc.gov/collections/chronicling-america/?q=${encoded}&fo=json&c=20&sp=${page}`;
 
   const res = await fetch(url);
   if (!res.ok) {
     if (res.status === 429) {
-      console.log("  Rate limited, waiting 60s...");
-      await new Promise(r => setTimeout(r, 60000));
-      return fetchPage(query, page);
+      if (attempt > 5) throw new Error("Rate limited 5 times in a row — giving up on this page");
+      const wait = Math.min(60 * attempt, 300); // 60s, 120s, 180s, 240s, 300s
+      console.log(`  Rate limited (attempt ${attempt}), waiting ${wait}s...`);
+      await new Promise(r => setTimeout(r, wait * 1000));
+      return fetchPage(query, page, attempt + 1);
     }
     throw new Error(`LOC API ${res.status}`);
   }
 
   const text = await res.text();
-  // Check for Cloudflare challenge page
   if (text.includes("Just a moment") || text.includes("challenge-platform")) {
     throw new Error("Cloudflare challenge detected — API blocked");
   }

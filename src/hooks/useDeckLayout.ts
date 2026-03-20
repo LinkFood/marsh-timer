@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { PanelInstance, DeckState } from '@/panels/PanelTypes';
 import { DEFAULT_LAYOUT } from '@/panels/PanelTypes';
 
-const STORAGE_KEY = 'dc-deck-v1';
+const STORAGE_KEY = 'dc-deck-v2';
 
 function loadDeck(): PanelInstance[] {
   try {

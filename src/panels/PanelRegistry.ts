@@ -26,6 +26,7 @@ export const PANEL_REGISTRY: PanelDef[] = [
   { id: 'convergence-history', label: 'Convergence History', category: 'analytics', description: 'Trend charts', defaultW: 4, defaultH: 4, component: lazy(() => import('./ConvergenceHistoryPanel')) },
   { id: 'brain-activity', label: 'Brain Activity', category: 'analytics', description: 'Cron health + brain stats', defaultW: 4, defaultH: 4, component: lazy(() => import('./BrainActivityPanel')) },
   { id: 'brain-search', label: 'Brain Search', category: 'intelligence', description: 'Search 212K+ brain entries', defaultW: 4, defaultH: 5, component: lazy(() => import('./BrainSearchPanel')) },
+  { id: 'chat', label: 'Brain Chat', category: 'intelligence', description: 'Talk to the brain', defaultW: 4, defaultH: 6, component: lazy(() => import('./ChatPanelInline')) },
 ];
 
 export const PANEL_MAP = new Map(PANEL_REGISTRY.map(p => [p.id, p]));

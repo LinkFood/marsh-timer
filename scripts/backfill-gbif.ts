@@ -223,19 +223,29 @@ async function insertBatch(rows: any[]): Promise<void> {
   for (let i = 0; i < rows.length; i += 20) {
     const chunk = rows.slice(i, i + 20);
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
-        method: "POST",
-        headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify(chunk),
-      });
-      if (res.ok) break;
-      if (attempt < 2) {
-        console.log(`  Insert retry ${attempt + 1}/3...`);
-        await new Promise((r) => setTimeout(r, 5000));
-        continue;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
+          method: "POST",
+          headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+          body: JSON.stringify(chunk),
+        });
+        if (res.ok) break;
+        if (attempt < 2) {
+          console.log(`  Insert retry ${attempt + 1}/3...`);
+          await new Promise((r) => setTimeout(r, 5000));
+          continue;
+        }
+        const text = await res.text();
+        console.error(`  Insert failed after retries: ${text}`);
+      } catch (err) {
+        if (attempt < 2) {
+          const wait = (attempt + 1) * 10000;
+          console.log(`  Insert fetch error, retry ${attempt + 1}/3 in ${wait / 1000}s: ${err}`);
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
+        console.error(`  Insert fetch failed after retries: ${err}`);
       }
-      const text = await res.text();
-      console.error(`  Insert failed after retries: ${text}`);
     }
   }
 }
