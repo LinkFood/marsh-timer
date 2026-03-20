@@ -25,7 +25,7 @@ export default function ConvergencePanel({}: PanelComponentProps) {
   const { topStates, loading } = useConvergenceScores();
   const { historyMap } = useConvergenceHistoryAll();
   const { flyTo } = useMapAction();
-  const { setSelectedState } = useDeck();
+  const { selectedState, setSelectedState } = useDeck();
 
   function handleClick(abbr: string) {
     flyTo(abbr);
@@ -67,8 +67,9 @@ export default function ConvergencePanel({}: PanelComponentProps) {
             <button
               key={s.state_abbr}
               onClick={() => handleClick(s.state_abbr)}
-              className="flex items-center gap-2 px-2 py-1.5 transition-colors text-left w-full
-                hover:bg-gradient-to-r hover:from-white/[0.06] hover:to-transparent"
+              className={`flex items-center gap-2 px-2 py-1.5 transition-colors text-left w-full
+                hover:bg-gradient-to-r hover:from-white/[0.06] hover:to-transparent
+                ${selectedState === s.state_abbr ? 'border-l-2 border-cyan-400 bg-cyan-400/[0.04]' : ''}`}
             >
               <span className="text-[10px] text-white/40 w-4 text-right font-mono">{i + 1}</span>
               <span className="text-xs font-mono text-white/90 w-7">{s.state_abbr}</span>

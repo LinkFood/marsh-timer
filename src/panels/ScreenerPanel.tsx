@@ -70,7 +70,7 @@ export default function ScreenerPanel({}: PanelComponentProps) {
   const { scores, loading } = useConvergenceScores();
   const { historyMap } = useConvergenceHistoryAll();
   const { flyTo } = useMapAction();
-  const { setSelectedState } = useDeck();
+  const { selectedState, setSelectedState } = useDeck();
 
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortAsc, setSortAsc] = useState(true);
@@ -160,7 +160,7 @@ export default function ScreenerPanel({}: PanelComponentProps) {
               key={s.state_abbr}
               onClick={() => handleClick(s.state_abbr)}
               className={`flex items-center px-2 py-1 gap-1 w-full transition-colors text-left
-                hover:bg-white/[0.06] ${i % 2 === 1 ? 'bg-white/[0.02]' : ''}`}
+                hover:bg-white/[0.06] ${selectedState === s.state_abbr ? 'border-l-2 border-cyan-400 bg-cyan-400/[0.04]' : i % 2 === 1 ? 'bg-white/[0.02]' : ''}`}
             >
               <span className="w-6 text-[10px] font-mono text-white/40 text-right tabular-nums">{s.national_rank}</span>
               <span className="w-8 text-[10px] font-mono text-white/90">{s.state_abbr}</span>
