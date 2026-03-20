@@ -6,7 +6,8 @@ const MIN_HEIGHT = 200;
 const DEFAULT_RATIO = 0.5;
 
 function getMaxHeight() {
-  return Math.round(window.innerHeight * 0.8);
+  // Account for header (48px), heartbeat (~28px), bottom bar (40px), min panel space (100px)
+  return Math.round(window.innerHeight - 48 - 28 - 40 - 100);
 }
 
 function loadHeight(): number {
@@ -17,7 +18,8 @@ function loadHeight(): number {
       if (h >= MIN_HEIGHT && h <= getMaxHeight()) return h;
     }
   } catch { /* ignore */ }
-  return Math.round(window.innerHeight * DEFAULT_RATIO);
+  // Default to 45% of available space (viewport minus header/heartbeat/bottombar)
+  return Math.round((window.innerHeight - 48 - 28 - 40) * 0.45);
 }
 
 interface MapRegionProps {

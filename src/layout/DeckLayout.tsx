@@ -40,7 +40,7 @@ export default function DeckLayout({
   const isMobile = useIsMobile();
 
   return (
-    <div className="h-[100dvh] w-screen overflow-hidden flex flex-col bg-[#0a0f1a]">
+    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0a0f1a]">
       {/* BrainHeartbeat — fixed height */}
       <div className="shrink-0">
         <BrainHeartbeat

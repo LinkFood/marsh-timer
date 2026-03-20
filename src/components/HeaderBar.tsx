@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare } from "lucide-react";
 import type { Species } from "@/data/types";
+import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
 import UserMenu from './UserMenu';
 
@@ -154,8 +155,21 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
           </span>
         </div>
 
-        {/* Center: spacer */}
-        <div className="flex-1" />
+        {/* Center: Species filter */}
+        <div className="flex items-center gap-1 flex-1 justify-center">
+          <select
+            value={species}
+            onChange={e => onSelectSpecies(e.target.value as Species)}
+            className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[10px] font-display uppercase tracking-widest text-white/70 focus:outline-none focus:ring-1 focus:ring-cyan-400/30 cursor-pointer appearance-none"
+            style={{ backgroundImage: 'none' }}
+          >
+            {SPECIES_ORDER.map(sp => (
+              <option key={sp} value={sp} className="bg-[#0a0f1a] text-white">
+                {speciesConfig[sp].label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Right: Actions + User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
