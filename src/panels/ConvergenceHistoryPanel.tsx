@@ -74,17 +74,17 @@ export default function ConvergenceHistoryPanel({}: PanelComponentProps) {
 
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white/[0.03] rounded-lg p-2 text-center">
-          <div className="text-lg font-mono text-cyan-400">{stats.current}</div>
-          <div className="text-[9px] font-mono text-white/30">CURRENT</div>
+        <div className="bg-white/[0.03] rounded-lg p-2 text-center border border-white/[0.06]">
+          <div className="text-xl font-mono font-bold text-cyan-400">{stats.current}</div>
+          <div className="text-[8px] font-mono text-white/30 tracking-wider">CURRENT</div>
         </div>
-        <div className="bg-white/[0.03] rounded-lg p-2 text-center">
-          <div className="text-lg font-mono text-white/70">{stats.avg7 ?? '--'}</div>
-          <div className="text-[9px] font-mono text-white/30">7D AVG</div>
+        <div className="bg-white/[0.03] rounded-lg p-2 text-center border border-white/[0.06]">
+          <div className="text-xl font-mono font-bold text-white/70">{stats.avg7 ?? '--'}</div>
+          <div className="text-[8px] font-mono text-white/30 tracking-wider">7D AVG</div>
         </div>
-        <div className="bg-white/[0.03] rounded-lg p-2 text-center">
-          <div className="text-lg font-mono text-white/50">{stats.avg30}</div>
-          <div className="text-[9px] font-mono text-white/30">30D AVG</div>
+        <div className="bg-white/[0.03] rounded-lg p-2 text-center border border-white/[0.06]">
+          <div className="text-xl font-mono font-bold text-white/50">{stats.avg30}</div>
+          <div className="text-[8px] font-mono text-white/30 tracking-wider">30D AVG</div>
         </div>
       </div>
 

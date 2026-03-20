@@ -43,8 +43,15 @@ export default function WeatherForecastPanel({}: PanelComponentProps) {
 
   return (
     <div className="overflow-y-auto h-full p-2">
-      <div className="text-[10px] font-mono text-white/30 mb-1 px-1">
-        {selectedState} - 16 DAY FORECAST
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-[#0a0f1a]/90 backdrop-blur-sm flex items-center gap-2 px-1 py-1.5 mb-0.5 border-b border-white/[0.06]">
+        <span className="text-[8px] font-mono text-white/30 w-6">DAY</span>
+        <span className="text-[8px] font-mono text-white/30 w-8">DATE</span>
+        <span className="text-[8px] font-mono text-white/30 w-4"></span>
+        <span className="text-[8px] font-mono text-white/30 w-6 text-right">HI</span>
+        <span className="text-[8px] font-mono text-white/30 w-6 text-right">LO</span>
+        <span className="text-[8px] font-mono text-white/30 w-10">PRECIP</span>
+        <span className="text-[8px] font-mono text-white/30 w-10">WIND</span>
       </div>
       <div className="space-y-0">
         {data.map((day, i) => {
@@ -52,10 +59,11 @@ export default function WeatherForecastPanel({}: PanelComponentProps) {
           const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3);
           const dateLabel = d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
           const Icon = weatherIcon(day.weather_code);
+          const isToday = i === 0;
           return (
             <div
               key={i}
-              className="flex items-center gap-2 px-1 py-1 rounded hover:bg-white/[0.04] transition-colors"
+              className={`flex items-center gap-2 px-1 py-1 rounded hover:bg-white/[0.04] transition-colors ${isToday ? 'bg-cyan-400/[0.04]' : i % 2 === 1 ? 'bg-white/[0.01]' : ''}`}
             >
               <span className="text-[9px] font-mono text-white/40 w-6">{dayLabel}</span>
               <span className="text-[9px] font-mono text-white/25 w-8">{dateLabel}</span>
