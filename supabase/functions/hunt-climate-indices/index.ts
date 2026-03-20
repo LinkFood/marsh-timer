@@ -5,70 +5,88 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
-// Climate oscillation indices — macro-scale predictors for animal movement
-// AO: Arctic Oscillation — negative = cold air outbreaks pushing south (3-7 day lead)
-// NAO: North Atlantic Oscillation — negative = cold/stormy eastern US (3-7 day lead)
-const INDICES = [
+// Macro climate oscillation indices — upstream predictors for animal movement
+// All from NOAA PSL (psl.noaa.gov) — monthly resolution, freely accessible via HTTPS
+const MONTHLY_INDICES = [
   {
     id: "ao",
     name: "Arctic Oscillation",
-    url: "https://ftp.cpc.ncep.noaa.gov/cwlinks/norm.daily.ao.index.b500101.current.ascii",
+    url: "https://psl.noaa.gov/data/correlation/ao.data",
     impact: {
-      negative: "Cold air outbreak likely — arctic air pushing south. Strong migration trigger for waterfowl. Negative AO correlates with freeze events that force birds off staging areas.",
-      positive: "Mild arctic pattern — reduced cold air intrusions. Migration may stall or slow. Staging areas remain ice-free.",
-      neutral: "Neutral arctic pattern — no strong signal for cold outbreak or mild spell.",
+      negative: "Cold air outbreak pattern — arctic air pushing south. Strong migration trigger for waterfowl. Negative AO correlates with freeze events forcing birds off staging areas.",
+      positive: "Mild arctic pattern — reduced cold intrusions. Migration may stall. Staging areas ice-free.",
+      neutral: "Neutral arctic — no strong cold or mild signal.",
     },
   },
   {
     id: "nao",
     name: "North Atlantic Oscillation",
-    url: "https://ftp.cpc.ncep.noaa.gov/cwlinks/norm.daily.nao.index.b500101.current.ascii",
+    url: "https://psl.noaa.gov/data/correlation/nao.data",
     impact: {
-      negative: "Stormy eastern US — cold, wet pattern. Atlantic flyway migration enhanced. Nor'easters and cold fronts push coastal waterfowl south.",
-      positive: "Mild, dry eastern US — reduced storm activity. Atlantic flyway migration may slow. Coastal staging areas stable.",
-      neutral: "Neutral Atlantic pattern — no strong storm or mild signal for eastern flyways.",
+      negative: "Stormy eastern US — cold, wet. Atlantic flyway migration enhanced. Cold fronts push coastal waterfowl south.",
+      positive: "Mild, dry eastern US. Atlantic flyway migration may slow. Coastal staging areas stable.",
+      neutral: "Neutral Atlantic — no strong storm signal.",
+    },
+  },
+  {
+    id: "pdo",
+    name: "Pacific Decadal Oscillation",
+    url: "https://psl.noaa.gov/data/correlation/pdo.data",
+    impact: {
+      negative: "Cool Pacific phase — cooler/wetter Pacific Northwest, warmer Southeast. Pacific flyway waterfowl may stage farther south. Multi-year to decadal cycle affects seasonal routing.",
+      positive: "Warm Pacific phase — warmer/drier Pacific Northwest, cooler Southeast. Pacific flyway staging shifts north.",
+      neutral: "Neutral Pacific — no strong decadal signal.",
+    },
+  },
+  {
+    id: "enso",
+    name: "ENSO Nino 3.4",
+    url: "https://psl.noaa.gov/data/correlation/nina34.anom.data",
+    impact: {
+      negative: "La Niña — cooler tropical Pacific. Typically drier South, wetter North. Can amplify cold outbreaks when combined with negative AO. Affects continental storm tracks.",
+      positive: "El Niño — warmer tropical Pacific. Wetter South, milder North. Suppresses cold outbreaks. Waterfowl staging may extend later into season.",
+      neutral: "ENSO-neutral — no strong tropical Pacific forcing on continental weather.",
+    },
+  },
+  {
+    id: "pna",
+    name: "Pacific North American Pattern",
+    url: "https://psl.noaa.gov/data/correlation/pna.data",
+    impact: {
+      negative: "Negative PNA — ridge over eastern Pacific, trough over western US. Wet/cool West, dry/mild East. Pacific flyway gets weather.",
+      positive: "Positive PNA — ridge over western North America, trough in East. Classic cold outbreak setup for Central/Mississippi flyways.",
+      neutral: "Neutral PNA — no strong ridge/trough pattern.",
     },
   },
 ];
 
-function parseIndex(text: string, daysBack: number): Array<{ date: string; value: number }> {
-  const lines = text.trim().split("\n");
-  const entries: Array<{ date: string; value: number }> = [];
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-  for (const line of lines) {
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 4) continue;
-    const [y, m, d, val] = parts;
-    const year = parseInt(y);
-    const month = parseInt(m);
-    const day = parseInt(d);
-    const value = parseFloat(val);
-    if (isNaN(value) || isNaN(year)) continue;
+// Parse PSL monthly data format: "YYYY  val1 val2 ... val12"
+// Missing values are -99.99 or -999.000 or -9.90
+function parseMonthlyPSL(text: string): Array<{ year: number; month: number; value: number }> {
+  const entries: Array<{ year: number; month: number; value: number }> = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("http") || trimmed.includes("@")) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 2) continue;
+    const year = parseInt(parts[0]);
+    if (isNaN(year) || year < 1900 || year > 2100) continue;
 
-    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    entries.push({ date: dateStr, value });
+    for (let m = 0; m < Math.min(12, parts.length - 1); m++) {
+      const val = parseFloat(parts[m + 1]);
+      if (isNaN(val) || val <= -9.0) continue; // -9.90, -99.99, -999 = missing
+      entries.push({ year, month: m + 1, value: val });
+    }
   }
-
-  // Return last N days
-  return entries.slice(-daysBack);
+  return entries;
 }
 
 function classifyPhase(value: number): "negative" | "positive" | "neutral" {
   if (value <= -0.5) return "negative";
   if (value >= 0.5) return "positive";
   return "neutral";
-}
-
-function trendDirection(recent: number[]): string {
-  if (recent.length < 3) return "insufficient data";
-  const first = recent.slice(0, Math.floor(recent.length / 2));
-  const second = recent.slice(Math.floor(recent.length / 2));
-  const avgFirst = first.reduce((a, b) => a + b, 0) / first.length;
-  const avgSecond = second.reduce((a, b) => a + b, 0) / second.length;
-  const diff = avgSecond - avgFirst;
-  if (diff < -0.3) return "trending negative (cold outbreak risk increasing)";
-  if (diff > 0.3) return "trending positive (mild pattern building)";
-  return "stable";
 }
 
 serve(async (req) => {
@@ -79,11 +97,14 @@ serve(async (req) => {
 
   try {
     const supabase = createSupabaseClient();
-
     let totalEmbedded = 0;
     let errors = 0;
 
-    for (const index of INDICES) {
+    const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const currentMonth = now.getUTCMonth() + 1;
+
+    for (const index of MONTHLY_INDICES) {
       try {
         console.log(`Fetching ${index.name}...`);
 
@@ -99,29 +120,44 @@ serve(async (req) => {
         }
 
         const text = await res.text();
-        const recent = parseIndex(text, 14); // Last 14 days
+        const all = parseMonthlyPSL(text);
 
-        if (recent.length === 0) {
-          console.warn(`  ${index.name}: no recent data`);
+        if (all.length === 0) {
+          console.warn(`  ${index.name}: no data parsed`);
           continue;
         }
 
-        const latest = recent[recent.length - 1];
+        // Get last 12 months of valid data
+        const recent = all.slice(-12);
+        const latest = all[all.length - 1];
         const values = recent.map(r => r.value);
-        const avg7 = values.slice(-7).reduce((a, b) => a + b, 0) / Math.min(7, values.length);
-        const avg14 = values.reduce((a, b) => a + b, 0) / values.length;
-        const phase = classifyPhase(latest.value);
-        const trend = trendDirection(values);
-        const impact = index.impact[phase];
 
-        // Single daily embedding with full context
+        const phase = classifyPhase(latest.value);
+        const avg6 = values.slice(-6).reduce((a, b) => a + b, 0) / Math.min(6, values.length);
+        const avg12 = values.reduce((a, b) => a + b, 0) / values.length;
+
+        // Trend: compare last 3 months vs prior 3
+        const last3 = values.slice(-3);
+        const prior3 = values.slice(-6, -3);
+        let trend = "stable";
+        if (last3.length >= 3 && prior3.length >= 3) {
+          const avgLast = last3.reduce((a, b) => a + b, 0) / 3;
+          const avgPrior = prior3.reduce((a, b) => a + b, 0) / 3;
+          const diff = avgLast - avgPrior;
+          if (diff < -0.3) trend = "trending negative";
+          else if (diff > 0.3) trend = "trending positive";
+        }
+
+        const impact = index.impact[phase];
+        const dateStr = `${latest.year}-${String(latest.month).padStart(2, "0")}-01`;
+
         const entryText = [
           `climate-index | ${index.id.toUpperCase()} | ${index.name}`,
-          `date:${latest.date} | value:${latest.value.toFixed(3)}`,
-          `phase:${phase} | 7d_avg:${avg7.toFixed(3)} | 14d_avg:${avg14.toFixed(3)}`,
+          `period:${MONTH_NAMES[latest.month - 1]} ${latest.year} | value:${latest.value.toFixed(2)}`,
+          `phase:${phase} | 6mo_avg:${avg6.toFixed(2)} | 12mo_avg:${avg12.toFixed(2)}`,
           `trend:${trend}`,
           `impact: ${impact}`,
-          `recent_14d: ${values.map(v => v.toFixed(2)).join(",")}`,
+          `12mo_history: ${recent.map(r => `${MONTH_NAMES[r.month-1]}:${r.value.toFixed(2)}`).join(", ")}`,
         ].join(" | ");
 
         const embeddings = await batchEmbed([entryText]);
@@ -129,35 +165,37 @@ serve(async (req) => {
         const { error: upsertError } = await supabase
           .from("hunt_knowledge")
           .upsert({
-            title: `climate-index ${index.id} ${latest.date}`,
+            title: `climate-index ${index.id} ${dateStr}`,
             content: entryText,
             content_type: "climate-index",
             tags: [index.id, "climate", "oscillation", "macro-weather", "migration-predictor"],
             species: null,
             state_abbr: null,
-            effective_date: latest.date,
+            effective_date: dateStr,
             metadata: {
-              source: "noaa-cpc",
+              source: "noaa-psl",
               index_id: index.id,
               index_name: index.name,
               latest_value: latest.value,
+              latest_period: `${latest.year}-${String(latest.month).padStart(2, "0")}`,
               phase,
-              avg_7d: avg7,
-              avg_14d: avg14,
+              avg_6mo: avg6,
+              avg_12mo: avg12,
               trend,
-              recent_values: values,
+              recent_12mo: recent.map(r => ({ period: `${r.year}-${String(r.month).padStart(2, "0")}`, value: r.value })),
             },
             embedding: JSON.stringify(embeddings[0]),
           }, { onConflict: "title" });
 
         if (upsertError) {
-          console.error(`  ${index.name} upsert error: ${upsertError.message}`);
+          console.error(`  ${index.name} upsert: ${upsertError.message}`);
           errors++;
         } else {
           totalEmbedded++;
-          console.log(`  ${index.name}: ${latest.date} = ${latest.value.toFixed(3)} (${phase}, ${trend})`);
+          console.log(`  ${index.name}: ${MONTH_NAMES[latest.month-1]} ${latest.year} = ${latest.value.toFixed(2)} (${phase}, ${trend})`);
         }
 
+        await new Promise(r => setTimeout(r, 1000));
       } catch (err) {
         console.error(`  ${index.name} error: ${err}`);
         errors++;
@@ -168,7 +206,7 @@ serve(async (req) => {
     await logCronRun({
       functionName: "hunt-climate-indices",
       status: errors > 0 ? "partial" : "success",
-      summary: { embedded: totalEmbedded, indices: INDICES.length, errors },
+      summary: { embedded: totalEmbedded, indices: MONTHLY_INDICES.length, errors },
       durationMs,
     });
 
