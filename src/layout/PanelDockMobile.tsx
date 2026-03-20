@@ -37,7 +37,7 @@ export default function PanelDockMobile() {
                   </div>
                 }
               >
-                <Component />
+                <Component isFullscreen={false} />
               </Suspense>
             </PanelWrapper>
           </div>

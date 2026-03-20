@@ -65,7 +65,7 @@ export default function PanelDock() {
                       </div>
                     }
                   >
-                    <Component />
+                    <Component isFullscreen={false} />
                   </Suspense>
                 </PanelErrorBoundary>
               </PanelWrapper>
