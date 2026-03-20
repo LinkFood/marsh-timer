@@ -23,6 +23,12 @@ import { calculateTerminator, calculateGoldenHour } from "@/lib/terminator";
 import type { FeatureCollection, Feature, Geometry, Position, LineString } from "geojson";
 import { generateIsobars } from "@/lib/isobars";
 import type { WeatherTiles } from "@/hooks/useWeatherTiles";
+import { LAYER_REGISTRY } from "@/layers/LayerRegistry";
+
+/** All Mapbox layer IDs controlled by the layer system (derived from LAYER_REGISTRY) */
+const ALL_TOGGLABLE_MAPBOX_LAYERS: string[] = Array.from(
+  new Set(LAYER_REGISTRY.flatMap(l => l.mapboxLayers))
+);
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -2451,8 +2457,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // --- BLOCK 1: Layer visibility ---
     if (visibleMapboxLayers) {
-      // New path: LayerContext drives visibility directly
-      for (const [layerId] of Object.entries(LAYER_MODES)) {
+      // New path: LayerContext drives visibility — iterate ALL known Mapbox layer IDs
+      for (const layerId of ALL_TOGGLABLE_MAPBOX_LAYERS) {
         if (map.getLayer(layerId)) {
           map.setLayoutProperty(layerId, 'visibility', visibleMapboxLayers.has(layerId) ? 'visible' : 'none');
         }
@@ -2474,7 +2480,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
 
     // --- BLOCK 2: State fill coloring (separate from visibility) ---
-    if (mapMode === 'intel' && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
+    // When visibleMapboxLayers is provided, only show convergence colors if the heatmap layer is on
+    const showConvergenceFill = visibleMapboxLayers
+      ? visibleMapboxLayers.has('convergence-score-bg')
+      : mapMode === 'intel';
+    if (showConvergenceFill && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
       for (const [abbr, score] of convergenceScores) {
         entries.push(abbr, convergenceToColor(score));
