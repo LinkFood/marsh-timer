@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backfill orchestrator
+scripts/.orchestrator-checkpoint.json
+scripts/.noaa-stations-cache.json
