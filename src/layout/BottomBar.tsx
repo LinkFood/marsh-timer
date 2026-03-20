@@ -1,7 +1,6 @@
 import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus } from 'lucide-react';
 import { useDeck, type CategoryFilter } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import PanelAddMenu from '@/panels/PanelAddMenu';
 
 const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] = [
   { id: 'all', label: 'All', icon: Target },
@@ -69,12 +68,6 @@ export default function BottomBar() {
         )}
       </div>
 
-      {/* Panel add menu dropdown */}
-      {panelAddOpen && (
-        <div className="absolute bottom-full right-2 mb-2 z-50">
-          <PanelAddMenu />
-        </div>
-      )}
     </div>
   );
 }

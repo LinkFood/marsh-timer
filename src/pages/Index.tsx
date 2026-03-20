@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Species } from "@/data/types";
 import { isValidSpecies } from "@/data/types";
-import { getStatesForSpecies } from "@/data/seasons";
+import { getStatesForSpecies, getSeasonsByState } from "@/data/seasons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
 import type { MapViewRef } from "@/components/MapView";
@@ -271,6 +271,7 @@ function MapWithLayers({
   onMoveEnd,
 }: any) {
   const { isSatellite, is3D, isLayerOn, visibleMapboxLayers } = useLayerContext();
+  const [elevation, setElevation] = useState<number | null>(null);
 
   return (
     <ErrorBoundary fallback={
@@ -293,6 +294,7 @@ function MapWithLayers({
         sightingsGeoJSON={sightingsGeoJSON}
         weatherCache={weatherCache}
         onMoveEnd={onMoveEnd}
+        onElevation={setElevation}
         mapMode="intel"
         convergenceScores={convergenceScores}
         perfectStormStates={perfectStormStates}
@@ -304,6 +306,13 @@ function MapWithLayers({
         weatherEventsGeoJSON={weatherEventsGeoJSON}
         visibleMapboxLayers={visibleMapboxLayers}
       />
+      {/* Elevation HUD */}
+      {is3D && elevation !== null && (
+        <div className="absolute bottom-4 left-3 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]">
+          <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
+          <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
+        </div>
+      )}
     </ErrorBoundary>
   );
 }
