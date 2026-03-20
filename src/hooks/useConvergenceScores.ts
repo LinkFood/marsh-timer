@@ -23,6 +23,12 @@ function todayISO(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+function yesterdayISO(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+}
+
 export function useConvergenceScores() {
   const [scores, setScores] = useState<Map<string, ConvergenceScore>>(new Map());
   const [topStates, setTopStates] = useState<ConvergenceScore[]>([]);
@@ -38,14 +44,29 @@ export function useConvergenceScores() {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
-        const date = todayISO();
-        const res = await fetch(
+
+        // Try today first, fall back to yesterday if empty (convergence engine runs at 8am UTC)
+        let date = todayISO();
+        let res = await fetch(
           `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?date=eq.${date}&select=*&order=score.desc`,
           { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
         );
         clearTimeout(timeout);
         if (!res.ok) return;
-        const data: any[] = await res.json();
+        let data: any[] = await res.json();
+
+        if (!data || data.length === 0) {
+          date = yesterdayISO();
+          const controller2 = new AbortController();
+          const timeout2 = setTimeout(() => controller2.abort(), 10000);
+          res = await fetch(
+            `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?date=eq.${date}&select=*&order=score.desc`,
+            { headers: { apikey: SUPABASE_KEY }, signal: controller2.signal }
+          );
+          clearTimeout(timeout2);
+          if (!res.ok) return;
+          data = await res.json();
+        }
 
         const map = new Map<string, ConvergenceScore>();
         const ranked: ConvergenceScore[] = data.map((row: any, i: number) => ({
