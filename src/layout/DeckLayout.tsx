@@ -55,13 +55,15 @@ export default function DeckLayout({
         </ErrorBoundary>
       </div>
 
-      {/* Map region — resizable height */}
-      <ErrorBoundary fallback={<div className="h-64 bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map region error</span></div>}>
-        <MapRegion>{children}</MapRegion>
-      </ErrorBoundary>
+      {/* Map region — capped at 50% */}
+      <div className="shrink-0" style={{ height: '50%', maxHeight: '50%' }}>
+        <ErrorBoundary fallback={<div className="h-full bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map region error</span></div>}>
+          <MapRegion>{children}</MapRegion>
+        </ErrorBoundary>
+      </div>
 
       {/* Panel dock — fills remaining space */}
-      <div className="flex-1 min-h-[200px] overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
           {isMobile ? <PanelDockMobile /> : <PanelDock />}
         </ErrorBoundary>

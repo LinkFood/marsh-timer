@@ -99,7 +99,7 @@ export default function MapRegion({ children }: MapRegionProps) {
   }, [height]);
 
   return (
-    <div className="shrink-0 relative" style={{ height }}>
+    <div className="relative h-full">
       {/* Map content */}
       <div className="absolute inset-0">{children}</div>
 
