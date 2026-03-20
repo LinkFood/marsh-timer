@@ -28,6 +28,22 @@ function tierColor(tier: Tier): string {
   return 'text-white/70';
 }
 
+function scoreBg(score: number): string {
+  if (score >= 80) return 'bg-red-400/10';
+  if (score >= 60) return 'bg-orange-400/10';
+  if (score >= 40) return 'bg-yellow-400/10';
+  if (score >= 20) return 'bg-blue-400/10';
+  return '';
+}
+
+function scoreText(score: number): string {
+  if (score >= 80) return 'text-red-400';
+  if (score >= 60) return 'text-orange-400';
+  if (score >= 40) return 'text-yellow-400';
+  if (score >= 20) return 'text-blue-400';
+  return 'text-gray-500';
+}
+
 function getSortValue(s: ConvergenceScore, key: SortKey): number | string {
   switch (key) {
     case 'rank': return s.national_rank;
@@ -113,11 +129,11 @@ export default function ScreenerPanel({}: PanelComponentProps) {
             {t}
           </button>
         ))}
-        <span className="text-[10px] text-white/20 ml-auto font-mono">{sorted.length}</span>
+        <span className="text-[10px] text-white/20 ml-auto font-mono tabular-nums">{sorted.length}</span>
       </div>
 
-      {/* Header */}
-      <div className="flex items-center px-2 py-1 border-b border-white/[0.06] gap-1">
+      {/* Sticky header */}
+      <div className="flex items-center px-2 py-1.5 border-b border-white/[0.06] gap-1 bg-black/40 sticky top-0 z-10">
         {COLUMNS.map(col => (
           <button
             key={col.key}
@@ -137,21 +153,24 @@ export default function ScreenerPanel({}: PanelComponentProps) {
 
       {/* Rows */}
       <div className="flex-1 overflow-y-auto">
-        {sorted.map(s => {
+        {sorted.map((s, i) => {
           const sparkData = historyMap.get(s.state_abbr) || [];
           return (
             <button
               key={s.state_abbr}
               onClick={() => handleClick(s.state_abbr)}
-              className="flex items-center px-2 py-1 gap-1 w-full hover:bg-white/[0.06] transition-colors text-left"
+              className={`flex items-center px-2 py-1 gap-1 w-full transition-colors text-left
+                hover:bg-white/[0.06] ${i % 2 === 1 ? 'bg-white/[0.02]' : ''}`}
             >
-              <span className="w-6 text-[10px] font-mono text-white/40 text-right">{s.national_rank}</span>
+              <span className="w-6 text-[10px] font-mono text-white/40 text-right tabular-nums">{s.national_rank}</span>
               <span className="w-8 text-[10px] font-mono text-white/90">{s.state_abbr}</span>
-              <span className="w-10 text-[10px] font-mono text-cyan-400 text-right">{s.score}</span>
-              <span className="w-8 text-[10px] font-mono text-white/50 text-right">{s.weather_component}</span>
-              <span className="w-8 text-[10px] font-mono text-white/50 text-right">{s.migration_component}</span>
-              <span className="w-8 text-[10px] font-mono text-white/50 text-right">{s.solunar_component}</span>
-              <span className="w-8 text-[10px] font-mono text-white/50 text-right">{s.pattern_component}</span>
+              <span className={`w-10 text-[10px] font-mono font-bold text-right tabular-nums rounded px-0.5 ${scoreText(s.score)} ${scoreBg(s.score)}`}>
+                {s.score}
+              </span>
+              <span className="w-8 text-[10px] font-mono text-white/50 text-right tabular-nums">{s.weather_component}</span>
+              <span className="w-8 text-[10px] font-mono text-white/50 text-right tabular-nums">{s.migration_component}</span>
+              <span className="w-8 text-[10px] font-mono text-white/50 text-right tabular-nums">{s.solunar_component}</span>
+              <span className="w-8 text-[10px] font-mono text-white/50 text-right tabular-nums">{s.pattern_component}</span>
               <span className="w-12 flex justify-end">
                 {sparkData.length >= 2 && (
                   <Sparkline data={sparkData} width={40} height={14} color="#22d3ee" />

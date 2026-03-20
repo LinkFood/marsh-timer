@@ -2,6 +2,14 @@ import { useMurmurationIndex } from '@/hooks/useMurmurationIndex';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { PanelComponentProps } from './PanelTypes';
 
+function indexColor(val: number): string {
+  if (val >= 80) return 'text-red-400';
+  if (val >= 60) return 'text-orange-400';
+  if (val >= 40) return 'text-yellow-400';
+  if (val >= 20) return 'text-blue-400';
+  return 'text-gray-500';
+}
+
 export default function MigrationIndexPanel({}: PanelComponentProps) {
   const { data, loading } = useMurmurationIndex();
 
@@ -23,15 +31,18 @@ export default function MigrationIndexPanel({}: PanelComponentProps) {
 
   const DirectionIcon = data.direction === 'up' ? TrendingUp : data.direction === 'down' ? TrendingDown : Minus;
   const dirColor = data.direction === 'up' ? 'text-green-400' : data.direction === 'down' ? 'text-red-400' : 'text-white/50';
+  const dirBg = data.direction === 'up' ? 'bg-green-400/10' : data.direction === 'down' ? 'bg-red-400/10' : 'bg-white/[0.04]';
 
   return (
     <div className="flex flex-col h-full p-3 gap-3">
-      {/* Big number */}
-      <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-mono text-cyan-400 font-bold">{data.index}</span>
-        <div className={`flex items-center gap-1 ${dirColor}`}>
-          <DirectionIcon size={14} />
-          <span className="text-xs font-mono">
+      {/* Big number + direction */}
+      <div className="flex items-center gap-3">
+        <span className={`text-4xl font-mono font-bold tabular-nums tracking-tight ${indexColor(data.index)}`}>
+          {data.index}
+        </span>
+        <div className={`flex items-center gap-1.5 px-2 py-1 rounded ${dirBg} ${dirColor}`}>
+          <DirectionIcon size={16} strokeWidth={2.5} />
+          <span className="text-xs font-mono font-semibold tabular-nums">
             {data.change_pct > 0 ? '+' : ''}{data.change_pct.toFixed(1)}%
           </span>
         </div>
@@ -39,23 +50,23 @@ export default function MigrationIndexPanel({}: PanelComponentProps) {
 
       {/* Stats row */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white/[0.04] rounded px-2 py-1.5">
-          <div className="text-[10px] text-white/40">Active States</div>
-          <div className="text-sm font-mono text-white/90">{data.active_states}</div>
+        <div className="rounded border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+          <div className="text-[10px] font-mono tracking-wider text-white/30 uppercase">Active States</div>
+          <div className="text-lg font-mono font-bold text-white/90 tabular-nums mt-0.5">{data.active_states}</div>
         </div>
-        <div className="bg-white/[0.04] rounded px-2 py-1.5">
-          <div className="text-[10px] text-white/40">Spikes</div>
-          <div className="text-sm font-mono text-white/90">{data.spike_count}</div>
+        <div className="rounded border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">
+          <div className="text-[10px] font-mono tracking-wider text-white/30 uppercase">Spikes</div>
+          <div className="text-lg font-mono font-bold text-white/90 tabular-nums mt-0.5">{data.spike_count}</div>
         </div>
       </div>
 
       {/* Top states */}
       {data.top_states.length > 0 && (
         <div>
-          <div className="text-[10px] text-white/40 mb-1">Top States</div>
+          <div className="text-[10px] font-mono tracking-wider text-white/30 uppercase mb-1.5">Top States</div>
           <div className="flex flex-wrap gap-1">
             {data.top_states.map(st => (
-              <span key={st} className="text-[10px] font-mono text-cyan-400 bg-cyan-400/10 rounded px-1.5 py-0.5">
+              <span key={st} className="text-[10px] font-mono text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 rounded px-1.5 py-0.5">
                 {st}
               </span>
             ))}

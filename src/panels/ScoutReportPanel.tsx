@@ -1,4 +1,5 @@
 import { useScoutReport } from '@/hooks/useScoutReport';
+import { Clock } from 'lucide-react';
 import type { PanelComponentProps } from './PanelTypes';
 
 function timeAgo(iso: string): string {
@@ -32,13 +33,17 @@ export default function ScoutReportPanel({}: PanelComponentProps) {
   const paragraphs = report.brief_text.split('\n').filter(l => l.trim());
 
   return (
-    <div className="flex flex-col h-full p-2 overflow-y-auto">
-      <div className="text-[10px] text-white/30 mb-2">
-        {timeAgo(report.created_at)}
+    <div className="flex flex-col h-full p-3 overflow-y-auto gap-3">
+      {/* Timestamp header */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-white/[0.02] border border-white/[0.06]">
+        <Clock size={12} className="text-cyan-400 shrink-0" />
+        <span className="text-xs font-mono text-white/70">{timeAgo(report.created_at)}</span>
       </div>
-      <div className="flex flex-col gap-2">
+
+      {/* Report body with quote border */}
+      <div className="border-l-2 border-cyan-400/30 pl-3 flex flex-col gap-2.5">
         {paragraphs.map((p, i) => (
-          <p key={i} className="text-xs text-white/80 leading-relaxed">{p}</p>
+          <p key={i} className="text-xs text-white/80 leading-relaxed font-body">{p}</p>
         ))}
       </div>
     </div>

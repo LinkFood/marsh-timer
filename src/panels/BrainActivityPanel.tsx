@@ -3,8 +3,8 @@ import { Brain, Activity, Clock } from 'lucide-react';
 import type { PanelComponentProps } from './PanelTypes';
 
 function statusDot(status: string): string {
-  if (status === 'success') return 'bg-green-400';
-  if (status === 'error') return 'bg-red-400';
+  if (status === 'success') return 'bg-green-400 shadow-[0_0_4px_rgba(74,222,128,0.5)]';
+  if (status === 'error') return 'bg-red-400 shadow-[0_0_4px_rgba(248,113,113,0.5)]';
   return 'bg-gray-500';
 }
 
@@ -45,37 +45,42 @@ export default function BrainActivityPanel({}: PanelComponentProps) {
     <div className="flex flex-col gap-3 p-3 h-full overflow-y-auto">
       {/* Big numbers */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+        <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
           <Brain size={14} className="text-cyan-400 mx-auto mb-1" />
-          <div className="text-lg font-mono text-cyan-400">{activity.totalEmbeddingsToday}</div>
-          <div className="text-[8px] font-mono text-white/30">EMBEDS 24H</div>
+          <div className="text-xl font-mono font-bold text-cyan-400 tabular-nums">{activity.totalEmbeddingsToday}</div>
+          <div className="text-[8px] font-mono tracking-wider text-white/30">EMBEDS 24H</div>
         </div>
-        <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+        <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
           <Activity size={14} className="text-green-400 mx-auto mb-1" />
-          <div className="text-lg font-mono text-green-400">{activity.activeCrons}</div>
-          <div className="text-[8px] font-mono text-white/30">ACTIVE CRONS</div>
+          <div className="text-xl font-mono font-bold text-green-400 tabular-nums">{activity.activeCrons}</div>
+          <div className="text-[8px] font-mono tracking-wider text-white/30">ACTIVE CRONS</div>
         </div>
-        <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+        <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
           <Clock size={14} className="text-white/40 mx-auto mb-1" />
-          <div className="text-[10px] font-mono text-white/60">
+          <div className="text-sm font-mono text-white/60 tabular-nums mt-0.5">
             {activity.lastActivity ? timeAgo(activity.lastActivity) : '--'}
           </div>
-          <div className="text-[8px] font-mono text-white/30">LAST ACTIVITY</div>
+          <div className="text-[8px] font-mono tracking-wider text-white/30">LAST ACTIVITY</div>
         </div>
       </div>
 
       {/* Cron status grid */}
       <div>
-        <div className="text-[10px] font-display tracking-widest text-white/30 uppercase mb-1.5">
-          CRON STATUS
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-display tracking-widest text-white/30 uppercase">
+            CRON STATUS
+          </span>
+          <span className="text-[8px] font-mono text-white/20">
+            {activity.lastActivity ? `Updated ${timeAgo(activity.lastActivity)}` : ''}
+          </span>
         </div>
         <div className="grid grid-cols-2 gap-1">
           {uniqueCrons.map(cron => (
             <div
               key={cron.function_name}
-              className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/[0.02]"
+              className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/[0.02] border border-white/[0.04]"
             >
-              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot(cron.status)}`} />
+              <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot(cron.status)}`} />
               <span className="text-[9px] font-mono text-white/60 truncate flex-1">
                 {shortName(cron.function_name)}
               </span>

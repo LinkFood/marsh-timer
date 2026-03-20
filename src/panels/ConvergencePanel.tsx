@@ -49,32 +49,47 @@ export default function ConvergencePanel({}: PanelComponentProps) {
   }
 
   return (
-    <div className="flex flex-col gap-0.5 overflow-y-auto h-full p-2">
-      {topStates.map((s, i) => {
-        const sparkData = historyMap.get(s.state_abbr) || [];
-        return (
-          <button
-            key={s.state_abbr}
-            onClick={() => handleClick(s.state_abbr)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full"
-          >
-            <span className="text-[10px] text-white/40 w-4 text-right font-mono">{i + 1}</span>
-            <span className="text-xs font-mono text-white/90 w-7">{s.state_abbr}</span>
-            <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${barColor(s.score)}`}
-                style={{ width: `${s.score}%` }}
-              />
-            </div>
-            <span className={`text-xs font-mono w-7 text-right ${scoreColor(s.score)}`}>
-              {s.score}
-            </span>
-            {sparkData.length >= 2 && (
-              <Sparkline data={sparkData} width={48} height={16} color="#22d3ee" />
-            )}
-          </button>
-        );
-      })}
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-white/[0.06]">
+        <span className="text-[10px] font-mono text-white/30 w-4 text-right">#</span>
+        <span className="text-[10px] font-mono text-white/30 w-7">STATE</span>
+        <span className="text-[10px] font-mono text-white/30 flex-1">SCORE</span>
+        <span className="text-[10px] font-mono text-white/30 w-7 text-right">VAL</span>
+        <span className="text-[10px] font-mono text-white/30 w-12 text-right">TREND</span>
+      </div>
+
+      {/* Rows */}
+      <div className="flex-1 overflow-y-auto">
+        {topStates.map((s, i) => {
+          const sparkData = historyMap.get(s.state_abbr) || [];
+          return (
+            <button
+              key={s.state_abbr}
+              onClick={() => handleClick(s.state_abbr)}
+              className="flex items-center gap-2 px-2 py-1.5 transition-colors text-left w-full
+                hover:bg-gradient-to-r hover:from-white/[0.06] hover:to-transparent"
+            >
+              <span className="text-[10px] text-white/40 w-4 text-right font-mono">{i + 1}</span>
+              <span className="text-xs font-mono text-white/90 w-7">{s.state_abbr}</span>
+              <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${barColor(s.score)}`}
+                  style={{ width: `${s.score}%` }}
+                />
+              </div>
+              <span className={`text-sm font-mono font-bold w-7 text-right tabular-nums ${scoreColor(s.score)}`}>
+                {s.score}
+              </span>
+              <span className="w-12 flex justify-end">
+                {sparkData.length >= 2 && (
+                  <Sparkline data={sparkData} width={48} height={16} color="#22d3ee" />
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
