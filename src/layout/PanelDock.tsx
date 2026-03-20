@@ -1,14 +1,30 @@
-import { useMemo, Suspense } from 'react';
+import { useMemo, Suspense, Component, type ReactNode } from 'react';
 import { useDeckLayout } from '@/hooks/useDeckLayout';
 import { useDeck } from '@/contexts/DeckContext';
 import PanelWrapper from '@/panels/PanelWrapper';
 import { PANEL_MAP } from '@/panels/PanelRegistry';
 
+/** Per-panel error boundary so one bad panel doesn't kill the whole dock */
+class PanelErrorBoundary extends Component<{ panelId: string; children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(err: Error) { return { error: err.message }; }
+  componentDidCatch(err: Error) { console.error(`[Panel:${this.props.panelId}]`, err); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex items-center justify-center h-full text-[10px] text-red-400/60 font-body p-2 text-center">
+          Panel crashed: {this.state.error.slice(0, 80)}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function PanelDock() {
   const { panels, removePanel } = useDeckLayout();
   const { activeCategory } = useDeck();
 
-  // Filter panels by active category
   const visiblePanels = useMemo(() => {
     if (activeCategory === 'all') return panels;
     return panels.filter(p => {
@@ -41,15 +57,17 @@ export default function PanelDock() {
                 label={def.label}
                 onClose={() => removePanel(p.instanceId)}
               >
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center h-full text-[10px] text-white/20 font-body">
-                      Loading...
-                    </div>
-                  }
-                >
-                  <Component />
-                </Suspense>
+                <PanelErrorBoundary panelId={p.panelId}>
+                  <Suspense
+                    fallback={
+                      <div className="flex items-center justify-center h-full text-[10px] text-white/20 font-body">
+                        Loading...
+                      </div>
+                    }
+                  >
+                    <Component />
+                  </Suspense>
+                </PanelErrorBoundary>
               </PanelWrapper>
             </div>
           );
