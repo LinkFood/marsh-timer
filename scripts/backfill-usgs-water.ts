@@ -211,11 +211,15 @@ function round2(n: number): number {
 async function embedViaEdgeFn(text: string, retries = 3): Promise<number[]> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
         method: "POST",
         headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ text, input_type: "document" }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (res.ok) { const data = await res.json(); return data.embedding; }
       if (res.status >= 500 && attempt < retries - 1) { await delay((attempt + 1) * 5000); continue; }
       throw new Error(`Edge fn error: ${res.status} ${await res.text()}`);
