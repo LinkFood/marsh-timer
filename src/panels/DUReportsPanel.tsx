@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { useDUMapReports } from '@/hooks/useDUMapReports';
-import { ExternalLink } from 'lucide-react';
+import { useMapAction } from '@/contexts/MapActionContext';
+import { MapPin } from 'lucide-react';
 import type { PanelComponentProps } from './PanelTypes';
 
 function formatDate(iso: string): string {
@@ -8,8 +10,28 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function activityColor(level: string): string {
+  const lower = level.toLowerCase();
+  if (lower.includes('peak') || lower.includes('high')) return 'text-red-400 bg-red-400/10';
+  if (lower.includes('increasing')) return 'text-orange-400 bg-orange-400/10';
+  if (lower.includes('moderate')) return 'text-yellow-400 bg-yellow-400/10';
+  if (lower.includes('low') || lower.includes('starting')) return 'text-blue-400 bg-blue-400/10';
+  if (lower.includes('declining') || lower.includes('ended')) return 'text-white/40 bg-white/[0.04]';
+  return 'text-white/50 bg-white/[0.04]';
+}
+
 export default function DUReportsPanel({}: PanelComponentProps) {
   const { geojson, loading } = useDUMapReports();
+  const { flyToCoords } = useMapAction();
+
+  const reports = useMemo(() => {
+    if (!geojson?.features) return [];
+    return geojson.features.slice(0, 25).map(f => ({
+      ...f.properties,
+      lng: (f.geometry as any)?.coordinates?.[0],
+      lat: (f.geometry as any)?.coordinates?.[1],
+    }));
+  }, [geojson]);
 
   if (loading) {
     return (
@@ -19,49 +41,45 @@ export default function DUReportsPanel({}: PanelComponentProps) {
     );
   }
 
-  const reports = geojson.features;
-
   if (reports.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        No recent DU reports
+        No recent DU migration reports
       </div>
     );
   }
 
-  // Show up to 20 most recent
-  const displayed = reports.slice(0, 20);
-
   return (
-    <div className="flex flex-col gap-0.5 overflow-y-auto h-full p-2">
-      {displayed.map((f, i) => {
-        const p = f.properties;
-        if (!p) return null;
-        const location = [p.location_name, p.state_abbr].filter(Boolean).join(', ');
-        return (
-          <div
-            key={i}
-            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-white/90 truncate">
-                  {p.classification || 'Report'}
-                </span>
-                <span className="text-[10px] text-white/30">
-                  {formatDate(p.submit_date)}
-                </span>
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="shrink-0 px-2.5 py-1.5 border-b border-white/[0.06] text-[10px] font-mono text-white/30">
+        {reports.length} reports
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {reports.map((r, i) => {
+          const location = [r?.location_name, r?.state_abbr].filter(Boolean).join(', ');
+          const activity = r?.activity_level || '';
+          return (
+            <button
+              key={i}
+              onClick={() => r?.lng && r?.lat && flyToCoords(r.lng, r.lat, 8)}
+              className="flex items-start gap-2 px-2.5 py-1.5 w-full text-left hover:bg-white/[0.03] transition-colors border-b border-white/[0.03]"
+            >
+              <MapPin size={10} className="text-cyan-400/60 mt-1 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono text-white/70">{location || 'Unknown'}</span>
+                  <span className="text-[9px] font-mono text-white/20">{formatDate(r?.submit_date || '')}</span>
+                </div>
+                {activity && (
+                  <span className={`text-[9px] font-mono px-1 py-0.5 rounded mt-0.5 inline-block ${activityColor(activity)}`}>
+                    {activity}
+                  </span>
+                )}
               </div>
-              {location && (
-                <p className="text-[10px] text-white/40 truncate">{location}</p>
-              )}
-              {p.activity_level && (
-                <span className="text-[10px] text-cyan-400/70">{p.activity_level}</span>
-              )}
-            </div>
-          </div>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
