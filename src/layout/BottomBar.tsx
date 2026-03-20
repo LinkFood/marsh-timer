@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus } from 'lucide-react';
 import { useDeck, type CategoryFilter } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useDeckLayout } from '@/hooks/useDeckLayout';
+import { PANEL_MAP } from '@/panels/PanelRegistry';
 
 const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] = [
   { id: 'all', label: 'All', icon: Target },
@@ -13,6 +16,16 @@ const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] =
 export default function BottomBar() {
   const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, setActiveCategory } = useDeck();
   const isMobile = useIsMobile();
+  const { panels } = useDeckLayout();
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: panels.length };
+    for (const p of panels) {
+      const def = PANEL_MAP.get(p.panelId);
+      if (def) counts[def.category] = (counts[def.category] || 0) + 1;
+    }
+    return counts;
+  }, [panels]);
 
   return (
     <div className="shrink-0 h-10 glass-panel border-t border-white/[0.06] flex items-center px-2 gap-1 relative">
@@ -30,6 +43,9 @@ export default function BottomBar() {
           >
             <Icon className="w-3 h-3" />
             <span className="hidden sm:inline">{label}</span>
+            {categoryCounts[id] > 0 && (
+              <span className="text-[9px] text-white/30 ml-0.5">{categoryCounts[id]}</span>
+            )}
           </button>
         ))}
       </div>
