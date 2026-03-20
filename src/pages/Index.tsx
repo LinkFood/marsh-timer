@@ -2,22 +2,16 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Species } from "@/data/types";
 import { isValidSpecies } from "@/data/types";
-import { getStatesForSpecies, getSeasonsByState } from "@/data/seasons";
-import { isFlywaySpecies } from "@/data/flyways";
-import { useFavorites } from "@/hooks/useFavorites";
+import { getStatesForSpecies } from "@/data/seasons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import MapView from "@/components/MapView";
-import type { MapViewRef, MapMode } from "@/components/MapView";
+import type { MapViewRef } from "@/components/MapView";
 import HeaderBar from "@/components/HeaderBar";
-import TerminalShell from "@/components/TerminalShell";
-import MapPresets from "@/components/MapPresets";
-import MapLegend from "@/components/MapLegend";
 import { useWeatherTiles } from "@/hooks/useWeatherTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
 import { useHuntAlerts } from "@/hooks/useHuntAlerts";
 import { useConvergenceScores } from "@/hooks/useConvergenceScores";
-import { useScoutReport } from "@/hooks/useScoutReport";
 import { useConvergenceAlerts } from "@/hooks/useConvergenceAlerts";
 import { useCountyGeoJSON } from "@/hooks/useCountyGeoJSON";
 import { useNWSAlerts } from "@/hooks/useNWSAlerts";
@@ -25,16 +19,12 @@ import { useMigrationFront } from "@/hooks/useMigrationFront";
 import { useDUMapReports } from "@/hooks/useDUMapReports";
 import { useWeatherEvents } from "@/hooks/useWeatherEvents";
 import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
-import TimelineScrubber from "@/components/TimelineScrubber";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
-import DataCanvas from "@/components/DataCanvas";
-import HistoryCanvas from "@/components/HistoryCanvas";
-import ScreenerCanvas from "@/components/ScreenerCanvas";
+import { DeckProvider, useDeck } from "@/contexts/DeckContext";
+import { LayerProvider, useLayerContext } from "@/contexts/LayerContext";
+import DeckLayout from "@/layout/DeckLayout";
 import ErrorBoundary from "@/components/ErrorBoundary";
-
-type DrillLevel = "national" | "state" | "zone";
-type CanvasId = 'map' | 'data' | 'history' | 'screener';
 
 const Index = () => {
   const { first, second, third } = useParams<{
@@ -44,19 +34,12 @@ const Index = () => {
   }>();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { favorites, toggleFavorite, isFavorite, getFavoritesForSpecies } =
-    useFavorites();
   const mapRef = useRef<MapViewRef>(null);
 
   // Parse route params
   const parsed = useMemo(() => {
     if (!first)
-      return {
-        species: "duck" as Species,
-        stateAbbr: null,
-        zoneSlug: null,
-        redirect: null,
-      };
+      return { species: "duck" as Species, stateAbbr: null, zoneSlug: null, redirect: null };
 
     const lower = first.toLowerCase();
     if (isValidSpecies(lower)) {
@@ -64,71 +47,32 @@ const Index = () => {
       const validAbbr =
         abbr && getStatesForSpecies(lower as Species).has(abbr) ? abbr : null;
       if (abbr && !validAbbr)
-        return {
-          species: lower as Species,
-          stateAbbr: null,
-          zoneSlug: null,
-          redirect: `/${lower}`,
-        };
+        return { species: lower as Species, stateAbbr: null, zoneSlug: null, redirect: `/${lower}` };
 
       const zone = third?.toLowerCase() || null;
       let validZone: string | null = null;
       if (zone && validAbbr) {
         const seasons = getSeasonsByState(lower as Species, validAbbr);
-        if (seasons.some((s) => s.zoneSlug === zone)) {
-          validZone = zone;
-        }
+        if (seasons.some((s) => s.zoneSlug === zone)) validZone = zone;
       }
 
-      return {
-        species: lower as Species,
-        stateAbbr: validAbbr,
-        zoneSlug: validZone,
-        redirect: null,
-      };
+      return { species: lower as Species, stateAbbr: validAbbr, zoneSlug: validZone, redirect: null };
     }
 
     const upper = first.toUpperCase();
     if (upper.length === 2 && getStatesForSpecies("duck").has(upper)) {
-      return {
-        species: "duck" as Species,
-        stateAbbr: upper,
-        zoneSlug: null,
-        redirect: `/duck/${upper}`,
-      };
+      return { species: "duck" as Species, stateAbbr: upper, zoneSlug: null, redirect: `/duck/${upper}` };
     }
 
-    return {
-      species: "duck" as Species,
-      stateAbbr: null,
-      zoneSlug: null,
-      redirect: "/",
-    };
+    return { species: "duck" as Species, stateAbbr: null, zoneSlug: null, redirect: "/" };
   }, [first, second, third]);
 
   const [species, setSpecies] = useState<Species>(parsed.species);
-  const [selectedState, setSelectedState] = useState<string | null>(
-    parsed.stateAbbr,
-  );
-  const [zoneSlug, setZoneSlug] = useState<string | null>(parsed.zoneSlug);
-  const [showFlyways, setShowFlyways] = useState(false);
-  const [showRadar, setShowRadar] = useState(false);
-  const [showDUPins, setShowDUPins] = useState(false);
-  const [isSatellite, setIsSatellite] = useState(true);
-  const [show3D, setShow3D] = useState(true);
-  const [mapMode, setMapModeRaw] = useState<MapMode>('default');
-  const setMapMode = useCallback((mode: MapMode) => {
-    setMapModeRaw(mode);
-    if (mode === 'terrain') setShow3D(true);
-  }, []);
-  const [elevation, setElevation] = useState<number | null>(null);
+  const [selectedState, setSelectedState] = useState<string | null>(parsed.stateAbbr);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(3.5);
-  const [activeCanvas, setActiveCanvas] = useState<CanvasId>('map');
-  const prevCanvasRef = useRef<CanvasId>('map');
-  const prevMapModeRef = useRef<MapMode>('default');
 
-  // Data hooks
+  // Data hooks — map data
   const weatherTiles = useWeatherTiles();
   const countyGeoJSON = useCountyGeoJSON();
   const { alertsGeoJSON: nwsAlertsGeoJSON } = useNWSAlerts();
@@ -137,17 +81,15 @@ const Index = () => {
   const { eventsGeoJSON: weatherEventsGeoJSON } = useWeatherEvents();
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
+
+  // Data hooks — panels/ticker
   const { alerts } = useHuntAlerts();
-  const { scores: convergenceScores, topStates: convergenceTopStates, loading: convergenceLoading } = useConvergenceScores();
-  const { report: scoutReport, loading: scoutReportLoading } = useScoutReport();
+  const { scores: convergenceScores } = useConvergenceScores();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
   const { data: murmurationIndex } = useMurmurationIndex();
   const helpModal = useHelpModal();
-  const [scrubDate, setScrubDate] = useState<Date | null>(null);
-  const [scrubScores, setScrubScores] = useState<Map<string, number> | null>(null);
-  const [scrubLoading, setScrubLoading] = useState(false);
 
-  // Build convergence score map for MapView (abbr -> score number)
+  // Build convergence score map for MapView
   const convergenceScoreMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const [abbr, data] of convergenceScores) {
@@ -156,7 +98,7 @@ const Index = () => {
     return map;
   }, [convergenceScores]);
 
-  // "Perfect Storm" states — convergence >= 85, weather >= 80, migration >= 70
+  // "Perfect Storm" states
   const perfectStormStates = useMemo(() => {
     const states = new Set<string>();
     for (const [abbr, data] of convergenceScores) {
@@ -167,452 +109,191 @@ const Index = () => {
     return states;
   }, [convergenceScores]);
 
-  // Fetch historical convergence scores when scrub date changes
-  useEffect(() => {
-    if (!scrubDate) {
-      setScrubScores(null);
-      return;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const scrubDay = new Date(scrubDate);
-    scrubDay.setHours(0, 0, 0, 0);
-
-    if (scrubDay.getTime() === today.getTime()) {
-      setScrubScores(null);
-      return;
-    }
-
-    if (scrubDay > today) {
-      setScrubScores(null);
-      return;
-    }
-
-    const dateStr = scrubDay.toISOString().split('T')[0];
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    if (!supabaseUrl || !supabaseKey) return;
-
-    let cancelled = false;
-    setScrubLoading(true);
-
-    fetch(
-      `${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score&date=eq.${dateStr}`,
-      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
-    )
-      .then(r => r.json())
-      .then((rows: Array<{ state_abbr: string; score: number }>) => {
-        if (cancelled) return;
-        if (!Array.isArray(rows) || rows.length === 0) {
-          setScrubScores(new Map());
-        } else {
-          const map = new Map<string, number>();
-          for (const row of rows) {
-            map.set(row.state_abbr, row.score);
-          }
-          setScrubScores(map);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setScrubScores(new Map());
-      })
-      .finally(() => {
-        if (!cancelled) setScrubLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [scrubDate]);
-
-  // Determine which convergence scores to pass to MapView
-  const activeConvergenceScores = useMemo(() => {
-    if (scrubScores !== null) return scrubScores;
-    return convergenceScoreMap;
-  }, [scrubScores, convergenceScoreMap]);
-
-  // Compute whether we're viewing a non-today date
-  const isViewingHistory = useMemo(() => {
-    if (!scrubDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const scrubDay = new Date(scrubDate);
-    scrubDay.setHours(0, 0, 0, 0);
-    return scrubDay.getTime() !== today.getTime();
-  }, [scrubDate]);
-
-  const isFutureDate = useMemo(() => {
-    if (!scrubDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const scrubDay = new Date(scrubDate);
-    scrubDay.setHours(0, 0, 0, 0);
-    return scrubDay > today;
-  }, [scrubDate]);
-
-  // Get convergence score for selected state
-  const selectedConvergenceScore = useMemo(() => {
-    if (!selectedState) return null;
-    return convergenceScores.get(selectedState) || null;
-  }, [selectedState, convergenceScores]);
-
-  // Derive drill level
-  const level: DrillLevel = useMemo(() => {
-    if (zoneSlug && selectedState) return "zone";
-    if (selectedState) return "state";
-    return "national";
-  }, [selectedState, zoneSlug]);
-
   // Handle redirects
   useEffect(() => {
-    if (parsed.redirect) {
-      navigate(parsed.redirect, { replace: true });
-    }
+    if (parsed.redirect) navigate(parsed.redirect, { replace: true });
   }, [parsed.redirect, navigate]);
 
   // Sync URL params to state
   useEffect(() => {
     setSpecies(parsed.species);
     setSelectedState(parsed.stateAbbr);
-    setZoneSlug(parsed.zoneSlug);
-  }, [parsed.species, parsed.stateAbbr, parsed.zoneSlug]);
+  }, [parsed.species, parsed.stateAbbr]);
 
-  // Auto-switch to Intel mode for History tab (convergence heatmap)
-  useEffect(() => {
-    if (activeCanvas === 'history' && prevCanvasRef.current !== 'history') {
-      prevMapModeRef.current = mapMode;
-      setMapMode('intel');
-    } else if (activeCanvas !== 'history' && prevCanvasRef.current === 'history') {
-      setMapMode(prevMapModeRef.current);
-      setScrubDate(null); // reset to live when leaving history
-    }
-    prevCanvasRef.current = activeCanvas;
-  }, [activeCanvas, mapMode, setMapMode]);
+  const handleSelectSpecies = useCallback((s: Species) => {
+    setSpecies(s);
+    setSelectedState(null);
+    navigate(`/${s}`, { replace: true });
+  }, [navigate]);
 
-  // Reset flyway toggle when switching to non-flyway species
-  useEffect(() => {
-    if (!isFlywaySpecies(species)) setShowFlyways(false);
-  }, [species]);
-
-  const handleSelectSpecies = useCallback(
-    (s: Species) => {
-      setSpecies(s);
-      setSelectedState(null);
-      setZoneSlug(null);
-      setMapMode('default');
-      navigate(`/${s}`, { replace: true });
-    },
-    [navigate],
-  );
-
-  const handleSelectState = useCallback(
-    (abbr: string) => {
-      setSelectedState(abbr);
-      setZoneSlug(null);
-      navigate(`/${species}/${abbr}`, { replace: true });
-      mapRef.current?.flyTo(abbr);
-    },
-    [navigate, species],
-  );
-
-  const handleSelectZone = useCallback(
-    (slug: string) => {
-      if (!selectedState) return;
-      setZoneSlug(slug);
-      navigate(`/${species}/${selectedState}/${slug}`, { replace: true });
-    },
-    [navigate, species, selectedState],
-  );
-
-  const handleBack = useCallback(() => {
-    if (zoneSlug) {
-      setZoneSlug(null);
-      navigate(`/${species}/${selectedState}`, { replace: true });
-    } else if (selectedState) {
-      setSelectedState(null);
-      setZoneSlug(null);
-      navigate(`/${species}`, { replace: true });
-    }
-  }, [navigate, species, selectedState, zoneSlug]);
+  const handleSelectState = useCallback((abbr: string) => {
+    setSelectedState(abbr);
+    navigate(`/${species}/${abbr}`, { replace: true });
+    mapRef.current?.flyTo(abbr);
+  }, [navigate, species]);
 
   const handleDrillUp = useCallback(() => {
     if (selectedState) {
       setSelectedState(null);
-      setZoneSlug(null);
       navigate(`/${species}`, { replace: true });
     }
   }, [navigate, species, selectedState]);
 
-  const handleSwitchSpecies = useCallback(
-    (s: Species) => {
-      setSpecies(s);
-      if (selectedState && getStatesForSpecies(s).has(selectedState)) {
-        setZoneSlug(null);
-        navigate(`/${s}/${selectedState}`, { replace: true });
-      } else {
-        setSelectedState(null);
-        setZoneSlug(null);
-        navigate(`/${s}`, { replace: true });
-      }
-    },
-    [navigate, selectedState],
-  );
-
-  const handleSearchLocation = useCallback(
-    (lng: number, lat: number, stateAbbr: string | null) => {
-      if (stateAbbr && getStatesForSpecies(species).has(stateAbbr)) {
-        setSelectedState(stateAbbr);
-        setZoneSlug(null);
-        navigate(`/${species}/${stateAbbr}`, { replace: true });
-      }
-      mapRef.current?.flyToCoords(lng, lat);
-    },
-    [navigate, species],
-  );
-
-  const handleGeolocate = useCallback(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        mapRef.current?.flyToCoords(longitude, latitude);
-        const token = import.meta.env.VITE_MAPBOX_TOKEN;
-        if (token) {
-          fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${token}&types=region&limit=1`)
-            .then(r => r.json())
-            .then(data => {
-              const stateFeature = data.features?.[0];
-              if (stateFeature?.properties?.short_code) {
-                const abbr = stateFeature.properties.short_code.replace("US-", "");
-                if (getStatesForSpecies(species).has(abbr)) {
-                  setSelectedState(abbr);
-                  setZoneSlug(null);
-                  navigate(`/${species}/${abbr}`, { replace: true });
-                }
-              }
-            })
-            .catch(() => {});
-        }
-      },
-      () => {},
-    );
+  const handleSearchLocation = useCallback((lng: number, lat: number, stateAbbr: string | null) => {
+    if (stateAbbr && getStatesForSpecies(species).has(stateAbbr)) {
+      setSelectedState(stateAbbr);
+      navigate(`/${species}/${stateAbbr}`, { replace: true });
+    }
+    mapRef.current?.flyToCoords(lng, lat);
   }, [navigate, species]);
 
-  const speciesFavorites = useMemo(
-    () => getFavoritesForSpecies(species),
-    [getFavoritesForSpecies, species],
-  );
+  const setSelectedStateWrapped = useCallback((abbr: string | null) => {
+    setSelectedState(abbr);
+    if (abbr) navigate(`/${species}/${abbr}`, { replace: true });
+    else navigate(`/${species}`, { replace: true });
+  }, [navigate, species]);
 
   return (
-    <div className="h-[100dvh] w-screen overflow-hidden relative">
-      {/* Map background — always rendered, positioned behind terminal shell */}
-      <ErrorBoundary fallback={
-        <div className="flex items-center justify-center h-full w-full bg-background">
-          <p className="text-xs font-body text-white/40">Map failed to load. Refresh to try again.</p>
-        </div>
-      }>
-        <MapView
-          ref={mapRef}
-          species={species}
-          selectedState={selectedState}
-          onSelectState={handleSelectState}
-          onDrillUp={handleDrillUp}
-          showFlyways={showFlyways}
-          isSatellite={isSatellite}
-          show3D={show3D}
-          isMobile={isMobile}
-          weatherTiles={weatherTiles}
-          countyGeoJSON={countyGeoJSON}
-          sightingsGeoJSON={sightingsGeoJSON}
-          weatherCache={weatherCache}
-          onElevation={setElevation}
-          onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
-          mapMode={mapMode}
-          convergenceScores={activeConvergenceScores}
-          perfectStormStates={perfectStormStates}
-          nwsAlertsGeoJSON={nwsAlertsGeoJSON}
-          migrationFrontLine={migrationFrontLine}
-          scrubDate={scrubDate}
-          showRadar={showRadar}
-          showDUPins={showDUPins}
-          duPinsGeoJSON={duPinsGeoJSON}
-          weatherEventsGeoJSON={weatherEventsGeoJSON}
-        />
-      </ErrorBoundary>
-
-      {/* Header */}
-      <HeaderBar
-        species={species}
-        onSelectSpecies={handleSelectSpecies}
-        onSearch={handleSelectState}
-        onSearchLocation={handleSearchLocation}
-        onHelpOpen={helpModal.show}
-      />
-
-      {/* Terminal Shell — new layout */}
-      <ErrorBoundary fallback={
-        <div className="fixed top-12 left-0 right-0 bottom-0 z-20 flex items-center justify-center glass-panel">
-          <div className="text-center">
-            <p className="text-sm font-body text-white/40 mb-2">Terminal failed to load.</p>
-            <button onClick={() => window.location.reload()} className="text-xs text-cyan-400 hover:text-cyan-300">
-              Reload
-            </button>
-          </div>
-        </div>
-      }>
+    <DeckProvider
+      species={species}
+      setSpecies={handleSelectSpecies}
+      selectedState={selectedState}
+      setSelectedState={setSelectedStateWrapped}
+    >
+      <LayerProvider>
         <MapActionProvider
           flyTo={handleSelectState}
           flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
-          setMapMode={setMapMode}
+          setMapMode={() => {}}
         >
-          <TerminalShell
-          activeCanvas={activeCanvas}
-          onCanvasChange={setActiveCanvas}
-          species={species}
-          selectedState={selectedState}
-          level={level}
-          zoneSlug={zoneSlug}
-          onSelectState={handleSelectState}
-          onSelectZone={handleSelectZone}
-          onBack={handleBack}
-          onSwitchSpecies={handleSwitchSpecies}
-          favorites={speciesFavorites}
-          onToggleFavorite={toggleFavorite}
-          isFavorite={selectedState ? isFavorite(species, selectedState) : false}
-          alerts={alerts}
-          weatherSnapshot={weatherCache}
-          convergenceTopStates={convergenceTopStates}
-          convergenceLoading={convergenceLoading}
-          convergenceScore={selectedConvergenceScore}
-          scoutReport={scoutReport}
-          scoutReportLoading={scoutReportLoading}
-          convergenceAlerts={convergenceAlerts}
-          tickerConvergenceAlerts={convergenceAlerts}
-          tickerWeatherEventsGeoJSON={weatherEventsGeoJSON}
-          tickerNWSAlertsGeoJSON={nwsAlertsGeoJSON}
-          tickerHuntAlerts={alerts}
-          tickerMurmurationIndex={murmurationIndex}
-          isMobile={isMobile}
-        >
-          {/* Canvas content — map tab (others coming later) */}
-          {activeCanvas === 'map' ? (
-            <>
-              <MapPresets
-                mode={mapMode}
-                onSetMode={setMapMode}
-                onZoomIn={() => mapRef.current?.zoomIn()}
-                onZoomOut={() => mapRef.current?.zoomOut()}
-                onGeolocate={handleGeolocate}
-                show3D={show3D}
-                onToggle3D={() => setShow3D((s) => !s)}
-                isSatellite={isSatellite}
-                onToggleSatellite={() => setIsSatellite((s) => !s)}
-                showFlyways={showFlyways}
-                onToggleFlyways={() => setShowFlyways((f) => !f)}
-                showFlywayOption={isFlywaySpecies(species)}
-                showRadar={showRadar}
-                onToggleRadar={() => setShowRadar((r) => !r)}
-                showDUPins={showDUPins}
-                onToggleDUPins={() => setShowDUPins((d) => !d)}
-              />
-
-              <MapLegend
-                mode={mapMode}
-                sidebarExpanded={!isMobile}
-                isMobile={isMobile}
-                drillLevel={level}
-                species={species}
-              />
-
-              {show3D && elevation !== null && mapZoom > 8 && (
-                <div
-                  className="fixed bottom-6 z-20 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
-                  style={{ left: isMobile ? '1rem' : 'calc(320px + 1rem)' }}
-                >
-                  <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
-                  <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
-                </div>
-              )}
-
-              {mapMode === 'intel' && (
-                <TimelineScrubber
-                  onDateChange={setScrubDate}
-                  sidebarOffset={isMobile ? 0 : 320}
-                />
-              )}
-
-              {mapMode === 'intel' && isViewingHistory && (
-                <div
-                  className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
-                  style={{
-                    bottom: '48px',
-                    left: isMobile ? '1rem' : 'calc(320px + 1rem)',
-                  }}
-                >
-                  <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Viewing</span>
-                  <span className="text-xs text-cyan-400 font-body font-medium">
-                    {scrubDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                  {scrubLoading && (
-                    <span className="text-[10px] text-white/30 ml-2">Loading...</span>
-                  )}
-                  {!scrubLoading && scrubScores && scrubScores.size === 0 && (
-                    <span className="text-[10px] text-white/30 ml-2">No data</span>
-                  )}
-                </div>
-              )}
-
-              {mapMode === 'intel' && isFutureDate && (
-                <div
-                  className="fixed z-30 glass-panel rounded-lg px-3 py-1.5 border border-white/[0.06]"
-                  style={{
-                    bottom: '48px',
-                    left: isMobile ? '1rem' : 'calc(320px + 1rem)',
-                  }}
-                >
-                  <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Forecast</span>
-                  <span className="text-xs text-white/50 font-body font-medium">Not available</span>
-                </div>
-              )}
-            </>
-          ) : activeCanvas === 'data' ? (
-            <DataCanvas
+          <div className="h-[100dvh] w-screen overflow-hidden relative">
+            {/* Header */}
+            <HeaderBarWithDeck
               species={species}
-              selectedState={selectedState}
-              convergenceScores={convergenceScores}
-              convergenceTopStates={convergenceTopStates}
-              convergenceAlerts={convergenceAlerts}
-              huntAlerts={alerts}
-              scoutReport={scoutReport}
-              murmurationIndex={murmurationIndex}
-              isMobile={isMobile}
-              onSelectState={handleSelectState}
-              onBack={handleBack}
+              onSelectSpecies={handleSelectSpecies}
+              onSearch={handleSelectState}
+              onSearchLocation={handleSearchLocation}
+              onHelpOpen={helpModal.show}
             />
-          ) : activeCanvas === 'history' ? (
-            <HistoryCanvas
-              onDateChange={setScrubDate}
-              isMobile={isMobile}
-              convergenceScores={activeConvergenceScores}
-              isLoading={scrubLoading}
-            />
-          ) : (
-            <ScreenerCanvas
-              species={species}
-              convergenceScores={convergenceScores}
-              onSelectState={handleSelectState}
-              isMobile={isMobile}
-            />
-          )}
-        </TerminalShell>
+
+            {/* Main deck layout — below header */}
+            <div className="fixed top-12 left-0 right-0 bottom-0 z-10">
+              <ErrorBoundary fallback={
+                <div className="flex items-center justify-center h-full w-full bg-background">
+                  <p className="text-xs font-body text-white/40">Layout failed to load. Refresh to try again.</p>
+                </div>
+              }>
+                <DeckLayout
+                  convergenceAlerts={convergenceAlerts}
+                  weatherEventsGeoJSON={weatherEventsGeoJSON}
+                  nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+                  huntAlerts={alerts}
+                  murmurationIndex={murmurationIndex}
+                >
+                  {/* Map content */}
+                  <MapWithLayers
+                    mapRef={mapRef}
+                    species={species}
+                    selectedState={selectedState}
+                    onSelectState={handleSelectState}
+                    onDrillUp={handleDrillUp}
+                    isMobile={isMobile}
+                    weatherTiles={weatherTiles}
+                    countyGeoJSON={countyGeoJSON}
+                    sightingsGeoJSON={sightingsGeoJSON}
+                    weatherCache={weatherCache}
+                    convergenceScores={convergenceScoreMap}
+                    perfectStormStates={perfectStormStates}
+                    nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+                    migrationFrontLine={migrationFrontLine}
+                    duPinsGeoJSON={duPinsGeoJSON}
+                    weatherEventsGeoJSON={weatherEventsGeoJSON}
+                    onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+                  />
+                </DeckLayout>
+              </ErrorBoundary>
+            </div>
+
+            {/* Help Modal */}
+            <HelpModal open={helpModal.open} onClose={helpModal.close} />
+
+            {/* Grain overlay */}
+            <div className="grain-overlay" />
+          </div>
         </MapActionProvider>
-      </ErrorBoundary>
-
-      {/* Help Modal */}
-      <HelpModal open={helpModal.open} onClose={helpModal.close} />
-
-      {/* Grain overlay */}
-      <div className="grain-overlay" />
-    </div>
+      </LayerProvider>
+    </DeckProvider>
   );
 };
+
+/** Wrapper that connects HeaderBar to DeckContext toggles */
+function HeaderBarWithDeck(props: React.ComponentProps<typeof HeaderBar>) {
+  const { toggleChat, toggleLayerPicker, togglePanelAdd } = useDeck();
+  return (
+    <HeaderBar
+      {...props}
+      onToggleLayers={toggleLayerPicker}
+      onToggleChat={toggleChat}
+      onTogglePanelAdd={togglePanelAdd}
+    />
+  );
+}
+
+/** Thin wrapper that reads LayerContext and passes layer state to MapView */
+function MapWithLayers({
+  mapRef,
+  species,
+  selectedState,
+  onSelectState,
+  onDrillUp,
+  isMobile,
+  weatherTiles,
+  countyGeoJSON,
+  sightingsGeoJSON,
+  weatherCache,
+  convergenceScores,
+  perfectStormStates,
+  nwsAlertsGeoJSON,
+  migrationFrontLine,
+  duPinsGeoJSON,
+  weatherEventsGeoJSON,
+  onMoveEnd,
+}: any) {
+  const { isSatellite, is3D, isLayerOn } = useLayerContext();
+
+  return (
+    <ErrorBoundary fallback={
+      <div className="flex items-center justify-center h-full w-full bg-background">
+        <p className="text-xs font-body text-white/40">Map failed to load. Refresh to try again.</p>
+      </div>
+    }>
+      <MapView
+        ref={mapRef}
+        species={species}
+        selectedState={selectedState}
+        onSelectState={onSelectState}
+        onDrillUp={onDrillUp}
+        showFlyways={isLayerOn('flyway-corridors')}
+        isSatellite={isSatellite}
+        show3D={is3D}
+        isMobile={isMobile}
+        weatherTiles={weatherTiles}
+        countyGeoJSON={countyGeoJSON}
+        sightingsGeoJSON={sightingsGeoJSON}
+        weatherCache={weatherCache}
+        onMoveEnd={onMoveEnd}
+        mapMode="intel"
+        convergenceScores={convergenceScores}
+        perfectStormStates={perfectStormStates}
+        nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+        migrationFrontLine={migrationFrontLine}
+        showRadar={isLayerOn('radar')}
+        showDUPins={isLayerOn('du-pins')}
+        duPinsGeoJSON={duPinsGeoJSON}
+        weatherEventsGeoJSON={weatherEventsGeoJSON}
+      />
+    </ErrorBoundary>
+  );
+}
 
 export default Index;

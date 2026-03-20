@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, X, MapPin, Loader2, HelpCircle } from "lucide-react";
+import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare } from "lucide-react";
 import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
@@ -30,9 +30,12 @@ interface HeaderBarProps {
   onSearch: (abbr: string) => void;
   onSearchLocation?: (lng: number, lat: number, stateAbbr: string | null) => void;
   onHelpOpen?: () => void;
+  onToggleLayers?: () => void;
+  onToggleChat?: () => void;
+  onTogglePanelAdd?: () => void;
 }
 
-const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHelpOpen }: HeaderBarProps) => {
+const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHelpOpen, onToggleLayers, onToggleChat, onTogglePanelAdd }: HeaderBarProps) => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
@@ -191,8 +194,35 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
           })}
         </div>
 
-        {/* Right: User + Search */}
+        {/* Right: Actions + User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {onTogglePanelAdd && (
+            <button
+              onClick={onTogglePanelAdd}
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Add panel"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+          {onToggleLayers && (
+            <button
+              onClick={onToggleLayers}
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Layers"
+            >
+              <Layers className="w-4 h-4" />
+            </button>
+          )}
+          {onToggleChat && (
+            <button
+              onClick={onToggleChat}
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Chat"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+          )}
           {onHelpOpen && (
             <button
               onClick={onHelpOpen}
