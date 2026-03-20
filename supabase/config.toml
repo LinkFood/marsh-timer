@@ -450,6 +450,9 @@ verify_jwt = false
 [functions.hunt-snow-cover]
 verify_jwt = false
 
+[functions.hunt-gbif]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
