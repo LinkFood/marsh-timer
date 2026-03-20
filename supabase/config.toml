@@ -456,6 +456,9 @@ verify_jwt = false
 [functions.hunt-birdweather]
 verify_jwt = false
 
+[functions.hunt-climate-indices]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

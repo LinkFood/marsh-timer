@@ -80,9 +80,9 @@ async function graphqlQuery(query: string): Promise<any> {
   });
 
   if (!res.ok) {
+    const body = await res.text();
     if (res.status >= 500) {
-      // Retry once for 5xx
-      console.warn(`  BirdWeather ${res.status}, retrying once...`);
+      console.warn(`BirdWeather ${res.status}, retrying once...`);
       await new Promise(r => setTimeout(r, 2000));
       const retry = await fetch(GRAPHQL_URL, {
         method: "POST",
@@ -90,13 +90,15 @@ async function graphqlQuery(query: string): Promise<any> {
         body: JSON.stringify({ query }),
       });
       if (!retry.ok) throw new Error(`BirdWeather ${retry.status} on retry`);
-      return (await retry.json()).data;
+      const retryJson = await retry.json();
+      return retryJson.data;
     }
-    throw new Error(`BirdWeather ${res.status}`);
+    throw new Error(`BirdWeather ${res.status}: ${body.slice(0, 200)}`);
   }
 
   const data = await res.json();
   if (data.errors) {
+    if (data.data) return data.data; // Partial data with errors — use what we got
     throw new Error(`GraphQL: ${data.errors[0]?.message || "unknown error"}`);
   }
   return data.data;
@@ -112,19 +114,15 @@ serve(async (req) => {
     const supabase = createSupabaseClient();
     const today = new Date().toISOString().slice(0, 10);
 
-    console.log(`BirdWeather acoustic detection ingest for ${today}`);
-    console.log(`Target species: ${TARGET_SPECIES.length}`);
+    console.log(`BirdWeather acoustic ingest for ${today} — ${TARGET_SPECIES.length} species`);
 
     // STEP 1: Batch query all species counts in ONE GraphQL request
     const countParts = TARGET_SPECIES.map(s =>
       `${s.alias}: detections(speciesId: ${s.id}, period: {count: 1, unit: "day"}, ${US_BOUNDS}, first: 0) { totalCount }`
     );
-    const countQuery = `{ ${countParts.join(" ")} }`;
+    const countData = await graphqlQuery(`{ ${countParts.join(" ")} }`);
 
-    console.log("Fetching detection counts for all species...");
-    const countData = await graphqlQuery(countQuery);
-
-    // Build map of alias -> totalCount, filter to species with detections
+    // Filter to species with detections
     const activeSpecies: typeof TARGET_SPECIES[0][] = [];
     const countsMap: Record<string, number> = {};
 
@@ -133,28 +131,26 @@ serve(async (req) => {
       if (count > 0) {
         activeSpecies.push(species);
         countsMap[species.alias] = count;
-        console.log(`  ${species.commonName}: ${count.toLocaleString()} detections`);
       }
     }
 
-    console.log(`${activeSpecies.length} species with detections`);
+    console.log(`${activeSpecies.length} species with detections today`);
 
     if (activeSpecies.length === 0) {
       const durationMs = Date.now() - startTime;
-      console.log("No detections found for any target species");
       await logCronRun({
         functionName: "hunt-birdweather",
         status: "success",
-        summary: { date: today, embedded: 0, species_checked: TARGET_SPECIES.length, note: "no detections" },
+        summary: { date: today, embedded: 0, species_checked: TARGET_SPECIES.length },
         durationMs,
       });
-      return new Response(JSON.stringify({ date: today, embedded: 0, errors: 0 }), {
+      return new Response(JSON.stringify({ date: today, embedded: 0, errors: 0, durationMs }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // STEP 2: Fetch geographic spread for active species (batch in groups of 12 to keep query size reasonable)
+    // STEP 2: Fetch geographic spread for active species (batch in groups of 12)
     interface StationCoords { station: { coords: { lat: number; lon: number } } }
     const geoMap: Record<string, StationCoords[]> = {};
     let errors = 0;
@@ -164,29 +160,23 @@ serve(async (req) => {
       const geoParts = batch.map(s =>
         `${s.alias}: detections(speciesId: ${s.id}, period: {count: 1, unit: "day"}, ${US_BOUNDS}, uniqueStations: true, first: 100) { edges { node { station { coords { lat lon } } } } }`
       );
-      const geoQuery = `{ ${geoParts.join(" ")} }`;
 
       try {
-        console.log(`Fetching geographic spread batch ${Math.floor(i / 12) + 1}...`);
-        const geoData = await graphqlQuery(geoQuery);
-
+        const geoData = await graphqlQuery(`{ ${geoParts.join(" ")} }`);
         for (const s of batch) {
           const edges = geoData[s.alias]?.edges || [];
-          // Filter out stations with null coords
           geoMap[s.alias] = edges
             .map((e: { node: StationCoords }) => e.node)
             .filter((n: StationCoords) => n.station?.coords?.lat != null && n.station?.coords?.lon != null);
         }
       } catch (err) {
-        console.warn(`  Geo batch error: ${err}`);
+        console.warn(`Geo batch error: ${err}`);
         errors++;
-        // Still embed with count-only data
         for (const s of batch) {
           geoMap[s.alias] = [];
         }
       }
 
-      // Small delay between geo batches
       if (i + 12 < activeSpecies.length) {
         await new Promise(r => setTimeout(r, 500));
       }
@@ -201,12 +191,10 @@ serve(async (req) => {
       const level = activityLevel(totalCount);
       const stationCount = stations.length;
 
-      // Geographic spread
       const north = stations.filter(s => classifyLat(s.station.coords.lat) === "north").length;
       const mid = stations.filter(s => classifyLat(s.station.coords.lat) === "mid").length;
       const south = stations.filter(s => classifyLat(s.station.coords.lat) === "south").length;
 
-      // Average latitude (migration front indicator)
       const avgLat = stationCount > 0
         ? (stations.reduce((sum, s) => sum + s.station.coords.lat, 0) / stationCount).toFixed(1)
         : "N/A";
@@ -236,33 +224,45 @@ serve(async (req) => {
       });
     }
 
-    // STEP 4: Embed and upsert in batches of 20
+    // STEP 4: Delete today's existing entries (idempotent re-runs)
+    await supabase
+      .from("hunt_knowledge")
+      .delete()
+      .eq("content_type", "birdweather-acoustic")
+      .eq("effective_date", today);
+
+    // STEP 5: Embed and insert in batches of 20
     let totalEmbedded = 0;
 
     for (let i = 0; i < entries.length; i += 20) {
       const chunk = entries.slice(i, i + 20);
       const texts = chunk.map(e => e.text);
-      const embeddings = await batchEmbed(texts);
 
-      const rows = chunk.map((e, j) => ({
-        ...e.meta,
-        embedding: JSON.stringify(embeddings[j]),
-      }));
+      try {
+        const embeddings = await batchEmbed(texts);
+        const rows = chunk.map((e, j) => ({
+          ...e.meta,
+          embedding: JSON.stringify(embeddings[j]),
+        }));
 
-      const { error: upsertError } = await supabase
-        .from("hunt_knowledge")
-        .upsert(rows, { onConflict: "title" });
+        const { error: insertError } = await supabase
+          .from("hunt_knowledge")
+          .insert(rows);
 
-      if (upsertError) {
-        console.error(`  Upsert error: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`Insert batch ${Math.floor(i / 20) + 1}: ${insertError.message}`);
+          errors++;
+        } else {
+          totalEmbedded += rows.length;
+        }
+      } catch (embedErr) {
+        console.error(`Embed batch ${Math.floor(i / 20) + 1}: ${embedErr}`);
         errors++;
-      } else {
-        totalEmbedded += rows.length;
       }
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(`\nDone: ${totalEmbedded} species embedded, ${errors} errors, ${durationMs}ms`);
+    console.log(`Done: ${totalEmbedded} embedded, ${errors} errors, ${durationMs}ms`);
 
     await logCronRun({
       functionName: "hunt-birdweather",
