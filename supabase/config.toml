@@ -486,6 +486,12 @@ verify_jwt = false
 [functions.hunt-correlation-engine]
 verify_jwt = false
 
+[functions.hunt-phenology]
+verify_jwt = false
+
+[functions.hunt-usfws-survey]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
