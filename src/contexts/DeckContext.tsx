@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import type { Species } from '@/data/types';
-import type { PanelCategory } from '@/panels/PanelTypes';
+import type { PanelCategory, GridPreset } from '@/panels/PanelTypes';
 
 export type CategoryFilter = PanelCategory | 'all';
 
@@ -23,6 +23,8 @@ interface DeckContextValue {
   /** History replay date — when set, map shows historical convergence scores */
   historyDate: string | null;
   setHistoryDate: (date: string | null) => void;
+  gridPreset: GridPreset;
+  setGridPreset: (preset: GridPreset) => void;
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -47,6 +49,13 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
   const [panelAddOpen, setPanelAddOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [historyDate, setHistoryDate] = useState<string | null>(null);
+  const [gridPreset, setGridPresetState] = useState<GridPreset>(() => {
+    try { return (localStorage.getItem('dc-grid-preset') as GridPreset) || 'default'; } catch { return 'default'; }
+  });
+  const setGridPreset = useCallback((p: GridPreset) => {
+    setGridPresetState(p);
+    localStorage.setItem('dc-grid-preset', p);
+  }, []);
 
   const toggleChat = useCallback(() => setChatOpen(o => !o), []);
   const toggleLayerPicker = useCallback(() => setLayerPickerOpen(o => !o), []);
@@ -60,7 +69,8 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     panelAddOpen, setPanelAddOpen, togglePanelAdd,
     activeCategory, setActiveCategory,
     historyDate, setHistoryDate,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate]);
+    gridPreset, setGridPreset,
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

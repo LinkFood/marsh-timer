@@ -4,6 +4,7 @@ import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
 import UserMenu from './UserMenu';
+import GridPresetSelector from './GridPresetSelector';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
@@ -173,6 +174,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
 
         {/* Right: Actions + User + Search */}
         <div className="flex items-center gap-1.5 shrink-0">
+          <GridPresetSelector />
           {onTogglePanelAdd && (
             <button
               onClick={onTogglePanelAdd}

@@ -23,7 +23,7 @@ class PanelErrorBoundary extends Component<{ panelId: string; children: ReactNod
 
 export default function PanelDock() {
   const { panels, removePanel } = useDeckLayout();
-  const { activeCategory } = useDeck();
+  const { activeCategory, gridPreset } = useDeck();
 
   const visiblePanels = useMemo(() => {
     if (activeCategory === 'all') return panels;
@@ -33,23 +33,40 @@ export default function PanelDock() {
     });
   }, [panels, activeCategory]);
 
+  const gridClasses = useMemo(() => {
+    switch (gridPreset) {
+      case '2-col': return 'grid grid-cols-2 gap-2 auto-rows-[200px]';
+      case '3-col': return 'grid grid-cols-3 gap-2 auto-rows-[160px]';
+      case '4-col': return 'grid grid-cols-4 gap-2 auto-rows-[120px]';
+      case 'map-focus': return 'flex flex-col gap-2';
+      case 'equal-grid': return 'grid grid-cols-3 gap-2 auto-rows-[200px]';
+      default: return 'grid grid-cols-12 gap-2 auto-rows-[80px]';
+    }
+  }, [gridPreset]);
+
+  const isSimpleGrid = gridPreset !== 'default';
+
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10 p-2">
-      <div className="grid grid-cols-12 gap-2 auto-rows-[80px]">
+      <div className={gridClasses}>
         {visiblePanels.map((p) => {
           const def = PANEL_MAP.get(p.panelId);
           if (!def) return null;
           const Component = def.component;
           const colSpan = Math.min(p.w || 4, 12);
           const rowSpan = p.h || 4;
+
+          const style: React.CSSProperties = isSimpleGrid
+            ? gridPreset === 'map-focus'
+              ? { minHeight: '120px' }
+              : { gridColumn: 'span 1', gridRow: 'span 1' }
+            : { gridColumn: `span ${colSpan}`, gridRow: `span ${rowSpan}` };
+
           return (
             <div
               key={p.instanceId}
               className="min-h-0"
-              style={{
-                gridColumn: `span ${colSpan}`,
-                gridRow: `span ${rowSpan}`,
-              }}
+              style={style}
             >
               <PanelWrapper
                 panelId={p.panelId}

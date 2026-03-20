@@ -4,7 +4,9 @@ import type { HuntAlert } from '@/hooks/useHuntAlerts';
 import type { FeatureCollection } from 'geojson';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import BrainHeartbeat from '@/components/BrainHeartbeat';
+import EventTicker from '@/components/EventTicker';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useDeck } from '@/contexts/DeckContext';
 import MapRegion from './MapRegion';
 import PanelDock from './PanelDock';
 import PanelDockMobile from './PanelDockMobile';
@@ -39,11 +41,15 @@ export default function DeckLayout({
   children,
 }: DeckLayoutProps) {
   const isMobile = useIsMobile();
+  const { gridPreset } = useDeck();
 
-  // Explicit grid: heartbeat 28px, map 45%, panels fill rest, bottom bar 40px
-  const gridRows = isMobile
-    ? '28px 40% 1fr 40px'
-    : '28px 45% 1fr 40px';
+  // Explicit grid: heartbeat 28px, ticker 32px, map, panels fill rest, bottom bar 40px
+  const mapRow = (() => {
+    if (gridPreset === 'equal-grid') return '0px';
+    if (gridPreset === 'map-focus') return isMobile ? '50%' : '65%';
+    return isMobile ? '40%' : '45%';
+  })();
+  const gridRows = `28px 32px ${mapRow} 1fr 40px`;
 
   return (
     <div
@@ -63,21 +69,30 @@ export default function DeckLayout({
         </ErrorBoundary>
       </div>
 
-      {/* Row 2: Map */}
+      {/* Row 2: EventTicker */}
+      <div className="overflow-hidden">
+        <EventTicker
+          convergenceAlerts={convergenceAlerts}
+          weatherEventsGeoJSON={weatherEventsGeoJSON}
+          nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+        />
+      </div>
+
+      {/* Row 3: Map */}
       <div className="overflow-hidden relative">
         <ErrorBoundary fallback={<div className="h-full bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map region error</span></div>}>
           <MapRegion>{children}</MapRegion>
         </ErrorBoundary>
       </div>
 
-      {/* Row 3: Panel dock */}
+      {/* Row 4: Panel dock */}
       <div className="overflow-hidden">
         <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
           {isMobile ? <PanelDockMobile /> : <PanelDock />}
         </ErrorBoundary>
       </div>
 
-      {/* Row 4: Bottom bar */}
+      {/* Row 5: Bottom bar */}
       <BottomBar />
 
       {/* Slide-out overlays (positioned absolutely, outside grid flow) */}
