@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { CloudRain, Wind, Thermometer, Gauge, Zap, CloudLightning } from 'lucide-react';
 import { useWeatherEvents } from '@/hooks/useWeatherEvents';
 import { useMapAction } from '@/contexts/MapActionContext';
+import PanelTabs from '@/components/PanelTabs';
 import type { PanelComponentProps } from './PanelTypes';
 
 const EVENT_ICONS: Record<string, typeof Wind> = {
@@ -65,6 +66,7 @@ function timeAgo(ts: string): string {
 export default function WeatherEventsPanel({}: PanelComponentProps) {
   const { eventsGeoJSON } = useWeatherEvents();
   const { flyToCoords } = useMapAction();
+  const [activeTab, setActiveTab] = useState('all');
 
   const events = useMemo(() => {
     if (!eventsGeoJSON?.features) return [];
@@ -79,6 +81,29 @@ export default function WeatherEventsPanel({}: PanelComponentProps) {
       lat: (f.geometry as any)?.coordinates?.[1] as number,
     }));
   }, [eventsGeoJSON]);
+
+  const eventTypes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const evt of events) {
+      counts.set(evt.eventType, (counts.get(evt.eventType) || 0) + 1);
+    }
+    return counts;
+  }, [events]);
+
+  const tabs = useMemo(() => {
+    const t: { id: string; label: string; count: number }[] = [
+      { id: 'all', label: 'ALL', count: events.length },
+    ];
+    for (const [type, count] of eventTypes) {
+      t.push({ id: type, label: (EVENT_LABELS[type] || type.replace(/-/g, ' ')).toUpperCase(), count });
+    }
+    return t;
+  }, [events, eventTypes]);
+
+  const filtered = useMemo(() => {
+    if (activeTab === 'all') return events;
+    return events.filter(e => e.eventType === activeTab);
+  }, [events, activeTab]);
 
   if (!eventsGeoJSON) {
     return (
@@ -97,30 +122,35 @@ export default function WeatherEventsPanel({}: PanelComponentProps) {
   }
 
   return (
-    <div className="flex flex-col gap-0.5 overflow-y-auto h-full p-2">
-      {events.map((evt, i) => {
-        const Icon = EVENT_ICONS[evt.eventType] || Zap;
-        const sevClass = SEVERITY_COLORS[evt.severity] || SEVERITY_COLORS.low;
-        return (
-          <button
-            key={`${evt.station}-${i}`}
-            onClick={() => flyToCoords(evt.lng, evt.lat, 8)}
-            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full"
-          >
-            <Icon size={14} className="text-cyan-400 mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-body text-white/80">{formatTitle(evt.title, evt.eventType)}</span>
-                <span className={`text-[8px] font-mono px-1 py-0.5 rounded shrink-0 ${sevClass}`}>
-                  {evt.severity.toUpperCase()}
-                </span>
-              </div>
-              <p className="text-[10px] text-white/40 mt-0.5 truncate">{formatContent(evt.content)}</p>
-            </div>
-            <span className="text-[9px] font-mono text-white/20 shrink-0">{timeAgo(evt.timestamp)}</span>
-          </button>
-        );
-      })}
+    <div className="h-full flex flex-col">
+      <PanelTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col gap-0.5 p-2">
+          {filtered.map((evt, i) => {
+            const Icon = EVENT_ICONS[evt.eventType] || Zap;
+            const sevClass = SEVERITY_COLORS[evt.severity] || SEVERITY_COLORS.low;
+            return (
+              <button
+                key={`${evt.station}-${i}`}
+                onClick={() => flyToCoords(evt.lng, evt.lat, 8)}
+                className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full"
+              >
+                <Icon size={14} className="text-cyan-400 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-body text-white/80">{formatTitle(evt.title, evt.eventType)}</span>
+                    <span className={`text-[8px] font-mono px-1 py-0.5 rounded shrink-0 ${sevClass}`}>
+                      {evt.severity.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-white/40 mt-0.5 truncate">{formatContent(evt.content)}</p>
+                </div>
+                <span className="text-[9px] font-mono text-white/20 shrink-0">{timeAgo(evt.timestamp)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

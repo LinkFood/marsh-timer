@@ -1,6 +1,8 @@
+import { useState, useMemo } from 'react';
 import { useConvergenceAlerts } from '@/hooks/useConvergenceAlerts';
 import { useMapAction } from '@/contexts/MapActionContext';
 import { useDeck } from '@/contexts/DeckContext';
+import PanelTabs from '@/components/PanelTabs';
 import type { PanelComponentProps } from './PanelTypes';
 
 function timeAgo(iso: string): string {
@@ -16,6 +18,11 @@ export default function ConvergenceAlertsPanel({}: PanelComponentProps) {
   const { alerts, loading } = useConvergenceAlerts();
   const { flyTo } = useMapAction();
   const { setSelectedState } = useDeck();
+  const [activeTab, setActiveTab] = useState('all');
+
+  const surges = useMemo(() => alerts.filter(a => a.alert_type === 'surge' || a.score > a.previous_score), [alerts]);
+  const declines = useMemo(() => alerts.filter(a => a.alert_type !== 'surge' && a.score <= a.previous_score), [alerts]);
+  const filtered = activeTab === 'surges' ? surges : activeTab === 'declines' ? declines : alerts;
 
   function handleClick(abbr: string) {
     flyTo(abbr);
@@ -39,36 +46,49 @@ export default function ConvergenceAlertsPanel({}: PanelComponentProps) {
   }
 
   return (
-    <div className="flex flex-col gap-1 overflow-y-auto h-full p-2">
-      {alerts.map((a, i) => {
-        const isSurge = a.alert_type === 'surge' || a.score > a.previous_score;
-        return (
-          <button
-            key={`${a.state_abbr}-${i}`}
-            onClick={() => handleClick(a.state_abbr)}
-            className={`flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full border-l-2 ${isSurge ? 'border-emerald-400' : 'border-red-400'}`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className={`text-sm font-mono font-bold ${isSurge ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {isSurge ? '\u25B2' : '\u25BC'}
+    <div className="h-full flex flex-col">
+      <PanelTabs
+        tabs={[
+          { id: 'all', label: 'ALL', count: alerts.length },
+          { id: 'surges', label: 'SURGES', count: surges.length },
+          { id: 'declines', label: 'DECLINES', count: declines.length },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+      />
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col gap-1 p-2">
+          {filtered.map((a, i) => {
+            const isSurge = a.alert_type === 'surge' || a.score > a.previous_score;
+            return (
+              <button
+                key={`${a.state_abbr}-${i}`}
+                onClick={() => handleClick(a.state_abbr)}
+                className={`flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] transition-colors text-left w-full border-l-2 ${isSurge ? 'border-emerald-400' : 'border-red-400'}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-sm font-mono font-bold ${isSurge ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {isSurge ? '\u25B2' : '\u25BC'}
+                    </span>
+                    <span className="text-xs font-mono text-white/90 font-medium">{a.state_abbr}</span>
+                    <span className="text-[10px] text-white/40 font-mono">
+                      {a.previous_score} → {a.score}
+                    </span>
+                    <span className={`text-[10px] font-mono px-1 rounded ${isSurge ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
+                      {isSurge ? '+' : ''}{a.score - a.previous_score}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-white/40 mt-0.5 truncate">{a.reasoning}</p>
+                </div>
+                <span className="text-[9px] font-mono text-white/20 whitespace-nowrap mt-0.5">
+                  {timeAgo(a.created_at)}
                 </span>
-                <span className="text-xs font-mono text-white/90 font-medium">{a.state_abbr}</span>
-                <span className="text-[10px] text-white/40 font-mono">
-                  {a.previous_score} → {a.score}
-                </span>
-                <span className={`text-[10px] font-mono px-1 rounded ${isSurge ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
-                  {isSurge ? '+' : ''}{a.score - a.previous_score}
-                </span>
-              </div>
-              <p className="text-[10px] text-white/40 mt-0.5 truncate">{a.reasoning}</p>
-            </div>
-            <span className="text-[9px] font-mono text-white/20 whitespace-nowrap mt-0.5">
-              {timeAgo(a.created_at)}
-            </span>
-          </button>
-        );
-      })}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

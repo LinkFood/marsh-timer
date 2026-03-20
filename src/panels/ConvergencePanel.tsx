@@ -1,8 +1,10 @@
+import { useState, useMemo } from 'react';
 import { useConvergenceScores } from '@/hooks/useConvergenceScores';
 import { useConvergenceHistoryAll } from '@/hooks/useConvergenceHistory';
 import { useMapAction } from '@/contexts/MapActionContext';
 import { useDeck } from '@/contexts/DeckContext';
 import Sparkline from '@/components/charts/Sparkline';
+import PanelTabs from '@/components/PanelTabs';
 import type { PanelComponentProps } from './PanelTypes';
 
 function scoreColor(score: number): string {
@@ -22,10 +24,17 @@ function barColor(score: number): string {
 }
 
 export default function ConvergencePanel({}: PanelComponentProps) {
-  const { topStates, loading } = useConvergenceScores();
+  const { scores, topStates, loading } = useConvergenceScores();
   const { historyMap } = useConvergenceHistoryAll();
   const { flyTo } = useMapAction();
   const { selectedState, setSelectedState } = useDeck();
+  const [activeTab, setActiveTab] = useState('top10');
+
+  const allStates = useMemo(() => {
+    return Array.from(scores.values()).sort((a, b) => b.score - a.score);
+  }, [scores]);
+
+  const displayStates = activeTab === 'top10' ? topStates : allStates;
 
   function handleClick(abbr: string) {
     flyTo(abbr);
@@ -50,6 +59,15 @@ export default function ConvergencePanel({}: PanelComponentProps) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <PanelTabs
+        tabs={[
+          { id: 'top10', label: 'TOP 10', count: topStates.length },
+          { id: 'all', label: 'ALL 50', count: allStates.length },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+      />
+
       {/* Header row */}
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-white/[0.06]">
         <span className="text-[10px] font-mono text-white/30 w-4 text-right">#</span>
@@ -60,8 +78,8 @@ export default function ConvergencePanel({}: PanelComponentProps) {
       </div>
 
       {/* Rows */}
-      <div className="flex-1 overflow-y-auto">
-        {topStates.map((s, i) => {
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {displayStates.map((s, i) => {
           const sparkData = historyMap.get(s.state_abbr) || [];
           return (
             <button

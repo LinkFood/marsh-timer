@@ -1,5 +1,7 @@
+import { useState, useMemo } from 'react';
 import { useBrainActivity } from '@/hooks/useBrainActivity';
 import { Brain, Activity, Clock } from 'lucide-react';
+import PanelTabs from '@/components/PanelTabs';
 import type { PanelComponentProps } from './PanelTypes';
 
 function statusDot(status: string): string {
@@ -21,8 +23,39 @@ function shortName(fn: string): string {
   return fn.replace(/^hunt-/, '').replace(/-/g, ' ');
 }
 
+const WRITER_PATTERNS = ['watchdog', 'monitor', 'birdcast', 'nasa', 'du-', 'drought', 'inaturalist', 'solunar', 'log', 'power-outage', 'usfws'];
+const GRADER_PATTERNS = ['tracker', 'report-card'];
+const ALERT_PATTERNS = ['convergence', 'alerts', 'scout', 'nws'];
+
+function matchesAny(name: string, patterns: string[]): boolean {
+  return patterns.some(p => name.includes(p));
+}
+
 export default function BrainActivityPanel({}: PanelComponentProps) {
   const { activity, loading } = useBrainActivity();
+  const [activeTab, setActiveTab] = useState('all');
+
+  // Deduplicate crons by function_name (show latest per function)
+  const uniqueCrons = useMemo(() => {
+    const cronMap = new Map<string, typeof activity.recentCrons[0]>();
+    for (const cron of activity.recentCrons) {
+      if (!cronMap.has(cron.function_name)) {
+        cronMap.set(cron.function_name, cron);
+      }
+    }
+    return Array.from(cronMap.values());
+  }, [activity.recentCrons]);
+
+  const writers = useMemo(() => uniqueCrons.filter(c => matchesAny(c.function_name, WRITER_PATTERNS)), [uniqueCrons]);
+  const graders = useMemo(() => uniqueCrons.filter(c => matchesAny(c.function_name, GRADER_PATTERNS)), [uniqueCrons]);
+  const alertCrons = useMemo(() => uniqueCrons.filter(c => matchesAny(c.function_name, ALERT_PATTERNS)), [uniqueCrons]);
+
+  const filteredCrons = useMemo(() => {
+    if (activeTab === 'writers') return writers;
+    if (activeTab === 'graders') return graders;
+    if (activeTab === 'alerts') return alertCrons;
+    return uniqueCrons;
+  }, [activeTab, uniqueCrons, writers, graders, alertCrons]);
 
   if (loading) {
     return (
@@ -32,63 +65,68 @@ export default function BrainActivityPanel({}: PanelComponentProps) {
     );
   }
 
-  // Deduplicate crons by function_name (show latest per function)
-  const cronMap = new Map<string, typeof activity.recentCrons[0]>();
-  for (const cron of activity.recentCrons) {
-    if (!cronMap.has(cron.function_name)) {
-      cronMap.set(cron.function_name, cron);
-    }
-  }
-  const uniqueCrons = Array.from(cronMap.values());
-
   return (
-    <div className="flex flex-col gap-3 p-3 h-full overflow-y-auto">
-      {/* Big numbers */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
-          <Brain size={14} className="text-cyan-400 mx-auto mb-1" />
-          <div className="text-xl font-mono font-bold text-cyan-400 tabular-nums">{activity.totalEmbeddingsToday}</div>
-          <div className="text-[8px] font-mono tracking-wider text-white/30">EMBEDS 24H</div>
-        </div>
-        <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
-          <Activity size={14} className="text-green-400 mx-auto mb-1" />
-          <div className="text-xl font-mono font-bold text-green-400 tabular-nums">{activity.activeCrons}</div>
-          <div className="text-[8px] font-mono tracking-wider text-white/30">ACTIVE CRONS</div>
-        </div>
-        <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
-          <Clock size={14} className="text-white/40 mx-auto mb-1" />
-          <div className="text-sm font-mono text-white/60 tabular-nums mt-0.5">
-            {activity.lastActivity ? timeAgo(activity.lastActivity) : '--'}
+    <div className="h-full flex flex-col">
+      <PanelTabs
+        tabs={[
+          { id: 'all', label: 'ALL', count: uniqueCrons.length },
+          { id: 'writers', label: 'WRITERS', count: writers.length },
+          { id: 'graders', label: 'GRADERS', count: graders.length },
+          { id: 'alerts', label: 'ALERTS', count: alertCrons.length },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+      />
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col gap-3 p-3">
+          {/* Big numbers */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
+              <Brain size={14} className="text-cyan-400 mx-auto mb-1" />
+              <div className="text-xl font-mono font-bold text-cyan-400 tabular-nums">{activity.totalEmbeddingsToday}</div>
+              <div className="text-[8px] font-mono tracking-wider text-white/30">EMBEDS 24H</div>
+            </div>
+            <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
+              <Activity size={14} className="text-green-400 mx-auto mb-1" />
+              <div className="text-xl font-mono font-bold text-green-400 tabular-nums">{activity.activeCrons}</div>
+              <div className="text-[8px] font-mono tracking-wider text-white/30">ACTIVE CRONS</div>
+            </div>
+            <div className="rounded border border-white/[0.06] bg-white/[0.02] p-2 text-center">
+              <Clock size={14} className="text-white/40 mx-auto mb-1" />
+              <div className="text-sm font-mono text-white/60 tabular-nums mt-0.5">
+                {activity.lastActivity ? timeAgo(activity.lastActivity) : '--'}
+              </div>
+              <div className="text-[8px] font-mono tracking-wider text-white/30">LAST ACTIVITY</div>
+            </div>
           </div>
-          <div className="text-[8px] font-mono tracking-wider text-white/30">LAST ACTIVITY</div>
-        </div>
-      </div>
 
-      {/* Cron status grid */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-display tracking-widest text-white/30 uppercase">
-            CRON STATUS
-          </span>
-          <span className="text-[8px] font-mono text-white/20">
-            {activity.lastActivity ? `Updated ${timeAgo(activity.lastActivity)}` : ''}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-1">
-          {uniqueCrons.map(cron => (
-            <div
-              key={cron.function_name}
-              className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/[0.02] border border-white/[0.04]"
-            >
-              <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot(cron.status)}`} />
-              <span className="text-[9px] font-mono text-white/60 truncate flex-1">
-                {shortName(cron.function_name)}
+          {/* Cron status grid */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-display tracking-widest text-white/30 uppercase">
+                CRON STATUS
               </span>
-              <span className="text-[8px] font-mono text-white/20 shrink-0">
-                {timeAgo(cron.created_at)}
+              <span className="text-[8px] font-mono text-white/20">
+                {activity.lastActivity ? `Updated ${timeAgo(activity.lastActivity)}` : ''}
               </span>
             </div>
-          ))}
+            <div className="grid grid-cols-2 gap-1">
+              {filteredCrons.map(cron => (
+                <div
+                  key={cron.function_name}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/[0.02] border border-white/[0.04]"
+                >
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot(cron.status)}`} />
+                  <span className="text-[9px] font-mono text-white/60 truncate flex-1">
+                    {shortName(cron.function_name)}
+                  </span>
+                  <span className="text-[8px] font-mono text-white/20 shrink-0">
+                    {timeAgo(cron.created_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
