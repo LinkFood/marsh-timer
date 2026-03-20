@@ -261,13 +261,23 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
 // ---------- Supabase insert ----------
 
 async function insertBatch(rows: Record<string, unknown>[]) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
-    method: "POST",
-    headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
-    body: JSON.stringify(rows),
-  });
-  if (!res.ok) {
-    console.error(`  Insert failed: ${await res.text()}`);
+  for (let i = 0; i < rows.length; i += 20) {
+    const chunk = rows.slice(i, i + 20);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
+        method: "POST",
+        headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify(chunk),
+      });
+      if (res.ok) break;
+      if (attempt < 2) {
+        console.log(`  Insert retry ${attempt + 1}/3...`);
+        await delay(5000);
+        continue;
+      }
+      const text = await res.text();
+      console.error(`  Insert failed after retries: ${text}`);
+    }
   }
 }
 
