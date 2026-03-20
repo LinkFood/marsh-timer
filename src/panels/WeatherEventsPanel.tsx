@@ -18,6 +18,41 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: 'bg-yellow-500/20 text-yellow-400',
 };
 
+const EVENT_LABELS: Record<string, string> = {
+  'front-passage': 'Front Passage',
+  'temp-drop': 'Temp Drop',
+  'wind-shift': 'Wind Shift',
+  'pressure-change': 'Pressure Change',
+  'weather-event': 'Weather Event',
+};
+
+function formatTitle(title: string, eventType: string): string {
+  // Extract station and make human-readable: "METAR Alert: KDFW - Temperature Drop" → "Dallas TX — Temp Drop"
+  const stationMatch = title.match(/([A-Z]{4})/);
+  const label = EVENT_LABELS[eventType] || eventType.replace(/-/g, ' ');
+  if (stationMatch) {
+    return `${stationMatch[1]} — ${label}`;
+  }
+  return label;
+}
+
+function formatContent(content: string): string {
+  // Clean up raw METAR content for display
+  if (!content) return '';
+  // If it's the raw pipe-delimited format, extract the useful part
+  if (content.includes('|')) {
+    const parts = content.split('|').map(s => s.trim());
+    // Find parts that look like data (not source names)
+    const useful = parts.filter(p =>
+      p.includes('change') || p.includes('drop') || p.includes('shift') ||
+      p.includes('front') || p.includes('temp') || p.includes('wind') ||
+      p.includes('mb') || p.includes('°') || p.includes('mph')
+    );
+    if (useful.length > 0) return useful.join(' · ');
+  }
+  return content.slice(0, 120);
+}
+
 function timeAgo(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime();
   const mins = Math.floor(diff / 60000);
@@ -75,12 +110,12 @@ export default function WeatherEventsPanel({}: PanelComponentProps) {
             <Icon size={14} className="text-cyan-400 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono text-white/60">{evt.station}</span>
-                <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${sevClass}`}>
+                <span className="text-xs font-body text-white/80">{formatTitle(evt.title, evt.eventType)}</span>
+                <span className={`text-[8px] font-mono px-1 py-0.5 rounded shrink-0 ${sevClass}`}>
                   {evt.severity.toUpperCase()}
                 </span>
               </div>
-              <p className="text-[10px] text-white/40 mt-0.5 truncate">{evt.content}</p>
+              <p className="text-[10px] text-white/40 mt-0.5 truncate">{formatContent(evt.content)}</p>
             </div>
             <span className="text-[9px] font-mono text-white/20 shrink-0">{timeAgo(evt.timestamp)}</span>
           </button>

@@ -24,6 +24,7 @@ import { MapActionProvider } from "@/contexts/MapActionContext";
 import { DeckProvider, useDeck } from "@/contexts/DeckContext";
 import { LayerProvider, useLayerContext } from "@/contexts/LayerContext";
 import DeckLayout from "@/layout/DeckLayout";
+import PanelAddMenu from "@/panels/PanelAddMenu";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 const Index = () => {
@@ -226,16 +227,26 @@ const Index = () => {
   );
 };
 
-/** Wrapper that connects HeaderBar to DeckContext toggles */
+/** Wrapper that connects HeaderBar to DeckContext toggles + renders PanelAddMenu dropdown */
 function HeaderBarWithDeck(props: React.ComponentProps<typeof HeaderBar>) {
-  const { toggleChat, toggleLayerPicker, togglePanelAdd } = useDeck();
+  const { toggleChat, toggleLayerPicker, togglePanelAdd, panelAddOpen, setPanelAddOpen } = useDeck();
   return (
-    <HeaderBar
-      {...props}
-      onToggleLayers={toggleLayerPicker}
-      onToggleChat={toggleChat}
-      onTogglePanelAdd={togglePanelAdd}
-    />
+    <>
+      <HeaderBar
+        {...props}
+        onToggleLayers={toggleLayerPicker}
+        onToggleChat={toggleChat}
+        onTogglePanelAdd={togglePanelAdd}
+      />
+      {panelAddOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setPanelAddOpen(false)} />
+          <div className="fixed top-12 right-48 z-50">
+            <PanelAddMenu />
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

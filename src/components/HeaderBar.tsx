@@ -1,9 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare } from "lucide-react";
 import type { Species } from "@/data/types";
-import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
-import { getSeasonStatus } from "@/lib/seasonUtils";
 import UserMenu from './UserMenu';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
@@ -43,22 +41,6 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
   const inputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const counts = useMemo(() => {
-    const now = new Date();
-    const result: Record<Species, number> = { duck: 0, goose: 0, deer: 0, turkey: 0, dove: 0 };
-    for (const sp of SPECIES_ORDER) {
-      const seasons = getSeasonsForSpecies(sp);
-      const seen = new Set<string>();
-      for (const s of seasons) {
-        if (!seen.has(s.abbreviation) && getSeasonStatus(s, now) === "open") {
-          seen.add(s.abbreviation);
-          result[sp]++;
-        }
-      }
-    }
-    return result;
-  }, []);
 
   const stateList = useMemo(() => {
     const all = getSeasonsForSpecies(species);
