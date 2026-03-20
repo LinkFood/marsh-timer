@@ -40,10 +40,18 @@ export default function DeckLayout({
 }: DeckLayoutProps) {
   const isMobile = useIsMobile();
 
+  // Explicit grid: heartbeat 28px, map 45%, panels fill rest, bottom bar 40px
+  const gridRows = isMobile
+    ? '28px 40% 1fr 40px'
+    : '28px 45% 1fr 40px';
+
   return (
-    <div className="h-full w-full overflow-hidden flex flex-col bg-[#0a0f1a]">
-      {/* BrainHeartbeat — fixed height */}
-      <div className="shrink-0">
+    <div
+      className="h-full w-full overflow-hidden bg-[#0a0f1a]"
+      style={{ display: 'grid', gridTemplateRows: gridRows }}
+    >
+      {/* Row 1: BrainHeartbeat */}
+      <div className="overflow-hidden">
         <ErrorBoundary fallback={<div className="h-7 bg-red-900/20 flex items-center px-3"><span className="text-[10px] text-red-400">Heartbeat error</span></div>}>
           <BrainHeartbeat
             convergenceAlerts={convergenceAlerts}
@@ -55,24 +63,24 @@ export default function DeckLayout({
         </ErrorBoundary>
       </div>
 
-      {/* Map region — capped at 50% */}
-      <div className="shrink-0" style={{ height: '50%', maxHeight: '50%' }}>
+      {/* Row 2: Map */}
+      <div className="overflow-hidden relative">
         <ErrorBoundary fallback={<div className="h-full bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map region error</span></div>}>
           <MapRegion>{children}</MapRegion>
         </ErrorBoundary>
       </div>
 
-      {/* Panel dock — fills remaining space */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* Row 3: Panel dock */}
+      <div className="overflow-hidden">
         <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
           {isMobile ? <PanelDockMobile /> : <PanelDock />}
         </ErrorBoundary>
       </div>
 
-      {/* Bottom bar */}
+      {/* Row 4: Bottom bar */}
       <BottomBar />
 
-      {/* Slide-out panels */}
+      {/* Slide-out overlays (positioned absolutely, outside grid flow) */}
       <ChatPanel />
       <LayerPicker />
     </div>
