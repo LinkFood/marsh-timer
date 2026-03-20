@@ -3,6 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
 
 // ─── Jean Meeus Lunar Algorithms (pure math, zero API calls) ───
 
@@ -298,14 +299,31 @@ serve(async (req) => {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[hunt-solunar-precompute] Done in ${elapsed}s: ${rows.length} days, ${primeDays} prime, ${weekEntries.length} weeks embedded`);
 
-    return successResponse(req, {
+    const summary = {
       days_computed: rows.length,
       prime_days: primeDays,
       weeks_embedded: weekEntries.length,
       elapsed_seconds: parseFloat(elapsed),
+    };
+
+    await logCronRun({
+      functionName: 'hunt-solunar-precompute',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
     });
+
+    return successResponse(req, summary);
   } catch (error) {
     console.error('[hunt-solunar-precompute]', error);
+
+    await logCronRun({
+      functionName: 'hunt-solunar-precompute',
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    });
+
     return errorResponse(req, 'Internal server error', 500);
   }
 });

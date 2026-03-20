@@ -487,6 +487,17 @@ serve(async (req) => {
     console.log(`[hunt-weather-realtime] Embedding ${embedTexts.length} events`);
     let embeddingsCreated = 0;
 
+    // Delete entries from the last 20 minutes to prevent duplicates on rapid re-invocations
+    const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const { error: delKnErr } = await supabase
+      .from('hunt_knowledge')
+      .delete()
+      .eq('content_type', 'realtime-weather-event')
+      .gte('created_at', twentyMinAgo);
+    if (delKnErr) {
+      console.error('[hunt-weather-realtime] Knowledge delete error:', delKnErr);
+    }
+
     const embeddings = await batchEmbed(embedTexts, 'document');
 
     if (embeddings && embeddings.length === embedTexts.length) {

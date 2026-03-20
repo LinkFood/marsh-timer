@@ -168,6 +168,9 @@ serve(async (req) => {
 
       if (!weatherRes.ok) {
         const errText = await weatherRes.text();
+        if (weatherRes.status >= 400 && weatherRes.status < 500) {
+          throw new Error(`${batchLabel} client error (${weatherRes.status}): ${errText}`);
+        }
         console.warn(`[hunt-weather-watchdog] ${batchLabel} failed (${weatherRes.status}): ${errText} — retrying in 2s`);
         await new Promise(r => setTimeout(r, 2000));
         weatherRes = await fetch(meteoUrl);
@@ -357,6 +360,18 @@ serve(async (req) => {
     // -----------------------------------------------------------------------
     console.log(`[hunt-weather-watchdog] Inserting ${allEvents.length} weather events`);
     if (allEvents.length > 0) {
+      // Delete existing events for today's date range to make re-runs idempotent
+      const todayStr = new Date().toISOString().split('T')[0];
+      const stateAbbrs = [...new Set(allEvents.map(e => e.state_abbr))];
+      const { error: delEvtErr } = await supabase
+        .from('hunt_weather_events')
+        .delete()
+        .eq('event_date', todayStr)
+        .in('state_abbr', stateAbbrs);
+      if (delEvtErr) {
+        console.error('[hunt-weather-watchdog] Events delete error:', delEvtErr);
+      }
+
       const eventRows = allEvents.map(e => ({
         state_abbr: e.state_abbr,
         event_type: e.event_type,
@@ -368,7 +383,7 @@ serve(async (req) => {
         .from('hunt_weather_events')
         .insert(eventRows);
       if (evtErr) {
-        console.error('[hunt-weather-watchdog] Events upsert error:', evtErr);
+        console.error('[hunt-weather-watchdog] Events insert error:', evtErr);
       }
     }
 
@@ -379,6 +394,18 @@ serve(async (req) => {
     let embeddingsCreated = 0;
 
     try {
+      // Delete existing knowledge entries for today to make re-runs idempotent
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { error: delKnErr } = await supabase
+        .from('hunt_knowledge')
+        .delete()
+        .in('content_type', ['weather-daily', 'weather-forecast', 'weather-event'])
+        .gte('created_at', todayStr + 'T00:00:00Z')
+        .lte('created_at', todayStr + 'T23:59:59Z');
+      if (delKnErr) {
+        console.error('[hunt-weather-watchdog] Knowledge delete error:', delKnErr);
+      }
+
       // batchEmbed handles chunking internally (max 20 per batch)
       const embeddings = await batchEmbed(embedTexts, 'document');
 

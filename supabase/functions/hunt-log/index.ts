@@ -58,7 +58,7 @@ serve(async (req: Request) => {
     let weather: Record<string, unknown> | null = null;
     const { data: weatherRow } = await supabase
       .from('hunt_weather_history')
-      .select('temp_high,temp_low,wind_max,wind_dir,pressure,precip,cloud_cover')
+      .select('temp_high_f,temp_low_f,wind_speed_max_mph,wind_direction_dominant,pressure_avg_msl,precipitation_total_mm,cloud_cover_avg')
       .eq('state_abbr', state_abbr)
       .eq('date', date)
       .maybeSingle();
@@ -105,7 +105,7 @@ serve(async (req: Request) => {
 
     // Build embedding text
     const weatherStr = weather
-      ? `weather:temp:${weather.temp_high}/${weather.temp_low} wind:${weather.wind_dir}@${weather.wind_max} pressure:${weather.pressure}`
+      ? `weather:temp:${weather.temp_high_f}/${weather.temp_low_f} wind:${weather.wind_direction_dominant}@${weather.wind_speed_max_mph} pressure:${weather.pressure_avg_msl}`
       : 'weather:unknown';
     const moonStr = solunar ? `moon:${solunar.moon_phase}` : 'moon:unknown';
     const notesStr = notes ? ` | ${notes}` : '';
