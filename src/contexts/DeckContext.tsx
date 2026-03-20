@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import type { Species } from '@/data/types';
+import type { PanelCategory } from '@/panels/PanelTypes';
+
+export type CategoryFilter = PanelCategory | 'all';
 
 interface DeckContextValue {
   species: Species;
@@ -15,6 +18,8 @@ interface DeckContextValue {
   panelAddOpen: boolean;
   setPanelAddOpen: (open: boolean) => void;
   togglePanelAdd: () => void;
+  activeCategory: CategoryFilter;
+  setActiveCategory: (cat: CategoryFilter) => void;
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -37,6 +42,7 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
   const [chatOpen, setChatOpen] = useState(false);
   const [layerPickerOpen, setLayerPickerOpen] = useState(false);
   const [panelAddOpen, setPanelAddOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
 
   const toggleChat = useCallback(() => setChatOpen(o => !o), []);
   const toggleLayerPicker = useCallback(() => setLayerPickerOpen(o => !o), []);
@@ -48,7 +54,8 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     chatOpen, setChatOpen, toggleChat,
     layerPickerOpen, setLayerPickerOpen, toggleLayerPicker,
     panelAddOpen, setPanelAddOpen, togglePanelAdd,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd]);
+    activeCategory, setActiveCategory,
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

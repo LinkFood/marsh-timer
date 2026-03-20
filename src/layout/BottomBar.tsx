@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus } from 'lucide-react';
-import { useDeck } from '@/contexts/DeckContext';
+import { useDeck, type CategoryFilter } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import type { PanelCategory } from '@/panels/PanelTypes';
 import PanelAddMenu from '@/panels/PanelAddMenu';
 
-const CATEGORIES: { id: PanelCategory | 'all'; label: string; icon: typeof Target }[] = [
+const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] = [
   { id: 'all', label: 'All', icon: Target },
   { id: 'intelligence', label: 'Intel', icon: Target },
   { id: 'migration', label: 'Migration', icon: Compass },
@@ -14,9 +12,8 @@ const CATEGORIES: { id: PanelCategory | 'all'; label: string; icon: typeof Targe
 ];
 
 export default function BottomBar() {
-  const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd } = useDeck();
+  const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, setActiveCategory } = useDeck();
   const isMobile = useIsMobile();
-  const [activeCategory, setActiveCategory] = useState<PanelCategory | 'all'>('all');
 
   return (
     <div className="shrink-0 h-10 glass-panel border-t border-white/[0.06] flex items-center px-2 gap-1 relative">

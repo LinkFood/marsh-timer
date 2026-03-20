@@ -3,11 +3,13 @@ import { GridLayout } from 'react-grid-layout';
 import type { Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import { useDeckLayout } from '@/hooks/useDeckLayout';
+import { useDeck } from '@/contexts/DeckContext';
 import PanelWrapper from '@/panels/PanelWrapper';
 import { PANEL_MAP } from '@/panels/PanelRegistry';
 
 export default function PanelDock() {
   const { panels, removePanel, updateLayout } = useDeckLayout();
+  const { activeCategory } = useDeck();
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
 
@@ -23,9 +25,18 @@ export default function PanelDock() {
     return () => observer.disconnect();
   }, []);
 
+  // Filter panels by active category
+  const visiblePanels = useMemo(() => {
+    if (activeCategory === 'all') return panels;
+    return panels.filter(p => {
+      const def = PANEL_MAP.get(p.panelId);
+      return def?.category === activeCategory;
+    });
+  }, [panels, activeCategory]);
+
   const layout: Layout[] = useMemo(
     () =>
-      panels.map((p) => {
+      visiblePanels.map((p) => {
         const def = PANEL_MAP.get(p.panelId);
         return {
           i: p.instanceId,
@@ -37,7 +48,7 @@ export default function PanelDock() {
           minH: def?.minH ?? 2,
         };
       }),
-    [panels],
+    [visiblePanels],
   );
 
   const onLayoutChange = useCallback((newLayout: Layout[]) => {
@@ -61,7 +72,7 @@ export default function PanelDock() {
           containerPadding={[8, 8]}
           useCSSTransforms
         >
-          {panels.map((p) => {
+          {visiblePanels.map((p) => {
             const def = PANEL_MAP.get(p.panelId);
             if (!def) return null;
             const Component = def.component;
