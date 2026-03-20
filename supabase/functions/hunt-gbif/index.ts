@@ -183,7 +183,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse({ date: dateStr, embedded: totalEmbedded, errors, durationMs });
+    return successResponse(req, { date: dateStr, embedded: totalEmbedded, errors, durationMs });
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
@@ -194,6 +194,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(String(err), 500);
+    return errorResponse(req, String(err), 500);
   }
 });

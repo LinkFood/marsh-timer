@@ -225,7 +225,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse({
+    return successResponse(req, {
       studies_processed: totalStudies,
       embedded: totalEmbedded,
       errors,
@@ -241,6 +241,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(String(err), 500);
+    return errorResponse(req, String(err), 500);
   }
 });
