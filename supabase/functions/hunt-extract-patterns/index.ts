@@ -9,7 +9,7 @@ import { generateEmbedding } from '../_shared/embedding.ts';
 // Config: process BATCH_SIZE states per invocation, then chain to next batch
 // ---------------------------------------------------------------------------
 
-const BATCH_SIZE = 3;
+const BATCH_SIZE = 1;
 const MIN_DATA_POINTS = 10;
 const MAX_SAMPLE_SIZE = 200;
 const RATE_LIMIT_MS = 2000;
@@ -226,20 +226,21 @@ serve(async (req) => {
 
           const embedding = await generateEmbedding(richText, 'document');
 
-          const { error: upsertErr } = await supabase
+          const { error: insertErr } = await supabase
             .from('hunt_knowledge')
-            .upsert({
-              title,
+            .insert({
+              title: `${contentType} | ${stateAbbr} | ${pattern.substring(0, 60)}`,
               content: pattern,
               content_type: contentType,
               tags: ["duck", stateName.toLowerCase(), "weather", "migration", "pattern"],
               species: "duck",
+              state_abbr: stateAbbr,
               effective_date: null,
               embedding,
-            }, { onConflict: 'title' });
+            });
 
-          if (upsertErr) {
-            console.error(`[hunt-extract-patterns] Upsert error:`, upsertErr);
+          if (insertErr) {
+            console.error(`[hunt-extract-patterns] Insert error:`, insertErr);
           } else {
             totalPatterns++;
           }

@@ -19,7 +19,7 @@ Same RPC, same filters, same vector space. When a cold front hits Arkansas, the 
 
 ## Brain State
 
-~212K entries in hunt_knowledge. Heading to 1M+.
+~295K entries in hunt_knowledge. Heading to 1M+.
 - Weather events, migration spikes, NWS alerts, NASA POWER, solunar, convergence scores, birdcast, drought, photoperiod, USGS water, NOAA tides, climate normals, facts, regulations, species behavioral knowledge (152 entries across 39 waterfowl + deer/turkey/dove)
 - IVFFlat index working. Search returns species knowledge.
 - Brain honesty: chat splits into "FROM THE BRAIN" (cyan, cards) + "AI INTERPRETATION" (LLM text)
@@ -96,10 +96,10 @@ src/
     BottomBar.tsx             # Category quick-access + add panel + mobile toggles
   panels/
     PanelTypes.ts             # PanelDef, PanelInstance, DeckState interfaces
-    PanelRegistry.ts          # All 16 panels cataloged (lazy-loaded)
+    PanelRegistry.ts          # All 18 panels cataloged (lazy-loaded)
     PanelWrapper.tsx          # Panel chrome: drag handle, title, minimize, close
     PanelAddMenu.tsx          # Searchable panel catalog dropdown
-    [16 panel components]     # Each owns its own hooks — no prop drilling
+    [18 panel components]     # Each owns its own hooks — no prop drilling
   layers/
     LayerTypes.ts             # LayerDef, LayerPreset interfaces
     LayerRegistry.ts          # 27 layers in 5 categories + 4 presets
@@ -121,7 +121,7 @@ src/
   data/                       # types, speciesConfig, seasons, flyways, fips
   lib/                        # seasonUtils, isobars, terminator, migrationFront, supabase, ebird
 supabase/
-  functions/                  # 29 edge functions (see below)
+  functions/                  # 45+ edge functions (see below)
   migrations/                 # SQL migrations
   config.toml                 # Function configs (all verify_jwt = false)
 scripts/                      # Backfill scripts
@@ -164,7 +164,7 @@ interface HuntingSeason {
 
 ## Features
 
-Composable panel-based intelligence platform. Map always visible at top (resizable). 16 drag/resize panels below in react-grid-layout grid. 27 user-toggleable map layers with 4 presets (Scout, Weather, Intel, Terrain). AI chat slide-out. Species is a filter concept, not navigation.
+Composable panel-based intelligence platform. Map always visible at top (resizable). 18 drag/resize panels below in react-grid-layout grid. 27 user-toggleable map layers with 4 presets (Scout, Weather, Intel, Terrain). AI chat slide-out. Species is a filter concept, not navigation.
 
 **Panels:** Convergence Scores, Convergence Alerts, Scout Report, Hunt Alerts, State Profile, Migration Index, eBird Feed, DU Reports, State Screener, Weather Events, NWS Alerts, Weather Forecast, Solunar, History Replay, Convergence History, Brain Activity.
 
@@ -226,7 +226,7 @@ npm run test      # Vitest
 
 All tables have RLS. Service role bypasses for edge functions.
 
-## Edge Functions (30 total)
+## Edge Functions (45+ total)
 
 ### Brain Writers (embed into hunt_knowledge)
 
@@ -299,6 +299,8 @@ eBird Historical (5 years) + Open-Meteo Archive (5 years)
 | `scripts/backfill-weather-history.ts` | 5 years Open-Meteo archive -> hunt_weather_history | `SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-weather-history.ts` (supports `START_STATE=TX`) |
 | `scripts/backfill-ebird-history.ts` | 5 years eBird -> hunt_migration_history | `EBIRD_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-ebird-history.ts` (200 req/hr, supports `START_STATE`, `YEAR`) |
 | `scripts/extract-patterns.ts` | Cross-ref migration+weather -> Sonnet extraction -> embed | `ANTHROPIC_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/extract-patterns.ts` |
+| `scripts/orchestrator.ts` | Backfill pipe orchestrator, auto-sequences pipes | `npx tsx scripts/orchestrator.ts` |
+| `scripts/run-daily-indices.sh` | Daily AO/NAO/PNA push (launchd at 7am) | `bash scripts/run-daily-indices.sh` |
 
 ## Data Sources
 
@@ -323,7 +325,7 @@ eBird Historical (5 years) + Open-Meteo Archive (5 years)
 
 ### Ready to Build
 
-USDA Crop Progress (script built, cron not deployed), Great Lakes ice (GLERL), NOAA Snow Cover (SNODAS), CPC Temperature Outlooks, NASA NDVI, National Phenology Network, NIFC Active Fires, State DNR harvest reports.
+USDA Crop Progress: DONE (17,824 entries). Great Lakes ice (GLERL), NOAA Snow Cover (SNODAS), CPC Temperature Outlooks, NASA NDVI, National Phenology Network, NIFC Active Fires, State DNR harvest reports.
 
 ### Deferred (Legal Risk)
 

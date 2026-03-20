@@ -29,14 +29,14 @@ Key findings:
 
 ---
 
-## CURRENT STATE (2026-03-19)
+## CURRENT STATE (2026-03-20)
 
-**Brain:** 212,291 entries in hunt_knowledge. All embedded via Voyage AI 512-dim vectors. IVFFlat index working. Doubled since last update.
+**Brain:** 295,070 entries in hunt_knowledge. All embedded via Voyage AI 512-dim vectors. IVFFlat index working. Doubled since last update.
 
 ### Structured Tables:
 | Table | Rows | Date Range |
 |-------|-----:|-----------|
-| hunt_knowledge | 212,291 | All time |
+| hunt_knowledge | 295,070 | All time |
 | hunt_weather_history | 45,450 | Sept 2020 → March 2026 (all 50 states) |
 | hunt_migration_history | 8,149 | Sept 2020 → March 2026 (partial states) |
 | hunt_convergence_scores | 600 | March 8-19, 2026 (12 days × 50 states) |
@@ -45,11 +45,12 @@ Key findings:
 ### Frontend:
 - 111 source files. 14 components, 21 panel files, 5 layout, 4 layer, 3 contexts, 27 hooks.
 - Composable panel-based deck layout with react-grid-layout.
-- 27 user-toggleable map layers. 16 lazy-loaded panels. AI chat slide-out.
+- 27 user-toggleable map layers. 18 lazy-loaded panels. AI chat slide-out.
 
 ### Infrastructure:
 - 14 crons active — ALL logging to hunt_cron_log
-- 29 edge functions deployed
+- 45 edge functions deployed
+- Backfill orchestrator managing pipe sequencing automatically
 - Compute: Small (2GB RAM, 2-core ARM)
 - Disk: 36GB gp3
 - Supabase IO budget: Healthy
@@ -72,11 +73,11 @@ Replaced fixed terminal shell with composable panel-based deck. Full frontend re
 - `DeckContext.tsx` — species, selectedState, chat/layers/panelAdd toggles, category filter
 - `LayerContext.tsx` — 27 user-toggleable map layers replacing old LAYER_MODES system. 4 presets.
 - `DeckLayout.tsx` → `MapRegion.tsx` (resizable) → `PanelDock.tsx` (react-grid-layout) → `BottomBar.tsx`
-- `PanelRegistry.ts` — 16 lazy-loaded panels in 4 categories
+- `PanelRegistry.ts` — 18 lazy-loaded panels in 4 categories
 - `LayerPicker.tsx` — searchable/categorized slide-out. `ChatPanel.tsx` — AI chat slide-out.
 - `PanelWrapper.tsx` — drag handle, minimize, close. `PanelAddMenu.tsx` — searchable catalog.
 
-**16 Panels:** Convergence Scores, Convergence Alerts, Scout Report, Hunt Alerts, State Profile, Migration Index, eBird Feed, DU Reports, State Screener, Weather Events, NWS Alerts, Weather Forecast, Solunar, History Replay, Convergence History, Brain Activity.
+**18 Panels:** Convergence Scores, Convergence Alerts, Scout Report, Hunt Alerts, State Profile, Migration Index, eBird Feed, DU Reports, State Screener, Weather Events, NWS Alerts, Weather Forecast, Solunar, History Replay, Convergence History, Brain Activity.
 
 **Key decisions:**
 - Map is NOT a panel — fixed region above panel grid, always visible
@@ -153,15 +154,20 @@ Replaced fixed terminal shell with composable panel-based deck. Full frontend re
 #### Meta-Play: Environmental State Vectors
 Nightly composite embedding per county: ALL available signals concatenated into one fingerprint. Search for historical days with similar fingerprints across ALL dimensions simultaneously. Not 50 separate signals — one unified biological-environmental state space. **This is the product nobody else can build.**
 
-### Existing Pipes (status as of 2026-03-19):
+### Existing Pipes (status as of 2026-03-20):
 - **Photoperiod:** DONE (35,077 entries). UT/VT/WV failed — re-run with `START_STATE=UT` to fill gaps.
 - **Drought Monitor:** DONE (8,400 entries). All 50 states, 168 weeks.
-- eBird backfill: Partial (AK-CA in hunt_migration_history). Key `ql314ikts0me`. Resume from OR.
+- **GBIF:** DONE (6,880 entries).
+- **BirdWeather:** DONE (10,807 entries).
+- **iNaturalist:** DONE (4,050 entries).
+- **Fire Activity:** DONE (11,767 entries).
+- **Climate Index:** DONE (4,594 entries).
+- eBird backfill: AK-GA done. Orchestrator running.
 - USDA CropScape: 110 counties done
-- USGS Water: 19K rows done. Resume from CA.
-- NOAA Tides: 17K rows done. Resume from station 53/223.
+- USGS Water: 74K rows done. Orchestrator running.
+- NOAA Tides: 28.6K rows done. Orchestrator running.
 - NOAA ACIS: 800 done. Resume from last state.
-- **RULE: ONE PIPE AT A TIME.**
+- Orchestrator handles pipe sequencing.
 
 ### Pattern Re-Extraction
 When eBird backfill finishes → run `scripts/extract-patterns.ts`. Current: 8 weather-pattern entries. Expected: 1,000-5,000 cross-referenced patterns. This is the biggest unlock for "last N times conditions looked like this" answers.
@@ -171,7 +177,7 @@ When eBird backfill finishes → run `scripts/extract-patterns.ts`. Current: 8 w
 ## SHIPPED (prior sessions)
 
 ### Composable Deck Platform (2026-03-19 night) ✅
-Full frontend rebuild — panel-based intelligence platform. 16 panels, 27 layers, react-grid-layout. See above.
+Full frontend rebuild — panel-based intelligence platform. 18 panels, 27 layers, react-grid-layout. See above.
 
 ### Bloomberg Terminal UX (2026-03-14 night) ✅
 Terminal shell with live ticker, 4 canvas tabs, brain panel, replay player, screener. Replaced by deck platform.
@@ -211,8 +217,8 @@ Map-chat bridge, convergence in chat, PatternCard, SourceCard, PatternLinksCard,
 
 | Timeframe | Corpus Size | What It Knows |
 |-----------|------------|---------------|
-| Today (2026-03-19) | ~219,000 | Weather, migration, tides, water, drought, photoperiod, climate, solunar, species behavior, crops |
-| After current pipes | ~300,000+ | + USGS water (all 50), NOAA tides, ACIS climate, USDA crops complete |
+| Today (2026-03-20) | ~295,000 | Weather, migration, tides, water, drought, photoperiod, climate, solunar, species behavior, crops |
+| After current pipes | ~350,000+ | + USGS water (all 50), NOAA tides, ACIS climate, USDA crops complete |
 | After Tier 2-3 | ~500,000+ | + Movebank GPS tracks, BirdWeather acoustic, GBIF, soil temp, PhenoCam, phenology |
 | After pattern extraction | ~510,000+ | + 1,000-5,000 cross-referenced weather-migration patterns |
 | After government gold | ~750,000+ | + 70 years of USFWS surveys, CBC, BBS, NEON |

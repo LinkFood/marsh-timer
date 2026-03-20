@@ -28,7 +28,7 @@ const supaHeaders = {
 };
 
 const GBIF_BASE = "https://api.gbif.org/v1/occurrence/search";
-const RATE_LIMIT_MS = 1500;
+const RATE_LIMIT_MS = 800;
 
 // --- Target species ---
 
@@ -103,7 +103,7 @@ async function fetchGbifCount(
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetch(`${GBIF_BASE}?${params}`);
+      const res = await fetch(`${GBIF_BASE}?${params}`, { signal: AbortSignal.timeout(30000) });
       if (res.ok) {
         const data = await res.json();
         return data.count ?? 0;
@@ -143,6 +143,7 @@ async function embedViaEdgeFn(text: string, retries = 3): Promise<number[]> {
         method: "POST",
         headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ text, input_type: "document" }),
+        signal: AbortSignal.timeout(30000),
       });
       if (res.ok) {
         const data = await res.json();
@@ -186,6 +187,7 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
           input: texts,
           input_type: "document",
         }),
+        signal: AbortSignal.timeout(30000),
       });
       if (res.ok) {
         const data = await res.json();
@@ -228,6 +230,7 @@ async function insertBatch(rows: any[]): Promise<void> {
           method: "POST",
           headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
           body: JSON.stringify(chunk),
+          signal: AbortSignal.timeout(30000),
         });
         if (res.ok) break;
         if (attempt < 2) {
