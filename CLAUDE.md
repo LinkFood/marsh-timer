@@ -245,6 +245,7 @@ All tables have RLS. Service role bypasses for edge functions.
 | hunt-extract-patterns | Cross-ref migration+weather -> Sonnet extraction -> embed | manual |
 | hunt-log | User interaction logging -> embed | on demand |
 | hunt-power-outage | ODIN/DOE real-time power outage data by state -> embed | on demand |
+| hunt-usfws-survey | USFWS Waterfowl Breeding Population Survey (WBPHS) data -> embed | on demand (annual) |
 
 ### Brain Graders (self-scoring)
 
