@@ -155,10 +155,17 @@ serve(async (req) => {
           if (embedRes.ok) {
             const { embedding } = await embedRes.json();
             if (embedding) {
-              const { data } = await supabase.rpc('search_hunt_knowledge_by_embedding', {
+              const { data } = await supabase.rpc('search_hunt_knowledge_v2', {
                 query_embedding: embedding,
                 match_threshold: 0.3,
                 match_count: 3,
+                filter_content_types: ['weather-pattern', 'weather-insight', 'migration-daily', 'convergence'],
+                filter_state_abbr: c.stateAbbr,
+                filter_species: null,
+                filter_date_from: null,
+                filter_date_to: null,
+                recency_weight: 0.1,
+                exclude_du_report: true,
               });
               if (data && Array.isArray(data)) {
                 patterns = data

@@ -184,7 +184,7 @@ serve(async (req) => {
         response: rateCheck.error || 'Rate limit exceeded',
         cards: [],
         rateLimited: true,
-      }), { status: 200, headers });
+      }), { status: 429, headers });
     }
 
     const supabase = createSupabaseClient();
@@ -319,7 +319,7 @@ Classify the user's message intent and extract relevant parameters.
     return new Response(JSON.stringify({
       response: 'Sorry, I hit an error. Try again in a moment.',
       cards: [],
-    }), { status: 200, headers });
+    }), { status: 500, headers });
   }
 });
 

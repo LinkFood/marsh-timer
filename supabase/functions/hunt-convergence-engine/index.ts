@@ -221,10 +221,17 @@ async function scorePattern(
   try {
     const embedding = await generateEmbedding(searchText, 'query');
 
-    const { data: matches } = await supabase.rpc('search_hunt_knowledge_by_embedding', {
+    const { data: matches } = await supabase.rpc('search_hunt_knowledge_v2', {
       query_embedding: embedding,
       match_threshold: 0.3,
       match_count: 5,
+      filter_content_types: null,
+      filter_state_abbr: stateAbbr,
+      filter_species: null,
+      filter_date_from: null,
+      filter_date_to: null,
+      recency_weight: 0.1,
+      exclude_du_report: true,
     });
 
     if (matches && matches.length > 0) {
