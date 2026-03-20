@@ -17,6 +17,12 @@ function todayISO(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+function yesterdayISO(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+}
+
 export function useConvergenceAlerts() {
   const [alerts, setAlerts] = useState<ConvergenceAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,13 +34,24 @@ export function useConvergenceAlerts() {
 
     async function fetchAlerts() {
       try {
-        const date = todayISO();
-        const res = await fetch(
+        // Try today first, fall back to yesterday (convergence alerts generated at 8:15am UTC)
+        let date = todayISO();
+        let res = await fetch(
           `${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?date=eq.${date}&select=*&order=created_at.desc`,
           { headers: { apikey: SUPABASE_KEY } }
         );
         if (!res.ok) return;
-        const data: any[] = await res.json();
+        let data: any[] = await res.json();
+
+        if (!data || data.length === 0) {
+          date = yesterdayISO();
+          res = await fetch(
+            `${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?date=eq.${date}&select=*&order=created_at.desc`,
+            { headers: { apikey: SUPABASE_KEY } }
+          );
+          if (!res.ok) return;
+          data = await res.json();
+        }
 
         setAlerts(
           data.map((row: any) => ({
