@@ -76,6 +76,7 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'convergence-score-label': new Set(['intel']),
   'convergence-forming-label': new Set(['intel']),
   'convergence-pulse': new Set(['intel']),
+  'migration-front-glow': new Set(['intel']),
   'migration-front-line': new Set(['intel']),
   'migration-front-label': new Set(['intel']),
   // Flyways
@@ -85,6 +86,7 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   // eBird
   'ebird-heatmap': new Set(['default', 'intel']),
   'ebird-dots': new Set(['scout']),
+  'ebird-cluster-glow': new Set(['scout']),
   'ebird-clusters': new Set(['scout']),
   'ebird-cluster-count': new Set(['scout']),
   // Pressure trends
@@ -1100,13 +1102,42 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           id: "ebird-clusters", type: "circle", source: "ebird-sightings",
           filter: ["has", "point_count"],
           paint: {
-            "circle-color": ["step", ["get", "point_count"], "#10b981", 10, "#f59e0b", 50, "#ef4444"],
-            "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 50, 40],
-            "circle-opacity": 0.75,
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "rgba(255,255,255,0.4)",
+            "circle-color": [
+              "step", ["get", "point_count"],
+              "#22d3ee",   // < 10 sightings: cyan-400
+              10, "#06b6d4", // 10-50: cyan-500
+              50, "#0891b2", // 50-100: cyan-600
+              100, "#155e75", // 100+: cyan-800
+            ],
+            "circle-radius": [
+              "step", ["get", "point_count"],
+              12,          // < 10
+              10, 18,      // 10-50
+              50, 24,      // 50-100
+              100, 32,     // 100+
+            ],
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(0, 255, 255, 0.3)",
+            "circle-opacity": 0.8,
           },
         });
+      }
+      if (!map.getLayer("ebird-cluster-glow")) {
+        map.addLayer({
+          id: "ebird-cluster-glow",
+          type: "circle",
+          source: "ebird-sightings",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": "rgba(34, 211, 238, 0.1)",
+            "circle-radius": [
+              "step", ["get", "point_count"],
+              20, 10, 30, 50, 40, 100, 55
+            ],
+            "circle-blur": 0.8,
+          },
+          layout: { visibility: 'none' },
+        }, "ebird-clusters");
       }
       // eBird cluster count labels
       if (!map.getLayer("ebird-cluster-count")) {
@@ -1651,6 +1682,23 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           ? { type: "FeatureCollection", features: [migrationFrontLine] }
           : { type: "FeatureCollection", features: [] };
         map.addSource("migration-front", { type: "geojson", data: frontData });
+      }
+      if (!map.getLayer("migration-front-glow")) {
+        map.addLayer({
+          id: "migration-front-glow",
+          type: "line",
+          source: "migration-front",
+          paint: {
+            "line-color": "rgba(0, 255, 255, 0.15)",
+            "line-width": 14,
+            "line-blur": 10,
+          },
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+            visibility: 'none',
+          },
+        });
       }
       if (!map.getLayer("migration-front-line")) {
         map.addLayer({

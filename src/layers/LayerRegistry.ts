@@ -14,10 +14,10 @@ export const LAYER_REGISTRY: LayerDef[] = [
 
   // === Migration ===
   { id: 'ebird-heatmap', label: 'eBird Heatmap', category: 'migration', mapboxLayers: ['ebird-heatmap'], defaultOn: true },
-  { id: 'ebird-clusters', label: 'eBird Clusters', category: 'migration', mapboxLayers: ['ebird-dots', 'ebird-clusters', 'ebird-cluster-count'] },
+  { id: 'ebird-clusters', label: 'eBird Clusters', category: 'migration', mapboxLayers: ['ebird-dots', 'ebird-clusters', 'ebird-cluster-count', 'ebird-cluster-glow'] },
   { id: 'flyway-corridors', label: 'Flyway Corridors', category: 'migration', mapboxLayers: ['flyway-corridor-fill', 'flyway-corridor-labels'] },
   { id: 'flyway-flow', label: 'Flyway Flow', category: 'migration', mapboxLayers: ['flyway-flow-lines'] },
-  { id: 'migration-front', label: 'Migration Front', category: 'migration', mapboxLayers: ['migration-front-line', 'migration-front-label'] },
+  { id: 'migration-front', label: 'Migration Front', category: 'migration', mapboxLayers: ['migration-front-line', 'migration-front-label', 'migration-front-glow'] },
   { id: 'du-pins', label: 'DU Pins', category: 'migration', mapboxLayers: ['du-pins-dots', 'du-pins-clusters', 'du-pins-cluster-count'] },
 
   // === Weather ===
