@@ -306,6 +306,27 @@ serve(async (req) => {
           errors++;
         } else {
           totalEmbedded = rows.length;
+
+          // Track outcomes for grading
+          for (const a of alerts) {
+            const outcomeDeadline = new Date();
+            outcomeDeadline.setUTCHours(outcomeDeadline.getUTCHours() + 168);
+
+            await supabase.from('hunt_alert_outcomes').insert({
+              alert_source: 'disaster-watch',
+              state_abbr: null,
+              alert_date: today,
+              predicted_outcome: {
+                claim: a.signature,
+                expected_signals: ['nws-alert', 'weather-event', 'anomaly-alert'],
+                confidence: a.confidence,
+                signature_type: a.signature,
+                conditions: a.matchedConditions,
+              },
+              outcome_window_hours: 168,
+              outcome_deadline: outcomeDeadline.toISOString(),
+            }).catch(err => console.error('[hunt-disaster-watch] Outcome insert failed:', err));
+          }
         }
       } catch (err) {
         console.error(`Embed error: ${err}`);

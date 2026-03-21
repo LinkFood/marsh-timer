@@ -210,6 +210,27 @@ serve(async (req) => {
         errors++;
       } else {
         totalEmbedded += rows.length;
+
+        // Track outcomes for grading
+        for (const entry of chunk) {
+          const outcomeDeadline = new Date();
+          outcomeDeadline.setUTCHours(outcomeDeadline.getUTCHours() + 72);
+
+          await supabase.from('hunt_alert_outcomes').insert({
+            alert_source: 'anomaly-alert',
+            state_abbr: entry.meta.state_abbr || null,
+            alert_date: today,
+            predicted_outcome: {
+              claim: entry.meta.title,
+              expected_signals: ['follow-up-activity', 'weather-event', 'migration-spike-significant'],
+              severity: entry.meta.metadata?.severity || 'elevated',
+              z_score: entry.meta.metadata?.z_score,
+              check_type: entry.meta.metadata?.check_name,
+            },
+            outcome_window_hours: 72,
+            outcome_deadline: outcomeDeadline.toISOString(),
+          }).catch(err => console.error('[hunt-anomaly-detector] Outcome insert failed:', err));
+        }
       }
     }
 
