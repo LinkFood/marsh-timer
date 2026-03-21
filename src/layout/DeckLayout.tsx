@@ -43,6 +43,58 @@ export default function DeckLayout({
   const isMobile = useIsMobile();
   const { gridPreset, panelsCollapsed } = useDeck();
 
+  // Side-by-side: map left (60%), panels right (40%) — desktop only
+  if (gridPreset === 'side-by-side' && !isMobile) {
+    return (
+      <div className="h-full w-full overflow-hidden bg-[#0a0f1a] flex flex-col">
+        {/* Row 1: BrainHeartbeat */}
+        <div className="shrink-0 overflow-hidden">
+          <ErrorBoundary fallback={<div className="h-7 bg-red-900/20 flex items-center px-3"><span className="text-[10px] text-red-400">Heartbeat error</span></div>}>
+            <BrainHeartbeat
+              convergenceAlerts={convergenceAlerts}
+              weatherEventsGeoJSON={weatherEventsGeoJSON}
+              nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+              huntAlerts={huntAlerts}
+              murmurationIndex={murmurationIndex}
+            />
+          </ErrorBoundary>
+        </div>
+
+        {/* Row 2: EventTicker */}
+        <div className="shrink-0 overflow-hidden">
+          <EventTicker
+            convergenceAlerts={convergenceAlerts}
+            weatherEventsGeoJSON={weatherEventsGeoJSON}
+            nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+          />
+        </div>
+
+        {/* Main: Map left (60%) + Panels right (40%) */}
+        <div className="flex-1 flex overflow-hidden">
+          <div className="w-[60%] relative overflow-hidden">
+            <ErrorBoundary fallback={<div className="h-full bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map region error</span></div>}>
+              <MapRegion>{children}</MapRegion>
+            </ErrorBoundary>
+          </div>
+          <div className="w-[40%] overflow-hidden border-l border-white/[0.06]">
+            <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
+              <PanelDock />
+            </ErrorBoundary>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <BottomBar />
+
+        {/* Overlays */}
+        <ChatPanel />
+        <ErrorBoundary fallback={<div />}>
+          <LayerPicker />
+        </ErrorBoundary>
+      </div>
+    );
+  }
+
   // Explicit grid: heartbeat 28px, ticker 32px, map, panels fill rest, bottom bar 40px
   const mapRow = (() => {
     if (gridPreset === 'equal-grid') return '0px';

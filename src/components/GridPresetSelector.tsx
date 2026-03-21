@@ -7,6 +7,7 @@ const PRESETS: { id: GridPreset; label: string; icon: typeof LayoutGrid; descrip
   { id: 'default', label: 'Default', icon: LayoutGrid, description: '12-column grid' },
   { id: 'equal-grid', label: 'Full Panels', icon: Grid2x2, description: 'Hide map, panels fill screen' },
   { id: 'map-focus', label: 'Map Focus', icon: Map, description: 'Large map, sidebar panels' },
+  { id: 'side-by-side', label: 'Command Center', icon: Columns2, description: 'Map left, panels right' },
   { id: '2-col', label: '2 Columns', icon: Columns2, description: 'Wide panels' },
   { id: '3-col', label: '3 Columns', icon: Columns3, description: 'Balanced layout' },
   { id: '4-col', label: '4 Columns', icon: Columns4, description: 'Dense view' },

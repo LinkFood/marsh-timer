@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 
 export type PanelCategory = 'intelligence' | 'migration' | 'weather' | 'analytics';
 
-export type GridPreset = 'default' | 'equal-grid' | 'map-focus' | '2-col' | '3-col' | '4-col';
+export type GridPreset = 'default' | 'equal-grid' | 'map-focus' | '2-col' | '3-col' | '4-col' | 'side-by-side';
 
 export interface PanelDef {
   id: string;
