@@ -1,4 +1,4 @@
-import { useMemo, useCallback, Suspense, Component, type ReactNode } from 'react';
+import { useMemo, useCallback, useRef, useEffect, Suspense, Component, type ReactNode } from 'react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -27,6 +27,7 @@ export default function PanelDock() {
   const { panels, removePanel, updateLayout } = useDeckLayout();
   const { activeCategory } = useDeck();
   const [containerRef, containerWidth] = useContainerWidth({ initialWidth: 1200 });
+  const skipSaveRef = useRef(true);
 
   const visiblePanels = useMemo(() => {
     if (activeCategory === 'all') return panels;
@@ -36,37 +37,45 @@ export default function PanelDock() {
     });
   }, [panels, activeCategory]);
 
-  const layouts = useMemo(() => ({
-    lg: visiblePanels.map(p => ({
+  // Build layout items, clamp y to prevent Infinity
+  const layoutItems = useMemo(() =>
+    visiblePanels.map(p => ({
       i: p.instanceId,
       x: p.x ?? 0,
-      y: p.y ?? 0,
+      y: Number.isFinite(p.y) ? p.y : 999,
       w: Math.min(p.w || 3, 12),
       h: p.h || 3,
       minW: 2,
       minH: 2,
     })),
-  }), [visiblePanels]);
+  [visiblePanels]);
+
+  // Skip the first onLayoutChange (initial render fires it)
+  useEffect(() => {
+    skipSaveRef.current = true;
+    const t = setTimeout(() => { skipSaveRef.current = false; }, 500);
+    return () => clearTimeout(t);
+  }, []);
 
   const handleLayoutChange = useCallback((layout: any[]) => {
+    if (skipSaveRef.current) return;
     updateLayout(layout.map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h })));
   }, [updateLayout]);
 
   return (
-    <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10">
+    <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10 p-1">
       <ResponsiveGridLayout
-        layouts={layouts}
+        layouts={{ lg: layoutItems }}
         width={containerWidth}
         breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480 }}
         cols={{ lg: 12, md: 8, sm: 6, xs: 1 }}
         rowHeight={60}
-        containerPadding={[8, 8]}
-        margin={[8, 8]}
+        containerPadding={[4, 4]}
+        margin={[6, 6]}
         draggableHandle=".panel-drag-handle"
         onLayoutChange={handleLayoutChange}
         isResizable={true}
         isDraggable={true}
-        useCSSTransforms={true}
         compactType="vertical"
       >
         {visiblePanels.map((p) => {
