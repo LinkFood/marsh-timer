@@ -96,9 +96,7 @@ export default function DeckLayout({
       <BottomBar />
 
       {/* Slide-out overlays (positioned absolutely, outside grid flow) */}
-      <ErrorBoundary fallback={<div />}>
-        <ChatPanel />
-      </ErrorBoundary>
+      <ChatPanel />
       <ErrorBoundary fallback={<div />}>
         <LayerPicker />
       </ErrorBoundary>

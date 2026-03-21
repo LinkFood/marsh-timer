@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Plus, Clock } from 'lucide-react';
 import HuntChat from '@/components/HuntChat';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { useDeck } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatHistory, type ChatSession } from '@/hooks/useChatHistory';
@@ -110,12 +111,19 @@ export default function ChatPanel() {
       ) : (
         <div className="flex-1 min-h-0">
           {chatOpen && (
-            <HuntChat
-              species={species}
-              stateAbbr={selectedState}
-              isMobile={isMobile}
-              onActionsReady={setChatActions}
-            />
+            <ErrorBoundary fallback={(reset) => (
+              <div className="flex flex-col items-center justify-center h-full gap-2 p-4">
+                <span className="text-[10px] text-red-400">Chat failed to load</span>
+                <button onClick={reset} className="text-[10px] text-cyan-400 hover:text-cyan-300">Try again</button>
+              </div>
+            )}>
+              <HuntChat
+                species={species}
+                stateAbbr={selectedState}
+                isMobile={isMobile}
+                onActionsReady={setChatActions}
+              />
+            </ErrorBoundary>
           )}
         </div>
       )}
