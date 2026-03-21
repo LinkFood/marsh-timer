@@ -5,17 +5,17 @@
  * Uses LOC Collections API (chroniclingamerica.loc.gov redirects to Cloudflare challenge)
  *
  * Usage:
- *   SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/backfill-historical-news.ts
+ *   SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/backfill-historical-news.ts
  *   START_PAGE=100 npx tsx scripts/backfill-historical-news.ts
  *   START_TERM=3 npx tsx scripts/backfill-historical-news.ts  (skip first N search terms)
- *
- * Uses hunt-generate-embedding edge function (no local Voyage key needed)
  */
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const VOYAGE_KEY = process.env.VOYAGE_API_KEY!;
 
 if (!SERVICE_KEY) { console.error("SUPABASE_SERVICE_ROLE_KEY required"); process.exit(1); }
+if (!VOYAGE_KEY) { console.error("VOYAGE_API_KEY required"); process.exit(1); }
 
 const START_PAGE = parseInt(process.env.START_PAGE || "1");
 const MAX_PAGES = parseInt(process.env.MAX_PAGES || "500");
@@ -57,7 +57,7 @@ const STATE_ABBRS: Record<string, string> = {
   "south carolina":"SC","south dakota":"SD","tennessee":"TN","texas":"TX","utah":"UT",
   "vermont":"VT","virginia":"VA","washington":"WA","west virginia":"WV",
   "wisconsin":"WI","wyoming":"WY",
-  "district of columbia":"DC",
+  // "district of columbia":"DC", — not in hunt_states, skip
 };
 
 function isRelevant(text: string): boolean {
@@ -80,18 +80,16 @@ function extractState(locations: string[]): string | null {
 
 async function embed(texts: string[]): Promise<number[][]> {
   const results: number[][] = [];
-  for (const text of texts) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
+  for (let i = 0; i < texts.length; i += 20) {
+    const chunk = texts.slice(i, i + 20);
+    const res = await fetch("https://api.voyageai.com/v1/embeddings", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ text }),
+      headers: { Authorization: `Bearer ${VOYAGE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "voyage-3-lite", input: chunk, input_type: "document" }),
     });
-    if (!res.ok) throw new Error(`Embedding ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`Voyage ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    results.push(data.embedding);
+    for (const item of data.data) results.push(item.embedding);
   }
   return results;
 }
@@ -218,8 +216,8 @@ async function main() {
 
         console.log(`  Page ${page}: ${entries.length} relevant / ${results.length} total, ${totalEmbedded} embedded (${totalSkipped} skipped)`);
 
-        // Be gentle — 3s between pages to avoid LOC rate limits
-        await new Promise(r => setTimeout(r, 3000));
+        // Be gentle — 8s between pages to avoid LOC IP ban (got banned at 3s on 2026-03-19)
+        await new Promise(r => setTimeout(r, 8000));
       } catch (err: any) {
         if (err.message?.includes("Cloudflare")) {
           console.error(`  FATAL: ${err.message}`);
