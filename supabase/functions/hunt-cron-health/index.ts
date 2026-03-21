@@ -18,6 +18,9 @@ serve(async (req) => {
       'hunt-convergence-engine', 'hunt-scout-report', 'hunt-convergence-alerts',
       'hunt-forecast-tracker', 'hunt-migration-report-card',
       'hunt-convergence-report-card', 'hunt-du-map', 'hunt-du-alerts',
+      'hunt-web-curator', 'hunt-anomaly-detector', 'hunt-correlation-engine',
+      'hunt-alert-grader', 'hunt-alert-calibration', 'hunt-solunar-precompute',
+      'hunt-absence-detector', 'hunt-disaster-watch',
     ];
 
     // Fetch last 5 runs per function in one query using IN filter + higher limit
@@ -65,6 +68,14 @@ serve(async (req) => {
       { name: 'hunt-convergence-report-card', schedule: 'weekly Sun noon', critical: false },
       { name: 'hunt-du-map', schedule: 'weekly', critical: false },
       { name: 'hunt-du-alerts', schedule: 'weekly', critical: false },
+      { name: 'hunt-web-curator', schedule: 'daily 7am', critical: false },
+      { name: 'hunt-anomaly-detector', schedule: 'daily 9:30am', critical: false },
+      { name: 'hunt-correlation-engine', schedule: 'daily 10:30am', critical: false },
+      { name: 'hunt-alert-grader', schedule: 'daily 11:30am', critical: false },
+      { name: 'hunt-alert-calibration', schedule: 'weekly Sun 1pm', critical: false },
+      { name: 'hunt-solunar-precompute', schedule: 'weekly Sun 6am', critical: false },
+      { name: 'hunt-absence-detector', schedule: 'weekly Sun 2pm', critical: false },
+      { name: 'hunt-disaster-watch', schedule: 'weekly Wed 6am', critical: false },
     ];
 
     const health = expected.map(cron => {

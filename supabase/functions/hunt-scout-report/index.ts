@@ -51,8 +51,9 @@ function formatBrief(params: {
   primeWindows: SolunarDay[];
   alerts: NWSAlert[];
   today: string;
+  brainCountStr: string;
 }): string {
-  const { favoriteScores, top3, primeWindows, alerts, today } = params;
+  const { favoriteScores, top3, primeWindows, alerts, today, brainCountStr } = params;
 
   let brief = `DUCK COUNTDOWN DAILY BRIEF -- ${today}\n\n`;
 
@@ -96,7 +97,7 @@ function formatBrief(params: {
     brief += `\n`;
   }
 
-  brief += `Data from duckcountdown.com -- environmental intelligence from 295K+ embedded data points. Sources: eBird, BirdCast, ASOS, NWS, USGS, NOAA, NASA POWER.`;
+  brief += `Data from duckcountdown.com -- environmental intelligence from ${brainCountStr} embedded data points. Sources: eBird, BirdCast, ASOS, NWS, USGS, NOAA, NASA POWER.`;
   return brief;
 }
 
@@ -116,6 +117,12 @@ serve(async (req) => {
     const nextWeek = new Date(now.getTime() + 7 * 86400000).toISOString().split('T')[0];
 
     console.log(`[hunt-scout-report] Generating briefs for ${today}`);
+
+    // Dynamic brain count
+    const { count: brainCount } = await supabase
+      .from('hunt_knowledge')
+      .select('*', { count: 'exact', head: true });
+    const brainCountStr = brainCount ? `${Math.round(brainCount / 1000)}K+` : '1M+';
 
     // Fetch users with briefs enabled
     const { data: users } = await supabase
@@ -186,6 +193,7 @@ serve(async (req) => {
         primeWindows: solunarWindows,
         alerts: nwsAlerts,
         today,
+        brainCountStr,
       });
 
       // Store the brief
