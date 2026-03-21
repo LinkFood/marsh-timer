@@ -1,27 +1,11 @@
-import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { GripHorizontal } from 'lucide-react';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { useDeck } from '@/contexts/DeckContext';
 
-const STORAGE_KEY = 'dc-map-height';
-const MIN_HEIGHT = 200;
-const MIN_PANEL_SPACE = 250;
+const MIN_HEIGHT = 150;
 
 function getMaxHeight() {
-  // Account for header (48px), heartbeat (~28px), bottom bar (40px), min panel space
-  return Math.round(window.innerHeight - 48 - 28 - 40 - MIN_PANEL_SPACE);
-}
-
-function loadHeight(mobile = false): number {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const h = Number(stored);
-      if (h >= MIN_HEIGHT && h <= getMaxHeight()) return h;
-    }
-  } catch { /* ignore */ }
-  // Default to 35% on mobile, 40% on desktop
-  const ratio = mobile ? 0.35 : 0.40;
-  return Math.round((window.innerHeight - 48 - 28 - 40) * ratio);
+  return Math.round(window.innerHeight - 48 - 28 - 40 - 250);
 }
 
 interface MapRegionProps {
@@ -29,8 +13,7 @@ interface MapRegionProps {
 }
 
 export default function MapRegion({ children }: MapRegionProps) {
-  const isMobile = useIsMobile();
-  const [height, setHeight] = useState(() => loadHeight(typeof window !== 'undefined' && window.innerWidth < 768));
+  const { mapHeight, setMapHeight } = useDeck();
   const dragging = useRef(false);
   const startY = useRef(0);
   const startHeight = useRef(0);
@@ -39,17 +22,17 @@ export default function MapRegion({ children }: MapRegionProps) {
     e.preventDefault();
     dragging.current = true;
     startY.current = e.clientY;
-    startHeight.current = height;
+    startHeight.current = mapHeight;
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
-  }, [height]);
+  }, [mapHeight]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragging.current) return;
       const delta = e.clientY - startY.current;
       const next = Math.min(getMaxHeight(), Math.max(MIN_HEIGHT, startHeight.current + delta));
-      setHeight(next);
+      setMapHeight(next);
     };
 
     const onMouseUp = () => {
@@ -57,8 +40,6 @@ export default function MapRegion({ children }: MapRegionProps) {
       dragging.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      // Save on release
-      try { localStorage.setItem(STORAGE_KEY, String(height)); } catch { /* ignore */ }
     };
 
     window.addEventListener('mousemove', onMouseMove);
@@ -67,27 +48,25 @@ export default function MapRegion({ children }: MapRegionProps) {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [height]);
+  }, [setMapHeight]);
 
-  // Touch support for mobile
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     dragging.current = true;
     startY.current = e.touches[0].clientY;
-    startHeight.current = height;
-  }, [height]);
+    startHeight.current = mapHeight;
+  }, [mapHeight]);
 
   useEffect(() => {
     const onTouchMove = (e: TouchEvent) => {
       if (!dragging.current) return;
       const delta = e.touches[0].clientY - startY.current;
       const next = Math.min(getMaxHeight(), Math.max(MIN_HEIGHT, startHeight.current + delta));
-      setHeight(next);
+      setMapHeight(next);
     };
 
     const onTouchEnd = () => {
       if (!dragging.current) return;
       dragging.current = false;
-      try { localStorage.setItem(STORAGE_KEY, String(height)); } catch { /* ignore */ }
     };
 
     window.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -96,7 +75,7 @@ export default function MapRegion({ children }: MapRegionProps) {
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onTouchEnd);
     };
-  }, [height]);
+  }, [setMapHeight]);
 
   return (
     <div className="relative h-full">

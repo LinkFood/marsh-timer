@@ -41,7 +41,7 @@ export default function DeckLayout({
   children,
 }: DeckLayoutProps) {
   const isMobile = useIsMobile();
-  const { gridPreset, panelsCollapsed } = useDeck();
+  const { gridPreset, panelsCollapsed, mapHeight } = useDeck();
 
   // Side-by-side: map left (60%), panels right (40%) — desktop only
   if (gridPreset === 'side-by-side' && !isMobile) {
@@ -100,7 +100,8 @@ export default function DeckLayout({
     if (gridPreset === 'equal-grid') return '0px';
     if (panelsCollapsed) return '1fr';
     if (gridPreset === 'map-focus') return isMobile ? '50%' : '65%';
-    return isMobile ? '45%' : '55%';
+    if (gridPreset === 'side-by-side') return '100%';
+    return `${mapHeight}px`;
   })();
   const panelRow = panelsCollapsed ? '0px' : '1fr';
   const gridRows = `28px 32px ${mapRow} ${panelRow} 40px`;

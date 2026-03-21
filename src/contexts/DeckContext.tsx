@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import type { Species } from '@/data/types';
 import type { PanelCategory, GridPreset } from '@/panels/PanelTypes';
 
@@ -27,6 +27,8 @@ interface DeckContextValue {
   setGridPreset: (preset: GridPreset) => void;
   panelsCollapsed: boolean;
   togglePanelsCollapsed: () => void;
+  mapHeight: number;
+  setMapHeight: (h: number) => void;
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -61,6 +63,23 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
 
   const [panelsCollapsed, setPanelsCollapsed] = useState(false);
 
+  const [mapHeight, setMapHeightState] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('dc-map-height');
+      if (stored) {
+        const h = Number(stored);
+        if (h >= 150 && h <= 1200) return h;
+      }
+    } catch {}
+    return typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.42) : 400;
+  });
+
+  const setMapHeight = useCallback((h: number) => {
+    const clamped = Math.max(150, Math.min(h, typeof window !== 'undefined' ? window.innerHeight - 200 : 800));
+    setMapHeightState(clamped);
+    try { localStorage.setItem('dc-map-height', String(clamped)); } catch {}
+  }, []);
+
   const toggleChat = useCallback(() => setChatOpen(o => !o), []);
   const toggleLayerPicker = useCallback(() => setLayerPickerOpen(o => !o), []);
   const togglePanelAdd = useCallback(() => setPanelAddOpen(o => !o), []);
@@ -76,7 +95,8 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     historyDate, setHistoryDate,
     gridPreset, setGridPreset,
     panelsCollapsed, togglePanelsCollapsed,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed]);
+    mapHeight, setMapHeight,
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed, mapHeight, setMapHeight]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }
