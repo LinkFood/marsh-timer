@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus } from 'lucide-react';
+import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus, ChevronsDown, ChevronsUp } from 'lucide-react';
 import { useDeck, type CategoryFilter } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useDeckLayout } from '@/hooks/useDeckLayout';
@@ -14,7 +14,7 @@ const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] =
 ];
 
 export default function BottomBar() {
-  const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, setActiveCategory } = useDeck();
+  const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, setActiveCategory, panelsCollapsed, togglePanelsCollapsed } = useDeck();
   const isMobile = useIsMobile();
   const { panels } = useDeckLayout();
 
@@ -52,6 +52,17 @@ export default function BottomBar() {
 
       {/* Action buttons */}
       <div className="flex items-center gap-1 shrink-0">
+        {/* Toggle panels */}
+        <button
+          onClick={togglePanelsCollapsed}
+          className={`flex items-center justify-center w-7 h-7 rounded transition-colors ${
+            panelsCollapsed ? 'text-cyan-400 bg-cyan-400/10' : 'text-white/40 hover:text-cyan-400 hover:bg-cyan-400/10'
+          }`}
+          title={panelsCollapsed ? 'Show panels' : 'Hide panels (full map)'}
+        >
+          {panelsCollapsed ? <ChevronsUp className="w-3.5 h-3.5" /> : <ChevronsDown className="w-3.5 h-3.5" />}
+        </button>
+
         {/* Add panel */}
         <button
           onClick={togglePanelAdd}

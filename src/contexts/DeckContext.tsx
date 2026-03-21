@@ -25,6 +25,8 @@ interface DeckContextValue {
   setHistoryDate: (date: string | null) => void;
   gridPreset: GridPreset;
   setGridPreset: (preset: GridPreset) => void;
+  panelsCollapsed: boolean;
+  togglePanelsCollapsed: () => void;
 }
 
 const DeckContext = createContext<DeckContextValue | null>(null);
@@ -57,9 +59,12 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     localStorage.setItem('dc-grid-preset', p);
   }, []);
 
+  const [panelsCollapsed, setPanelsCollapsed] = useState(false);
+
   const toggleChat = useCallback(() => setChatOpen(o => !o), []);
   const toggleLayerPicker = useCallback(() => setLayerPickerOpen(o => !o), []);
   const togglePanelAdd = useCallback(() => setPanelAddOpen(o => !o), []);
+  const togglePanelsCollapsed = useCallback(() => setPanelsCollapsed(o => !o), []);
 
   const value = useMemo<DeckContextValue>(() => ({
     species, setSpecies,
@@ -70,7 +75,8 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     activeCategory, setActiveCategory,
     historyDate, setHistoryDate,
     gridPreset, setGridPreset,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset]);
+    panelsCollapsed, togglePanelsCollapsed,
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

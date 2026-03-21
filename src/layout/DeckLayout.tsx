@@ -41,15 +41,17 @@ export default function DeckLayout({
   children,
 }: DeckLayoutProps) {
   const isMobile = useIsMobile();
-  const { gridPreset } = useDeck();
+  const { gridPreset, panelsCollapsed } = useDeck();
 
   // Explicit grid: heartbeat 28px, ticker 32px, map, panels fill rest, bottom bar 40px
   const mapRow = (() => {
     if (gridPreset === 'equal-grid') return '0px';
+    if (panelsCollapsed) return '1fr';
     if (gridPreset === 'map-focus') return isMobile ? '50%' : '65%';
-    return isMobile ? '40%' : '45%';
+    return isMobile ? '45%' : '55%';
   })();
-  const gridRows = `28px 32px ${mapRow} 1fr 40px`;
+  const panelRow = panelsCollapsed ? '0px' : '1fr';
+  const gridRows = `28px 32px ${mapRow} ${panelRow} 40px`;
 
   return (
     <div
