@@ -2,6 +2,8 @@ import type { ComponentType } from 'react';
 
 export type PanelCategory = 'intelligence' | 'migration' | 'weather' | 'analytics';
 
+export type GridPreset = 'default' | 'equal-grid' | 'map-focus' | '2-col' | '3-col' | '4-col';
+
 export interface PanelDef {
   id: string;
   label: string;
@@ -12,6 +14,9 @@ export interface PanelDef {
   minW?: number;
   minH?: number;
   component: ComponentType<PanelComponentProps>;
+  refreshInterval?: string;
+  dataSourceCount?: number;
+  dataSources?: string[];
 }
 
 export interface PanelInstance {
@@ -28,9 +33,21 @@ export interface DeckState {
   version: number;
 }
 
+export interface DeckConfig {
+  id: string;
+  name: string;
+  panels: PanelInstance[];
+  grid_preset: GridPreset;
+  active_layers: string[];
+  is_builtin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PanelComponentProps {
   width?: number;
   height?: number;
+  isFullscreen?: boolean;
 }
 
 export const DEFAULT_LAYOUT: PanelInstance[] = [

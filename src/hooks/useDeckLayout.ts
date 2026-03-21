@@ -85,5 +85,10 @@ export function useDeckLayout() {
     saveDeck(DEFAULT_LAYOUT);
   }, []);
 
-  return { panels, addPanel, removePanel, updateLayout, resetLayout };
+  const replacePanels = useCallback((newPanels: PanelInstance[]) => {
+    setPanels(newPanels);
+    saveDeck(newPanels);
+  }, []);
+
+  return { panels, addPanel, removePanel, updateLayout, resetLayout, replacePanels };
 }
