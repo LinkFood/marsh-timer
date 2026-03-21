@@ -386,8 +386,8 @@ async function main() {
           );
         }
 
-        // Rate limit: 1s between BirdCast requests
-        await new Promise((r) => setTimeout(r, 1000));
+        // Rate limit: 300ms between BirdCast requests
+        await new Promise((r) => setTimeout(r, 300));
       }
 
       // Flush remaining entries for this year

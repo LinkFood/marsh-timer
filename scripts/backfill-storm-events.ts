@@ -75,8 +75,7 @@ const STATE_NAME_TO_ABBR: Record<string, string> = {
   TENNESSEE: "TN", TEXAS: "TX", UTAH: "UT", VERMONT: "VT",
   VIRGINIA: "VA", WASHINGTON: "WA", "WEST VIRGINIA": "WV",
   WISCONSIN: "WI", WYOMING: "WY",
-  "PUERTO RICO": "PR", "VIRGIN ISLANDS": "VI", GUAM: "GU",
-  "AMERICAN SAMOA": "AS",
+  // Territories excluded — not in hunt_states table
 };
 
 // ---------- Helpers ----------
