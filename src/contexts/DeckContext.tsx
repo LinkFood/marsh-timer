@@ -27,6 +27,8 @@ interface DeckContextValue {
   setGridPreset: (preset: GridPreset) => void;
   panelsCollapsed: boolean;
   togglePanelsCollapsed: () => void;
+  allMinimized: boolean;
+  toggleAllMinimized: () => void;
   mapHeight: number;
   setMapHeight: (h: number) => void;
 }
@@ -62,6 +64,7 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
   }, []);
 
   const [panelsCollapsed, setPanelsCollapsed] = useState(false);
+  const [allMinimized, setAllMinimized] = useState(false);
 
   const [mapHeight, setMapHeightState] = useState<number>(() => {
     try {
@@ -84,6 +87,7 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
   const toggleLayerPicker = useCallback(() => setLayerPickerOpen(o => !o), []);
   const togglePanelAdd = useCallback(() => setPanelAddOpen(o => !o), []);
   const togglePanelsCollapsed = useCallback(() => setPanelsCollapsed(o => !o), []);
+  const toggleAllMinimized = useCallback(() => setAllMinimized(o => !o), []);
 
   const value = useMemo<DeckContextValue>(() => ({
     species, setSpecies,
@@ -95,8 +99,9 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     historyDate, setHistoryDate,
     gridPreset, setGridPreset,
     panelsCollapsed, togglePanelsCollapsed,
+    allMinimized, toggleAllMinimized,
     mapHeight, setMapHeight,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed, mapHeight, setMapHeight]);
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed, allMinimized, toggleAllMinimized, mapHeight, setMapHeight]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

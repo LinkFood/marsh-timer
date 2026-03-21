@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Target, Compass, Cloud, BarChart3, MessageSquare, Layers, Plus, ChevronsDown, ChevronsUp, Rows3, AlignJustify } from 'lucide-react';
 import { useDeck, type CategoryFilter } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useDeckLayout } from '@/hooks/useDeckLayout';
@@ -14,7 +14,7 @@ const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] =
 ];
 
 export default function BottomBar() {
-  const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, setActiveCategory, panelsCollapsed, togglePanelsCollapsed } = useDeck();
+  const { toggleChat, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, setActiveCategory, panelsCollapsed, togglePanelsCollapsed, allMinimized, toggleAllMinimized } = useDeck();
   const isMobile = useIsMobile();
   const { panels } = useDeckLayout();
 
@@ -61,6 +61,19 @@ export default function BottomBar() {
           title={panelsCollapsed ? 'Show panels' : 'Hide panels (full map)'}
         >
           {panelsCollapsed ? <ChevronsUp className="w-3.5 h-3.5" /> : <ChevronsDown className="w-3.5 h-3.5" />}
+        </button>
+
+        {/* Minimize all panels */}
+        <button
+          onClick={toggleAllMinimized}
+          className={`flex items-center justify-center w-7 h-7 rounded transition-colors ${
+            allMinimized ? 'text-cyan-400 bg-cyan-400/10' : 'text-white/40 hover:text-cyan-400 hover:bg-cyan-400/10'
+          }`}
+          title={allMinimized ? 'Expand all panels' : 'Minimize all panels'}
+        >
+          {allMinimized
+            ? <Rows3 className="w-3.5 h-3.5" />
+            : <AlignJustify className="w-3.5 h-3.5" />}
         </button>
 
         {/* Add panel */}
