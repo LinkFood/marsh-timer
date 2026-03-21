@@ -1897,7 +1897,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // State click — deferred to let eBird/DU handlers claim the click first
     // 50ms delay ensures all layer handlers in this click event have fired and set clickHandled
-    map.on("click", "states-fill", (e) => {
+    const handleStateClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       setTimeout(() => {
         if (clickHandled) return;
         if (!e.features || e.features.length === 0) return;
@@ -1907,7 +1907,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         popupRef.current = null;
         onSelectStateRef.current(abbr);
       }, 50);
-    });
+    };
+    map.on("click", "states-fill", handleStateClick);
+    map.on("click", "states-pulse", handleStateClick);
 
     // eBird cursor changes
     map.on("mouseenter", "ebird-clusters", () => { map.getCanvas().style.cursor = "pointer"; });
@@ -2027,8 +2029,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on("mouseenter", "weather-event-circles", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "weather-event-circles", () => { map.getCanvas().style.cursor = ""; });
 
-    // Cursor + popup
-    map.on("mouseenter", "states-fill", (e) => {
+    // Cursor + popup (listen on both states-fill and states-pulse)
+    const handleStateHover = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       if (e.features?.[0]?.properties?.abbr) {
         const abbr = e.features[0].properties.abbr;
         if (statesWithData.has(abbr)) {
@@ -2050,13 +2052,16 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           }
         }
       }
-    });
-
-    map.on("mouseleave", "states-fill", () => {
+    };
+    const handleStateLeave = () => {
       map.getCanvas().style.cursor = "";
       popupRef.current?.remove();
       popupRef.current = null;
-    });
+    };
+    map.on("mouseenter", "states-fill", handleStateHover);
+    map.on("mouseenter", "states-pulse", handleStateHover);
+    map.on("mouseleave", "states-fill", handleStateLeave);
+    map.on("mouseleave", "states-pulse", handleStateLeave);
 
     // Zoom out detection for drill up
     map.on("zoomend", () => {

@@ -50,7 +50,7 @@ export default function BrainSearchPanel({}: PanelComponentProps) {
       }
 
       const data = await res.json();
-      const entries = Array.isArray(data.results) ? data.results : [];
+      const entries = Array.isArray(data.vector) ? data.vector : Array.isArray(data.results) ? data.results : [];
       setResults(entries.map((r: any) => ({
         title: r.title || '',
         content: r.content || '',
@@ -113,7 +113,7 @@ export default function BrainSearchPanel({}: PanelComponentProps) {
         {!searched && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-white/20">
             <Database size={24} />
-            <span className="text-[10px]">212K+ entries in the brain</span>
+            <span className="text-[10px]">486K+ entries in the brain</span>
             <span className="text-[9px]">Search by topic, species, state, weather pattern...</span>
           </div>
         )}

@@ -96,8 +96,12 @@ export default function DeckLayout({
       <BottomBar />
 
       {/* Slide-out overlays (positioned absolutely, outside grid flow) */}
-      <ChatPanel />
-      <LayerPicker />
+      <ErrorBoundary fallback={<div />}>
+        <ChatPanel />
+      </ErrorBoundary>
+      <ErrorBoundary fallback={<div />}>
+        <LayerPicker />
+      </ErrorBoundary>
     </div>
   );
 }
