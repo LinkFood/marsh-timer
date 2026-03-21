@@ -2,7 +2,7 @@
 
 ## The Thesis
 
-Hunting is math. Duck Countdown is wildlife OSINT — an embedding system that fuses every public data source affecting animal movement into one vector space. The pipeline IS the product. The LLM is the mouth, not the brain. Data is the permanent asset, models are replaceable.
+The environment is a system. Duck Countdown is environmental OSINT — an embedding engine that fuses every public data source affecting ecological patterns into one vector space. Animals are biological sensors that detect environmental shifts before instruments do. Migration anomalies predict flooding. Pressure pattern matches precede severe weather. Water level convergence signals drought cascades. The brain doesn't predict — it recognizes. 591K+ entries, 21 data sources, 19 content types, 50 states, one vector space. Hunting is one lens into this intelligence. So is agriculture. So is disaster preparedness. The pipeline IS the product.
 
 **THE EMBEDDING LAW:** Every piece of data that enters the system MUST be embedded via Voyage AI -> hunt_knowledge. No exceptions. Every cron output, every weather pattern, every user log, every ingested document. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug. This is the core competitive moat.
 
@@ -19,14 +19,14 @@ Same RPC, same filters, same vector space. When a cold front hits Arkansas, the 
 
 ## Brain State
 
-~295K entries in hunt_knowledge. Heading to 1M+.
-- Weather events, migration spikes, NWS alerts, NASA POWER, solunar, convergence scores, birdcast, drought, photoperiod, USGS water, NOAA tides, climate normals, facts, regulations, species behavioral knowledge (152 entries across 39 waterfowl + deer/turkey/dove)
-- IVFFlat index working. Search returns species knowledge.
-- Brain honesty: chat splits into "FROM THE BRAIN" (cyan, cards) + "AI INTERPRETATION" (LLM text)
-- 14 crons active, all logging to hunt_cron_log via logCronRun. Cron health endpoint at hunt-cron-health.
-- Convergence engine running daily, real-time weather every 15 min, NWS alerts every 3hr
-- Backfill pipes in progress: eBird history, USDA crops, NOAA ACIS
-- Pattern extraction pending (needs eBird backfill to complete first — the big unlock)
+591K+ entries in hunt_knowledge. Heading to 1M+.
+- 21+ data sources: eBird, NOAA, NASA, NWS, USGS, BirdCast, Drought Monitor, iNaturalist, GBIF, USDA, climate indices, and more
+- IVFFlat index. 19+ content types. Self-improving via alert grading feedback loop.
+- Chat: Haiku routes → Sonnet streams (SSE) → Tavily web search fills gaps → Opus curator auto-embeds discoveries
+- Brain honesty: "FROM THE BRAIN" (cyan, cards) + "AI INTERPRETATION" (Sonnet text)
+- 19 crons active. Anomaly detector, correlation engine, disaster watch all running.
+- Self-improving: alert-grader grades predictions daily, alert-calibration scores accuracy weekly, convergence-alerts suppress low-accuracy states
+- Web discoveries staged in hunt_web_discoveries, Opus curator runs at 2am ET daily
 
 ## Cron Monitoring
 
