@@ -1,10 +1,21 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Compass } from 'lucide-react';
 import type { Species } from '@/data/types';
 import { useChat } from '@/hooks/useChat';
 import { useMapAction } from '@/contexts/MapActionContext';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60000) return '<1m ago';
+  if (ms < 3600000) return `${Math.floor(ms / 60000)}m ago`;
+  if (ms < 86400000) return `${Math.floor(ms / 3600000)}h ago`;
+  return `${Math.floor(ms / 86400000)}d ago`;
+}
 
 interface HuntChatProps {
   species: Species;
@@ -14,56 +25,6 @@ interface HuntChatProps {
     clearMessages: () => void;
     loadSession: (sessionId: string) => Promise<void>;
   }) => void;
-}
-
-function getSuggestedPrompts(species: Species, stateAbbr: string | null): string[] {
-  if (stateAbbr) {
-    return [
-      `What's happening environmentally in ${stateAbbr}?`,
-      `Weather patterns and anomalies in ${stateAbbr}`,
-      `Historical pattern matches for current ${stateAbbr} conditions`,
-      `Wildlife activity signals in ${stateAbbr}`,
-    ];
-  }
-
-  switch (species) {
-    case 'duck':
-    case 'goose':
-      return [
-        'Where are birds moving this week?',
-        'Which states show the strongest migration signals?',
-        'What does off-season data show?',
-        'Climate index trends right now?',
-      ];
-    case 'deer':
-      return [
-        'Deer movement indicators by state?',
-        'Best pressure conditions for deer activity?',
-        'Which states show peak rut signals?',
-        'Cold front impact on deer movement?',
-      ];
-    case 'turkey':
-      return [
-        'Turkey activity patterns by state?',
-        'Best weather patterns for turkey this week?',
-        'Breeding activity indicators?',
-        'Which states show the most turkey observations?',
-      ];
-    case 'dove':
-      return [
-        'Dove migration timing this year?',
-        'Best states for dove right now?',
-        'Sunflower field conditions?',
-        'Weather patterns affecting dove flight?',
-      ];
-    default:
-      return [
-        'What environmental patterns is the brain detecting?',
-        'Which states have the strongest convergence signals?',
-        'Any significant weather events forming?',
-        'Show me the most interesting data from the last 24 hours',
-      ];
-  }
 }
 
 export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady }: HuntChatProps) {
@@ -80,6 +41,35 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
   const { messages, loading, streaming, sendMessage, clearMessages, loadSession } = useChat(species, stateAbbr, handleMapAction);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([
+    "What's the brain detecting right now?",
+    "Which states have the strongest signals?",
+    "Any significant weather events forming?",
+    "Show me the most interesting data from the last 24 hours",
+  ]);
+  const [brainStats, setBrainStats] = useState<{
+    total_entries: number;
+    sources: number;
+    high_signal_count: number;
+    alerts_active: number;
+    last_update: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!SUPABASE_URL) return;
+    fetch(`${SUPABASE_URL}/functions/v1/hunt-suggested-prompts`, {
+      headers: { 'apikey': SUPABASE_KEY || '' },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.prompts) && data.prompts.length > 0) {
+          setSuggestedPrompts(data.prompts);
+        }
+        if (data.stats) setBrainStats(data.stats);
+      })
+      .catch(() => { /* keep defaults */ });
+  }, []);
+
   // Expose actions to parent
   useEffect(() => {
     onActionsReady?.({ clearMessages, loadSession });
@@ -91,8 +81,6 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  const prompts = getSuggestedPrompts(species, stateAbbr);
 
   const chatArea = (
     <div className="flex flex-col h-full">
@@ -106,11 +94,25 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
             <p className="text-sm font-heading text-white/70 mb-1">
               The Brain
             </p>
-            <p className="text-[11px] font-body text-white/40 text-center mb-4">
-              486K+ data points from 21 sources. Ask me anything.
+            <p className="text-[11px] font-body text-white/40 text-center mb-1">
+              {brainStats
+                ? `${brainStats.total_entries.toLocaleString()} entries from ${brainStats.sources} sources`
+                : '486K+ data points from 21 sources'}
             </p>
+            {brainStats && (
+              <p className="text-[9px] font-mono text-cyan-400/50 text-center mb-4">
+                {brainStats.alerts_active > 0 && `${brainStats.alerts_active} alerts active · `}
+                {brainStats.high_signal_count > 0 && `${brainStats.high_signal_count} signals (24h) · `}
+                {brainStats.last_update && `Updated ${timeAgo(brainStats.last_update)}`}
+              </p>
+            )}
+            {!brainStats && (
+              <p className="text-[11px] font-body text-white/40 text-center mb-4">
+                Ask me anything.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5 w-full max-w-[280px]">
-              {prompts.map((prompt) => (
+              {suggestedPrompts.map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => sendMessage(prompt)}
