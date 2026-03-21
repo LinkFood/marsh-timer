@@ -9,6 +9,7 @@ export const PANEL_REGISTRY: PanelDef[] = [
   { id: 'hunt-alerts', label: 'Pattern Alerts', category: 'intelligence', description: 'Proactive environmental pattern alerts', defaultW: 4, defaultH: 3, component: lazy(() => import('./HuntAlertsPanel')), refreshInterval: 'daily', dataSourceCount: 3, dataSources: ['Open-Meteo', 'Brain Search', 'Convergence Engine'] },
   { id: 'whats-happening', label: "What's Happening", category: 'intelligence', description: 'Real-time environmental signal feed', defaultW: 4, defaultH: 5, component: lazy(() => import('./WhatsHappeningPanel')), refreshInterval: 'real-time', dataSourceCount: 3, dataSources: ['Convergence', 'Weather Events', 'NWS'] },
   { id: 'state-profile', label: 'State Profile', category: 'intelligence', description: 'State-level environmental intelligence', defaultW: 6, defaultH: 6, component: lazy(() => import('./StateProfilePanel')), refreshInterval: 'daily', dataSourceCount: 5, dataSources: ['Convergence Engine', 'Open-Meteo', 'eBird', 'Solunar', 'State Regulations'] },
+  { id: 'map', label: 'Map View', category: 'intelligence', description: 'Geographic intelligence view', defaultW: 6, defaultH: 6, component: lazy(() => import('./MapPanel')), refreshInterval: 'real-time', dataSourceCount: 0, dataSources: [] },
 
   // Migration
   { id: 'migration-index', label: 'Migration Index', category: 'migration', description: 'Migration momentum tracker', defaultW: 4, defaultH: 4, component: lazy(() => import('./MigrationIndexPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['eBird'] },
