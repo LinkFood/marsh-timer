@@ -5,6 +5,8 @@ import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
 import UserMenu from './UserMenu';
 import GridPresetSelector from './GridPresetSelector';
+import DeckSelector from './DeckSelector';
+import AlertBell from './AlertBell';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
@@ -146,14 +148,15 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
   return (
     <header className="fixed top-0 left-0 right-0 z-30 h-12 glass-panel border-b border-white/[0.06]">
       <div className="h-full max-w-7xl mx-auto px-3 flex items-center justify-between gap-2">
-        {/* Left: Brand */}
-        <div className="flex items-center shrink-0">
+        {/* Left: Brand + Deck Selector */}
+        <div className="flex items-center shrink-0 gap-1.5">
           <span className="font-display text-sm font-bold tracking-widest text-white/90 hidden sm:inline">
             DUCK COUNTDOWN
           </span>
           <span className="font-display text-sm font-bold tracking-widest text-white/90 sm:hidden">
             DC
           </span>
+          <DeckSelector />
         </div>
 
         {/* Center: Species filter */}
@@ -202,6 +205,7 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
               <MessageSquare className="w-4 h-4" />
             </button>
           )}
+          <AlertBell />
           {onHelpOpen && (
             <button
               onClick={onHelpOpen}
