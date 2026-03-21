@@ -22,7 +22,7 @@ const INTENT_TOOLS = [
       properties: {
         intent: {
           type: 'string',
-          enum: ['weather', 'solunar', 'season_info', 'search', 'general'],
+          enum: ['weather', 'solunar', 'season_info', 'search', 'recent_activity', 'self_assessment', 'general'],
           description: 'The classified intent of the user message',
         },
         state_abbr: {
@@ -159,8 +159,13 @@ CRITICAL RULES:
 2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
 3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
 4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.`;
+5. If you must add general context beyond the data, clearly label it: "General context (not from brain data):"
+6. Never include external URLs, links, or website references in your response. All information comes from the brain's embedded data.
+7. You are an environmental intelligence system, not a chatbot. Lead with data. Be specific — state names, numbers, dates, signal types.
+8. When suggesting follow-up questions, frame them around environmental signals and patterns, not hunting.
+   Good: "What patterns are converging in Idaho right now?" / "How do current conditions compare to last year?" / "What usually follows when these conditions align?"
+   Bad: "What patterns should I watch for duck hunting in Idaho?" / "Best spots for deer in Texas?"
+`;
 
 function createStreamingResponse(request: Request, handlerResult: HandlerResult, supabase: ReturnType<typeof createSupabaseClient>, userId: string | null, sessionId: string | null, originalMessage: string, intent: string): Response {
   const { cards, systemPrompt, userContent, mapAction } = handlerResult;
@@ -327,12 +332,26 @@ Current context:
 - Selected state: ${ctxState || 'none'}
 ${conversationContext}
 
-Classify the user's message intent and extract relevant parameters.
-- weather: questions about weather, wind, temperature, conditions for hunting
-- solunar: moon phase, feeding times, best hunting times, solunar
-- season_info: when does season open/close, bag limits, dates, regulations
-- search: searching for hunting knowledge, tips, regulations, general hunting info
-- general: greetings, casual chat, meta questions about the app`;
+Classify the user's intent into one of: weather, solunar, season_info, search, recent_activity, self_assessment, general.
+
+Use "weather" for questions about weather, wind, temperature, conditions for hunting.
+Use "solunar" for moon phase, feeding times, best hunting times, solunar.
+Use "season_info" for when does season open/close, bag limits, dates, regulations.
+Use "search" for searching for hunting knowledge, tips, regulations, general hunting info.
+
+Use "recent_activity" when the user asks:
+- What's happening / what's going on / what's new
+- What is the brain detecting / seeing / tracking
+- Show me recent activity / recent data
+- Any broad "status update" or "overview" questions
+- "What should I know about right now?"
+
+Use "self_assessment" when the user asks:
+- How accurate are you / your predictions
+- Have you been right / wrong / show me your track record
+- How reliable are your alerts / what have you gotten wrong
+
+Use "general" for greetings, casual chat, meta questions about the app.`;
 
     const classifyResponse = await callClaude({
       model: CLAUDE_MODELS.haiku,
@@ -426,6 +445,12 @@ Classify the user's message intent and extract relevant parameters.
       case 'search':
         handlerResult = await handleSearch(query, resolvedSpecies, resolvedState);
         break;
+      case 'recent_activity':
+        handlerResult = await handleRecentActivity(supabase, resolvedSpecies, resolvedState, message);
+        break;
+      case 'self_assessment':
+        handlerResult = await handleSelfAssessment(supabase, resolvedSpecies, resolvedState, message);
+        break;
       default:
         handlerResult = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
         break;
@@ -483,6 +508,167 @@ Classify the user's message intent and extract relevant parameters.
     }), { status: 500, headers });
   }
 });
+
+async function handleRecentActivity(
+  supabase: any, species: string | null, stateAbbr: string | null, userMessage: string
+): Promise<HandlerResult> {
+  const cards: any[] = [];
+  const now = new Date();
+  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+
+  // 1. Count recent entries by content_type
+  const { data: recentCounts } = await supabase
+    .from('hunt_knowledge')
+    .select('content_type')
+    .gte('created_at', twentyFourHoursAgo.toISOString())
+    .limit(1000);
+
+  const typeCounts: Record<string, number> = {};
+  (recentCounts || []).forEach((r: any) => {
+    typeCounts[r.content_type] = (typeCounts[r.content_type] || 0) + 1;
+  });
+
+  // 2. High-signal entries (last 48h)
+  const highSignalTypes = ['nws-alert','weather-event','migration-spike-extreme','migration-spike-significant','anomaly-alert','disaster-watch','convergence-score','correlation-discovery'];
+  const { data: highSignals } = await supabase
+    .from('hunt_knowledge')
+    .select('id, title, content_type, state_abbr, metadata, created_at')
+    .in('content_type', highSignalTypes)
+    .gte('created_at', fortyEightHoursAgo.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  // 3. Most active states
+  const stateCounts: Record<string, number> = {};
+  (highSignals || []).forEach((s: any) => {
+    if (s.state_abbr) stateCounts[s.state_abbr] = (stateCounts[s.state_abbr] || 0) + 1;
+  });
+  const topStates = Object.entries(stateCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  // 4. Latest cron activity
+  const { data: recentCrons } = await supabase
+    .from('hunt_cron_log')
+    .select('function_name, status, summary, created_at')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  // 5. Activity card
+  cards.push({
+    type: 'activity',
+    data: {
+      total_24h: recentCounts?.length || 0,
+      by_type: typeCounts,
+      high_signal_count: highSignals?.length || 0,
+      top_states: topStates,
+      latest_cron: recentCrons?.[0]?.function_name || 'unknown',
+      latest_cron_ago: recentCrons?.[0]?.created_at || null,
+    }
+  });
+
+  // 6. Top signals as pattern cards
+  const topSignals = (highSignals || []).slice(0, 8);
+  if (topSignals.length > 0) {
+    cards.push({
+      type: 'pattern',
+      data: {
+        patterns: topSignals.map((s: any) => ({
+          title: s.title,
+          content: s.title,
+          content_type: s.content_type,
+          state_abbr: s.state_abbr,
+          similarity: 1.0,
+        })),
+      }
+    });
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: highSignals.length,
+        keywordCount: 0,
+        contentTypes: [...new Set(topSignals.map((s: any) => s.content_type))],
+        similarityRange: [1.0, 1.0],
+      }
+    });
+  }
+
+  // 7. Build context for Sonnet
+  const contextLines = [
+    `## Brain Activity Summary (last 24 hours)`,
+    `Total new entries: ${recentCounts?.length || 0}`,
+    `### Entries by type:`,
+    ...Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => `- ${type}: ${count}`),
+    `### High-signal events (last 48 hours):`,
+    ...topSignals.map((s: any) => `- [${s.content_type}] ${s.state_abbr || 'National'}: ${s.title} (${s.created_at})`),
+    `### Most active states:`,
+    ...topStates.map(([st, count]) => `- ${st}: ${count} high-signal events`),
+    `### Latest pipeline activity:`,
+    ...(recentCrons || []).slice(0, 5).map((c: any) => `- ${c.function_name}: ${c.status} at ${c.created_at}`),
+  ];
+
+  return {
+    cards,
+    systemPrompt: `You are the environmental intelligence brain. The user is asking what's happening right now. Synthesize the data into a clear situational briefing. Lead with the most interesting signals. Group by theme (weather, alerts, migration, anomalies). Be specific — use state names, event types, counts. End with 1-2 suggested follow-up questions.\n\n${BRAIN_RULES}`,
+    userContent: `${userMessage}\n\n---\n\n${contextLines.join('\n')}`,
+  };
+}
+
+async function handleSelfAssessment(
+  supabase: any, species: string | null, stateAbbr: string | null, userMessage: string
+): Promise<HandlerResult> {
+  const cards: any[] = [];
+
+  const { data: calibrations } = await supabase
+    .from('hunt_alert_calibration')
+    .select('*')
+    .eq('window_days', 90)
+    .order('accuracy_rate', { ascending: false });
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: recentGrades } = await supabase
+    .from('hunt_knowledge')
+    .select('title, content, content_type, state_abbr, metadata, created_at')
+    .in('content_type', ['alert-grade','alert-calibration','forecast-accuracy','migration-report-card','convergence-report-card'])
+    .gte('created_at', thirtyDaysAgo)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (recentGrades?.length > 0) {
+    cards.push({
+      type: 'pattern',
+      data: {
+        patterns: recentGrades.map((g: any) => ({
+          title: g.title, content: g.content?.slice(0, 200) || '', content_type: g.content_type,
+          state_abbr: g.state_abbr, similarity: 1.0,
+        })),
+      }
+    });
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: recentGrades.length, keywordCount: 0,
+        contentTypes: [...new Set(recentGrades.map((g: any) => g.content_type))],
+        similarityRange: [1.0, 1.0],
+      }
+    });
+  }
+
+  const contextLines = [
+    `## Brain Self-Assessment Data`,
+    `### Alert Calibration (90-day rolling):`,
+    ...(calibrations || []).map((c: any) =>
+      `- ${c.alert_source}${c.state_abbr ? ` (${c.state_abbr})` : ' (national)'}: ${(Number(c.accuracy_rate) * 100).toFixed(0)}% accuracy over ${c.total_alerts} alerts`
+    ),
+    `### Recent Grades (last 30 days):`,
+    ...(recentGrades || []).map((g: any) => `- [${g.content_type}] ${g.title}`),
+  ];
+
+  return {
+    cards,
+    systemPrompt: `You are reporting on your own prediction accuracy. Be honest and specific. Show numbers. If accuracy is low, say so. If no calibration data exists yet, say honestly: "The self-grading system just started — check back in a week."\n\n${BRAIN_RULES}`,
+    userContent: `${userMessage}\n\n---\n\n${contextLines.join('\n')}`,
+  };
+}
 
 async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string, species: string = 'duck'): Promise<HandlerResult> {
   if (!stateAbbr) {
@@ -626,7 +812,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   return {
     cards,
-    systemPrompt: `You are an environmental weather analyst. Give a brief, practical weather intelligence summary. Focus on wind shifts, temperature changes, pressure systems, and precipitation patterns that signal environmental changes. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.
+    systemPrompt: `You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. Be specific with numbers and states.
 ${BRAIN_RULES}`,
     userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}\n\nBrain historical patterns (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
@@ -995,7 +1181,7 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
 
   return {
     cards,
-    systemPrompt: `You are an environmental intelligence analyst. Answer based on the provided context. Be concise but informative.
+    systemPrompt: `You are an environmental intelligence analyst with access to a brain containing 591K+ embedded data entries across weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
 ${BRAIN_RULES}`,
     userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${webContext}\n\nQuestion: ${query}`,
     _webResults: webResults,
@@ -1035,8 +1221,7 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
 
   return {
     cards: [],
-    systemPrompt: `You are the Duck Countdown Brain — an environmental intelligence assistant. You help with US environmental patterns, weather intelligence, wildlife signals, solunar data, and hunting season information when asked.
-Current context: species=${species}, state=${stateAbbr || 'none'}.${species !== 'duck' ? `\nThe user is asking about ${species} hunting. You have species-specific knowledge including ${species === 'deer' ? 'rut timing, moon phase correlations, cold snap triggers, barometric pressure effects, and wind patterns' : species === 'turkey' ? 'gobble peak timing, weather sensitivity, roosting behavior, and calling strategies' : species === 'dove' ? 'migration timing, field rotation patterns, weather windows, and wind thresholds' : `${species}-specific patterns and behavior`} for their state and region.` : ''}
+    systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. When users ask about hunting, provide that lens. Your core function is environmental pattern recognition.${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
 ${conversationContext}${brainContext}${webContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
