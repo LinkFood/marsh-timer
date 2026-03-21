@@ -1,10 +1,28 @@
-import { useState } from 'react';
+import { useState, Component, type ReactNode } from 'react';
 import { X, Plus, Clock } from 'lucide-react';
 import HuntChat from '@/components/HuntChat';
-import ErrorBoundary from '@/components/ErrorBoundary';
 import { useDeck } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatHistory, type ChatSession } from '@/hooks/useChatHistory';
+
+/** Chat-specific error boundary that shows the actual error */
+class ChatErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(err: Error) { return { error: err.message }; }
+  componentDidCatch(err: Error) { console.error('[ChatPanel]', err); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-2 p-4">
+          <span className="text-[10px] text-red-400">Chat failed to load</span>
+          <span className="text-[9px] text-red-400/60 max-w-[280px] text-center break-words">{this.state.error}</span>
+          <button onClick={() => this.setState({ error: null })} className="text-[10px] text-cyan-400 hover:text-cyan-300 mt-1">Try again</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -111,19 +129,14 @@ export default function ChatPanel() {
       ) : (
         <div className="flex-1 min-h-0">
           {chatOpen && (
-            <ErrorBoundary fallback={(reset) => (
-              <div className="flex flex-col items-center justify-center h-full gap-2 p-4">
-                <span className="text-[10px] text-red-400">Chat failed to load</span>
-                <button onClick={reset} className="text-[10px] text-cyan-400 hover:text-cyan-300">Try again</button>
-              </div>
-            )}>
+            <ChatErrorBoundary>
               <HuntChat
                 species={species}
                 stateAbbr={selectedState}
                 isMobile={isMobile}
                 onActionsReady={setChatActions}
               />
-            </ErrorBoundary>
+            </ChatErrorBoundary>
           )}
         </div>
       )}
