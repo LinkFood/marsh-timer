@@ -417,6 +417,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const weatherCacheRef = useRef(weatherCache);
   const convergenceRef = useRef(convergenceScores);
   const mapModeRef = useRef(mapMode);
+  const hoveredStateIdRef = useRef<number | null>(null);
   const [yesterdayScores, setYesterdayScores] = useState<Map<string, number> | null>(null);
 
   selectedStateRef.current = selectedState;
@@ -1865,6 +1866,16 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       statesGeoRef.current = geoJSON;
       addSourcesAndLayers(map);
 
+      // Always-on atmosphere
+      map.setFog({
+        color: 'rgb(10, 15, 26)',
+        'high-color': 'rgb(20, 40, 80)',
+        'horizon-blend': 0.08,
+        'space-color': 'rgb(5, 8, 15)',
+        'star-intensity': 0.4,
+        range: [0.5, 12],
+      });
+
       // 3D terrain
       if (show3D) {
         addTerrain(map);
@@ -2841,19 +2852,29 @@ function addTerrain(map: mapboxgl.Map) {
   }
 
   map.setFog({
-    range: [0.8, 8],
-    color: '#0a1628',
-    'horizon-blend': 0.05,
-    'star-intensity': 0.15,
+    color: 'rgb(10, 15, 26)',
+    'high-color': 'rgb(25, 50, 100)',
+    'horizon-blend': 0.1,
+    'space-color': 'rgb(5, 8, 15)',
+    'star-intensity': 0.5,
+    range: [0.3, 8],
   });
 }
 
 function removeTerrain(map: mapboxgl.Map) {
   map.setTerrain(null);
-  map.setFog(null);
   if (map.getLayer("sky")) {
     map.removeLayer("sky");
   }
+  // Restore base atmosphere
+  map.setFog({
+    color: 'rgb(10, 15, 26)',
+    'high-color': 'rgb(20, 40, 80)',
+    'horizon-blend': 0.08,
+    'space-color': 'rgb(5, 8, 15)',
+    'star-intensity': 0.4,
+    range: [0.5, 12],
+  });
 }
 
 export default MapView;
