@@ -23,12 +23,12 @@ function barColor(score: number): string {
   return 'bg-gray-500';
 }
 
-export default function ConvergencePanel({}: PanelComponentProps) {
+export default function ConvergencePanel({ isFullscreen }: PanelComponentProps) {
   const { scores, topStates, loading } = useConvergenceScores();
   const { historyMap } = useConvergenceHistoryAll();
   const { flyTo } = useMapAction();
   const { selectedState, setSelectedState } = useDeck();
-  const [activeTab, setActiveTab] = useState('top10');
+  const [activeTab, setActiveTab] = useState(isFullscreen ? 'all' : 'top10');
 
   const allStates = useMemo(() => {
     return Array.from(scores.values()).sort((a, b) => b.score - a.score);
