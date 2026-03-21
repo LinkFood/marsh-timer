@@ -77,7 +77,7 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
     }
   }, [flyTo, setMapMode]);
 
-  const { messages, loading, sendMessage, clearMessages, loadSession } = useChat(species, stateAbbr, handleMapAction);
+  const { messages, loading, streaming, sendMessage, clearMessages, loadSession } = useChat(species, stateAbbr, handleMapAction);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Expose actions to parent
@@ -125,7 +125,7 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
         {messages.map(msg => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
-        {loading && (
+        {loading && !streaming && (
           <div className="flex items-start gap-2 mb-3">
             <div className="w-6 h-6 rounded-full bg-cyan-400/10 flex items-center justify-center mt-0.5">
               <Compass className="w-3.5 h-3.5 text-cyan-400/60 animate-spin" style={{ animationDuration: '3s' }} />
@@ -138,7 +138,7 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
       </div>
 
       {/* Input */}
-      <ChatInput onSend={sendMessage} loading={loading} stateAbbr={stateAbbr} />
+      <ChatInput onSend={sendMessage} loading={loading || streaming} stateAbbr={stateAbbr} />
     </div>
   );
 

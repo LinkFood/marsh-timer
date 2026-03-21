@@ -33,6 +33,7 @@ export function useChat(
     return [];
   });
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const sessionIdRef = useRef<string>('');
   if (!sessionIdRef.current) {
     const saved = sessionStorage.getItem('hunt-chat-session-id');
@@ -53,7 +54,7 @@ export function useChat(
   }, [messages]);
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || loading) return;
+    if (!content.trim() || loading || streaming) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -63,6 +64,18 @@ export function useChat(
     };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
+    setStreaming(false);
+
+    // Create empty assistant message immediately
+    const assistantId = crypto.randomUUID();
+    const assistantMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      cards: [],
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, assistantMsg]);
 
     try {
       const headers: Record<string, string> = {
@@ -81,6 +94,7 @@ export function useChat(
           species,
           stateAbbr,
           sessionId: sessionIdRef.current,
+          stream: true,
         }),
       });
 
@@ -89,42 +103,100 @@ export function useChat(
         throw new Error(errData.error || `HTTP ${res.status}`);
       }
 
-      const data = await res.json();
+      // Check if response is SSE stream or JSON fallback
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream') && res.body) {
+        // Streaming path
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamStarted = false;
 
-      const assistantMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: data.response || 'No response',
-        cards: data.cards || [],
-        mapAction: data.mapAction,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, assistantMsg]);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-      // Auto-trigger map actions
-      if (data.mapAction && onMapAction) {
-        onMapAction(data.mapAction);
-      }
+          // Split on double newline (SSE event boundary)
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || ''; // keep incomplete event
 
-      // Infer mode from card types
-      const cardTypes = (data.cards || []).map((c: any) => c.type);
-      if (cardTypes.includes('weather')) {
-        onMapAction?.({ type: 'setMode', target: 'weather' });
-      } else if (cardTypes.includes('pattern') || cardTypes.includes('pattern-links')) {
-        onMapAction?.({ type: 'setMode', target: 'intel' });
+          for (const event of events) {
+            for (const line of event.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === 'cards') {
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, cards: data.cards || [] } : m
+                  ));
+                } else if (data.type === 'text') {
+                  if (!streamStarted) {
+                    streamStarted = true;
+                    setStreaming(true);
+                    setLoading(false);
+                  }
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, content: m.content + data.chunk } : m
+                  ));
+                } else if (data.type === 'done') {
+                  if (data.mapAction && onMapAction) {
+                    onMapAction(data.mapAction);
+                  }
+                }
+              } catch { /* skip malformed events */ }
+            }
+          }
+        }
+
+        // Infer mode from cards
+        setMessages(prev => {
+          const msg = prev.find(m => m.id === assistantId);
+          if (msg?.cards) {
+            const cardTypes = msg.cards.map((c: any) => c.type);
+            if (cardTypes.includes('weather')) {
+              onMapAction?.({ type: 'setMode', target: 'weather' });
+            } else if (cardTypes.includes('pattern') || cardTypes.includes('pattern-links')) {
+              onMapAction?.({ type: 'setMode', target: 'intel' });
+            }
+          }
+          return prev;
+        });
+
+      } else {
+        // Non-streaming fallback (JSON response)
+        const data = await res.json();
+        setMessages(prev => prev.map(m =>
+          m.id === assistantId ? {
+            ...m,
+            content: data.response || 'No response',
+            cards: data.cards || [],
+            mapAction: data.mapAction,
+          } : m
+        ));
+        if (data.mapAction && onMapAction) {
+          onMapAction(data.mapAction);
+        }
+        // Infer mode from card types
+        const cardTypes = (data.cards || []).map((c: any) => c.type);
+        if (cardTypes.includes('weather')) {
+          onMapAction?.({ type: 'setMode', target: 'weather' });
+        } else if (cardTypes.includes('pattern') || cardTypes.includes('pattern-links')) {
+          onMapAction?.({ type: 'setMode', target: 'intel' });
+        }
       }
     } catch (err) {
-      const errorMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `Sorry, something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMsg]);
+      setMessages(prev => prev.map(m =>
+        m.id === assistantId ? {
+          ...m,
+          content: `Sorry, something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        } : m
+      ));
     } finally {
       setLoading(false);
+      setStreaming(false);
     }
-  }, [loading, session, species, stateAbbr, onMapAction]);
+  }, [loading, streaming, session, species, stateAbbr, onMapAction]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
@@ -161,5 +233,5 @@ export function useChat(
     }
   }, []);
 
-  return { messages, loading, sendMessage, clearMessages, loadSession };
+  return { messages, loading, streaming, sendMessage, clearMessages, loadSession };
 }
