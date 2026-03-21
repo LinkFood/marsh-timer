@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { AlertTriangle, Thermometer, Wind, Gauge, Droplets } from 'lucide-react';
 import { useHuntAlerts } from '@/hooks/useHuntAlerts';
 import { useMapAction } from '@/contexts/MapActionContext';
+import { useDeck } from '@/contexts/DeckContext';
 import PanelTabs from '@/components/PanelTabs';
 import type { PanelComponentProps } from './PanelTypes';
 
@@ -13,11 +14,17 @@ const SEVERITY_COLORS: Record<string, string> = {
 export default function HuntAlertsPanel({}: PanelComponentProps) {
   const { alerts, loading } = useHuntAlerts();
   const { flyTo } = useMapAction();
+  const { selectedState } = useDeck();
   const [activeTab, setActiveTab] = useState('all');
 
-  const highAlerts = useMemo(() => alerts.filter(a => a.severity === 'high'), [alerts]);
-  const mediumAlerts = useMemo(() => alerts.filter(a => a.severity !== 'high'), [alerts]);
-  const filtered = activeTab === 'high' ? highAlerts : activeTab === 'medium' ? mediumAlerts : alerts;
+  const stateFiltered = useMemo(() => {
+    if (!selectedState) return alerts;
+    return alerts.filter(a => a.stateAbbr === selectedState || (a as any).state_abbr === selectedState);
+  }, [alerts, selectedState]);
+
+  const highAlerts = useMemo(() => stateFiltered.filter(a => a.severity === 'high'), [stateFiltered]);
+  const mediumAlerts = useMemo(() => stateFiltered.filter(a => a.severity !== 'high'), [stateFiltered]);
+  const filtered = activeTab === 'high' ? highAlerts : activeTab === 'medium' ? mediumAlerts : stateFiltered;
 
   if (loading) {
     return (
@@ -27,10 +34,10 @@ export default function HuntAlertsPanel({}: PanelComponentProps) {
     );
   }
 
-  if (alerts.length === 0) {
+  if (stateFiltered.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        No active pattern alerts
+        {selectedState ? `No pattern alerts for ${selectedState}` : 'No active pattern alerts'}
       </div>
     );
   }
@@ -39,7 +46,7 @@ export default function HuntAlertsPanel({}: PanelComponentProps) {
     <div className="h-full flex flex-col">
       <PanelTabs
         tabs={[
-          { id: 'all', label: 'ALL', count: alerts.length },
+          { id: 'all', label: 'ALL', count: stateFiltered.length },
           { id: 'high', label: 'HIGH', count: highAlerts.length },
           { id: 'medium', label: 'MEDIUM', count: mediumAlerts.length },
         ]}

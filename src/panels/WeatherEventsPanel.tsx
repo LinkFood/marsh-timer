@@ -2,8 +2,18 @@ import { useState, useMemo } from 'react';
 import { CloudRain, Wind, Thermometer, Gauge, Zap, CloudLightning } from 'lucide-react';
 import { useWeatherEvents } from '@/hooks/useWeatherEvents';
 import { useMapAction } from '@/contexts/MapActionContext';
+import { useDeck } from '@/contexts/DeckContext';
 import PanelTabs from '@/components/PanelTabs';
 import type { PanelComponentProps } from './PanelTypes';
+
+const STATION_STATE: Record<string, string> = {
+  KLIT: 'AR', KMEM: 'TN', KJAN: 'MS', KSHV: 'LA', KMSY: 'LA',
+  KIAH: 'TX', KDFW: 'TX', KOKC: 'OK', KSTL: 'MO', KDSM: 'IA',
+  KMSP: 'MN', KORD: 'IL', KDTW: 'MI', KCLT: 'NC', KATL: 'GA',
+  KJAX: 'FL', KBNA: 'TN', KIND: 'IN', KCVG: 'OH', KMCI: 'MO',
+  KDEN: 'CO', KSLC: 'UT', KBOI: 'ID', KPDX: 'OR', KSEA: 'WA',
+  KPHX: 'AZ', KABQ: 'NM',
+};
 
 const EVENT_ICONS: Record<string, typeof Wind> = {
   'front-passage': CloudLightning,
@@ -66,9 +76,10 @@ function timeAgo(ts: string): string {
 export default function WeatherEventsPanel({}: PanelComponentProps) {
   const { eventsGeoJSON } = useWeatherEvents();
   const { flyToCoords } = useMapAction();
+  const { selectedState } = useDeck();
   const [activeTab, setActiveTab] = useState('all');
 
-  const events = useMemo(() => {
+  const allEvents = useMemo(() => {
     if (!eventsGeoJSON?.features) return [];
     return eventsGeoJSON.features.map(f => ({
       station: f.properties?.station as string,
@@ -81,6 +92,11 @@ export default function WeatherEventsPanel({}: PanelComponentProps) {
       lat: (f.geometry as any)?.coordinates?.[1] as number,
     }));
   }, [eventsGeoJSON]);
+
+  const events = useMemo(() => {
+    if (!selectedState) return allEvents;
+    return allEvents.filter(e => STATION_STATE[e.station] === selectedState);
+  }, [allEvents, selectedState]);
 
   const eventTypes = useMemo(() => {
     const counts = new Map<string, number>();
@@ -116,7 +132,7 @@ export default function WeatherEventsPanel({}: PanelComponentProps) {
   if (events.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        No active weather events
+        {selectedState ? `No weather events for ${selectedState}` : 'No active weather events'}
       </div>
     );
   }

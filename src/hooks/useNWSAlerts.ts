@@ -59,6 +59,7 @@ export function useNWSAlerts() {
             severity: f.properties?.severity || 'Minor',
             headline: f.properties?.headline || '',
             description: f.properties?.description || '',
+            areaDesc: f.properties?.areaDesc || '',
             onset: f.properties?.onset || '',
             expires: f.properties?.expires || '',
           },

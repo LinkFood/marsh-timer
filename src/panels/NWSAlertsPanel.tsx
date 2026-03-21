@@ -1,7 +1,22 @@
 import { useMemo } from 'react';
 import { AlertTriangle, ShieldAlert, CloudRain, Info } from 'lucide-react';
 import { useNWSAlerts } from '@/hooks/useNWSAlerts';
+import { useDeck } from '@/contexts/DeckContext';
 import type { PanelComponentProps } from './PanelTypes';
+
+// NWS areaDesc uses full state names — map abbreviations for filtering
+const STATE_NAMES: Record<string, string> = {
+  AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',
+  CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',
+  HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',
+  KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',
+  MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',
+  MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',
+  NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',
+  OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',
+  SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',
+  VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',
+};
 
 const SEVERITY_CONFIG: Record<string, { border: string; badge: string; icon: typeof AlertTriangle }> = {
   Extreme: { border: 'border-l-red-500', badge: 'bg-red-500/20 text-red-400', icon: ShieldAlert },
@@ -19,17 +34,36 @@ function formatTime(iso: string): string {
 
 export default function NWSAlertsPanel({}: PanelComponentProps) {
   const { alertsGeoJSON } = useNWSAlerts();
+  const { selectedState } = useDeck();
 
-  const alerts = useMemo(() => {
+  const allAlerts = useMemo(() => {
     if (!alertsGeoJSON?.features) return [];
     return alertsGeoJSON.features.map(f => ({
       event: f.properties?.event as string,
       severity: f.properties?.severity as string,
       headline: f.properties?.headline as string,
+      areaDesc: f.properties?.areaDesc as string,
       onset: f.properties?.onset as string,
       expires: f.properties?.expires as string,
     }));
   }, [alertsGeoJSON]);
+
+  const alerts = useMemo(() => {
+    if (!selectedState) return allAlerts;
+    const stateName = STATE_NAMES[selectedState];
+    return allAlerts.filter(a => {
+      // Check areaDesc for state abbreviation or full name (e.g., "Scott, KS; Lane, KS")
+      if (a.areaDesc) {
+        if (a.areaDesc.includes(`, ${selectedState}`) || a.areaDesc.includes(`; ${selectedState}`)) return true;
+        if (stateName && a.areaDesc.includes(stateName)) return true;
+      }
+      // Fallback: check headline
+      if (a.headline) {
+        if (a.headline.includes(selectedState) || (stateName && a.headline.includes(stateName))) return true;
+      }
+      return false;
+    });
+  }, [allAlerts, selectedState]);
 
   if (!alertsGeoJSON) {
     return (
@@ -42,7 +76,7 @@ export default function NWSAlertsPanel({}: PanelComponentProps) {
   if (alerts.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        No active NWS alerts
+        {selectedState ? `No NWS alerts for ${selectedState}` : 'No active NWS alerts'}
       </div>
     );
   }
