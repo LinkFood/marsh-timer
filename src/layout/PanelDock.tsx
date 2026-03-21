@@ -22,7 +22,7 @@ class PanelErrorBoundary extends Component<{ panelId: string; children: ReactNod
 }
 
 export default function PanelDock() {
-  const { panels, removePanel } = useDeckLayout();
+  const { panels, removePanel, updateLayout } = useDeckLayout();
   const { activeCategory } = useDeck();
 
   const visiblePanels = useMemo(() => {
@@ -57,6 +57,13 @@ export default function PanelDock() {
                 instanceId={p.instanceId}
                 label={def.label}
                 onClose={() => removePanel(p.instanceId)}
+                onResize={(dw, dh) => {
+                  const newW = Math.max(2, Math.min(12, (p.w || 3) + dw));
+                  const newH = Math.max(2, (p.h || 3) + dh);
+                  if (newW !== (p.w || 3) || newH !== (p.h || 3)) {
+                    updateLayout([{ i: p.instanceId, x: p.x, y: p.y, w: newW, h: newH }]);
+                  }
+                }}
               >
                 <PanelErrorBoundary panelId={p.panelId}>
                   <Suspense

@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, cloneElement, isValidElement, type ReactNode, type ReactElement } from 'react';
+import { useState, useEffect, useRef, useCallback, cloneElement, isValidElement, type ReactNode, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { GripVertical, Minus, X, Maximize2, Minimize2, Share2 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useDeck } from '@/contexts/DeckContext';
 import { generateShareUrl, copyToClipboard } from '@/lib/panelShare';
 
 interface PanelWrapperProps {
@@ -10,15 +11,63 @@ interface PanelWrapperProps {
   label: string;
   children: ReactNode;
   onClose: () => void;
+  onResize?: (dw: number, dh: number) => void;
 }
 
-export default function PanelWrapper({ panelId, instanceId, label, children, onClose }: PanelWrapperProps) {
+export default function PanelWrapper({ panelId, instanceId, label, children, onClose, onResize }: PanelWrapperProps) {
   const [minimized, setMinimized] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const isMobile = useIsMobile();
+  const { allMinimized } = useDeck();
   const shareRef = useRef<HTMLDivElement>(null);
+  const resizing = useRef(false);
+  const resizeStart = useRef({ x: 0, y: 0 });
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizing.current = true;
+    resizeStart.current = { x: e.clientX, y: e.clientY };
+    document.body.style.cursor = 'se-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    if (!onResize) return;
+
+    const colWidth = Math.floor((window.innerWidth - 32) / 12);
+    const rowHeight = 60;
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!resizing.current) return;
+      const dx = e.clientX - resizeStart.current.x;
+      const dy = e.clientY - resizeStart.current.y;
+
+      const dCols = Math.round(dx / colWidth);
+      const dRows = Math.round(dy / rowHeight);
+
+      if (dCols !== 0 || dRows !== 0) {
+        onResize(dCols, dRows);
+        resizeStart.current = { x: e.clientX, y: e.clientY };
+      }
+    };
+
+    const onMouseUp = () => {
+      if (!resizing.current) return;
+      resizing.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [onResize]);
 
   // ESC key handler for fullscreen
   useEffect(() => {
@@ -152,11 +201,19 @@ export default function PanelWrapper({ panelId, instanceId, label, children, onC
   }
 
   return (
-    <div className="h-full flex flex-col glass-panel border border-white/[0.06] rounded overflow-hidden">
+    <div className="relative h-full flex flex-col glass-panel border border-white/[0.06] rounded overflow-hidden">
       {titleBar}
-      {!minimized && (
+      {!minimized && !allMinimized && (
         <div className="flex-1 min-h-0 overflow-auto p-1.5">
           {enhancedChildren}
+        </div>
+      )}
+      {!isMobile && !fullscreen && !minimized && !allMinimized && onResize && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-10 group/resize"
+          onMouseDown={handleResizeStart}
+        >
+          <div className="absolute right-1 bottom-1 w-2.5 h-2.5 border-r-2 border-b-2 border-white/10 group-hover/resize:border-cyan-400/40 transition-colors" />
         </div>
       )}
     </div>
