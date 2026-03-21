@@ -176,6 +176,30 @@ serve(async (req) => {
     const throttleUntil = new Date(now.getTime() + THROTTLE_HOURS * 3600000).toISOString();
 
     for (const candidate of candidates) {
+      // Check historical accuracy for this state
+      const { data: calibration } = await supabase
+        .from('hunt_alert_calibration')
+        .select('accuracy_rate, precision_rate, total_alerts')
+        .eq('alert_source', 'convergence-alert')
+        .eq('state_abbr', candidate.state_abbr)
+        .eq('window_days', 90)
+        .maybeSingle();
+
+      let confidenceModifier = '';
+      if (calibration && calibration.total_alerts >= 5) {
+        const accuracy = Number(calibration.accuracy_rate);
+        if (accuracy < 0.4) {
+          console.log(`[hunt-convergence-alerts] Suppressing ${candidate.state_abbr} — 90d accuracy only ${(accuracy * 100).toFixed(0)}%`);
+          continue; // skip this alert
+        } else if (accuracy > 0.75) {
+          confidenceModifier = `\nHistorical accuracy for this pattern in ${candidate.state_abbr}: ${(accuracy * 100).toFixed(0)}% (${calibration.total_alerts} alerts).`;
+        } else {
+          confidenceModifier = `\nHistorical accuracy: ${(accuracy * 100).toFixed(0)}% over ${calibration.total_alerts} alerts.`;
+        }
+      }
+
+      const enrichedReasoning = (candidate.reasoning || '') + confidenceModifier;
+
       // Find users with this state in favorite_states
       const { data: interestedUsers } = await supabase
         .from('hunt_user_settings')
@@ -194,7 +218,7 @@ serve(async (req) => {
           score: candidate.score,
           previous_score: candidate.previous_score,
           change: candidate.change,
-          reasoning: candidate.reasoning,
+          reasoning: enrichedReasoning,
           delivered_to: userIds,
           throttle_until: throttleUntil,
         });
@@ -205,6 +229,26 @@ serve(async (req) => {
       }
 
       alertsTriggered++;
+
+      // Track outcome for grading
+      const outcomeDeadline = new Date();
+      outcomeDeadline.setUTCHours(outcomeDeadline.getUTCHours() + 72);
+
+      await supabase.from('hunt_alert_outcomes').insert({
+        alert_source: 'convergence-alert',
+        state_abbr: candidate.state_abbr,
+        alert_date: today,
+        predicted_outcome: {
+          claim: enrichedReasoning || `${candidate.alert_type} alert: score ${candidate.previous_score}→${candidate.score}`,
+          expected_signals: ['migration-spike-extreme', 'migration-spike-significant', 'weather-event'],
+          severity: candidate.alert_type,
+          score: candidate.score,
+          previous_score: candidate.previous_score,
+          change: candidate.change,
+        },
+        outcome_window_hours: 72,
+        outcome_deadline: outcomeDeadline.toISOString(),
+      }).catch(err => console.error('[hunt-convergence-alerts] Outcome insert failed:', err));
 
       // Deliver to users via Slack (best-effort)
       const stateName = STATE_NAMES[candidate.state_abbr] ?? candidate.state_abbr;
