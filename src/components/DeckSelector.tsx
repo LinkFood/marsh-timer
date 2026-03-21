@@ -4,6 +4,7 @@ import { useDeckManager } from '@/hooks/useDeckManager';
 import { useDeckLayout } from '@/hooks/useDeckLayout';
 import { useDeck } from '@/contexts/DeckContext';
 import { useLayerContext } from '@/contexts/LayerContext';
+import { PANEL_MAP } from '@/panels/PanelRegistry';
 import type { DeckConfig } from '@/panels/PanelTypes';
 
 export default function DeckSelector() {
@@ -112,7 +113,15 @@ export default function DeckSelector() {
                   className="w-full text-left px-3 py-2 hover:bg-white/[0.04] transition-colors flex items-center gap-2"
                 >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${activeConfigId === c.id ? 'bg-cyan-400' : 'bg-white/10'}`} />
-                  <span className="text-[11px] font-body text-white/80 flex-1 truncate">{c.name}</span>
+                  <span className="flex-1 truncate">
+                    <span className="text-[11px] font-body text-white/80 block truncate">{c.name}</span>
+                    <span className="text-[9px] text-white/30 block mt-0.5">
+                      {c.panels.length} panels · {c.panels.slice(0, 3).map(p => {
+                        const def = PANEL_MAP.get(p.panelId);
+                        return def?.label || p.panelId;
+                      }).join(', ')}{c.panels.length > 3 ? ` +${c.panels.length - 3}` : ''}
+                    </span>
+                  </span>
                   <button
                     onClick={(e) => handleDelete(e, c.id)}
                     className="p-0.5 text-white/20 hover:text-red-400 transition-colors"
@@ -139,7 +148,15 @@ export default function DeckSelector() {
                   className="w-full text-left px-3 py-2 hover:bg-white/[0.04] transition-colors flex items-center gap-2"
                 >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${activeConfigId === c.id ? 'bg-cyan-400' : 'bg-white/10'}`} />
-                  <span className="text-[11px] font-body text-white/80 truncate">{c.name}</span>
+                  <span className="truncate">
+                    <span className="text-[11px] font-body text-white/80 block truncate">{c.name}</span>
+                    <span className="text-[9px] text-white/30 block mt-0.5">
+                      {c.panels.length} panels · {c.panels.slice(0, 3).map(p => {
+                        const def = PANEL_MAP.get(p.panelId);
+                        return def?.label || p.panelId;
+                      }).join(', ')}{c.panels.length > 3 ? ` +${c.panels.length - 3}` : ''}
+                    </span>
+                  </span>
                 </button>
               ))}
               <div className="mx-3 my-1 border-t border-white/[0.06]" />

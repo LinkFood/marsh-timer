@@ -174,6 +174,11 @@ export function getPopupHTML(
           <span style="color:rgba(255,255,255,0.15)">\u00B7</span>
           <span style="${S.compItem(pat, 15)}">Pat: ${pat}/15</span>
         </div>
+        ${convergence?.reasoning ? `
+          <div style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:4px;line-height:1.3;max-height:36px;overflow:hidden;font-style:italic">
+            ${convergence.reasoning.slice(0, 120)}${convergence.reasoning.length > 120 ? '...' : ''}
+          </div>
+        ` : ''}
       </div>
     `;
   }
