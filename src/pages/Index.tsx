@@ -90,11 +90,19 @@ const Index = () => {
   const { data: murmurationIndex } = useMurmurationIndex();
   const helpModal = useHelpModal();
 
-  // Build convergence score map for MapView
+  // Build convergence score map for MapView — full objects, not just numbers
   const convergenceScoreMap = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }>();
     for (const [abbr, data] of convergenceScores) {
-      map.set(abbr, data.score);
+      map.set(abbr, {
+        score: data.score,
+        weather_component: data.weather_component || 0,
+        migration_component: data.migration_component || 0,
+        birdcast_component: data.birdcast_component || 0,
+        solunar_component: data.solunar_component || 0,
+        pattern_component: data.pattern_component || 0,
+        reasoning: data.reasoning,
+      });
     }
     return map;
   }, [convergenceScores]);
@@ -266,7 +274,7 @@ function MapWithLayers({
   const { isSatellite, is3D, isLayerOn, visibleMapboxLayers } = useLayerContext();
   const { historyDate } = useDeck();
   const [elevation, setElevation] = useState<number | null>(null);
-  const [historyScores, setHistoryScores] = useState<Map<string, number> | null>(null);
+  const [historyScores, setHistoryScores] = useState<Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }> | null>(null);
 
   // Fetch historical convergence scores when historyDate changes
   useEffect(() => {
@@ -280,14 +288,22 @@ function MapWithLayers({
 
     let cancelled = false;
     fetch(
-      `${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score&date=eq.${historyDate}`,
+      `${supabaseUrl}/rest/v1/hunt_convergence_scores?select=state_abbr,score,weather_component,migration_component,birdcast_component,solunar_component,pattern_component,reasoning&date=eq.${historyDate}`,
       { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     )
       .then(r => r.json())
-      .then((rows: Array<{ state_abbr: string; score: number }>) => {
+      .then((rows: Array<{ state_abbr: string; score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }>) => {
         if (cancelled || !Array.isArray(rows)) return;
-        const map = new Map<string, number>();
-        for (const row of rows) map.set(row.state_abbr, row.score);
+        const map = new Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }>();
+        for (const row of rows) map.set(row.state_abbr, {
+          score: row.score,
+          weather_component: row.weather_component || 0,
+          migration_component: row.migration_component || 0,
+          birdcast_component: row.birdcast_component || 0,
+          solunar_component: row.solunar_component || 0,
+          pattern_component: row.pattern_component || 0,
+          reasoning: row.reasoning,
+        });
         setHistoryScores(map);
       })
       .catch(() => {});

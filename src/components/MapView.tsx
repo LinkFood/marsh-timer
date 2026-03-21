@@ -149,7 +149,7 @@ export interface MapViewProps {
   overlays?: MapOverlays;
   onElevation?: (elevation: number | null) => void;
   mapMode?: MapMode;
-  convergenceScores?: Map<string, number>;
+  convergenceScores?: Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }>;
   perfectStormStates?: Set<string>;
   nwsAlertsGeoJSON?: FeatureCollection | null;
   migrationFrontLine?: Feature<LineString> | null;
@@ -196,9 +196,9 @@ function extractCoordinates(geometry: Geometry): Position[] {
   return coords;
 }
 
-function getConvergenceRank(abbr: string, scores?: Map<string, number>): number | null {
+function getConvergenceRank(abbr: string, scores?: Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }>): number | null {
   if (!scores || scores.size === 0) return null;
-  const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  const sorted = [...scores.entries()].sort((a, b) => b[1].score - a[1].score);
   const idx = sorted.findIndex(([a]) => a === abbr);
   return idx >= 0 ? idx + 1 : null;
 }
@@ -272,6 +272,7 @@ function buildFillExpression(
 
 // Species-tinted satellite closed colors (brighter than streets, with opacity for satellite visibility)
 const SATELLITE_CLOSED_COLORS: Record<Species, string> = {
+  all: 'rgba(60, 100, 60, 0.85)',     // same as duck
   duck: 'rgba(60, 100, 60, 0.85)',    // dark green tint
   goose: 'rgba(45, 70, 110, 0.85)',   // dark blue tint
   deer: 'rgba(90, 65, 30, 0.85)',     // dark brown tint
@@ -397,6 +398,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   },
   ref,
 ) {
+  // When species is 'all', use 'duck' for visual rendering (colors, fills, pulses)
+  const visualSpecies = species === 'all' ? 'duck' as Species : species;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const centroidsRef = useRef<Map<string, [number, number]>>(new Map());
@@ -514,7 +518,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           type: "fill",
           source: "states",
           paint: {
-            "fill-color": buildFillExpression(species, selectedState),
+            "fill-color": buildFillExpression(visualSpecies, selectedState),
             "fill-opacity": 0.5,
           },
         });
@@ -575,9 +579,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           id: "states-pulse",
           type: "fill",
           source: "states",
-          filter: buildPulseFilter(species),
+          filter: buildPulseFilter(visualSpecies),
           paint: {
-            "fill-color": buildFillExpression(species, selectedState),
+            "fill-color": buildFillExpression(visualSpecies, selectedState),
             "fill-opacity": 0.5,
           },
         });
@@ -601,7 +605,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           source: "states",
           filter: ["==", ["get", "abbr"], selectedState || ""],
           paint: {
-            "line-color": speciesConfig[species].colors.selected,
+            "line-color": speciesConfig[visualSpecies].colors.selected,
             "line-width": 2,
             "line-opacity": 0.7,
           },
@@ -624,7 +628,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           },
           layout: {
             visibility:
-              showFlyways && isFlywaySpecies(species) ? "visible" : "none",
+              showFlyways && isFlywaySpecies(visualSpecies) ? "visible" : "none",
           },
         });
       }
@@ -1341,13 +1345,13 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         const convFeatures: Feature[] = [];
         const scores = convergenceScores;
         if (scores) {
-          for (const [abbr, score] of scores) {
+          for (const [abbr, data] of scores) {
             const centroid = centroidsRef.current.get(abbr);
             if (centroid) {
               convFeatures.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: centroid },
-                properties: { abbr, score, scoreColor: convergenceScoreColor(score) },
+                properties: { abbr, score: data.score, scoreColor: convergenceScoreColor(data.score) },
               });
             }
           }
@@ -1445,14 +1449,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (!map.getSource("convergence-hotspots")) {
         const hotspotFeatures: Feature[] = [];
         if (convergenceScores) {
-          for (const [abbr, score] of convergenceScores) {
-            if (score < 70) continue;
+          for (const [abbr, data] of convergenceScores) {
+            if (data.score < 70) continue;
             const centroid = centroidsRef.current.get(abbr);
             if (centroid) {
               hotspotFeatures.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: centroid },
-                properties: { abbr, score, tier: score >= 81 ? 'fire' : 'hot' },
+                properties: { abbr, score: data.score, tier: data.score >= 81 ? 'fire' : 'hot' },
               });
             }
           }
@@ -2047,7 +2051,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               offset: 10,
             })
               .setLngLat(centroid)
-              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr), getConvergenceRank(abbr, convergenceRef.current)))
+              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr) ?? null, getConvergenceRank(abbr, convergenceRef.current)))
               .addTo(map);
           }
         }
@@ -2182,14 +2186,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
 
-    const expression = buildFillExpression(species, selectedState);
+    const expression = buildFillExpression(visualSpecies, selectedState);
     if (map.getLayer("states-fill")) {
       map.setPaintProperty("states-fill", "fill-color", expression);
     }
     if (map.getLayer("states-pulse")) {
       map.setPaintProperty("states-pulse", "fill-color", expression);
       map.setPaintProperty("states-pulse", "fill-opacity", 0.5);
-      map.setFilter("states-pulse", buildPulseFilter(species));
+      map.setFilter("states-pulse", buildPulseFilter(visualSpecies));
     }
     if (map.getLayer("states-selected-outline")) {
       map.setFilter("states-selected-outline", [
@@ -2200,7 +2204,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       map.setPaintProperty(
         "states-selected-outline",
         "line-color",
-        speciesConfig[species].colors.selected,
+        speciesConfig[visualSpecies].colors.selected,
       );
     }
   }, [species, selectedState]);
@@ -2230,7 +2234,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
 
-    const visible = showFlyways && isFlywaySpecies(species);
+    const visible = showFlyways && isFlywaySpecies(visualSpecies);
     if (map.getLayer("flyway-fill")) {
       map.setLayoutProperty(
         "flyway-fill",
@@ -2290,10 +2294,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     } else if (convergenceScores && convergenceScores.size > 0) {
       // At national zoom, use convergence scores as heatmap proxy
       const features: Feature[] = [];
-      for (const [abbr, score] of convergenceScores) {
+      for (const [abbr, data] of convergenceScores) {
         const centroid = centroidsRef.current.get(abbr);
-        if (centroid && score > 20) {
-          const pointCount = Math.ceil(score / 20); // 1-5 points per state
+        if (centroid && data.score > 20) {
+          const pointCount = Math.ceil(data.score / 20); // 1-5 points per state
           for (let i = 0; i < pointCount; i++) {
             // Deterministic jitter so points don't jump on re-render
             const jitterX = Math.sin(abbr.charCodeAt(0) * 7 + abbr.charCodeAt(1) * 13 + i * 17) * 0.5;
@@ -2304,7 +2308,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
                 type: 'Point',
                 coordinates: [centroid[0] + jitterX, centroid[1] + jitterY],
               },
-              properties: { count: score, recency: 'today' },
+              properties: { count: data.score, recency: 'today' },
             });
           }
         }
@@ -2396,15 +2400,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (!source) return;
 
     const features: Feature[] = [];
-    for (const [abbr, score] of convergenceScores) {
+    for (const [abbr, data] of convergenceScores) {
       const centroid = centroidsRef.current.get(abbr);
       if (centroid) {
         const prevScore = yesterdayScores?.get(abbr);
-        const change = prevScore != null ? score - prevScore : 0;
+        const change = prevScore != null ? data.score - prevScore : 0;
         features.push({
           type: "Feature",
           geometry: { type: "Point", coordinates: centroid },
-          properties: { abbr, score, scoreColor: convergenceScoreColor(score), change },
+          properties: { abbr, score: data.score, scoreColor: convergenceScoreColor(data.score), change },
         });
       }
     }
@@ -2414,14 +2418,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const hotspotSource = map.getSource("convergence-hotspots") as mapboxgl.GeoJSONSource | undefined;
     if (hotspotSource) {
       const hotspotFeatures: Feature[] = [];
-      for (const [abbr, score] of convergenceScores) {
-        if (score < 70) continue;
+      for (const [abbr, data] of convergenceScores) {
+        if (data.score < 70) continue;
         const centroid = centroidsRef.current.get(abbr);
         if (centroid) {
           hotspotFeatures.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: centroid },
-            properties: { abbr, score, tier: score >= 81 ? 'fire' : 'hot' },
+            properties: { abbr, score: data.score, tier: data.score >= 81 ? 'fire' : 'hot' },
           });
         }
       }
@@ -2491,8 +2495,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       : mapMode === 'intel';
     if (showConvergenceFill && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
-      for (const [abbr, score] of convergenceScores) {
-        entries.push(abbr, convergenceToColor(score));
+      for (const [abbr, data] of convergenceScores) {
+        entries.push(abbr, convergenceToColor(data.score));
       }
       if (entries.length > 0) {
         map.setPaintProperty("states-fill", "fill-color", [
@@ -2542,7 +2546,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.setPaintProperty("states-fill", "fill-opacity", 0.5);
       }
     } else if (map.getLayer("states-fill")) {
-      map.setPaintProperty("states-fill", "fill-color", buildSatelliteFillExpression(species, selectedState));
+      map.setPaintProperty("states-fill", "fill-color", buildSatelliteFillExpression(visualSpecies, selectedState));
       map.setPaintProperty("states-fill", "fill-opacity", 0.85);
     }
 
