@@ -79,7 +79,7 @@ function formatBrief(params: {
   if (primeWindows.length > 0) {
     brief += `UPCOMING ACTIVITY WINDOWS:\n`;
     for (const p of primeWindows) {
-      brief += `* ${p.date}: ${p.moon_phase} (${p.prime_reason ?? 'prime window'})\n`;
+      brief += `* ${p.date}: ${p.moon_phase} (${p.prime_reason ?? 'convergence window'})\n`;
     }
     brief += `\n`;
   }
@@ -96,7 +96,7 @@ function formatBrief(params: {
     brief += `\n`;
   }
 
-  brief += `Data from duckcountdown.com -- insights based on 486K+ data points, not predictions.`;
+  brief += `Data from duckcountdown.com -- environmental intelligence from 295K+ embedded data points. Sources: eBird, BirdCast, ASOS, NWS, USGS, NOAA, NASA POWER.`;
   return brief;
 }
 
