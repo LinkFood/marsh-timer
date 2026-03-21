@@ -493,7 +493,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
       // States source
       if (!map.getSource("states")) {
-        map.addSource("states", { type: "geojson", data: geoJSON });
+        map.addSource("states", { type: "geojson", data: geoJSON, generateId: true });
       }
 
       // Mapbox Streets v8 (shared source for wetlands, agriculture, waterways, parks, trails)
@@ -2062,6 +2062,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     // Cursor + popup (listen on both states-fill and states-pulse)
     const handleStateHover = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+      // Feature-state hover management
+      if (hoveredStateIdRef.current !== null) {
+        map.setFeatureState({ source: 'states', id: hoveredStateIdRef.current }, { hover: false });
+      }
+      if (e.features?.[0]?.id !== undefined) {
+        hoveredStateIdRef.current = e.features[0].id as number;
+        map.setFeatureState({ source: 'states', id: hoveredStateIdRef.current }, { hover: true });
+      }
+
       if (e.features?.[0]?.properties?.abbr) {
         const abbr = e.features[0].properties.abbr;
         if (statesWithData.has(abbr)) {
@@ -2085,6 +2094,10 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       }
     };
     const handleStateLeave = () => {
+      if (hoveredStateIdRef.current !== null) {
+        map.setFeatureState({ source: 'states', id: hoveredStateIdRef.current }, { hover: false });
+        hoveredStateIdRef.current = null;
+      }
       map.getCanvas().style.cursor = "";
       popupRef.current?.remove();
       popupRef.current = null;
