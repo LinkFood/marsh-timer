@@ -1,22 +1,32 @@
 import { useState, useEffect } from "react";
-import { X, Map, Feather, MessageSquare } from "lucide-react";
+import { X, Map, TrendingUp, Database, Feather, MessageSquare } from "lucide-react";
 
 const STORAGE_KEY = "dc_help_dismissed";
 
 const STEPS = [
   {
     icon: Map,
-    title: "Map Modes",
+    title: "Map & Layers",
     body: "Switch between Default, Scout, Weather, Terrain, and Intel modes using the controls on the right side of the map. Each mode highlights different layers — radar, convergence heatmaps, wind flow, and more.",
   },
   {
+    icon: TrendingUp,
+    title: "The Convergence Engine",
+    body: "Duck Countdown scores environmental convergence across all 50 states using 8 data components: weather patterns, wildlife migration, BirdCast radar, lunar cycles, historical pattern matching, water levels, photoperiod, and tidal data. A score of 80 means multiple environmental signals are strongly aligning in that state. Click any state row to see the full breakdown.",
+  },
+  {
+    icon: Database,
+    title: "The Brain",
+    body: "The Brain contains 486K+ embedded data points from 21 sources including eBird, NOAA, NASA, NWS, USGS, BirdCast, Drought Monitor, and more. Every piece of data is searchable via Brain Search. Ask the Brain anything — it finds historical matches for current conditions and surfaces patterns nobody hypothesized.",
+  },
+  {
     icon: Feather,
-    title: "Species Intelligence",
-    body: "Tap the species pills in the header to switch between Duck, Goose, Deer, Turkey, and Dove. Each species shows its own seasons, state rankings, and environmental intelligence.",
+    title: "Signal Domains",
+    body: "Use the signal domain selector in the header to filter by biological indicator type: All Signals, Waterfowl, Big Game, Upland, or specific species. Each domain weights the convergence engine differently based on which environmental signals matter most for that domain.",
   },
   {
     icon: MessageSquare,
-    title: "Chat Brain",
+    title: "Brain Chat",
     body: "Ask the AI chat about environmental conditions in any state — weather patterns, migration activity, solunar data, and season dates. It searches thousands of embedded knowledge entries to give you data-backed answers.",
   },
 ] as const;
