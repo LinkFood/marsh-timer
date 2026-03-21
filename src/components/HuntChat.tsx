@@ -10,9 +10,48 @@ interface HuntChatProps {
   species: Species;
   stateAbbr: string | null;
   isMobile: boolean;
+  onActionsReady?: (actions: {
+    clearMessages: () => void;
+    loadSession: (sessionId: string) => Promise<void>;
+  }) => void;
 }
 
-export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps) {
+function getSuggestedPrompts(species: Species, stateAbbr: string | null): string[] {
+  if (stateAbbr) {
+    return [
+      `Weather conditions in ${stateAbbr}`,
+      `Best ${species} spots in ${stateAbbr} right now`,
+      `${stateAbbr} season dates and bag limits`,
+      `What patterns is the brain seeing in ${stateAbbr}?`,
+    ];
+  }
+
+  const month = new Date().getMonth(); // 0-11
+  const isWinter = month >= 10 || month <= 2; // Nov-Feb
+  const isSpring = month >= 3 && month <= 5;
+
+  switch (species) {
+    case 'duck':
+    case 'goose':
+      return isWinter
+        ? ['Where are birds moving this week?', 'Best cold front states right now?', 'Which states have the highest convergence?', 'Any major weather events forming?']
+        : ['What does off-season data show?', 'Historical migration patterns for this month?', 'Which states are building water levels?', 'Climate index trends right now?'];
+    case 'deer':
+      return isSpring
+        ? ['Antler growth conditions by state?', 'Which states have spring turkey + deer overlap?', 'Food plot conditions this month?', 'Fawn survival predictions?']
+        : ['Rut activity indicators?', 'Best pressure conditions for deer movement?', 'Which states have rifle season opening?', 'Cold front impact on deer activity?'];
+    case 'turkey':
+      return isSpring
+        ? ['Spring gobbler activity by state?', 'Best weather for turkey hunting this week?', 'Which states have the most eBird turkey sightings?', 'Breeding activity indicators?']
+        : ['Fall turkey patterns?', 'Flock movement trends?', 'Mast crop conditions affecting turkeys?', 'Which states have fall turkey season?'];
+    case 'dove':
+      return ['Dove migration timing this year?', 'Best states for dove right now?', 'Sunflower field conditions?', 'Weather patterns affecting dove flight?'];
+    default:
+      return ['What patterns is the brain seeing?', 'Which states look best right now?', 'Any weather events to watch?', 'What does convergence data show?'];
+  }
+}
+
+export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady }: HuntChatProps) {
   const { flyTo, setMapMode } = useMapAction();
 
   const handleMapAction = useCallback((action: { type: string; target: string }) => {
@@ -23,8 +62,13 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
     }
   }, [flyTo, setMapMode]);
 
-  const { messages, loading, sendMessage } = useChat(species, stateAbbr, handleMapAction);
+  const { messages, loading, sendMessage, clearMessages, loadSession } = useChat(species, stateAbbr, handleMapAction);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Expose actions to parent
+  useEffect(() => {
+    onActionsReady?.({ clearMessages, loadSession });
+  }, [onActionsReady, clearMessages, loadSession]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -32,6 +76,8 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const prompts = getSuggestedPrompts(species, stateAbbr);
 
   const chatArea = (
     <div className="flex flex-col h-full">
@@ -52,20 +98,7 @@ export default function HuntChat({ species, stateAbbr, isMobile }: HuntChatProps
               }
             </p>
             <div className="flex flex-col gap-1.5 w-full max-w-[280px]">
-              {(stateAbbr
-                ? [
-                    `Weather conditions in ${stateAbbr}`,
-                    `Best duck species for ${stateAbbr} right now`,
-                    `${stateAbbr} season dates and bag limits`,
-                    `What patterns is the brain seeing in ${stateAbbr}?`,
-                  ]
-                : [
-                    "Where should I hunt this weekend?",
-                    "What's the migration index showing?",
-                    "Tell me about canvasback behavior",
-                    "Which states have the best conditions?",
-                  ]
-              ).map((prompt) => (
+              {prompts.map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => sendMessage(prompt)}

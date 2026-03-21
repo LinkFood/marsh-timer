@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { SUPABASE_FUNCTIONS_URL } from '@/lib/supabase';
+import { supabase, SUPABASE_FUNCTIONS_URL } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
 export interface ChatMessage {
@@ -129,5 +129,33 @@ export function useChat(
     sessionStorage.setItem('hunt-chat-session-id', sessionIdRef.current);
   }, []);
 
-  return { messages, loading, sendMessage, clearMessages };
+  const loadSession = useCallback(async (targetSessionId: string) => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('hunt_conversations')
+        .select('role, content, created_at')
+        .eq('session_id', targetSessionId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      if (!data) return;
+
+      const loaded: ChatMessage[] = data.map((row: any) => ({
+        id: crypto.randomUUID(),
+        role: row.role as 'user' | 'assistant',
+        content: row.content,
+        timestamp: new Date(row.created_at),
+      }));
+
+      setMessages(loaded);
+      sessionIdRef.current = targetSessionId;
+      sessionStorage.setItem('hunt-chat-session-id', targetSessionId);
+      sessionStorage.setItem('hunt-chat-messages', JSON.stringify(loaded));
+    } catch (err) {
+      console.error('[Chat] Failed to load session:', err);
+    }
+  }, []);
+
+  return { messages, loading, sendMessage, clearMessages, loadSession };
 }
