@@ -557,7 +557,7 @@ async function main() {
     try {
       const inserted = await processEntries(entries);
       totalInserted += inserted;
-      console.log(`  ${year}: ${inserted} entries embedded and inserted`);
+      console.log(`  ${year}: ${inserted}/${entries.length} entries embedded and inserted`);
     } catch (err) {
       console.error(`  ${year}: embed/insert failed (continuing): ${err}`);
     }
