@@ -207,8 +207,9 @@ serve(async (req) => {
     }
 
     // Step 1: Intent classification
-    const systemPrompt = `You are the DuckCountdown AI assistant — a hunting season expert for the US.
-You help hunters with season dates, weather conditions, solunar forecasts, and general hunting questions.
+    const systemPrompt = `You are the Duck Countdown Brain — an environmental intelligence system monitoring patterns across 21 data sources for all 50 US states.
+You analyze convergence signals from weather, wildlife migration, lunar cycles, satellite data, water levels, drought conditions, and more.
+You can answer questions about environmental patterns, weather intelligence, wildlife movement, and — when asked — hunting conditions and season dates.
 
 Current context:
 - Selected species: ${ctxSpecies || 'duck'}
@@ -396,8 +397,8 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   const weatherSummary = await callClaude({
     model: CLAUDE_MODELS.haiku,
-    system: `You are a hunting weather expert. Give a brief, practical hunting weather summary. Focus on wind, temperature changes, and precipitation that affect hunting. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.
+    system: `You are an environmental weather analyst. Give a brief, practical weather intelligence summary. Focus on wind shifts, temperature changes, pressure systems, and precipitation patterns that signal environmental changes. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.
+Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
 
 CRITICAL RULES:
 1. ONLY state facts that come from the provided context data. Never invent data.
@@ -618,7 +619,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     model: CLAUDE_MODELS.haiku,
     system: `You are a hunting season expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
 ONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don't have that specific data" rather than guessing.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.
+Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
 
 CRITICAL RULES:
 1. ONLY state facts that come from the provided context data. Never invent data.
@@ -674,7 +675,7 @@ async function handleCompare(state1: string, state2: string, query: string, spec
 
   const response = await callClaude({
     model: CLAUDE_MODELS.haiku,
-    system: `You are a hunting expert comparing two states. Use the provided convergence scores and brain data to give a clear recommendation. Format as a side-by-side comparison with a verdict. Be specific — cite scores, bird counts, and conditions. Never include external URLs.
+    system: `You are an environmental analyst comparing two states. Use the provided convergence scores and brain data to give a clear recommendation. Format as a side-by-side comparison with a verdict. Be specific — cite scores, bird counts, and conditions. Never include external URLs.
 ONLY reference data provided in the context. If data is missing for a state, say so.
 
 CRITICAL RULES:
@@ -804,8 +805,8 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
 
   const searchResponse = await callClaude({
     model: CLAUDE_MODELS.haiku,
-    system: `You are a hunting knowledge expert. Answer based on the provided context. Be concise but informative.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.
+    system: `You are an environmental intelligence analyst. Answer based on the provided context. Be concise but informative.
+Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
 
 CRITICAL RULES:
 1. ONLY state facts that come from the provided context data. Never invent data.
@@ -861,11 +862,11 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
 
   const response = await callClaude({
     model: CLAUDE_MODELS.haiku,
-    system: `You are the DuckCountdown AI — a friendly hunting season assistant. You help with US hunting seasons, weather, solunar data, and general hunting questions.
+    system: `You are the Duck Countdown Brain — an environmental intelligence assistant. You help with US environmental patterns, weather intelligence, wildlife signals, solunar data, and hunting season information when asked.
 Current context: species=${species}, state=${stateAbbr || 'none'}.${species !== 'duck' ? `\nThe user is asking about ${species} hunting. You have species-specific knowledge including ${species === 'deer' ? 'rut timing, moon phase correlations, cold snap triggers, barometric pressure effects, and wind patterns' : species === 'turkey' ? 'gobble peak timing, weather sensitivity, roosting behavior, and calling strategies' : species === 'dove' ? 'migration timing, field rotation patterns, weather windows, and wind thresholds' : `${species}-specific patterns and behavior`} for their state and region.` : ''}
 ${conversationContext}${brainContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from DuckCountdown's own data.
+Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
 
 CRITICAL RULES:
 1. ONLY state facts that come from the provided context data. Never invent data.

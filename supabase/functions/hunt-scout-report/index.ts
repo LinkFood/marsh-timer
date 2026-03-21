@@ -54,11 +54,11 @@ function formatBrief(params: {
 }): string {
   const { favoriteScores, top3, primeWindows, alerts, today } = params;
 
-  let brief = `DUCK COUNTDOWN SCOUT REPORT -- ${today}\n\n`;
+  let brief = `DUCK COUNTDOWN DAILY BRIEF -- ${today}\n\n`;
 
   // Your states
   if (favoriteScores.length > 0) {
-    brief += `YOUR STATES:\n`;
+    brief += `WATCHED STATES:\n`;
     for (const s of favoriteScores) {
       const indicator = s.score >= 70 ? '[HOT]' : s.score >= 40 ? '[WARM]' : '[COLD]';
       brief += `${indicator} ${STATE_NAMES[s.state_abbr] ?? s.state_abbr} -- ${s.score}/100\n`;
@@ -68,7 +68,7 @@ function formatBrief(params: {
 
   // National hotspots
   if (top3.length > 0) {
-    brief += `NATIONAL HOTSPOTS:\n`;
+    brief += `STRONGEST SIGNALS:\n`;
     for (const s of top3) {
       brief += `* ${STATE_NAMES[s.state_abbr] ?? s.state_abbr} -- ${s.score}/100: ${s.reasoning}\n`;
     }
@@ -77,7 +77,7 @@ function formatBrief(params: {
 
   // Moon windows
   if (primeWindows.length > 0) {
-    brief += `UPCOMING PRIME WINDOWS:\n`;
+    brief += `UPCOMING ACTIVITY WINDOWS:\n`;
     for (const p of primeWindows) {
       brief += `* ${p.date}: ${p.moon_phase} (${p.prime_reason ?? 'prime window'})\n`;
     }
@@ -96,7 +96,7 @@ function formatBrief(params: {
     brief += `\n`;
   }
 
-  brief += `Data from duckcountdown.com -- all insights based on historical patterns, not predictions.`;
+  brief += `Data from duckcountdown.com -- insights based on 486K+ data points, not predictions.`;
   return brief;
 }
 
