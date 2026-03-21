@@ -524,6 +524,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // States 3D extrusion (convergence scores rise off the map)
+      if (!map.getLayer("states-extrusion")) {
+        map.addLayer({
+          id: "states-extrusion",
+          type: "fill-extrusion",
+          source: "states",
+          paint: {
+            "fill-extrusion-color": buildFillExpression(visualSpecies, selectedState),
+            "fill-extrusion-height": 0,
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": 0.6,
+          },
+          layout: { visibility: 'none' },
+        });
+      }
+
       // Dawn/dusk terminator (night overlay + golden hour band)
       if (!map.getSource("terminator")) {
         const now = new Date();
@@ -2505,6 +2521,23 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           "rgba(100,100,100,0.2)",
         ] as mapboxgl.Expression);
         map.setPaintProperty("states-fill", "fill-opacity", 0.7);
+      }
+      // 3D extrusion — height proportional to score
+      if (map.getLayer("states-extrusion")) {
+        const extHeightEntries: (string | number)[] = [];
+        const extColorEntries: string[] = [];
+        for (const [abbr, data] of convergenceScores) {
+          extHeightEntries.push(abbr, data.score * 800); // 0-80,000 meters (visible at globe zoom)
+          extColorEntries.push(abbr, convergenceToColor(data.score));
+        }
+        if (extHeightEntries.length > 0) {
+          map.setPaintProperty("states-extrusion", "fill-extrusion-height", [
+            "match", ["get", "abbr"], ...extHeightEntries, 0
+          ] as mapboxgl.Expression);
+          map.setPaintProperty("states-extrusion", "fill-extrusion-color", [
+            "match", ["get", "abbr"], ...extColorEntries, "rgba(100,100,100,0.2)"
+          ] as mapboxgl.Expression);
+        }
       }
     } else if (mapMode === 'weather' && weatherCache && weatherCache.size > 0 && map.getLayer("states-fill")) {
       const entries: (string | string)[] = [];

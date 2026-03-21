@@ -30,7 +30,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'temperature', label: 'Temperature', category: 'weather', mapboxLayers: ['temp-tiles-overlay'] },
 
   // === Intelligence ===
-  { id: 'convergence-heatmap', label: 'Convergence Heatmap', category: 'intelligence', mapboxLayers: ['convergence-score-bg', 'convergence-score-label', 'convergence-forming-label'], defaultOn: true },
+  { id: 'convergence-heatmap', label: 'Convergence Heatmap', category: 'intelligence', mapboxLayers: ['convergence-score-bg', 'convergence-score-label', 'convergence-forming-label', 'states-extrusion'], defaultOn: true },
   { id: 'convergence-pulse', label: 'Convergence Pulse', category: 'intelligence', mapboxLayers: ['convergence-pulse'], defaultOn: true },
   { id: 'perfect-storm', label: 'Perfect Storm', category: 'intelligence', mapboxLayers: ['perfect-storm-glow', 'perfect-storm-ring'], defaultOn: true },
 
