@@ -33,13 +33,17 @@ export function useChat(
     return [];
   });
   const [loading, setLoading] = useState(false);
-  const sessionIdRef = useRef(() => {
+  const sessionIdRef = useRef<string>('');
+  if (!sessionIdRef.current) {
     const saved = sessionStorage.getItem('hunt-chat-session-id');
-    if (saved) return saved;
-    const id = crypto.randomUUID();
-    sessionStorage.setItem('hunt-chat-session-id', id);
-    return id;
-  })();
+    if (saved) {
+      sessionIdRef.current = saved;
+    } else {
+      const id = crypto.randomUUID();
+      sessionStorage.setItem('hunt-chat-session-id', id);
+      sessionIdRef.current = id;
+    }
+  }
 
   // Persist messages to sessionStorage on every change
   useEffect(() => {
