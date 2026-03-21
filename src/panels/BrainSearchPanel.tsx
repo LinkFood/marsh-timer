@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, Loader2, Database } from 'lucide-react';
 import { useDeck } from '@/contexts/DeckContext';
 import type { PanelComponentProps } from './PanelTypes';
@@ -22,7 +22,18 @@ export default function BrainSearchPanel({}: PanelComponentProps) {
   const [results, setResults] = useState<BrainResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [brainCount, setBrainCount] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!SUPABASE_URL) return;
+    fetch(`${SUPABASE_URL}/functions/v1/hunt-suggested-prompts`, {
+      headers: { apikey: SUPABASE_KEY },
+    })
+      .then(r => r.json())
+      .then(data => { if (data.stats?.total_entries) setBrainCount(data.stats.total_entries); })
+      .catch(() => {});
+  }, []);
 
   const handleSearch = useCallback(async () => {
     if (!query.trim() || !SUPABASE_URL) return;
@@ -113,7 +124,7 @@ export default function BrainSearchPanel({}: PanelComponentProps) {
         {!searched && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-white/20">
             <Database size={24} />
-            <span className="text-[10px]">486K+ entries in the brain</span>
+            <span className="text-[10px]">{brainCount ? brainCount.toLocaleString() : '1M+'} entries in the brain</span>
             <span className="text-[9px]">Search by topic, species, state, weather pattern...</span>
           </div>
         )}

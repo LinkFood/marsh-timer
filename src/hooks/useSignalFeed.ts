@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export interface SignalItem {
   id: string;
@@ -16,32 +18,25 @@ export function useSignalFeed() {
   const [loading, setLoading] = useState(true);
 
   const fetchFeed = useCallback(async () => {
-    if (!supabase) { setLoading(false); return; }
+    if (!SUPABASE_URL || !SUPABASE_KEY) { setLoading(false); return; }
 
     try {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const headers = { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY };
 
       const [convRes, weatherRes, nwsRes] = await Promise.all([
-        supabase.from('hunt_convergence_alerts')
-          .select('id, state_abbr, score, previous_score, alert_type, reasoning, created_at')
-          .gt('created_at', since)
-          .order('created_at', { ascending: false })
-          .limit(15),
-        supabase.from('hunt_weather_events')
-          .select('id, event_type, states, severity, title, created_at')
-          .gt('created_at', since)
-          .order('created_at', { ascending: false })
-          .limit(15),
-        supabase.from('hunt_nws_alerts')
-          .select('id, event, headline, states, severity, created_at')
-          .gt('created_at', since)
-          .order('created_at', { ascending: false })
-          .limit(10),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?select=id,state_abbr,score,previous_score,alert_type,reasoning,created_at&created_at=gte.${since}&order=created_at.desc&limit=15`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_weather_events?select=id,event_type,states,severity,title,created_at&created_at=gte.${since}&order=created_at.desc&limit=15`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_nws_alerts?select=id,event,headline,states,severity,created_at&created_at=gte.${since}&order=created_at.desc&limit=10`, { headers }),
       ]);
+
+      const convData = convRes.ok ? await convRes.json() : [];
+      const weatherData = weatherRes.ok ? await weatherRes.json() : [];
+      const nwsData = nwsRes.ok ? await nwsRes.json() : [];
 
       const merged: SignalItem[] = [];
 
-      for (const a of (convRes.data || [])) {
+      for (const a of convData) {
         const delta = a.score - a.previous_score;
         merged.push({
           id: `conv-${a.id}`,
@@ -54,7 +49,7 @@ export function useSignalFeed() {
         });
       }
 
-      for (const w of (weatherRes.data || [])) {
+      for (const w of weatherData) {
         const states = Array.isArray(w.states) ? w.states.join(', ') : w.states || '';
         merged.push({
           id: `wx-${w.id}`,
@@ -67,7 +62,7 @@ export function useSignalFeed() {
         });
       }
 
-      for (const n of (nwsRes.data || [])) {
+      for (const n of nwsData) {
         const states = Array.isArray(n.states) ? n.states.join(', ') : n.states || '';
         merged.push({
           id: `nws-${n.id}`,
