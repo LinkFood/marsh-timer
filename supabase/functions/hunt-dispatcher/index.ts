@@ -518,11 +518,13 @@ async function handleRecentActivity(
   const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
   // 1. Count recent entries by content_type
-  const { data: recentCounts } = await supabase
+  let recentQuery = supabase
     .from('hunt_knowledge')
     .select('content_type')
     .gte('created_at', twentyFourHoursAgo.toISOString())
     .limit(1000);
+  if (stateAbbr) recentQuery = recentQuery.eq('state_abbr', stateAbbr);
+  const { data: recentCounts } = await recentQuery;
 
   const typeCounts: Record<string, number> = {};
   (recentCounts || []).forEach((r: any) => {
@@ -531,13 +533,15 @@ async function handleRecentActivity(
 
   // 2. High-signal entries (last 48h)
   const highSignalTypes = ['nws-alert','weather-event','migration-spike-extreme','migration-spike-significant','anomaly-alert','disaster-watch','convergence-score','correlation-discovery'];
-  const { data: highSignals } = await supabase
+  let highQuery = supabase
     .from('hunt_knowledge')
     .select('id, title, content_type, state_abbr, metadata, created_at')
     .in('content_type', highSignalTypes)
     .gte('created_at', fortyEightHoursAgo.toISOString())
     .order('created_at', { ascending: false })
     .limit(30);
+  if (stateAbbr) highQuery = highQuery.eq('state_abbr', stateAbbr);
+  const { data: highSignals } = await highQuery;
 
   // 3. Most active states
   const stateCounts: Record<string, number> = {};
@@ -608,7 +612,7 @@ async function handleRecentActivity(
 
   return {
     cards,
-    systemPrompt: `You are the environmental intelligence brain. The user is asking what's happening right now. Synthesize the data into a clear situational briefing. Lead with the most interesting signals. Group by theme (weather, alerts, migration, anomalies). Be specific — use state names, event types, counts. End with 1-2 suggested follow-up questions.\n\n${BRAIN_RULES}`,
+    systemPrompt: `You are the environmental intelligence brain. The user is asking what's happening right now.${stateAbbr ? ` Focus on ${stateAbbr}.` : ''} Synthesize the data into a clear situational briefing. Lead with the most interesting signals. Group by theme (weather, alerts, migration, anomalies). Be specific — use state names, event types, counts. End with 1-2 suggested follow-up questions.\n\n${BRAIN_RULES}`,
     userContent: `${userMessage}\n\n---\n\n${contextLines.join('\n')}`,
   };
 }

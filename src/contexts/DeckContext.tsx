@@ -71,7 +71,7 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
         if (h >= 150 && h <= 1200) return h;
       }
     } catch {}
-    return typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.42) : 400;
+    return typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.35) : 350;
   });
 
   const setMapHeight = useCallback((h: number) => {
