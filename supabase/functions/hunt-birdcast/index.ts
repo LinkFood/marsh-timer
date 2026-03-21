@@ -4,6 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { enrichWithPatternScan } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
@@ -302,13 +303,32 @@ serve(async (req) => {
                 embedding: embeddings[j],
               });
             }
-            const { error: knErr } = await supabase
+            const insertResult = await supabase
               .from('hunt_knowledge')
-              .insert(batchRows);
-            if (knErr) {
-              console.error(`[hunt-birdcast] Knowledge insert error (batch ${i / KNOWLEDGE_BATCH}):`, knErr);
+              .insert(batchRows)
+              .select('id');
+            if (insertResult.error) {
+              console.error(`[hunt-birdcast] Knowledge insert error (batch ${i / KNOWLEDGE_BATCH}):`, insertResult.error);
             } else {
               embeddingsCreated += batchRows.length;
+
+              // Brain scan high-intensity states for cross-domain pattern matches
+              if (insertResult.data) {
+                for (let k = 0; k < insertResult.data.length; k++) {
+                  const globalIdx = i + k;
+                  const row = rows[globalIdx];
+                  const isHigh = row.is_high || (row.cumulative_birds ?? 0) > 500000;
+                  if (isHigh && insertResult.data[k]?.id) {
+                    try {
+                      await enrichWithPatternScan(insertResult.data[k].id, embeddings[globalIdx], {
+                        state_abbr: row.state_abbr,
+                        exclude_content_type: 'birdcast-daily',
+                      });
+                      console.log(`[hunt-birdcast] Pattern scan: ${row.state_abbr} — high intensity`);
+                    } catch { /* best-effort */ }
+                  }
+                }
+              }
             }
           }
         } else {

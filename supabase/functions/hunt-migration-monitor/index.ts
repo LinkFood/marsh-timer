@@ -4,7 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanBrainOnWrite, enrichWithPatternScan } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 const LOG_PREFIX = '[hunt-migration-monitor]';
@@ -218,7 +218,7 @@ serve(async (req) => {
 
     // 10. Embed every daily observation into hunt_knowledge
     const embedTexts: string[] = [];
-    const embedRows: { title: string; content: string; content_type: string; tags: string[] }[] = [];
+    const embedRows: { title: string; content: string; content_type: string; tags: string[]; state_abbr: string; species: string; effective_date: string }[] = [];
 
     for (const r of results) {
       const stateName = STATE_NAMES[r.state] || r.state;
@@ -284,14 +284,29 @@ serve(async (req) => {
           embedding: embeddings[i],
         }));
 
-        const { error: embedErr } = await supabase
+        const knowledgeInsertResult = await supabase
           .from('hunt_knowledge')
-          .insert(knowledgeRows);
+          .insert(knowledgeRows)
+          .select('id');
 
-        if (embedErr) {
-          console.log(`${LOG_PREFIX} Knowledge insert error: ${embedErr.message}`);
+        if (knowledgeInsertResult.error) {
+          console.log(`${LOG_PREFIX} Knowledge insert error: ${knowledgeInsertResult.error.message}`);
         } else {
           embeddingsCreated = knowledgeRows.length;
+
+          // Write pattern links for spike entries that got brain scan matches
+          if (knowledgeInsertResult.data) {
+            for (let i = 0; i < knowledgeInsertResult.data.length; i++) {
+              if (embedRows[i].content_type.startsWith('migration-spike') && knowledgeInsertResult.data[i]?.id) {
+                try {
+                  await enrichWithPatternScan(knowledgeInsertResult.data[i].id, embeddings[i], {
+                    state_abbr: embedRows[i].state_abbr,
+                    exclude_content_type: embedRows[i].content_type,
+                  });
+                } catch { /* best-effort */ }
+              }
+            }
+          }
         }
       } catch (err) {
         console.log(`${LOG_PREFIX} Embedding error: ${err.message}`);
