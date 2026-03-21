@@ -12,12 +12,12 @@ const STEPS = [
   {
     icon: Feather,
     title: "Species Intelligence",
-    body: "Tap the species pills in the header to switch between Duck, Goose, Deer, Turkey, and Dove. Each species shows its own seasons, state rankings, and intel.",
+    body: "Tap the species pills in the header to switch between Duck, Goose, Deer, Turkey, and Dove. Each species shows its own seasons, state rankings, and environmental intelligence.",
   },
   {
     icon: MessageSquare,
     title: "Chat Brain",
-    body: "Ask the AI chat about hunting conditions in any state — weather patterns, migration activity, solunar data, and season dates. It searches thousands of embedded knowledge entries to give you data-backed answers.",
+    body: "Ask the AI chat about environmental conditions in any state — weather patterns, migration activity, solunar data, and season dates. It searches thousands of embedded knowledge entries to give you data-backed answers.",
   },
 ] as const;
 

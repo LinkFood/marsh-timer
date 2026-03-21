@@ -150,12 +150,17 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
       <div className="h-full max-w-7xl mx-auto px-3 flex items-center justify-between gap-2">
         {/* Left: Brand + Deck Selector */}
         <div className="flex items-center shrink-0 gap-1.5">
-          <span className="font-display text-sm font-bold tracking-widest text-white/90 hidden sm:inline">
-            DUCK COUNTDOWN
-          </span>
-          <span className="font-display text-sm font-bold tracking-widest text-white/90 sm:hidden">
-            DC
-          </span>
+          <div className="flex flex-col items-start shrink-0">
+            <span className="font-display text-sm font-bold tracking-widest text-white/90 hidden sm:inline">
+              DUCK COUNTDOWN
+            </span>
+            <span className="font-display text-[7px] tracking-[0.2em] text-white/40 hidden sm:block -mt-0.5">
+              ENVIRONMENTAL INTELLIGENCE
+            </span>
+            <span className="font-display text-sm font-bold tracking-widest text-white/90 sm:hidden">
+              DC
+            </span>
+          </div>
           <DeckSelector />
         </div>
 

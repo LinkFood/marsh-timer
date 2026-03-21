@@ -19,35 +19,50 @@ interface HuntChatProps {
 function getSuggestedPrompts(species: Species, stateAbbr: string | null): string[] {
   if (stateAbbr) {
     return [
-      `Weather conditions in ${stateAbbr}`,
-      `Best ${species} spots in ${stateAbbr} right now`,
-      `${stateAbbr} season dates and bag limits`,
-      `What patterns is the brain seeing in ${stateAbbr}?`,
+      `What's happening environmentally in ${stateAbbr}?`,
+      `Weather patterns and anomalies in ${stateAbbr}`,
+      `Historical pattern matches for current ${stateAbbr} conditions`,
+      `Wildlife activity signals in ${stateAbbr}`,
     ];
   }
-
-  const month = new Date().getMonth(); // 0-11
-  const isWinter = month >= 10 || month <= 2; // Nov-Feb
-  const isSpring = month >= 3 && month <= 5;
 
   switch (species) {
     case 'duck':
     case 'goose':
-      return isWinter
-        ? ['Where are birds moving this week?', 'Best cold front states right now?', 'Which states have the highest convergence?', 'Any major weather events forming?']
-        : ['What does off-season data show?', 'Historical migration patterns for this month?', 'Which states are building water levels?', 'Climate index trends right now?'];
+      return [
+        'Where are birds moving this week?',
+        'Which states show the strongest migration signals?',
+        'What does off-season data show?',
+        'Climate index trends right now?',
+      ];
     case 'deer':
-      return isSpring
-        ? ['Antler growth conditions by state?', 'Which states have spring turkey + deer overlap?', 'Food plot conditions this month?', 'Fawn survival predictions?']
-        : ['Rut activity indicators?', 'Best pressure conditions for deer movement?', 'Which states have rifle season opening?', 'Cold front impact on deer activity?'];
+      return [
+        'Deer movement indicators by state?',
+        'Best pressure conditions for deer activity?',
+        'Which states show peak rut signals?',
+        'Cold front impact on deer movement?',
+      ];
     case 'turkey':
-      return isSpring
-        ? ['Spring gobbler activity by state?', 'Best weather for turkey hunting this week?', 'Which states have the most eBird turkey sightings?', 'Breeding activity indicators?']
-        : ['Fall turkey patterns?', 'Flock movement trends?', 'Mast crop conditions affecting turkeys?', 'Which states have fall turkey season?'];
+      return [
+        'Turkey activity patterns by state?',
+        'Best weather patterns for turkey this week?',
+        'Breeding activity indicators?',
+        'Which states show the most turkey observations?',
+      ];
     case 'dove':
-      return ['Dove migration timing this year?', 'Best states for dove right now?', 'Sunflower field conditions?', 'Weather patterns affecting dove flight?'];
+      return [
+        'Dove migration timing this year?',
+        'Best states for dove right now?',
+        'Sunflower field conditions?',
+        'Weather patterns affecting dove flight?',
+      ];
     default:
-      return ['What patterns is the brain seeing?', 'Which states look best right now?', 'Any weather events to watch?', 'What does convergence data show?'];
+      return [
+        'What environmental patterns is the brain detecting?',
+        'Which states have the strongest convergence signals?',
+        'Any significant weather events forming?',
+        'Show me the most interesting data from the last 24 hours',
+      ];
   }
 }
 
@@ -89,13 +104,10 @@ export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady 
               <Compass size={20} className="text-cyan-400/60" />
             </div>
             <p className="text-sm font-heading text-white/70 mb-1">
-              Duck Countdown Brain
+              The Brain
             </p>
             <p className="text-[11px] font-body text-white/40 text-center mb-4">
-              {stateAbbr
-                ? `Ask me anything about hunting in ${stateAbbr}`
-                : 'Ask me about conditions, seasons, or patterns in any state'
-              }
+              486K+ data points from 21 sources. Ask me anything.
             </p>
             <div className="flex flex-col gap-1.5 w-full max-w-[280px]">
               {prompts.map((prompt) => (

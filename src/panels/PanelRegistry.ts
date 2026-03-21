@@ -3,11 +3,11 @@ import type { PanelDef, PanelCategory } from './PanelTypes';
 
 export const PANEL_REGISTRY: PanelDef[] = [
   // Intelligence
-  { id: 'convergence', label: 'Convergence Scores', category: 'intelligence', description: 'Top states by hunt score', defaultW: 4, defaultH: 4, component: lazy(() => import('./ConvergencePanel')), refreshInterval: 'daily', dataSourceCount: 4, dataSources: ['Convergence Engine'] },
-  { id: 'convergence-alerts', label: 'Convergence Alerts', category: 'intelligence', description: 'Score spike alerts', defaultW: 4, defaultH: 3, component: lazy(() => import('./ConvergenceAlertsPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['Convergence Engine'] },
-  { id: 'scout-report', label: 'Scout Report', category: 'intelligence', description: 'Daily AI scout brief', defaultW: 4, defaultH: 4, component: lazy(() => import('./ScoutReportPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['Scout Reports'] },
-  { id: 'hunt-alerts', label: 'Hunt Alerts', category: 'intelligence', description: 'Proactive hunt alerts', defaultW: 4, defaultH: 3, component: lazy(() => import('./HuntAlertsPanel')), refreshInterval: 'daily', dataSourceCount: 3, dataSources: ['Open-Meteo', 'Brain Search', 'Convergence Engine'] },
-  { id: 'state-profile', label: 'State Profile', category: 'intelligence', description: 'Full state deep-dive', defaultW: 6, defaultH: 6, component: lazy(() => import('./StateProfilePanel')), refreshInterval: 'daily', dataSourceCount: 5, dataSources: ['Convergence Engine', 'Open-Meteo', 'eBird', 'Solunar', 'State Regulations'] },
+  { id: 'convergence', label: 'Convergence Scores', category: 'intelligence', description: 'Environmental convergence index by state', defaultW: 4, defaultH: 4, component: lazy(() => import('./ConvergencePanel')), refreshInterval: 'daily', dataSourceCount: 4, dataSources: ['Convergence Engine'] },
+  { id: 'convergence-alerts', label: 'Convergence Alerts', category: 'intelligence', description: 'Pattern spike detection alerts', defaultW: 4, defaultH: 3, component: lazy(() => import('./ConvergenceAlertsPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['Convergence Engine'] },
+  { id: 'scout-report', label: 'Daily Brief', category: 'intelligence', description: 'AI-generated environmental intelligence summary', defaultW: 4, defaultH: 4, component: lazy(() => import('./ScoutReportPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['Scout Reports'] },
+  { id: 'hunt-alerts', label: 'Pattern Alerts', category: 'intelligence', description: 'Proactive environmental pattern alerts', defaultW: 4, defaultH: 3, component: lazy(() => import('./HuntAlertsPanel')), refreshInterval: 'daily', dataSourceCount: 3, dataSources: ['Open-Meteo', 'Brain Search', 'Convergence Engine'] },
+  { id: 'state-profile', label: 'State Profile', category: 'intelligence', description: 'State-level environmental intelligence', defaultW: 6, defaultH: 6, component: lazy(() => import('./StateProfilePanel')), refreshInterval: 'daily', dataSourceCount: 5, dataSources: ['Convergence Engine', 'Open-Meteo', 'eBird', 'Solunar', 'State Regulations'] },
 
   // Migration
   { id: 'migration-index', label: 'Migration Index', category: 'migration', description: 'Migration momentum tracker', defaultW: 4, defaultH: 4, component: lazy(() => import('./MigrationIndexPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['eBird'] },
@@ -25,8 +25,8 @@ export const PANEL_REGISTRY: PanelDef[] = [
   { id: 'history-replay', label: 'History Replay', category: 'analytics', description: '30-day replay controls', defaultW: 6, defaultH: 4, component: lazy(() => import('./HistoryReplayPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['Convergence Engine'] },
   { id: 'convergence-history', label: 'Convergence History', category: 'analytics', description: 'Trend charts', defaultW: 4, defaultH: 4, component: lazy(() => import('./ConvergenceHistoryPanel')), refreshInterval: 'daily', dataSourceCount: 1, dataSources: ['Convergence Engine'] },
   { id: 'brain-activity', label: 'Brain Activity', category: 'analytics', description: 'Cron health + brain stats', defaultW: 4, defaultH: 4, component: lazy(() => import('./BrainActivityPanel')), refreshInterval: 'real-time', dataSourceCount: 14, dataSources: ['All Crons'] },
-  { id: 'brain-search', label: 'Brain Search', category: 'intelligence', description: 'Search 295K+ brain entries', defaultW: 4, defaultH: 5, component: lazy(() => import('./BrainSearchPanel')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
-  { id: 'chat', label: 'Brain Chat', category: 'intelligence', description: 'Talk to the brain', defaultW: 4, defaultH: 6, component: lazy(() => import('./ChatPanelInline')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
+  { id: 'brain-search', label: 'Brain Search', category: 'intelligence', description: 'Search 486K+ brain entries', defaultW: 4, defaultH: 5, component: lazy(() => import('./BrainSearchPanel')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
+  { id: 'chat', label: 'Brain Chat', category: 'intelligence', description: 'Ask the environmental intelligence engine', defaultW: 4, defaultH: 6, component: lazy(() => import('./ChatPanelInline')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
 ];
 
 export const PANEL_MAP = new Map(PANEL_REGISTRY.map(p => [p.id, p]));

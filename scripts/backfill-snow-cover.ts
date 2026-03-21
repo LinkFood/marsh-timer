@@ -102,14 +102,19 @@ async function main() {
           let stationsWithSnow = 0;
 
           for (const feature of data.features) {
-            const depth = feature.properties?.value;
-            if (depth === undefined || depth === null) continue;
-            const d = parseFloat(depth);
-            if (isNaN(d)) continue;
+            const values = feature.properties?.values;
+            if (!values || typeof values !== "object") continue;
+            // values is { "1": depth, "2": depth, ... } keyed by day of month
+            const depths = Object.values(values)
+              .map((v: any) => parseFloat(v))
+              .filter((d: number) => !isNaN(d));
+            if (depths.length === 0) continue;
+            const avgStationDepth = depths.reduce((a: number, b: number) => a + b, 0) / depths.length;
+            const maxStationDepth = Math.max(...depths);
             stationsReporting++;
-            totalDepth += d;
-            if (d > maxDepth) maxDepth = d;
-            if (d > 0) stationsWithSnow++;
+            totalDepth += avgStationDepth;
+            if (maxStationDepth > maxDepth) maxDepth = maxStationDepth;
+            if (avgStationDepth > 0) stationsWithSnow++;
           }
 
           if (stationsReporting === 0) continue;

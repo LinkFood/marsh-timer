@@ -124,9 +124,9 @@ export default function ChatPanel() {
       <div className="shrink-0 px-3 py-1.5 border-t border-white/[0.06] flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[9px] font-mono text-white/40">Duck Brain</span>
+          <span className="text-[9px] font-mono text-white/40">The Brain</span>
         </div>
-        <span className="text-[9px] font-mono text-white/30">295K+ entries</span>
+        <span className="text-[9px] font-mono text-white/30">486K+ entries</span>
       </div>
     </div>
   );

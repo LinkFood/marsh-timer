@@ -42,8 +42,8 @@ export const LAYER_REGISTRY: LayerDef[] = [
 export const LAYER_PRESETS: LayerPreset[] = [
   {
     id: 'scout',
-    label: 'Scout',
-    description: 'Scouting overlays: wetlands, water, parks, trails, eBird clusters',
+    label: 'Field Recon',
+    description: 'Field recon: wetlands, water, parks, trails, eBird clusters',
     layers: ['wetlands', 'water-bodies', 'waterways', 'parks', 'trails', 'ebird-clusters', 'counties', 'flyway-corridors'],
   },
   {

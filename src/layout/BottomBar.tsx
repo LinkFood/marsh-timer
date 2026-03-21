@@ -7,7 +7,7 @@ import { PANEL_MAP } from '@/panels/PanelRegistry';
 
 const CATEGORIES: { id: CategoryFilter; label: string; icon: typeof Target }[] = [
   { id: 'all', label: 'All', icon: Target },
-  { id: 'intelligence', label: 'Intel', icon: Target },
+  { id: 'intelligence', label: 'Intelligence', icon: Target },
   { id: 'migration', label: 'Migration', icon: Compass },
   { id: 'weather', label: 'Weather', icon: Cloud },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },

@@ -22,7 +22,7 @@ export default function HuntAlertsPanel({}: PanelComponentProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        Loading hunt alerts...
+        Loading pattern alerts...
       </div>
     );
   }
@@ -30,7 +30,7 @@ export default function HuntAlertsPanel({}: PanelComponentProps) {
   if (alerts.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        No active hunt alerts
+        No active pattern alerts
       </div>
     );
   }

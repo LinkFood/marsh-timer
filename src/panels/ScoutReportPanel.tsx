@@ -17,7 +17,7 @@ export default function ScoutReportPanel({}: PanelComponentProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        Loading scout report...
+        Loading daily brief...
       </div>
     );
   }
@@ -25,7 +25,7 @@ export default function ScoutReportPanel({}: PanelComponentProps) {
   if (!report) {
     return (
       <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        No scout report available
+        No daily brief available
       </div>
     );
   }
