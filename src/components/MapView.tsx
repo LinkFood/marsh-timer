@@ -174,9 +174,9 @@ export interface MapViewRef {
 
 const TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 const US_CENTER: [number, number] = [-99.5, 38.5];
-const US_ZOOM = 3.4;
+const US_ZOOM = 4.2;
 const STATE_ZOOM = 7;
-const DRILL_UP_ZOOM_THRESHOLD = 4;
+const DRILL_UP_ZOOM_THRESHOLD = 4.5;
 
 function extractCoordinates(geometry: Geometry): Position[] {
   const coords: Position[] = [];
