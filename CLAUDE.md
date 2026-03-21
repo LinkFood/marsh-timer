@@ -24,7 +24,7 @@ Search and alerts are the same operation. Search = user pulls. Alerts = data pus
 
 ## Brain State
 
-1,050,000+ entries in hunt_knowledge. Heading to 3M+.
+1,230,000+ entries in hunt_knowledge. Heading to 3M+.
 
 **Content types (25+):** storm-event, usgs-water, earthquake-event, photoperiod, noaa-tide, geomagnetic-kp, fire-activity, birdweather-daily, crop-data, drought-weekly, gbif-monthly, climate-index, historical-newspaper, weather-event, nws-alert, birdcast-daily, birdcast-historical, convergence-score, weather-forecast, migration-spike-*, migration-lull, migration-daily, bio-environmental-correlation, bio-absence-signal, alert-grade, alert-calibration, web-discovery, anomaly-alert, correlation-discovery, disaster-watch, hunting-knowledge, species-behavior, du_report, du_alert
 
