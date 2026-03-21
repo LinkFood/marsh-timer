@@ -3,6 +3,8 @@ import { handleCors, getCorsHeaders } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { callClaude, callClaudeStream, parseToolUse, parseTextContent, calculateCost, CLAUDE_MODELS } from '../_shared/anthropic.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { searchWeb } from '../_shared/tavily.ts';
+import type { TavilyResult } from '../_shared/tavily.ts';
 
 interface HandlerResult {
   cards: unknown[];
@@ -346,6 +348,20 @@ Classify the user's message intent and extract relevant parameters.
     if (!toolUse) {
       // Fallback: general handler
       const handlerResult = await handleGeneral(message, ctxSpecies || 'duck', ctxState, conversationContext);
+      // Stage web discoveries (fire-and-forget)
+      const fallbackWebResults = handlerResult._webResults;
+      if (fallbackWebResults && fallbackWebResults.length > 0) {
+        supabase.from('hunt_web_discoveries').insert(
+          fallbackWebResults.map(r => ({
+            query: message,
+            source_url: r.url,
+            title: r.title,
+            content: r.content,
+            state_abbr: ctxState,
+            species: ctxSpecies || 'duck',
+          }))
+        ).then(() => {}).catch(err => console.error('[Dispatcher] Failed to stage discoveries:', err));
+      }
       if (useStreaming) {
         return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'general');
       }
@@ -413,6 +429,21 @@ Classify the user's message intent and extract relevant parameters.
       default:
         handlerResult = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
         break;
+    }
+
+    // Stage web discoveries (fire-and-forget, don't block response)
+    const webResults = (handlerResult as HandlerResult & { _webResults?: TavilyResult[] })._webResults;
+    if (webResults && webResults.length > 0) {
+      supabase.from('hunt_web_discoveries').insert(
+        webResults.map(r => ({
+          query: message,
+          source_url: r.url,
+          title: r.title,
+          content: r.content,
+          state_abbr: resolvedState,
+          species: resolvedSpecies,
+        }))
+      ).then(() => {}).catch(err => console.error('[Dispatcher] Failed to stage discoveries:', err));
     }
 
     if (useStreaming) {
@@ -863,6 +894,22 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
       : Promise.resolve({ data: null }),
   ]);
 
+  // Web search if brain is thin
+  let webContext = '';
+  let webResults: TavilyResult[] = [];
+  const brainIsThin = !brainResults || brainResults.length < 3;
+  if (brainIsThin) {
+    webResults = await searchWeb(query, {
+      maxResults: 5,
+      searchDepth: 'advanced',
+      includeDomains: ['noaa.gov', 'usgs.gov', 'ebird.org', 'weather.gov', 'nasa.gov', 'drought.gov'],
+    });
+    if (webResults.length > 0) {
+      webContext = '\n\nWEB RESEARCH (cite source if used):\n' +
+        webResults.map(r => `[${r.title}] (${r.url})\n${r.content}`).join('\n\n');
+    }
+  }
+
   const cards: unknown[] = [];
   let vectorContext = '';
 
@@ -950,11 +997,12 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
     cards,
     systemPrompt: `You are an environmental intelligence analyst. Answer based on the provided context. Be concise but informative.
 ${BRAIN_RULES}`,
-    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}\n\nQuestion: ${query}`,
-  };
+    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${webContext}\n\nQuestion: ${query}`,
+    _webResults: webResults,
+  } as HandlerResult & { _webResults: TavilyResult[] };
 }
 
-async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = ''): Promise<HandlerResult> {
+async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = ''): Promise<HandlerResult & { _webResults?: TavilyResult[] }> {
   // Light brain search — only include if high-similarity matches exist
   const brainResults = await searchBrain({
     query: message,
@@ -963,6 +1011,22 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
     limit: 3,
     min_similarity: 0.5,
   });
+
+  // Web search if brain is thin
+  let webContext = '';
+  let webResults: TavilyResult[] = [];
+  const brainIsThin = !brainResults || brainResults.length < 3;
+  if (brainIsThin) {
+    webResults = await searchWeb(message, {
+      maxResults: 5,
+      searchDepth: 'advanced',
+      includeDomains: ['noaa.gov', 'usgs.gov', 'ebird.org', 'weather.gov', 'nasa.gov', 'drought.gov'],
+    });
+    if (webResults.length > 0) {
+      webContext = '\n\nWEB RESEARCH (cite source if used):\n' +
+        webResults.map(r => `[${r.title}] (${r.url})\n${r.content}`).join('\n\n');
+    }
+  }
 
   let brainContext = '';
   if (brainResults.length > 0) {
@@ -973,9 +1037,10 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
     cards: [],
     systemPrompt: `You are the Duck Countdown Brain — an environmental intelligence assistant. You help with US environmental patterns, weather intelligence, wildlife signals, solunar data, and hunting season information when asked.
 Current context: species=${species}, state=${stateAbbr || 'none'}.${species !== 'duck' ? `\nThe user is asking about ${species} hunting. You have species-specific knowledge including ${species === 'deer' ? 'rut timing, moon phase correlations, cold snap triggers, barometric pressure effects, and wind patterns' : species === 'turkey' ? 'gobble peak timing, weather sensitivity, roosting behavior, and calling strategies' : species === 'dove' ? 'migration timing, field rotation patterns, weather windows, and wind thresholds' : `${species}-specific patterns and behavior`} for their state and region.` : ''}
-${conversationContext}${brainContext}
+${conversationContext}${brainContext}${webContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
     userContent: message,
+    _webResults: webResults,
   };
 }
