@@ -14,6 +14,18 @@ export interface SpeciesConfig {
 }
 
 export const speciesConfig: Record<Species, SpeciesConfig> = {
+  all: {
+    label: "All Signals",
+    emoji: "\uD83C\uDF10",
+    seasonTypes: [],
+    colors: {
+      open: "#22d3ee",
+      soon: "#06b6d4",
+      upcoming: "#0891b2",
+      closed: "#164e63",
+      selected: "#67e8f9",
+    },
+  },
   duck: {
     label: "Duck",
     emoji: "\uD83E\uDD86",
@@ -76,4 +88,4 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   },
 };
 
-export const SPECIES_ORDER: Species[] = ["duck", "goose", "deer", "turkey", "dove"];
+export const SPECIES_ORDER: Species[] = ["all", "duck", "goose", "deer", "turkey", "dove"];

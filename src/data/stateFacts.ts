@@ -1226,6 +1226,7 @@ const doveFacts: Record<string, string[]> = {
 };
 
 export const stateFacts: Record<Species, Record<string, string[]>> = {
+  all: {},
   duck: duckFacts,
   goose: gooseFacts,
   deer: deerFacts,

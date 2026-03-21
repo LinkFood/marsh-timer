@@ -206,6 +206,7 @@ const doveLinks: Record<string, string> = {
 };
 
 export const regulationLinks: Record<Species, Record<string, string>> = {
+  all: {},
   duck: waterfowlLinks,
   goose: waterfowlLinks,
   deer: deerLinks,

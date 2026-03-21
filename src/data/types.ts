@@ -1,4 +1,4 @@
-export type Species = "duck" | "goose" | "deer" | "turkey" | "dove";
+export type Species = "all" | "duck" | "goose" | "deer" | "turkey" | "dove";
 
 export type SeasonType =
   | "regular"
@@ -35,7 +35,7 @@ export interface HuntingSeason {
   seasonYear: string;
 }
 
-export const VALID_SPECIES: Species[] = ["duck", "goose", "deer", "turkey", "dove"];
+export const VALID_SPECIES: Species[] = ["all", "duck", "goose", "deer", "turkey", "dove"];
 
 export function isValidSpecies(s: string): s is Species {
   return VALID_SPECIES.includes(s as Species);

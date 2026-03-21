@@ -40,7 +40,7 @@ const Index = () => {
   // Parse route params
   const parsed = useMemo(() => {
     if (!first)
-      return { species: "duck" as Species, stateAbbr: null, zoneSlug: null, redirect: null };
+      return { species: "all" as Species, stateAbbr: null, zoneSlug: null, redirect: null };
 
     const lower = first.toLowerCase();
     if (isValidSpecies(lower)) {
