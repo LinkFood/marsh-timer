@@ -104,14 +104,17 @@ export default async function middleware(request: Request) {
   if (segments.length === 1 && validSpecies.has(segments[0].toLowerCase())) {
     const species = segments[0].toLowerCase();
     const label = speciesLabels[species] || species;
-    const title = `${label} Season Countdown | Duck Countdown`;
-    const description = `${label} hunting season countdown timers for all 50 states. See what's open, what's coming, and never miss an opener.`;
+    const title = `${label} Intelligence | Duck Countdown`;
+    const description = `${label} environmental signals, migration patterns, and convergence analysis across all 50 states. Powered by 486K+ embedded data points.`;
     const ogUrl = `https://duckcountdown.com/${species}`;
-    const jsonLd = buildJsonLd("WebPage", {
+    const jsonLd = buildJsonLd("WebApplication", {
       name: title,
       description,
       url: ogUrl,
-      isPartOf: { "@type": "WebSite", name: "Duck Countdown", url: "https://duckcountdown.com" },
+      applicationCategory: "EnvironmentalMonitoring",
+      operatingSystem: "Web",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      isPartOf: { "@type": "WebApplication", name: "Duck Countdown", url: "https://duckcountdown.com" },
     });
     return injectOgTags(request, title, description, ogUrl, jsonLd);
   }
@@ -123,18 +126,17 @@ export default async function middleware(request: Request) {
     const state = states[abbr];
     if (state) {
       const label = speciesLabels[species] || species;
-      const title = `${state.name} ${label} Season | Duck Countdown`;
-      const description = species === "duck"
-        ? `${state.name} duck season opens ${state.seasonOpen}. ${state.flyway} Flyway. Bag limit: ${state.bagLimit}. Free countdown timer.`
-        : `${state.name} ${label.toLowerCase()} hunting season dates, countdown timers, and regulations. Free on Duck Countdown.`;
+      const title = `${state.name} ${label} Intelligence | Duck Countdown`;
+      const description = `Environmental convergence data for ${state.name}. Weather patterns, wildlife movement, water levels, and historical pattern matching.`;
       const ogUrl = `https://duckcountdown.com/${species}/${abbr}`;
-      const jsonLd = buildJsonLd("SportsEvent", {
-        name: `${state.name} ${label} Hunting Season 2025-2026`,
+      const jsonLd = buildJsonLd("WebApplication", {
+        name: `${state.name} ${label} Intelligence | Duck Countdown`,
         description,
         url: ogUrl,
-        location: { "@type": "Place", name: state.name, address: { "@type": "PostalAddress", addressRegion: abbr, addressCountry: "US" } },
-        organizer: { "@type": "GovernmentOrganization", name: `${state.name} Wildlife Agency` },
-        ...(species === "duck" ? { startDate: state.seasonOpen } : {}),
+        applicationCategory: "EnvironmentalMonitoring",
+        operatingSystem: "Web",
+        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+        spatialCoverage: { "@type": "Place", name: state.name, address: { "@type": "PostalAddress", addressRegion: abbr, addressCountry: "US" } },
       });
       return injectOgTags(request, title, description, ogUrl, jsonLd);
     }
