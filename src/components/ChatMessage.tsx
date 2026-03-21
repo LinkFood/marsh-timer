@@ -102,6 +102,38 @@ function renderCard(card: ChatCard, index: number) {
       return <SourceCard key={index} data={card.data} />;
     case 'pattern-links':
       return <PatternLinksCard key={index} data={card.data as any} />;
+    case 'activity': {
+      const d = card.data || {};
+      return (
+        <div key={index} className="space-y-1.5 py-1">
+          <div className="text-[10px] font-mono text-cyan-400/70 uppercase tracking-wider">Brain Activity — Last 24h</div>
+          <div className="grid grid-cols-2 gap-1">
+            <div className="text-[11px] text-white/80">
+              <span className="text-lg font-bold text-white">{d.total_24h || 0}</span>
+              <span className="text-white/40 ml-1">entries</span>
+            </div>
+            <div className="text-[11px] text-white/80">
+              <span className="text-lg font-bold text-cyan-400">{d.high_signal_count || 0}</span>
+              <span className="text-white/40 ml-1">high-signal</span>
+            </div>
+          </div>
+          {Array.isArray(d.top_states) && d.top_states.length > 0 && (
+            <div className="text-[10px] text-white/50">
+              Most active: {d.top_states.map(([st, ct]: [string, number]) => `${st} (${ct})`).join(', ')}
+            </div>
+          )}
+          {d.by_type && Object.keys(d.by_type).length > 0 && (
+            <div className="text-[9px] text-white/30 mt-1">
+              {Object.entries(d.by_type as Record<string, number>)
+                .sort((a, b) => (b[1] as number) - (a[1] as number))
+                .slice(0, 5)
+                .map(([type, count]) => `${type}: ${count}`)
+                .join(' \u00b7 ')}
+            </div>
+          )}
+        </div>
+      );
+    }
     default:
       return null;
   }
@@ -135,8 +167,9 @@ export default function ChatMessage({ message }: ChatMessageProps) {
   }
 
   const cards = Array.isArray(message.cards) ? message.cards : [];
-  const brainCards = cards.filter(c => c.type === 'pattern' || c.type === 'source');
-  const otherCards = cards.filter(c => c.type !== 'pattern' && c.type !== 'source');
+  const BRAIN_CARD_TYPES = ['pattern', 'source', 'convergence', 'weather', 'activity', 'pattern-links', 'alert'];
+  const brainCards = cards.filter(c => BRAIN_CARD_TYPES.includes(c.type));
+  const aiCards = cards.filter(c => !BRAIN_CARD_TYPES.includes(c.type));
 
   return (
     <div className="flex items-start gap-2 mb-3 animate-in fade-in duration-300">
@@ -172,9 +205,9 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               <span>Viewing {message.mapAction.target} on map</span>
             </div>
           )}
-          {otherCards.length > 0 && (
+          {aiCards.length > 0 && (
             <div className="mt-2 space-y-2">
-              {otherCards.map((card, i) => renderCard(card, i))}
+              {aiCards.map((card, i) => renderCard(card, i))}
             </div>
           )}
           <p className="text-[9px] text-white/15 mt-1.5">
