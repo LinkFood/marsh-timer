@@ -103,6 +103,36 @@ export function parseTextContent(response: ClaudeResponse): string {
   return response.content.find(c => c.type === 'text')?.text || '';
 }
 
+export async function callClaudeStream(options: ClaudeOptions): Promise<Response> {
+  const {
+    model = CLAUDE_MODELS.sonnet,
+    system,
+    messages,
+    tools,
+    tool_choice,
+    max_tokens = 4096,
+    temperature = 0.3,
+  } = options;
+
+  const body: Record<string, unknown> = { model, messages, max_tokens, temperature, stream: true };
+  if (system) body.system = system;
+  if (tools) body.tools = tools;
+  if (tool_choice) body.tool_choice = tool_choice;
+
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: 'POST',
+    headers: getAnthropicHeaders(),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Claude API ${response.status}: ${errorText}`);
+  }
+
+  return response;
+}
+
 export function calculateCost(model: string, usage: ClaudeUsage): number {
   const rates = CLAUDE_RATES[model as keyof typeof CLAUDE_RATES];
   if (!rates) return 0;

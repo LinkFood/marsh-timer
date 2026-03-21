@@ -1,8 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors, getCorsHeaders } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
-import { callClaude, parseToolUse, parseTextContent, calculateCost, CLAUDE_MODELS } from '../_shared/anthropic.ts';
+import { callClaude, callClaudeStream, parseToolUse, parseTextContent, calculateCost, CLAUDE_MODELS } from '../_shared/anthropic.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+
+interface HandlerResult {
+  cards: unknown[];
+  systemPrompt: string;
+  userContent: string;
+  mapAction?: { type: string; target: string };
+}
 
 const INTENT_TOOLS = [
   {
@@ -143,6 +150,108 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
   }
 }
 
+// The shared system prompt rules appended to every handler's system prompt
+const BRAIN_RULES = `
+CRITICAL RULES:
+1. ONLY state facts that come from the provided context data. Never invent data.
+2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
+3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
+4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
+5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"
+Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.`;
+
+function createStreamingResponse(request: Request, handlerResult: HandlerResult, supabase: ReturnType<typeof createSupabaseClient>, userId: string | null, sessionId: string | null, originalMessage: string, intent: string): Response {
+  const { cards, systemPrompt, userContent, mapAction } = handlerResult;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const send = (data: unknown) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+
+      // Send cards first
+      send({ type: 'cards', cards });
+
+      let fullText = '';
+
+      try {
+        const anthropicResponse = await callClaudeStream({
+          model: CLAUDE_MODELS.sonnet,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userContent }],
+        });
+
+        const reader = anthropicResponse.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            if (line === 'data: [DONE]') continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                const chunk = event.delta.text;
+                fullText += chunk;
+                send({ type: 'text', chunk });
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+
+        send({ type: 'done', mapAction: mapAction || null });
+      } catch (err) {
+        const errMsg = `\n\nError: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        fullText += errMsg;
+        send({ type: 'text', chunk: errMsg });
+        send({ type: 'done', mapAction: null });
+      } finally {
+        // Store conversation after stream completes
+        if (userId && sessionId && fullText) {
+          supabase.from('hunt_conversations').insert([
+            { user_id: userId, session_id: sessionId, role: 'user', content: originalMessage },
+            { user_id: userId, session_id: sessionId, role: 'assistant', content: fullText, metadata: { cards, intent } },
+          ]).then(() => {}).catch(e => console.warn('Conversation store failed:', e));
+        }
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...getCorsHeaders(request),
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+
+// Execute a HandlerResult through the legacy non-streaming path (Sonnet)
+async function executeLegacy(handlerResult: HandlerResult): Promise<{ response: string; cards: unknown[]; mapAction?: unknown }> {
+  const response = await callClaude({
+    model: CLAUDE_MODELS.sonnet,
+    system: handlerResult.systemPrompt,
+    messages: [{ role: 'user', content: handlerResult.userContent }],
+    max_tokens: 4096,
+  });
+  return {
+    response: parseTextContent(response),
+    cards: handlerResult.cards,
+    mapAction: handlerResult.mapAction,
+  };
+}
+
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -155,7 +264,7 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { message, species: ctxSpecies, stateAbbr: ctxState, sessionId } = body;
+    const { message, species: ctxSpecies, stateAbbr: ctxState, sessionId, stream: useStreaming } = body;
 
     if (!message || typeof message !== 'string') {
       return new Response(JSON.stringify({ error: 'message required' }), { status: 400, headers });
@@ -206,8 +315,8 @@ serve(async (req) => {
       }
     }
 
-    // Step 1: Intent classification
-    const systemPrompt = `You are the Duck Countdown Brain — an environmental intelligence system monitoring patterns across 21 data sources for all 50 US states.
+    // Step 1: Intent classification (STAYS AS HAIKU)
+    const classifySystemPrompt = `You are the Duck Countdown Brain — an environmental intelligence system monitoring patterns across 21 data sources for all 50 US states.
 You analyze convergence signals from weather, wildlife migration, lunar cycles, satellite data, water levels, drought conditions, and more.
 You can answer questions about environmental patterns, weather intelligence, wildlife movement, and — when asked — hunting conditions and season dates.
 
@@ -225,7 +334,7 @@ Classify the user's message intent and extract relevant parameters.
 
     const classifyResponse = await callClaude({
       model: CLAUDE_MODELS.haiku,
-      system: systemPrompt,
+      system: classifySystemPrompt,
       messages: [{ role: 'user', content: message }],
       tools: INTENT_TOOLS,
       tool_choice: { type: 'tool', name: 'route_intent' },
@@ -235,7 +344,19 @@ Classify the user's message intent and extract relevant parameters.
 
     const toolUse = parseToolUse(classifyResponse);
     if (!toolUse) {
-      return respondGeneral(req, headers, message, ctxSpecies, ctxState, supabase, userId, sessionId, conversationContext);
+      // Fallback: general handler
+      const handlerResult = await handleGeneral(message, ctxSpecies || 'duck', ctxState, conversationContext);
+      if (useStreaming) {
+        return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'general');
+      }
+      const result = await executeLegacy(handlerResult);
+      if (userId && sessionId) {
+        await supabase.from('hunt_conversations').insert([
+          { user_id: userId, session_id: sessionId, role: 'user', content: message },
+          { user_id: userId, session_id: sessionId, role: 'assistant', content: result.response },
+        ]);
+      }
+      return new Response(JSON.stringify(result), { status: 200, headers });
     }
 
     const { intent, state_abbr, species: intentSpecies, query } = toolUse.input as {
@@ -248,18 +369,18 @@ Classify the user's message intent and extract relevant parameters.
     const resolvedState = state_abbr || ctxState;
     const resolvedSpecies = intentSpecies || ctxSpecies || 'duck';
 
-    let result: { response: string; cards: unknown[]; mapAction?: unknown };
-
     // Intercept comparison queries BEFORE intent routing
     const compareMatch = message.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
       || message.match(/(\w{2})\s+vs\.?\s+(\w{2})/i);
     if (compareMatch) {
       const s1 = compareMatch[1].toUpperCase();
       const s2 = compareMatch[2].toUpperCase();
-      // Validate they look like state abbreviations
       if (s1.length === 2 && s2.length === 2 && s1 !== s2) {
-        result = await handleCompare(s1, s2, message, resolvedSpecies);
-
+        const handlerResult = await handleCompare(s1, s2, message, resolvedSpecies);
+        if (useStreaming) {
+          return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'compare');
+        }
+        const result = await executeLegacy(handlerResult);
         if (userId && sessionId) {
           await supabase.from('hunt_conversations').insert([
             { user_id: userId, session_id: sessionId, role: 'user', content: message },
@@ -270,28 +391,36 @@ Classify the user's message intent and extract relevant parameters.
       }
     }
 
+    let handlerResult: HandlerResult;
+
     switch (intent) {
       case 'weather':
         if (!resolvedState) {
-          // No state specified — handle as search (may be a comparative question)
-          result = await handleSearch(query, resolvedSpecies, null);
+          handlerResult = await handleSearch(query, resolvedSpecies, null);
         } else {
-          result = await handleWeather(supabase, resolvedState, query, resolvedSpecies);
+          handlerResult = await handleWeather(supabase, resolvedState, query, resolvedSpecies);
         }
         break;
       case 'solunar':
-        result = await handleSolunar(supabase, resolvedState, query);
+        handlerResult = await handleSolunar(supabase, resolvedState, query);
         break;
       case 'season_info':
-        result = await handleSeasonInfo(supabase, resolvedSpecies, resolvedState, query);
+        handlerResult = await handleSeasonInfo(supabase, resolvedSpecies, resolvedState, query);
         break;
       case 'search':
-        result = await handleSearch(query, resolvedSpecies, resolvedState);
+        handlerResult = await handleSearch(query, resolvedSpecies, resolvedState);
         break;
       default:
-        result = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
+        handlerResult = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
         break;
     }
+
+    if (useStreaming) {
+      return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, intent);
+    }
+
+    // Legacy non-streaming path (now uses Sonnet)
+    const result = await executeLegacy(handlerResult);
 
     // Store conversation
     if (userId && sessionId) {
@@ -324,9 +453,13 @@ Classify the user's message intent and extract relevant parameters.
   }
 });
 
-async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string, species: string = 'duck') {
+async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string, species: string = 'duck'): Promise<HandlerResult> {
   if (!stateAbbr) {
-    return { response: 'Which state are you interested in? Select one on the map or tell me.', cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: 'Which state are you interested in? Select one on the map or tell me.',
+    };
   }
 
   const { data: state } = await supabase
@@ -336,7 +469,11 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     .maybeSingle();
 
   if (!state?.centroid_lat) {
-    return { response: `I don't have location data for ${stateAbbr} yet.`, cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: `I don't have location data for ${stateAbbr} yet.`,
+    };
   }
 
   // Fetch weather + convergence + brain search in parallel
@@ -371,7 +508,11 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   ]);
 
   if (!weatherRes.ok) {
-    return { response: `Couldn't fetch weather for ${state.name}. Try again later.`, cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: `Couldn't fetch weather for ${state.name}. Try again later.`,
+    };
   }
 
   const forecast = await weatherRes.json();
@@ -394,21 +535,6 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   if (patternLinks.length > 0) {
     linksInsight = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
   }
-
-  const weatherSummary = await callClaude({
-    model: CLAUDE_MODELS.haiku,
-    system: `You are an environmental weather analyst. Give a brief, practical weather intelligence summary. Focus on wind shifts, temperature changes, pressure systems, and precipitation patterns that signal environmental changes. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
-
-CRITICAL RULES:
-1. ONLY state facts that come from the provided context data. Never invent data.
-2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
-3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
-4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"`,
-    messages: [{ role: 'user', content: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}\n\nBrain historical patterns (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}\n\nQuery: ${query}` }],
-    max_tokens: 200,
-  });
 
   const cards: unknown[] = [{
     type: 'weather',
@@ -468,15 +594,21 @@ CRITICAL RULES:
   }
 
   return {
-    response: parseTextContent(weatherSummary),
     cards,
+    systemPrompt: `You are an environmental weather analyst. Give a brief, practical weather intelligence summary. Focus on wind shifts, temperature changes, pressure systems, and precipitation patterns that signal environmental changes. If historical pattern data is provided, reference it to give data-backed insights. 2-3 sentences max.
+${BRAIN_RULES}`,
+    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}\n\nBrain historical patterns (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
 
-async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string) {
+async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string): Promise<HandlerResult> {
   if (!stateAbbr) {
-    return { response: 'Which state? Select one on the map or tell me.', cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: 'Which state? Select one on the map or tell me.',
+    };
   }
 
   const { data: state } = await supabase
@@ -486,7 +618,11 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
     .maybeSingle();
 
   if (!state?.centroid_lat) {
-    return { response: `I don't have location data for ${stateAbbr}.`, cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: `I don't have location data for ${stateAbbr}.`,
+    };
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -514,7 +650,11 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
   ]);
 
   if (!solunarRes.ok) {
-    return { response: `Couldn't fetch solunar data for ${state.name}.`, cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: `Couldn't fetch solunar data for ${state.name}.`,
+    };
   }
 
   const data = await solunarRes.json();
@@ -523,11 +663,10 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
 
   let brainContext = '';
   if (brainResults.length > 0) {
-    brainContext = ` Based on historical patterns: ${brainResults.map(v => v.content).join('; ').substring(0, 300)}`;
+    brainContext = `\n\nBrain data (${brainResults.length} entries):\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
   }
 
   return {
-    response: `Here's the solunar forecast for ${state.name} today. ${solunar.dayRating ? `Overall rating: ${solunar.dayRating}/5.` : ''} ${solunar.moonPhase ? `Moon phase: ${solunar.moonPhase}.` : ''}${brainContext}`,
     cards: [{
       type: 'solunar',
       data: {
@@ -540,13 +679,20 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
         rating: solunar.dayRating,
       },
     }],
+    systemPrompt: `You are a solunar and lunar phase analyst for outdoor activity planning. Summarize the solunar forecast briefly, noting key feeding windows and moon phase. 2-3 sentences max.
+${BRAIN_RULES}`,
+    userContent: `Solunar forecast for ${state.name} today:\nRating: ${solunar.dayRating || 'N/A'}/5\nMoon phase: ${solunar.moonPhase || 'N/A'}\nMajor periods: ${[solunar.major1Start, solunar.major2Start].filter(Boolean).join(', ') || 'N/A'}\nMinor periods: ${[solunar.minor1Start, solunar.minor2Start].filter(Boolean).join(', ') || 'N/A'}\nSunrise: ${sunrise.sunrise || 'N/A'}\nSunset: ${sunrise.sunset || 'N/A'}${brainContext}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
 
-async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient>, species: string, stateAbbr: string | null, query: string) {
+async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient>, species: string, stateAbbr: string | null, query: string): Promise<HandlerResult> {
   if (!stateAbbr) {
-    return { response: 'Which state are you asking about? Select one on the map or tell me.', cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: 'Which state are you asking about? Select one on the map or tell me.',
+    };
   }
 
   // Fetch seasons + convergence + brain search in parallel
@@ -579,11 +725,15 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
   const convData = convergenceResult.data;
 
   if (!seasons || seasons.length === 0) {
-    return { response: `No ${species} season data found for ${stateAbbr}.`, cards: [] };
+    return {
+      cards: [],
+      systemPrompt: 'You are a helpful assistant.',
+      userContent: `No ${species} season data found for ${stateAbbr}.`,
+    };
   }
 
   const now = new Date();
-  const cards = seasons.map((s: Record<string, unknown>) => {
+  const cards: unknown[] = seasons.map((s: Record<string, unknown>) => {
     const dates = s.dates as Array<{ start: string; end: string }>;
     let status = 'closed';
     for (const d of dates) {
@@ -615,22 +765,6 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     brainContext = `\n\nAdditional knowledge from the brain:\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
   }
 
-  const seasonSummary = await callClaude({
-    model: CLAUDE_MODELS.haiku,
-    system: `You are a hunting season expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
-ONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don't have that specific data" rather than guessing.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
-
-CRITICAL RULES:
-1. ONLY state facts that come from the provided context data. Never invent data.
-2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
-3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
-4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"`,
-    messages: [{ role: 'user', content: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}${brainContext}` }],
-    max_tokens: 200,
-  });
-
   if (convData) {
     cards.push({
       type: 'convergence',
@@ -649,13 +783,16 @@ CRITICAL RULES:
   }
 
   return {
-    response: parseTextContent(seasonSummary),
     cards,
+    systemPrompt: `You are a hunting season expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
+ONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don't have that specific data" rather than guessing.
+${BRAIN_RULES}`,
+    userContent: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}${brainContext}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
 
-async function handleCompare(state1: string, state2: string, query: string, species: string) {
+async function handleCompare(state1: string, state2: string, query: string, species: string): Promise<HandlerResult> {
   const supabase = createSupabaseClient();
 
   const [conv1, conv2, s1Status, s2Status] = await Promise.all([
@@ -673,33 +810,21 @@ async function handleCompare(state1: string, state2: string, query: string, spec
   if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). Weather: ${c2.weather_component}/25, Solunar: ${c2.solunar_component}/15, Migration: ${c2.migration_component}/25, BirdCast: ${c2.birdcast_component}/20, Pattern: ${c2.pattern_component}/15. ${c2.reasoning}`;
   context += `\n\nSeason status: ${state1}: ${s1Status.status} | ${state2}: ${s2Status.status}`;
 
-  const response = await callClaude({
-    model: CLAUDE_MODELS.haiku,
-    system: `You are an environmental analyst comparing two states. Use the provided convergence scores and brain data to give a clear recommendation. Format as a side-by-side comparison with a verdict. Be specific — cite scores, bird counts, and conditions. Never include external URLs.
-ONLY reference data provided in the context. If data is missing for a state, say so.
-
-CRITICAL RULES:
-1. ONLY state facts that come from the provided context data. Never invent data.
-2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
-3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
-4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"`,
-    messages: [{ role: 'user', content: `${context}\n\nQuestion: ${query}` }],
-    max_tokens: 400,
-  });
-
   const cards: unknown[] = [];
   if (c1) cards.push({ type: 'convergence', data: { stateAbbr: c1.state_abbr, score: c1.score, weatherComponent: c1.weather_component, solunarComponent: c1.solunar_component, migrationComponent: c1.migration_component, birdcastComponent: c1.birdcast_component, patternComponent: c1.pattern_component, nationalRank: c1.national_rank, reasoning: c1.reasoning } });
   if (c2) cards.push({ type: 'convergence', data: { stateAbbr: c2.state_abbr, score: c2.score, weatherComponent: c2.weather_component, solunarComponent: c2.solunar_component, migrationComponent: c2.migration_component, birdcastComponent: c2.birdcast_component, patternComponent: c2.pattern_component, nationalRank: c2.national_rank, reasoning: c2.reasoning } });
 
   return {
-    response: parseTextContent(response),
     cards,
+    systemPrompt: `You are an environmental analyst comparing two states. Use the provided convergence scores and brain data to give a clear recommendation. Format as a side-by-side comparison with a verdict. Be specific — cite scores, bird counts, and conditions.
+ONLY reference data provided in the context. If data is missing for a state, say so.
+${BRAIN_RULES}`,
+    userContent: `${context}\n\nQuestion: ${query}`,
     mapAction: { type: 'flyTo', target: c1 && c2 ? (c1.score >= c2.score ? state1 : state2) : state1 },
   };
 }
 
-async function handleSearch(query: string, species: string = 'duck', stateAbbr?: string | null) {
+async function handleSearch(query: string, species: string = 'duck', stateAbbr?: string | null): Promise<HandlerResult> {
   // Check for comparison pattern (e.g., "compare AR vs LA", "TX or OK")
   const compareMatch = query.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
     || query.match(/(\w{2})\s+(?:vs?\.?|or|versus)\s+(\w{2})/i);
@@ -795,35 +920,7 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
   let linksContext = '';
   if (patternLinks.length > 0) {
     linksContext = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
-  }
 
-  let topStatesContext = '';
-  if (topStatesResult.data && topStatesResult.data.length > 0) {
-    topStatesContext = `\n\nTop states by convergence score right now:\n${topStatesResult.data.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning}`).join('\n')}`;
-    topStatesContext += `\n\nNote: Check season dates before recommending — some of these states may have closed seasons right now.`;
-  }
-
-  const searchResponse = await callClaude({
-    model: CLAUDE_MODELS.haiku,
-    system: `You are an environmental intelligence analyst. Answer based on the provided context. Be concise but informative.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
-
-CRITICAL RULES:
-1. ONLY state facts that come from the provided context data. Never invent data.
-2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
-3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
-4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"`,
-    messages: [{ role: 'user', content: (() => {
-      const similarities = brainResults.map(v => v.similarity);
-      const minSim = similarities.length > 0 ? Math.min(...similarities).toFixed(2) : '0';
-      const maxSim = similarities.length > 0 ? Math.max(...similarities).toFixed(2) : '0';
-      return `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}\n\nQuestion: ${query}`;
-    })() }],
-    max_tokens: 300,
-  });
-
-  if (patternLinks.length > 0) {
     cards.push({
       type: 'pattern-links',
       data: {
@@ -839,13 +936,25 @@ CRITICAL RULES:
     });
   }
 
+  let topStatesContext = '';
+  if (topStatesResult.data && topStatesResult.data.length > 0) {
+    topStatesContext = `\n\nTop states by convergence score right now:\n${topStatesResult.data.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning}`).join('\n')}`;
+    topStatesContext += `\n\nNote: Check season dates before recommending — some of these states may have closed seasons right now.`;
+  }
+
+  const similarities = brainResults.map(v => v.similarity);
+  const minSim = similarities.length > 0 ? Math.min(...similarities).toFixed(2) : '0';
+  const maxSim = similarities.length > 0 ? Math.max(...similarities).toFixed(2) : '0';
+
   return {
-    response: parseTextContent(searchResponse),
     cards,
+    systemPrompt: `You are an environmental intelligence analyst. Answer based on the provided context. Be concise but informative.
+${BRAIN_RULES}`,
+    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}\n\nQuestion: ${query}`,
   };
 }
 
-async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string) {
+async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = ''): Promise<HandlerResult> {
   // Light brain search — only include if high-similarity matches exist
   const brainResults = await searchBrain({
     query: message,
@@ -860,39 +969,13 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
     brainContext = `\n\nRelevant knowledge (cite if useful):\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
   }
 
-  const response = await callClaude({
-    model: CLAUDE_MODELS.haiku,
-    system: `You are the Duck Countdown Brain — an environmental intelligence assistant. You help with US environmental patterns, weather intelligence, wildlife signals, solunar data, and hunting season information when asked.
+  return {
+    cards: [],
+    systemPrompt: `You are the Duck Countdown Brain — an environmental intelligence assistant. You help with US environmental patterns, weather intelligence, wildlife signals, solunar data, and hunting season information when asked.
 Current context: species=${species}, state=${stateAbbr || 'none'}.${species !== 'duck' ? `\nThe user is asking about ${species} hunting. You have species-specific knowledge including ${species === 'deer' ? 'rut timing, moon phase correlations, cold snap triggers, barometric pressure effects, and wind patterns' : species === 'turkey' ? 'gobble peak timing, weather sensitivity, roosting behavior, and calling strategies' : species === 'dove' ? 'migration timing, field rotation patterns, weather windows, and wind thresholds' : `${species}-specific patterns and behavior`} for their state and region.` : ''}
 ${conversationContext}${brainContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
-Never include external URLs, links, or website references in your response. Never recommend external websites or apps. All information comes from Duck Countdown's data.
-
-CRITICAL RULES:
-1. ONLY state facts that come from the provided context data. Never invent data.
-2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
-3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
-4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General hunting knowledge (not from brain data):"`,
-    messages: [{ role: 'user', content: message }],
-    max_tokens: 300,
-  });
-
-  return {
-    response: parseTextContent(response),
-    cards: [],
+${BRAIN_RULES}`,
+    userContent: message,
   };
-}
-
-async function respondGeneral(req: Request, headers: Record<string, string>, message: string, species: string, stateAbbr: string | null, supabase: ReturnType<typeof createSupabaseClient>, userId: string | null, sessionId: string | null, conversationContext: string) {
-  const result = await handleGeneral(message, species, stateAbbr, conversationContext);
-
-  if (userId && sessionId) {
-    await supabase.from('hunt_conversations').insert([
-      { user_id: userId, session_id: sessionId, role: 'user', content: message },
-      { user_id: userId, session_id: sessionId, role: 'assistant', content: result.response },
-    ]);
-  }
-
-  return new Response(JSON.stringify(result), { status: 200, headers });
 }
