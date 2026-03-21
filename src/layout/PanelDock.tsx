@@ -1,10 +1,12 @@
-import { useMemo, Suspense, Component, type ReactNode } from 'react';
+import { useMemo, useCallback, Suspense, Component, type ReactNode } from 'react';
+import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import { useDeckLayout } from '@/hooks/useDeckLayout';
 import { useDeck } from '@/contexts/DeckContext';
 import PanelWrapper from '@/panels/PanelWrapper';
 import { PANEL_MAP } from '@/panels/PanelRegistry';
 
-/** Per-panel error boundary so one bad panel doesn't kill the whole dock */
 class PanelErrorBoundary extends Component<{ panelId: string; children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null };
   static getDerivedStateFromError(err: Error) { return { error: err.message }; }
@@ -22,8 +24,9 @@ class PanelErrorBoundary extends Component<{ panelId: string; children: ReactNod
 }
 
 export default function PanelDock() {
-  const { panels, removePanel } = useDeckLayout();
-  const { activeCategory, gridPreset } = useDeck();
+  const { panels, removePanel, updateLayout } = useDeckLayout();
+  const { activeCategory } = useDeck();
+  const [containerRef, containerWidth] = useContainerWidth({ initialWidth: 1200 });
 
   const visiblePanels = useMemo(() => {
     if (activeCategory === 'all') return panels;
@@ -33,41 +36,45 @@ export default function PanelDock() {
     });
   }, [panels, activeCategory]);
 
-  const gridClasses = useMemo(() => {
-    switch (gridPreset) {
-      case '2-col': return 'grid grid-cols-2 gap-2 auto-rows-[200px]';
-      case '3-col': return 'grid grid-cols-3 gap-2 auto-rows-[160px]';
-      case '4-col': return 'grid grid-cols-4 gap-2 auto-rows-[120px]';
-      case 'map-focus': return 'flex flex-col gap-2';
-      case 'equal-grid': return 'grid grid-cols-3 gap-2 auto-rows-[200px]';
-      default: return 'grid grid-cols-12 gap-2 auto-rows-[80px]';
-    }
-  }, [gridPreset]);
+  const layouts = useMemo(() => ({
+    lg: visiblePanels.map(p => ({
+      i: p.instanceId,
+      x: p.x ?? 0,
+      y: p.y ?? 0,
+      w: Math.min(p.w || 3, 12),
+      h: p.h || 3,
+      minW: 2,
+      minH: 2,
+    })),
+  }), [visiblePanels]);
 
-  const isSimpleGrid = gridPreset !== 'default';
+  const handleLayoutChange = useCallback((layout: any[]) => {
+    updateLayout(layout.map((l: any) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h })));
+  }, [updateLayout]);
 
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10 p-2">
-      <div className={gridClasses}>
+    <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/10">
+      <ResponsiveGridLayout
+        layouts={layouts}
+        width={containerWidth}
+        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480 }}
+        cols={{ lg: 12, md: 8, sm: 6, xs: 1 }}
+        rowHeight={60}
+        containerPadding={[8, 8]}
+        margin={[8, 8]}
+        draggableHandle=".panel-drag-handle"
+        onLayoutChange={handleLayoutChange}
+        isResizable={true}
+        isDraggable={true}
+        useCSSTransforms={true}
+        compactType="vertical"
+      >
         {visiblePanels.map((p) => {
           const def = PANEL_MAP.get(p.panelId);
           if (!def) return null;
           const Component = def.component;
-          const colSpan = Math.min(p.w || 4, 12);
-          const rowSpan = p.h || 4;
-
-          const style: React.CSSProperties = isSimpleGrid
-            ? gridPreset === 'map-focus'
-              ? { minHeight: '120px' }
-              : { gridColumn: 'span 1', gridRow: 'span 1' }
-            : { gridColumn: `span ${colSpan}`, gridRow: `span ${rowSpan}` };
-
           return (
-            <div
-              key={p.instanceId}
-              className="min-h-0"
-              style={style}
-            >
+            <div key={p.instanceId}>
               <PanelWrapper
                 panelId={p.panelId}
                 instanceId={p.instanceId}
@@ -89,7 +96,7 @@ export default function PanelDock() {
             </div>
           );
         })}
-      </div>
+      </ResponsiveGridLayout>
     </div>
   );
 }

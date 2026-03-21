@@ -10,7 +10,7 @@ function loadDeck(): PanelInstance[] {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const state: DeckState = JSON.parse(stored);
-      if (state.version === 1 && Array.isArray(state.panels) && state.panels.length > 0) {
+      if (state.version === 2 && Array.isArray(state.panels) && state.panels.length > 0) {
         return state.panels;
       }
     }
@@ -19,7 +19,7 @@ function loadDeck(): PanelInstance[] {
 }
 
 function saveDeck(panels: PanelInstance[]) {
-  const state: DeckState = { panels, version: 1 };
+  const state: DeckState = { panels, version: 2 };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   window.dispatchEvent(new Event(DECK_CHANGE_EVENT));
 }

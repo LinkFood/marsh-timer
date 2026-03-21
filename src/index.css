@@ -177,3 +177,36 @@ html {
     display: none;
   }
 }
+
+/* react-grid-layout dark theme overrides */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(34, 211, 238, 0.1) !important;
+  border: 1px dashed rgba(34, 211, 238, 0.3) !important;
+  border-radius: 6px;
+  opacity: 1 !important;
+}
+
+.react-resizable-handle {
+  background-image: none !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+.react-resizable-handle:hover::after {
+  border-color: rgba(34, 211, 238, 0.5);
+}
+
+.react-grid-item > .react-resizable-handle {
+  z-index: 10;
+}
