@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FeatureCollection } from 'geojson';
 
 interface TickerItem {
@@ -25,6 +25,21 @@ function timeAgo(ts: string): string {
 
 export default function EventTicker({ convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON }: EventTickerProps) {
   const [hovered, setHovered] = useState(false);
+  const [compoundAlerts, setCompoundAlerts] = useState<any[]>([]);
+
+  useEffect(() => {
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!SUPABASE_URL) return;
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=title,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since}&order=created_at.desc&limit=5`, {
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY },
+    })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setCompoundAlerts(data); })
+      .catch(() => {});
+  }, []);
 
   const items = useMemo<TickerItem[]>(() => {
     const all: TickerItem[] = [];
@@ -61,9 +76,17 @@ export default function EventTicker({ convergenceAlerts, weatherEventsGeoJSON, n
       }
     }
 
+    for (const alert of compoundAlerts) {
+      all.push({
+        text: `COMPOUND RISK: ${alert.title}`,
+        colorClass: 'bg-red-500',
+        timestamp: alert.created_at,
+      });
+    }
+
     all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return all.slice(0, 15);
-  }, [convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON]);
+  }, [convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON, compoundAlerts]);
 
   if (items.length === 0) {
     return (

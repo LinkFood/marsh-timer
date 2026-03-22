@@ -43,6 +43,7 @@ export default function WhatsHappeningPanel({ isFullscreen }: PanelComponentProp
     convergence: items.filter(i => i.type === 'convergence').length,
     weather: items.filter(i => i.type === 'weather').length,
     nws: items.filter(i => i.type === 'nws').length,
+    'compound-risk': items.filter(i => i.type === 'compound-risk').length,
   }), [items]);
 
   if (loading) {
@@ -61,6 +62,7 @@ export default function WhatsHappeningPanel({ isFullscreen }: PanelComponentProp
           { id: 'convergence', label: 'CONVERGENCE', count: tabCounts.convergence },
           { id: 'weather', label: 'WEATHER', count: tabCounts.weather },
           { id: 'nws', label: 'NWS', count: tabCounts.nws },
+          { id: 'compound-risk', label: 'RISK', count: tabCounts['compound-risk'] },
         ]}
         active={activeTab}
         onChange={setActiveTab}
