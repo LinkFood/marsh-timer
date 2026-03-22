@@ -28,10 +28,28 @@ interface CronFailure {
   created_at: string;
 }
 
+interface ScanLog {
+  function_name: string;
+  status: string;
+  summary: any;
+  created_at: string;
+}
+
+interface RiskAlert {
+  id: string;
+  title: string;
+  state_abbr: string | null;
+  content_type: string;
+  metadata: any;
+  created_at: string;
+}
+
 export interface AdminData {
   crons: CronStatus[];
   discoveries: WebDiscovery[];
   failures: CronFailure[];
+  scans: ScanLog[];
+  riskAlerts: RiskAlert[];
   brainCount: number;
   loading: boolean;
 }
@@ -42,6 +60,8 @@ export function useAdminData(): AdminData {
   const [crons, setCrons] = useState<CronStatus[]>([]);
   const [discoveries, setDiscoveries] = useState<WebDiscovery[]>([]);
   const [failures, setFailures] = useState<CronFailure[]>([]);
+  const [scans, setScans] = useState<ScanLog[]>([]);
+  const [riskAlerts, setRiskAlerts] = useState<RiskAlert[]>([]);
   const [brainCount, setBrainCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +94,24 @@ export function useAdminData(): AdminData {
           .limit(20);
         setFailures(failData || []);
 
+        // Fetch recent convergence scans (last 24h)
+        const { data: scanData } = await supabase
+          .from('hunt_cron_log')
+          .select('function_name, status, summary, created_at')
+          .eq('function_name', 'hunt-convergence-scan')
+          .order('created_at', { ascending: false })
+          .limit(20);
+        setScans(scanData || []);
+
+        // Fetch compound risk alerts
+        const { data: riskData } = await supabase
+          .from('hunt_knowledge')
+          .select('id, title, state_abbr, content_type, metadata, created_at')
+          .eq('content_type', 'compound-risk-alert')
+          .order('created_at', { ascending: false })
+          .limit(10);
+        setRiskAlerts(riskData || []);
+
         // Get brain entry count
         const { count } = await supabase
           .from('hunt_knowledge')
@@ -93,5 +131,5 @@ export function useAdminData(): AdminData {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  return { crons, discoveries, failures, brainCount, loading };
+  return { crons, discoveries, failures, scans, riskAlerts, brainCount, loading };
 }

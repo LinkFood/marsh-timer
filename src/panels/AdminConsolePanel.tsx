@@ -27,7 +27,7 @@ const DECISION_STYLE: Record<string, { bg: string; text: string }> = {
 };
 
 export default function AdminConsolePanel({ isFullscreen }: PanelComponentProps) {
-  const { crons, discoveries, failures, brainCount, loading } = useAdminData();
+  const { crons, discoveries, failures, scans, riskAlerts, brainCount, loading } = useAdminData();
   const [activeTab, setActiveTab] = useState('crons');
 
   if (loading) {
@@ -55,8 +55,9 @@ export default function AdminConsolePanel({ isFullscreen }: PanelComponentProps)
       <PanelTabs
         tabs={[
           { id: 'crons', label: 'CRONS', count: crons.length },
-          { id: 'discoveries', label: 'DISCOVERIES', count: discoveries.length },
+          { id: 'discoveries', label: 'DISCOVERIES', count: discoveries.length + riskAlerts.length },
           { id: 'failures', label: 'FAILURES', count: failures.length },
+          { id: 'scans', label: 'SCANS', count: scans.length },
         ]}
         active={activeTab}
         onChange={setActiveTab}
@@ -88,7 +89,19 @@ export default function AdminConsolePanel({ isFullscreen }: PanelComponentProps)
 
         {activeTab === 'discoveries' && (
           <div>
-            {discoveries.length === 0 ? (
+            {/* Compound risk alerts */}
+            {riskAlerts.map(r => (
+              <div key={r.id} className="px-2.5 py-2 border-b border-white/[0.03] bg-red-400/[0.04]">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-red-400/10 text-red-400">RISK</span>
+                  {r.state_abbr && <span className="text-[9px] font-mono text-white/50">{r.state_abbr}</span>}
+                  <span className="text-[9px] font-mono text-white/20 ml-auto">{timeAgo(r.created_at)}</span>
+                </div>
+                <p className="text-[10px] text-white/50 truncate">{r.title}</p>
+              </div>
+            ))}
+            {/* Web discoveries */}
+            {discoveries.length === 0 && riskAlerts.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-white/20 text-[10px]">
                 No web discoveries yet
               </div>
@@ -136,6 +149,31 @@ export default function AdminConsolePanel({ isFullscreen }: PanelComponentProps)
                   </p>
                 </div>
               ))
+            )}
+          </div>
+        )}
+
+        {activeTab === 'scans' && (
+          <div>
+            {scans.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-white/20 text-[10px]">
+                No convergence scans recorded
+              </div>
+            ) : (
+              scans.map((s, i) => {
+                const summary = typeof s.summary === 'object' && s.summary ? s.summary : {};
+                return (
+                  <div key={i} className="px-2.5 py-1.5 border-b border-white/[0.03]">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${summary.alert ? 'bg-red-400' : 'bg-emerald-400'}`} />
+                      <span className="text-[10px] font-mono text-white/70">{summary.state || '?'}</span>
+                      <span className="text-[9px] font-mono text-white/30">{summary.domains || 0} domains</span>
+                      {summary.alert && <span className="text-[8px] font-mono text-red-400 bg-red-400/10 px-1 rounded">ALERT</span>}
+                      <span className="text-[9px] font-mono text-white/20 ml-auto">{timeAgo(s.created_at)}</span>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         )}
