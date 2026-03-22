@@ -6,7 +6,6 @@ import SolunarCard from './cards/SolunarCard';
 import AlertCard from './cards/AlertCard';
 import ConvergenceCard from './cards/ConvergenceCard';
 import PatternCard from './cards/PatternCard';
-import SourceCard from './cards/SourceCard';
 import PatternLinksCard from './cards/PatternLinksCard';
 import { MapPin, Compass, Database } from 'lucide-react';
 
@@ -99,7 +98,29 @@ function renderCard(card: ChatCard, index: number) {
     case 'pattern':
       return <PatternCard key={index} data={card.data} />;
     case 'source':
-      return <SourceCard key={index} data={card.data} />;
+      return (
+        <div key={index} className="mt-1 pt-1 border-t border-cyan-400/10">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[9px] font-mono text-cyan-400/50">
+              {card.data?.vectorCount || 0} brain matches
+            </span>
+            {card.data?.similarityRange && Array.isArray(card.data.similarityRange) && (card.data.similarityRange as [number, number])[1] > 0 && (
+              <span className="text-[9px] font-mono text-white/30">
+                sim: {((card.data.similarityRange as [number, number])[0] * 100).toFixed(0)}&ndash;{((card.data.similarityRange as [number, number])[1] * 100).toFixed(0)}%
+              </span>
+            )}
+          </div>
+          {Array.isArray(card.data?.contentTypes) && (card.data.contentTypes as string[]).length > 0 && (
+            <div className="flex gap-1 flex-wrap mt-1">
+              {(card.data.contentTypes as string[]).map((ct: string, i: number) => (
+                <span key={i} className="text-[8px] font-mono px-1 py-0.5 rounded bg-cyan-400/10 text-cyan-400/50">
+                  {ct}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      );
     case 'pattern-links':
       return <PatternLinksCard key={index} data={card.data as any} />;
     case 'activity': {
