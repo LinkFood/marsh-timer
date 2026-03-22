@@ -257,7 +257,7 @@ const BrainHeartbeat = ({
     });
   }, [activity.recentCrons]);
 
-  const cronsHealthy = activity.activeCrons >= 14;
+  const cronsHealthy = activity.activeCrons >= 22;
   const hasErrors = summary.error > 0;
 
   return (
@@ -299,7 +299,7 @@ const BrainHeartbeat = ({
         </span>
         <span className="relative">
           <span className={`text-[10px] font-mono ${cronsHealthy ? 'text-emerald-400' : 'text-amber-400'}`}>
-            CRONS: {activity.activeCrons}/14
+            CRONS: {activity.activeCrons}/22
           </span>
           {hasErrors && (
             <span className="absolute -top-0.5 -right-2 w-1.5 h-1.5 rounded-full bg-red-500" />

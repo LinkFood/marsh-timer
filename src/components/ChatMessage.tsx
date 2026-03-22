@@ -1,4 +1,4 @@
-import type { ReactNode, ReactElement } from 'react';
+import { useMemo, type ReactNode, type ReactElement } from 'react';
 import type { ChatMessage as ChatMessageType, ChatCard } from '@/hooks/useChat';
 import WeatherCard from './cards/WeatherCard';
 import SeasonCard from './cards/SeasonCard';
@@ -140,6 +140,7 @@ function renderCard(card: ChatCard, index: number) {
 }
 
 export default function ChatMessage({ message }: ChatMessageProps) {
+  const parsedContent = useMemo(() => parseMarkdown(message.content), [message.content]);
   const isUser = message.role === 'user';
 
   if (isUser) {
@@ -198,7 +199,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             <Compass size={10} className="text-white/30" />
             <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">AI Interpretation</span>
           </div>
-          <div className="chat-markdown leading-relaxed">{parseMarkdown(message.content)}</div>
+          <div className="chat-markdown leading-relaxed">{parsedContent}</div>
           {message.mapAction && (
             <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-cyan-400/50">
               <MapPin className="w-3 h-3" />
