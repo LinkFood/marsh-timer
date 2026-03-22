@@ -65,7 +65,7 @@ async function searchBrain(opts: {
       },
       body: JSON.stringify({
         query: opts.query,
-        content_types: opts.content_types,
+        content_types: null,  // Search full brain — tags organize output, never restrict input
         state_abbr: opts.state_abbr,
         species: opts.species,
         recency_weight: opts.recency_weight ?? 0.0,
@@ -717,7 +717,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       .single(),
     searchBrain({
       query: `${state.name} environmental weather conditions ${query}`,
-      content_types: ['weather-event', 'weather-insight', 'weather-daily', 'weather-pattern'],
+      content_types: undefined,  // Search full brain — cross-domain discovery
       state_abbr: stateAbbr,
       recency_weight: 0.5,
       exclude_du_report: true,
@@ -861,7 +861,7 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
     }),
     searchBrain({
       query: `${state.name} solunar moon phase activity patterns ${query}`,
-      content_types: ['solunar-weekly', 'convergence-score', 'weather-pattern'],
+      content_types: undefined,  // Search full brain — cross-domain discovery
       state_abbr: stateAbbr,
       recency_weight: 0.3,
       exclude_du_report: true,
@@ -932,7 +932,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
       .single(),
     searchBrain({
       query: `${species} seasonal patterns regulations ${stateAbbr} ${query}`,
-      content_types: ['regulation', 'fact', 'usfws_hip', 'usfws_breeding', 'species-behavior', 'hunting-knowledge'],
+      content_types: undefined,  // Search full brain — cross-domain discovery
       species: species,
       state_abbr: stateAbbr,
       recency_weight: 0.0,

@@ -41,7 +41,7 @@ export async function scanBrainOnWrite(
       query_embedding: embedding,
       match_threshold: opts.min_similarity ?? 0.55,
       match_count: opts.limit ?? 5,
-      filter_state_abbr: opts.state_abbr || null,
+      filter_state_abbr: null,  // Search full brain for cross-domain patterns
       filter_content_types: null,
       filter_species: null,
       filter_date_from: null,

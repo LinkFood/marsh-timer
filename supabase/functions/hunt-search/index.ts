@@ -45,8 +45,8 @@ serve(async (req) => {
           query_embedding: embedding,
           match_threshold: 0.3,
           match_count: resultLimit,
-          filter_content_types: content_types || null,
-          filter_state_abbr: state_abbr || null,
+          filter_content_types: null,  // Search full brain — cross-domain discovery
+          filter_state_abbr: null,     // No geographic pre-filtering
           filter_species: species || null,
           filter_date_from: date_from || null,
           filter_date_to: date_to || null,
@@ -55,6 +55,14 @@ serve(async (req) => {
         });
         vectorResults = data || [];
       }
+    }
+
+    // Group results by content_type for display
+    const grouped: Record<string, any[]> = {};
+    for (const r of (vectorResults as any[] || [])) {
+      const type = r.content_type || 'other';
+      if (!grouped[type]) grouped[type] = [];
+      grouped[type].push(r);
     }
 
     // Keyword search as fallback/supplement
@@ -86,6 +94,7 @@ serve(async (req) => {
         facts: keywordRes.data || [],
         seasons: seasonRes.data || [],
       },
+      grouped,
     });
   } catch (error) {
     console.error('[hunt-search]', error);
