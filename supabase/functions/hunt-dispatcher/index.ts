@@ -38,6 +38,14 @@ const INTENT_TOOLS = [
           type: 'string',
           description: 'Cleaned/rewritten query for the handler',
         },
+        date_from: {
+          type: 'string',
+          description: 'Start date in YYYY-MM-DD format if the user references a specific time period. Example: "February 2021" → "2021-02-01". Leave null if no time reference.',
+        },
+        date_to: {
+          type: 'string',
+          description: 'End date in YYYY-MM-DD format. Example: "February 2021" → "2021-02-28". Leave null if no time reference.',
+        },
       },
       required: ['intent', 'query'],
     },
@@ -54,6 +62,8 @@ async function searchBrain(opts: {
   exclude_du_report?: boolean;
   limit?: number;
   min_similarity?: number;
+  date_from?: string | null;
+  date_to?: string | null;
 }): Promise<Array<{ title: string; content: string; similarity: number; content_type: string; state_abbr?: string; effective_date?: string; species?: string }>> {
   try {
     const searchUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-search`;
@@ -71,6 +81,8 @@ async function searchBrain(opts: {
         recency_weight: opts.recency_weight ?? 0.0,
         exclude_du_report: opts.exclude_du_report ?? false,
         limit: opts.limit || 5,
+        date_from: opts.date_from || null,
+        date_to: opts.date_to || null,
       }),
     });
     if (!res.ok) return [];
@@ -394,12 +406,16 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
       return new Response(JSON.stringify(result), { status: 200, headers });
     }
 
-    const { intent, state_abbr, species: intentSpecies, query } = toolUse.input as {
+    const { intent, state_abbr, species: intentSpecies, query, date_from: extractedDateFrom, date_to: extractedDateTo } = toolUse.input as {
       intent: string;
       state_abbr?: string;
       species?: string;
       query: string;
+      date_from?: string;
+      date_to?: string;
     };
+    const dateFrom = extractedDateFrom || null;
+    const dateTo = extractedDateTo || null;
 
     const resolvedState = state_abbr || ctxState;
     const resolvedSpecies = intentSpecies || ctxSpecies || 'all';
@@ -431,7 +447,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
     switch (intent) {
       case 'weather':
         if (!resolvedState) {
-          handlerResult = await handleSearch(query, resolvedSpecies, null);
+          handlerResult = await handleSearch(query, resolvedSpecies, null, dateFrom, dateTo);
         } else {
           handlerResult = await handleWeather(supabase, resolvedState, query, resolvedSpecies);
         }
@@ -443,7 +459,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
         handlerResult = await handleSeasonInfo(supabase, resolvedSpecies, resolvedState, query);
         break;
       case 'search':
-        handlerResult = await handleSearch(query, resolvedSpecies, resolvedState);
+        handlerResult = await handleSearch(query, resolvedSpecies, resolvedState, dateFrom, dateTo);
         break;
       case 'recent_activity':
         handlerResult = await handleRecentActivity(supabase, resolvedSpecies, resolvedState, message);
@@ -452,7 +468,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
         handlerResult = await handleSelfAssessment(supabase, resolvedSpecies, resolvedState, message);
         break;
       default:
-        handlerResult = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext);
+        handlerResult = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext, dateFrom, dateTo);
         break;
     }
 
@@ -1045,7 +1061,7 @@ ${BRAIN_RULES}`,
   };
 }
 
-async function handleSearch(query: string, species: string = 'all', stateAbbr?: string | null): Promise<HandlerResult> {
+async function handleSearch(query: string, species: string = 'all', stateAbbr?: string | null, dateFrom?: string | null, dateTo?: string | null): Promise<HandlerResult> {
   // Check for comparison pattern (e.g., "compare AR vs LA", "TX or OK")
   const compareMatch = query.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
     || query.match(/(\w{2})\s+(?:vs?\.?|or|versus)\s+(\w{2})/i);
@@ -1069,10 +1085,12 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
       query: searchQuery,
       species: species,
       state_abbr: stateAbbr || undefined,
-      recency_weight: 0.3,
+      recency_weight: (dateFrom || dateTo) ? 0.0 : 0.3,  // No recency bias when searching historical dates
       exclude_du_report: !mentionsDU,
       limit: 8,
       min_similarity: 0.3,
+      date_from: dateFrom,
+      date_to: dateTo,
     }),
     getRecentPatternLinks(stateAbbr),
     isComparative
@@ -1192,14 +1210,16 @@ ${BRAIN_RULES}`,
   } as HandlerResult & { _webResults: TavilyResult[] };
 }
 
-async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = ''): Promise<HandlerResult & { _webResults?: TavilyResult[] }> {
+async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = '', dateFrom?: string | null, dateTo?: string | null): Promise<HandlerResult & { _webResults?: TavilyResult[] }> {
   // Light brain search — only include if high-similarity matches exist
   const brainResults = await searchBrain({
     query: message,
-    recency_weight: 0.2,
+    recency_weight: (dateFrom || dateTo) ? 0.0 : 0.2,  // No recency bias when searching historical dates
     exclude_du_report: true,
-    limit: 3,
-    min_similarity: 0.5,
+    limit: (dateFrom || dateTo) ? 8 : 3,  // More results for historical queries
+    min_similarity: (dateFrom || dateTo) ? 0.3 : 0.5,  // Lower threshold for historical queries
+    date_from: dateFrom,
+    date_to: dateTo,
   });
 
   // Web search if brain is thin

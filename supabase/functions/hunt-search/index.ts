@@ -50,10 +50,18 @@ serve(async (req) => {
           filter_species: species || null,
           filter_date_from: date_from || null,
           filter_date_to: date_to || null,
-          recency_weight: recency_weight ?? 0.0,
+          recency_weight: recency_weight ?? 0.1,
           exclude_du_report: exclude_du_report ?? false,
         });
-        vectorResults = data || [];
+        // Deduplicate by title + effective_date
+        const seen = new Set<string>();
+        const deduped = (data || []).filter((r: any) => {
+          const key = `${r.title}-${r.effective_date}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        vectorResults = deduped;
       }
     }
 
