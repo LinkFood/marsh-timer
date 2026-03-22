@@ -20,7 +20,7 @@
  *   NASS_API_KEY                (required for crop-progress)
  */
 
-import { spawn, ChildProcess } from "child_process";
+import { spawn, execSync, ChildProcess } from "child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "fs";
 import { join } from "path";
 
@@ -907,6 +907,64 @@ async function runOrchestrator(cp: Checkpoint, onlyPipe?: string) {
   showStatus(cp);
 }
 
+// ─── Key Bootstrap ───────────────────────────────────────────────────────
+
+async function bootstrapKeys() {
+  console.log("  Bootstrapping API keys...\n");
+
+  // 1. Service Role Key — fetch from Supabase CLI if not in env
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const raw = execSync(
+        "npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd 2>/dev/null | grep service_role | awk '{print $NF}'",
+        { encoding: "utf-8", timeout: 30_000 }
+      ).trim();
+      if (raw && raw.startsWith("ey")) {
+        process.env.SUPABASE_SERVICE_ROLE_KEY = raw;
+        console.log("  ✓ SUPABASE_SERVICE_ROLE_KEY — fetched from CLI");
+      } else {
+        console.error("  ✗ SUPABASE_SERVICE_ROLE_KEY — CLI returned empty. Cannot continue.");
+        process.exit(1);
+      }
+    } catch {
+      console.error("  ✗ SUPABASE_SERVICE_ROLE_KEY — CLI fetch failed. Export it manually:");
+      console.error('    export SUPABASE_SERVICE_ROLE_KEY="your-key-here"');
+      process.exit(1);
+    }
+  } else {
+    console.log("  ✓ SUPABASE_SERVICE_ROLE_KEY — from environment");
+  }
+
+  // 2. Read .env.local for any keys not already in env
+  const envLocalPath = join(SCRIPTS_DIR, "..", ".env.local");
+  if (existsSync(envLocalPath)) {
+    const envContent = readFileSync(envLocalPath, "utf-8");
+    const keysToCheck = ["EBIRD_API_KEY", "VOYAGE_API_KEY", "NASS_API_KEY"];
+    for (const line of envContent.split("\n")) {
+      const match = line.match(/^([A-Z_]+)=(.+)$/);
+      if (match && keysToCheck.includes(match[1]) && !process.env[match[1]]) {
+        process.env[match[1]] = match[2].trim();
+        console.log(`  ✓ ${match[1]} — from .env.local`);
+      }
+    }
+  }
+
+  // 3. Report what we have
+  const keys = [
+    { name: "VOYAGE_API_KEY", label: "Voyage embeddings", required: false },
+    { name: "EBIRD_API_KEY", label: "eBird history/hotspots", required: false },
+    { name: "NASS_API_KEY", label: "USDA crop progress", required: false },
+  ];
+  for (const k of keys) {
+    if (process.env[k.name]) {
+      console.log(`  ✓ ${k.name} — ready (${k.label})`);
+    } else {
+      console.log(`  - ${k.name} — not found (${k.label} pipes will be skipped)`);
+    }
+  }
+  console.log();
+}
+
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -925,14 +983,9 @@ async function main() {
     process.exit(0);
   }
 
-  // Only needed for actual runs
+  // Auto-bootstrap keys for actual runs
   if (!args.includes("--status") && !args.includes("--reset")) {
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("ERROR: SUPABASE_SERVICE_ROLE_KEY is required.");
-      console.error("Export it before running:");
-      console.error('  export SUPABASE_SERVICE_ROLE_KEY="$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd 2>/dev/null | grep service_role | awk \'{print $NF}\')"');
-      process.exit(1);
-    }
+    await bootstrapKeys();
   }
 
   const onlyPipe = args.includes("--only") ? args[args.indexOf("--only") + 1] : undefined;
