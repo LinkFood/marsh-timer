@@ -23,21 +23,25 @@ export interface TopMover {
 export function useConvergenceTimeline(days = 30) {
   const [raw, setRaw] = useState<DailyStateScore[]>([]);
   const [loading, setLoading] = useState(true);
-  const fetchedRef = useRef(false);
+  const fetchedRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
+    if (fetchedRef.current === days || !SUPABASE_URL || !SUPABASE_KEY) return;
+
+    setLoading(true);
 
     const since = new Date();
     since.setDate(since.getDate() - days);
     const sinceStr = since.toISOString().split('T')[0];
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    // Longer timeout for 365-day fetches
+    const timeout = setTimeout(() => controller.abort(), days > 90 ? 30000 : 15000);
 
-    // Fetch all state scores for the period — limit high enough for 50 states x 30 days
+    // 50 states x days — scale limit accordingly
+    const limit = Math.min(50 * days + 500, 20000);
     fetch(
-      `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?date=gte.${sinceStr}&select=state_abbr,date,score&order=date.asc&limit=2000`,
+      `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?date=gte.${sinceStr}&select=state_abbr,date,score&order=date.asc&limit=${limit}`,
       { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
     )
       .then(r => r.json())
@@ -48,7 +52,7 @@ export function useConvergenceTimeline(days = 30) {
             date: String(r.date ?? ''),
             score: Number(r.score ?? 0),
           })));
-          fetchedRef.current = true;
+          fetchedRef.current = days;
         }
       })
       .catch(() => {})

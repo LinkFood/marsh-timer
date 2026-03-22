@@ -1,14 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useDeck } from '@/contexts/DeckContext';
 import { useConvergenceHistory, useConvergenceHistoryAll } from '@/hooks/useConvergenceHistory';
 import { useConvergenceTimeline } from '@/hooks/useConvergenceTimeline';
 import Sparkline from '@/components/charts/Sparkline';
 import type { PanelComponentProps } from './PanelTypes';
 
+type TimeWindow = '30' | '90' | '365';
+
 export default function ConvergenceHistoryPanel({}: PanelComponentProps) {
   const { selectedState } = useDeck();
-  const { history, loading: stateLoading } = useConvergenceHistory(selectedState);
-  const { dailyAverages, loading: natLoading } = useConvergenceTimeline();
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('30');
+  const days = Number(timeWindow);
+  const { history, loading: stateLoading } = useConvergenceHistory(selectedState, days);
+  const { dailyAverages, loading: natLoading } = useConvergenceTimeline(days);
 
   const loading = selectedState ? stateLoading : natLoading;
 
@@ -58,8 +62,23 @@ export default function ConvergenceHistoryPanel({}: PanelComponentProps) {
 
   return (
     <div className="flex flex-col gap-3 p-3 h-full">
-      <div className="text-[10px] font-display tracking-widest text-white/30 uppercase">
-        {selectedState ? `${selectedState} CONVERGENCE` : 'NATIONAL CONVERGENCE'}
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-display tracking-widest text-white/30 uppercase">
+          {selectedState ? `${selectedState} CONVERGENCE` : 'NATIONAL CONVERGENCE'}
+        </div>
+        <div className="flex gap-1">
+          {(['30', '90', '365'] as const).map(w => (
+            <button
+              key={w}
+              onClick={() => setTimeWindow(w)}
+              className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+                timeWindow === w ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/30 hover:text-white/50'
+              }`}
+            >
+              {w}D
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Sparkline */}
@@ -84,7 +103,7 @@ export default function ConvergenceHistoryPanel({}: PanelComponentProps) {
         </div>
         <div className="bg-white/[0.03] rounded-lg p-2 text-center border border-white/[0.06]">
           <div className="text-xl font-mono font-bold text-white/50">{stats.avg30}</div>
-          <div className="text-[8px] font-mono text-white/30 tracking-wider">30D AVG</div>
+          <div className="text-[8px] font-mono text-white/30 tracking-wider">{timeWindow}D AVG</div>
         </div>
       </div>
 

@@ -27,8 +27,9 @@ export function useConvergenceHistory(stateAbbr: string | null, days = 30) {
       return;
     }
 
-    // Don't refetch for same state
-    if (fetchedRef.current === stateAbbr) return;
+    // Don't refetch for same state+days combo
+    const cacheKey = `${stateAbbr}:${days}`;
+    if (fetchedRef.current === cacheKey) return;
 
     setLoading(true);
 
@@ -58,7 +59,7 @@ export function useConvergenceHistory(stateAbbr: string | null, days = 30) {
             photoperiod_component: r.photoperiod_component ?? 0,
             tide_component: r.tide_component ?? 0,
           })));
-          fetchedRef.current = stateAbbr;
+          fetchedRef.current = cacheKey;
         }
       })
       .catch(() => {})
