@@ -1,5 +1,4 @@
--- search_hunt_knowledge_v3: adds signal_weight multiplier to similarity scoring
--- v2 is preserved — this is additive only
+-- Fix v3 RPC: remove hnsw.ef_search (we use IVFFlat, not HNSW)
 SET search_path = public, extensions;
 
 CREATE OR REPLACE FUNCTION search_hunt_knowledge_v3(
@@ -47,7 +46,8 @@ BEGIN
     COALESCE(hk.signal_weight, 1.0) AS signal_weight
   FROM hunt_knowledge hk
   WHERE
-    (1 - (hk.embedding <=> query_embedding)) > match_threshold
+    hk.embedding IS NOT NULL
+    AND (1 - (hk.embedding <=> query_embedding)) > match_threshold
     AND (filter_content_types IS NULL OR hk.content_type = ANY(filter_content_types))
     AND (filter_state_abbr IS NULL OR hk.state_abbr = filter_state_abbr)
     AND (filter_species IS NULL OR hk.species = filter_species)

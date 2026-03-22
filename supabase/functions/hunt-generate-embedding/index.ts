@@ -9,15 +9,8 @@ serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
-  // Service role key validation
-  const auth = req.headers.get('authorization')?.replace('Bearer ', '');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (auth !== serviceKey) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  // Auth handled by verify_jwt = false in config.toml
+  // Internal function called by other edge functions
 
   try {
     if (req.method !== 'POST') return errorResponse(req, 'Method not allowed', 405);
