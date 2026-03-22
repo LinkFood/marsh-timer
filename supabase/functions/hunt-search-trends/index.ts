@@ -13,33 +13,30 @@ import { logCronRun } from '../_shared/cronLog.ts';
 //   https://trends.google.com/trending/rss?geo=US-TX
 //
 // This returns the top ~20 daily trending searches per region.
-// We fetch national + top hunting state feeds, then filter for terms
-// related to hunting, wildlife, migration, and outdoor activity.
+// We fetch national + top environmental monitoring state feeds, then filter for terms
+// related to wildlife, environmental, migration, and outdoor activity.
 //
-// When people search "duck hunting", "deer season", "cold front hunting",
+// When people search "duck migration", "deer season", "cold front",
 // etc., it's a crowdsourced leading indicator of animal movement.
 // ---------------------------------------------------------------------------
 
-const HUNTING_KEYWORDS = [
-  "duck hunting", "duck season", "goose hunting", "goose season",
-  "deer hunting", "deer season", "turkey hunting", "turkey season",
-  "dove hunting", "dove season", "waterfowl", "migration",
-  "hunting season", "duck blind", "decoy", "wader", "shotgun season",
-  "archery season", "muzzleloader", "bag limit", "flyway",
-  "duck call", "goose call", "bird hunting", "upland",
-  "cold front hunting", "duck hunting forecast",
+const ENVIRONMENTAL_KEYWORDS = [
+  "duck season", "goose season", "deer season", "turkey season",
+  "dove season", "waterfowl", "migration", "duck blind", "decoy",
+  "wader", "shotgun season", "archery season", "muzzleloader",
+  "bag limit", "flyway", "duck call", "goose call", "upland",
   "teal season", "snow goose", "light goose", "pintail",
   "mallard", "wood duck", "canvasback", "redhead duck",
-  "whitetail", "white-tailed deer", "mule deer", "elk hunting",
+  "whitetail", "white-tailed deer", "mule deer",
   "wildlife", "game warden", "dnr", "fish and game",
-  "hunting license", "hunting permit", "public land hunting",
   "duck stamp", "federal duck stamp",
   "bird migration", "bird watching", "birding",
-  "hunting forecast", "hunting weather", "hunting report",
+  "cold front", "drought", "flooding", "wildfire", "earthquake",
+  "severe weather", "environmental", "climate change", "water levels",
 ];
 
-// Top hunting states — keeps request count manageable (~15 states + national)
-const HUNTING_STATES: Record<string, string> = {
+// Top monitored states — keeps request count manageable (~15 states + national)
+const MONITORED_STATES: Record<string, string> = {
   AR: "Arkansas", LA: "Louisiana", MS: "Mississippi", TX: "Texas",
   MO: "Missouri", TN: "Tennessee", AL: "Alabama", GA: "Georgia",
   SC: "South Carolina", NC: "North Carolina", IL: "Illinois",
@@ -95,18 +92,18 @@ function extractTag(xml: string, tag: string): string | null {
 }
 
 /**
- * Check if a trending search title matches any hunting-related keyword.
+ * Check if a trending search title matches any environment-related keyword.
  * Returns matched keywords for tagging.
  */
-function matchesHunting(title: string): string[] {
+function matchesEnvironmental(title: string): string[] {
   const lower = title.toLowerCase();
   const matches: string[] = [];
-  for (const kw of HUNTING_KEYWORDS) {
+  for (const kw of ENVIRONMENTAL_KEYWORDS) {
     if (lower.includes(kw)) {
       matches.push(kw);
     }
   }
-  // Also check if the news headline contains hunting terms
+  // Also check if the news headline contains environmental terms
   return matches;
 }
 
@@ -127,11 +124,11 @@ serve(async (req) => {
     const entries: { text: string; meta: Record<string, unknown> }[] = [];
     let fetchErrors = 0;
 
-    // Build list of feeds to fetch: national + hunting states
+    // Build list of feeds to fetch: national + monitored states
     const feeds: { geo: string; abbr: string | null; name: string }[] = [
       { geo: "US", abbr: null, name: "National" },
     ];
-    for (const [abbr, name] of Object.entries(HUNTING_STATES)) {
+    for (const [abbr, name] of Object.entries(MONITORED_STATES)) {
       feeds.push({ geo: `US-${abbr}`, abbr, name });
     }
 
@@ -157,9 +154,9 @@ serve(async (req) => {
         const items = parseRSS(xml);
 
         for (const item of items) {
-          // Check title AND news headline for hunting relevance
-          const titleMatches = matchesHunting(item.title);
-          const newsMatches = matchesHunting(item.newsTitle);
+          // Check title AND news headline for environmental relevance
+          const titleMatches = matchesEnvironmental(item.title);
+          const newsMatches = matchesEnvironmental(item.newsTitle);
           const allMatches = [...new Set([...titleMatches, ...newsMatches])];
 
           if (allMatches.length === 0) continue;
@@ -213,7 +210,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Found ${entries.length} hunting-related trending searches`);
+    console.log(`Found ${entries.length} environment-related trending searches`);
 
     // Embed and insert in batches of 20
     let totalEmbedded = 0;
@@ -256,7 +253,7 @@ serve(async (req) => {
         date: today,
         feeds_fetched: feeds.length,
         fetch_errors: fetchErrors,
-        hunting_matches: entries.length,
+        environmental_matches: entries.length,
         embedded: totalEmbedded,
         embed_errors: embedErrors,
       },
@@ -270,12 +267,12 @@ serve(async (req) => {
       date: today,
       feeds_fetched: feeds.length,
       fetch_errors: fetchErrors,
-      hunting_matches: entries.length,
+      environmental_matches: entries.length,
       embedded: totalEmbedded,
       embed_errors: embedErrors,
       durationMs,
       note: entries.length === 0
-        ? "No hunting-related terms trending today. This is expected — hunting terms spike seasonally (Sep-Jan for waterfowl, Oct-Dec for deer). The function is working correctly."
+        ? "No environmental terms trending today. This is expected — environmental search interest varies seasonally. The function is working correctly."
         : undefined,
     };
 
