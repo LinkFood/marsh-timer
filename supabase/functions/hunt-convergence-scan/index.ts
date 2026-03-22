@@ -218,7 +218,7 @@ Never predict outcomes. State what signals are converging and what happened hist
 
     // 8. Track for grading
     const outcomeDeadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    await supabase.from('hunt_alert_outcomes').insert({
+    const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
       alert_source: 'compound-risk',
       state_abbr,
       alert_date: today,
@@ -230,7 +230,8 @@ Never predict outcomes. State what signals are converging and what happened hist
       },
       outcome_window_hours: 168,
       outcome_deadline: outcomeDeadline.toISOString(),
-    }).catch(err => console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, err));
+    });
+    if (outcomeErr) console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, outcomeErr.message);
 
     const summary = {
       state: state_abbr,
