@@ -18,7 +18,7 @@ export interface DateRange {
   close: string; // ISO "2026-01-30"
 }
 
-export interface HuntingSeason {
+export interface RegulatedSeason {
   species: Species;
   state: string;
   abbreviation: string;
@@ -26,7 +26,7 @@ export interface HuntingSeason {
   zone: string;
   zoneSlug: string;
   dates: DateRange[];
-  bagLimit: number;
+  harvestLimit: number;
   flyway?: string;
   weapon?: string;
   notes?: string;

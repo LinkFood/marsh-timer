@@ -10,7 +10,7 @@ export default function SeasonCard({ data }: SeasonCardProps) {
   const seasonType = data.season_type as string | undefined;
   const status = data.status as string | undefined;
   const dates = data.dates as Array<{ open: string; close: string }> | undefined;
-  const bagLimit = data.bag_limit as number | undefined;
+  const harvestLimit = data.bag_limit as number | undefined;
   const zone = data.zone as string | undefined;
 
   const statusColors: Record<string, string> = {
@@ -48,8 +48,8 @@ export default function SeasonCard({ data }: SeasonCardProps) {
           ))}
         </div>
       )}
-      {bagLimit !== undefined && bagLimit > 0 && (
-        <p className="text-[10px] text-muted-foreground mt-1">Limit: {bagLimit}</p>
+      {harvestLimit !== undefined && harvestLimit > 0 && (
+        <p className="text-[10px] text-muted-foreground mt-1">Limit: {harvestLimit}</p>
       )}
     </div>
   );

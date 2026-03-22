@@ -553,7 +553,7 @@ export default function StateProfile({
                     <span className="text-white/30">&middot;</span>
                     <span className="font-body text-white/40">{s.zone}</span>
                     <span className="text-white/30">&middot;</span>
-                    <span className="font-mono text-white/40">Bag: {s.bagLimit}</span>
+                    <span className="font-mono text-white/40">Limit: {s.harvestLimit}</span>
                     <div className="flex-1" />
                     <span className="font-mono text-white/25 text-[9px]">
                       {s.dates.map(d =>

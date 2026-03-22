@@ -1,4 +1,4 @@
-import type { HuntingSeason, DateRange } from "@/data/types";
+import type { RegulatedSeason, DateRange } from "@/data/types";
 
 export type SeasonStatus = "open" | "soon" | "upcoming" | "closed";
 
@@ -27,7 +27,7 @@ function findNextRange(dates: DateRange[], now: Date): DateRange | null {
   return nearest;
 }
 
-export function getSeasonStatus(season: HuntingSeason, now: Date = new Date()): SeasonStatus {
+export function getSeasonStatus(season: RegulatedSeason, now: Date = new Date()): SeasonStatus {
   const active = findActiveRange(season.dates, now);
   if (active) return "open";
 
