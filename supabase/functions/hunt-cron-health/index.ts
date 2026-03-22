@@ -21,6 +21,7 @@ serve(async (req) => {
       'hunt-web-curator', 'hunt-anomaly-detector', 'hunt-correlation-engine',
       'hunt-alert-grader', 'hunt-alert-calibration', 'hunt-solunar-precompute',
       'hunt-absence-detector', 'hunt-disaster-watch',
+      'hunt-convergence-scan', 'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
     ];
 
     // Fetch last 5 runs per function in one query using IN filter + higher limit
@@ -76,6 +77,9 @@ serve(async (req) => {
       { name: 'hunt-solunar-precompute', schedule: 'weekly Sun 6am', critical: false },
       { name: 'hunt-absence-detector', schedule: 'weekly Sun 2pm', critical: false },
       { name: 'hunt-disaster-watch', schedule: 'weekly Wed 6am', critical: false },
+      { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
+      { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
+      { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
     ];
 
     const health = expected.map(cron => {
