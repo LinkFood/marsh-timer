@@ -12,7 +12,7 @@ export interface ChatMessage {
 }
 
 export interface ChatCard {
-  type: 'weather' | 'season' | 'solunar' | 'alert' | 'convergence' | 'pattern' | 'source' | 'pattern-links';
+  type: 'weather' | 'season' | 'solunar' | 'alert' | 'convergence' | 'pattern' | 'source' | 'pattern-links' | 'activity';
   data: Record<string, unknown>;
 }
 
@@ -24,7 +24,7 @@ export function useChat(
   const { session } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
-      const saved = sessionStorage.getItem('hunt-chat-messages');
+      const saved = sessionStorage.getItem('dc-chat-messages');
       if (saved) {
         const parsed = JSON.parse(saved);
         return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
@@ -36,12 +36,12 @@ export function useChat(
   const [streaming, setStreaming] = useState(false);
   const sessionIdRef = useRef<string>('');
   if (!sessionIdRef.current) {
-    const saved = sessionStorage.getItem('hunt-chat-session-id');
+    const saved = sessionStorage.getItem('dc-chat-session-id');
     if (saved) {
       sessionIdRef.current = saved;
     } else {
       const id = crypto.randomUUID();
-      sessionStorage.setItem('hunt-chat-session-id', id);
+      sessionStorage.setItem('dc-chat-session-id', id);
       sessionIdRef.current = id;
     }
   }
@@ -49,7 +49,7 @@ export function useChat(
   // Persist messages to sessionStorage on every change
   useEffect(() => {
     try {
-      sessionStorage.setItem('hunt-chat-messages', JSON.stringify(messages));
+      sessionStorage.setItem('dc-chat-messages', JSON.stringify(messages));
     } catch {}
   }, [messages]);
 
@@ -201,8 +201,8 @@ export function useChat(
   const clearMessages = useCallback(() => {
     setMessages([]);
     sessionIdRef.current = crypto.randomUUID();
-    sessionStorage.removeItem('hunt-chat-messages');
-    sessionStorage.setItem('hunt-chat-session-id', sessionIdRef.current);
+    sessionStorage.removeItem('dc-chat-messages');
+    sessionStorage.setItem('dc-chat-session-id', sessionIdRef.current);
   }, []);
 
   const loadSession = useCallback(async (targetSessionId: string) => {
@@ -226,8 +226,8 @@ export function useChat(
 
       setMessages(loaded);
       sessionIdRef.current = targetSessionId;
-      sessionStorage.setItem('hunt-chat-session-id', targetSessionId);
-      sessionStorage.setItem('hunt-chat-messages', JSON.stringify(loaded));
+      sessionStorage.setItem('dc-chat-session-id', targetSessionId);
+      sessionStorage.setItem('dc-chat-messages', JSON.stringify(loaded));
     } catch (err) {
       console.error('[Chat] Failed to load session:', err);
     }

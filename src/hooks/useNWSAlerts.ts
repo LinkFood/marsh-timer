@@ -3,7 +3,7 @@ import type { FeatureCollection, Feature } from 'geojson';
 
 const NWS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert&region_type=land';
 
-const HUNTING_EVENTS = new Set([
+const SEVERE_WEATHER_EVENTS = new Set([
   'Winter Storm Warning',
   'Winter Storm Watch',
   'Wind Advisory',
@@ -49,7 +49,7 @@ export function useNWSAlerts() {
         const features: Feature[] = (data.features || []).filter((f: Feature) => {
           if (!f.geometry) return false;
           const event = f.properties?.event;
-          if (!event || !HUNTING_EVENTS.has(event)) return false;
+          if (!event || !SEVERE_WEATHER_EVENTS.has(event)) return false;
           return true;
         }).map((f: Feature) => ({
           type: 'Feature' as const,

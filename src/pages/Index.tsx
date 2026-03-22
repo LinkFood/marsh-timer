@@ -61,11 +61,11 @@ const Index = () => {
     }
 
     const upper = first.toUpperCase();
-    if (upper.length === 2 && getStatesForSpecies("duck").has(upper)) {
-      return { species: "duck" as Species, stateAbbr: upper, zoneSlug: null, redirect: `/duck/${upper}` };
+    if (upper.length === 2 && getStatesForSpecies("all").has(upper)) {
+      return { species: "all" as Species, stateAbbr: upper, zoneSlug: null, redirect: `/all/${upper}` };
     }
 
-    return { species: "duck" as Species, stateAbbr: null, zoneSlug: null, redirect: "/" };
+    return { species: "all" as Species, stateAbbr: null, zoneSlug: null, redirect: "/" };
   }, [first, second, third]);
 
   const [species, setSpecies] = useState<Species>(parsed.species);

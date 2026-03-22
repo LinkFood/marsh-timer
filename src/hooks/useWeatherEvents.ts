@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { FeatureCollection, Feature } from 'geojson';
 
-// METAR station locations (subset — major airports near hunting areas)
+// METAR station locations (subset — major airports for environmental monitoring)
 // These are the stations the nws-monitor function tracks
 const STATION_COORDS: Record<string, [number, number]> = {
   // Format: ICAO -> [lng, lat]
