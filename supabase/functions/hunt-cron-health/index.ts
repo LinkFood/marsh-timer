@@ -22,6 +22,7 @@ serve(async (req) => {
       'hunt-alert-grader', 'hunt-alert-calibration', 'hunt-solunar-precompute',
       'hunt-absence-detector', 'hunt-disaster-watch',
       'hunt-convergence-scan', 'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
+      'hunt-convergence-alerts-pm',
       'hunt-birdweather-daily', 'hunt-snow-cover-daily', 'hunt-snotel-daily',
       'hunt-gbif-daily', 'hunt-multi-species-daily', 'hunt-search-trends-daily',
       'hunt-query-signal-daily', 'hunt-power-outage-6h',
@@ -64,7 +65,7 @@ serve(async (req) => {
     const expected = [
       { name: 'hunt-weather-watchdog', schedule: 'daily 6am', critical: true },
       { name: 'hunt-weather-realtime', schedule: 'every 15 min', critical: true },
-      { name: 'hunt-nws-monitor', schedule: 'every 3hr', critical: true },
+      { name: 'hunt-nws-monitor', schedule: 'every 1hr', critical: true },
       { name: 'hunt-migration-monitor', schedule: 'daily 7am', critical: true },
       { name: 'hunt-birdcast', schedule: 'daily', critical: false },
       { name: 'hunt-nasa-power', schedule: 'daily 6:30am', critical: false },
@@ -74,7 +75,7 @@ serve(async (req) => {
       { name: 'hunt-forecast-tracker', schedule: 'daily 10am', critical: true },
       { name: 'hunt-migration-report-card', schedule: 'daily 11am', critical: false },
       { name: 'hunt-convergence-report-card', schedule: 'weekly Sun noon', critical: false },
-      { name: 'hunt-du-map', schedule: 'weekly', critical: false },
+      { name: 'hunt-du-map', schedule: 'Mon+Thu noon', critical: false },
       { name: 'hunt-du-alerts', schedule: 'weekly', critical: false },
       { name: 'hunt-web-curator', schedule: 'daily 7am', critical: false },
       { name: 'hunt-anomaly-detector', schedule: 'daily 9:30am', critical: false },
@@ -83,7 +84,7 @@ serve(async (req) => {
       { name: 'hunt-alert-calibration', schedule: 'weekly Sun 1pm', critical: false },
       { name: 'hunt-solunar-precompute', schedule: 'weekly Sun 6am', critical: false },
       { name: 'hunt-absence-detector', schedule: 'weekly Sun 2pm', critical: false },
-      { name: 'hunt-disaster-watch', schedule: 'weekly Wed 6am', critical: false },
+      { name: 'hunt-disaster-watch', schedule: 'Wed+Sat 6am', critical: false },
       { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
       { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
       { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
@@ -94,7 +95,7 @@ serve(async (req) => {
       { name: 'hunt-multi-species-daily', schedule: 'daily 11am', critical: false },
       { name: 'hunt-search-trends-daily', schedule: 'daily 12pm', critical: false },
       { name: 'hunt-query-signal-daily', schedule: 'daily 11pm', critical: false },
-      { name: 'hunt-power-outage-6h', schedule: 'every 6hr', critical: false },
+      { name: 'hunt-power-outage-6h', schedule: 'every 3hr', critical: true },
       { name: 'hunt-climate-indices-weekly', schedule: 'weekly Mon 11am', critical: false },
       { name: 'hunt-movebank-weekly', schedule: 'weekly Mon 2pm', critical: false },
       { name: 'hunt-phenology-weekly', schedule: 'weekly Wed 9am', critical: false },
@@ -103,6 +104,7 @@ serve(async (req) => {
       { name: 'hunt-usfws-survey-monthly', schedule: 'monthly 1st 6am', critical: false },
       { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
       { name: 'hunt-inaturalist-weekly', schedule: 'weekly Wed 11am', critical: false },
+      { name: 'hunt-convergence-alerts-pm', schedule: 'daily 4pm', critical: false },
     ];
 
     const health = expected.map(cron => {
