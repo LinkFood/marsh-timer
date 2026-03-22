@@ -325,19 +325,19 @@ serve(async (req) => {
     // Step 1: Intent classification (STAYS AS HAIKU)
     const classifySystemPrompt = `You are the Duck Countdown Brain — an environmental intelligence system monitoring patterns across 21 data sources for all 50 US states.
 You analyze convergence signals from weather, wildlife migration, lunar cycles, satellite data, water levels, drought conditions, and more.
-You can answer questions about environmental patterns, weather intelligence, wildlife movement, and — when asked — hunting conditions and season dates.
+You can answer questions about environmental patterns, weather intelligence, wildlife movement, species activity, conditions, and season dates.
 
 Current context:
-- Selected species: ${ctxSpecies || 'duck'}
+- Selected species: ${ctxSpecies || 'all'}
 - Selected state: ${ctxState || 'none'}
 ${conversationContext}
 
 Classify the user's intent into one of: weather, solunar, season_info, search, recent_activity, self_assessment, general.
 
-Use "weather" for questions about weather, wind, temperature, conditions for hunting.
-Use "solunar" for moon phase, feeding times, best hunting times, solunar.
-Use "season_info" for when does season open/close, bag limits, dates, regulations.
-Use "search" for searching for hunting knowledge, tips, regulations, general hunting info.
+Use "weather" for questions about weather, wind, temperature, pressure, fronts, environmental conditions.
+Use "solunar" for moon phase, tidal influence, activity cycles, solunar.
+Use "season_info" for when does season open/close, seasonal transitions, regulatory dates.
+Use "search" for searching for environmental knowledge, ecological patterns, historical data, general research.
 
 Use "recent_activity" when the user asks:
 - What's happening / what's going on / what's new
@@ -366,7 +366,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
     const toolUse = parseToolUse(classifyResponse);
     if (!toolUse) {
       // Fallback: general handler
-      const handlerResult = await handleGeneral(message, ctxSpecies || 'duck', ctxState, conversationContext);
+      const handlerResult = await handleGeneral(message, ctxSpecies || 'all', ctxState, conversationContext);
       // Stage web discoveries (fire-and-forget)
       const fallbackWebResults = handlerResult._webResults;
       if (fallbackWebResults && fallbackWebResults.length > 0) {
@@ -377,7 +377,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
             title: r.title,
             content: r.content,
             state_abbr: ctxState,
-            species: ctxSpecies || 'duck',
+            species: ctxSpecies || 'all',
           }))
         ).then(() => {}).catch(err => console.error('[Dispatcher] Failed to stage discoveries:', err));
       }
@@ -402,7 +402,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
     };
 
     const resolvedState = state_abbr || ctxState;
-    const resolvedSpecies = intentSpecies || ctxSpecies || 'duck';
+    const resolvedSpecies = intentSpecies || ctxSpecies || 'all';
 
     // Intercept comparison queries BEFORE intent routing
     const compareMatch = message.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
@@ -674,7 +674,7 @@ async function handleSelfAssessment(
   };
 }
 
-async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string, species: string = 'duck'): Promise<HandlerResult> {
+async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, stateAbbr: string | null, query: string, species: string = 'all'): Promise<HandlerResult> {
   if (!stateAbbr) {
     return {
       cards: [],
@@ -716,7 +716,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       .limit(1)
       .single(),
     searchBrain({
-      query: `${state.name} duck hunting weather conditions ${query}`,
+      query: `${state.name} environmental weather conditions ${query}`,
       content_types: ['weather-event', 'weather-insight', 'weather-daily', 'weather-pattern'],
       state_abbr: stateAbbr,
       recency_weight: 0.5,
@@ -860,7 +860,7 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
       body: JSON.stringify({ lat: state.centroid_lat, lng: state.centroid_lng, date: today }),
     }),
     searchBrain({
-      query: `${state.name} solunar moon phase feeding times hunting ${query}`,
+      query: `${state.name} solunar moon phase activity patterns ${query}`,
       content_types: ['solunar-weekly', 'convergence-score', 'weather-pattern'],
       state_abbr: stateAbbr,
       recency_weight: 0.3,
@@ -900,7 +900,7 @@ async function handleSolunar(supabase: ReturnType<typeof createSupabaseClient>, 
         rating: solunar.dayRating,
       },
     }],
-    systemPrompt: `You are a solunar and lunar phase analyst for outdoor activity planning. Summarize the solunar forecast briefly, noting key feeding windows and moon phase. 2-3 sentences max.
+    systemPrompt: `You are a solunar and lunar phase analyst for environmental pattern analysis. Summarize the solunar forecast briefly, noting key activity windows and moon phase. 2-3 sentences max.
 ${BRAIN_RULES}`,
     userContent: `Solunar forecast for ${state.name} today:\nRating: ${solunar.dayRating || 'N/A'}/5\nMoon phase: ${solunar.moonPhase || 'N/A'}\nMajor periods: ${[solunar.major1Start, solunar.major2Start].filter(Boolean).join(', ') || 'N/A'}\nMinor periods: ${[solunar.minor1Start, solunar.minor2Start].filter(Boolean).join(', ') || 'N/A'}\nSunrise: ${sunrise.sunrise || 'N/A'}\nSunset: ${sunrise.sunset || 'N/A'}${brainContext}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
@@ -931,7 +931,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
       .limit(1)
       .single(),
     searchBrain({
-      query: `${species} hunting season regulations ${stateAbbr} ${query}`,
+      query: `${species} seasonal patterns regulations ${stateAbbr} ${query}`,
       content_types: ['regulation', 'fact', 'usfws_hip', 'usfws_breeding', 'species-behavior', 'hunting-knowledge'],
       species: species,
       state_abbr: stateAbbr,
@@ -1005,7 +1005,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
 
   return {
     cards,
-    systemPrompt: `You are a hunting season expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
+    systemPrompt: `You are a species behavior and regulatory expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
 ONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don't have that specific data" rather than guessing.
 ${BRAIN_RULES}`,
     userContent: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}${brainContext}`,
@@ -1026,7 +1026,7 @@ async function handleCompare(state1: string, state2: string, query: string, spec
   const c1 = conv1.data;
   const c2 = conv2.data;
 
-  let context = `Comparing ${state1} vs ${state2} for ${species} hunting:\n`;
+  let context = `Comparing ${state1} vs ${state2} for ${species} environmental conditions:\n`;
   if (c1) context += `\n${state1}: Score ${c1.score}/100 (rank #${c1.national_rank}). Weather: ${c1.weather_component}/25, Solunar: ${c1.solunar_component}/15, Migration: ${c1.migration_component}/25, BirdCast: ${c1.birdcast_component}/20, Pattern: ${c1.pattern_component}/15. ${c1.reasoning}`;
   if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). Weather: ${c2.weather_component}/25, Solunar: ${c2.solunar_component}/15, Migration: ${c2.migration_component}/25, BirdCast: ${c2.birdcast_component}/20, Pattern: ${c2.pattern_component}/15. ${c2.reasoning}`;
   context += `\n\nSeason status: ${state1}: ${s1Status.status} | ${state2}: ${s2Status.status}`;
@@ -1045,7 +1045,7 @@ ${BRAIN_RULES}`,
   };
 }
 
-async function handleSearch(query: string, species: string = 'duck', stateAbbr?: string | null): Promise<HandlerResult> {
+async function handleSearch(query: string, species: string = 'all', stateAbbr?: string | null): Promise<HandlerResult> {
   // Check for comparison pattern (e.g., "compare AR vs LA", "TX or OK")
   const compareMatch = query.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
     || query.match(/(\w{2})\s+(?:vs?\.?|or|versus)\s+(\w{2})/i);
@@ -1058,7 +1058,7 @@ async function handleSearch(query: string, species: string = 'duck', stateAbbr?:
 
   // Determine if DU reports should be included
   const mentionsDU = /\b(du|ducks unlimited|migration map)\b/i.test(query);
-  const searchQuery = species !== 'duck' ? `${species} ${query}` : query;
+  const searchQuery = species && species !== 'all' ? `${species} ${query}` : query;
 
   // Check if this is a comparative query (no state, asking about "best" or "where")
   const isComparative = !stateAbbr && /\b(best|top|where|which state|compare|recommend)\b/i.test(query);
@@ -1225,7 +1225,7 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
 
   return {
     cards: [],
-    systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. When users ask about hunting, provide that lens. Your core function is environmental pattern recognition.${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
+    systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. Adapt your framing to the user's context — environmental research, agriculture, ecology, weather, or general awareness. Your core function is environmental pattern recognition.${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
 ${conversationContext}${brainContext}${webContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
