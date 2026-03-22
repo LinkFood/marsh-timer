@@ -185,12 +185,12 @@ serve(async (req) => {
         const searchText = `What happened in ${alert.state_abbr || 'the US'} between ${alert.alert_date} and ${deadlineDate}?`;
         const queryEmbedding = await generateEmbedding(searchText, 'query');
 
-        // 2c. Vector search via search_hunt_knowledge_v2
+        // 2c. Vector search via search_hunt_knowledge_v3
         const expectedSignals = Array.isArray(alert.predicted_outcome?.expected_signals)
           ? alert.predicted_outcome.expected_signals
           : null;
 
-        const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v2', {
+        const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v3', {
           query_embedding: queryEmbedding,
           match_threshold: 0.25,
           match_count: 10,

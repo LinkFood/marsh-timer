@@ -221,7 +221,7 @@ async function scorePattern(
   try {
     const embedding = await generateEmbedding(searchText, 'query');
 
-    const { data: matches } = await supabase.rpc('search_hunt_knowledge_v2', {
+    const { data: matches } = await supabase.rpc('search_hunt_knowledge_v3', {
       query_embedding: embedding,
       match_threshold: 0.3,
       match_count: 5,

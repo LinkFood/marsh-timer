@@ -65,7 +65,7 @@ serve(async (req) => {
       try {
         // Step 2: Vector search for similar entries in OTHER content types
         const { data: matches, error: matchError } = await supabase
-          .rpc("search_hunt_knowledge_v2", {
+          .rpc("search_hunt_knowledge_v3", {
             query_embedding: seed.embedding,
             match_threshold: 0.75,
             match_count: 10,

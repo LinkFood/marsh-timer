@@ -155,7 +155,7 @@ serve(async (req) => {
           if (embedRes.ok) {
             const { embedding } = await embedRes.json();
             if (embedding) {
-              const { data } = await supabase.rpc('search_hunt_knowledge_v2', {
+              const { data } = await supabase.rpc('search_hunt_knowledge_v3', {
                 query_embedding: embedding,
                 match_threshold: 0.3,
                 match_count: 3,

@@ -37,7 +37,7 @@ export async function scanBrainOnWrite(
 ): Promise<ScanResult> {
   try {
     const supabase = createSupabaseClient();
-    const { data } = await supabase.rpc('search_hunt_knowledge_v2', {
+    const { data } = await supabase.rpc('search_hunt_knowledge_v3', {
       query_embedding: embedding,
       match_threshold: opts.min_similarity ?? 0.55,
       match_count: opts.limit ?? 5,
