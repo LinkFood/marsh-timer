@@ -70,10 +70,16 @@ function parseBirdcastHtml(html: string): BirdcastData | null {
 
   let nuxtObj: Record<string, unknown>;
   try {
-    // deno-lint-ignore no-eval
-    nuxtObj = eval(nuxtMatch[1].replace(/;$/, ''));
+    const raw = nuxtMatch[1].replace(/;$/, '').trim();
+    // Try JSON.parse first (newer BirdCast format)
+    try {
+      nuxtObj = JSON.parse(raw);
+    } catch {
+      // IIFE format: (function(a,b,...){...})(v1,v2,...) — use Function constructor (scoped, no surrounding access)
+      nuxtObj = new Function('return ' + raw)();
+    }
   } catch (e) {
-    console.warn(`[hunt-birdcast] Failed to eval NUXT payload: ${e}`);
+    console.warn(`[hunt-birdcast] Failed to parse NUXT payload: ${e}`);
     return null;
   }
 
