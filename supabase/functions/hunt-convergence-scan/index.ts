@@ -9,6 +9,20 @@ import { logCronRun } from '../_shared/cronLog.ts';
 const FUNCTION_NAME = 'hunt-convergence-scan';
 
 serve(async (req: Request) => {
+  // Cache origin header immediately — request object can become invalid
+  // when many concurrent calls arrive (e.g., weather-realtime fires one per state)
+  let origin = '';
+  try {
+    origin = req.headers.get('origin') ?? '';
+  } catch {
+    // Request already closed — return minimal response
+    console.error(`[${FUNCTION_NAME}] Cannot read headers: request closed before processing`);
+    return new Response(JSON.stringify({ error: 'Request closed before processing' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const cors = handleCors(req);
   if (cors) return cors;
 
@@ -16,7 +30,17 @@ serve(async (req: Request) => {
   const supabase = createSupabaseClient();
 
   try {
-    const body = await req.json().catch(() => ({}));
+    let body: Record<string, any> = {};
+    try {
+      body = await req.json().catch(() => ({}));
+    } catch {
+      // Body read can also fail on closed requests
+      await logCronRun({ functionName: FUNCTION_NAME, status: 'error', errorMessage: 'Request body unreadable (connection closed)', durationMs: Date.now() - startTime });
+      return new Response(JSON.stringify({ error: 'Request body unreadable' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const { state_abbr, trigger_event, trigger_type, trigger_severity } = body;
 
     if (!state_abbr) {
@@ -246,8 +270,17 @@ Never predict outcomes. State what signals are converging and what happened hist
     return successResponse(req, summary);
 
   } catch (err: any) {
-    console.error(`[${FUNCTION_NAME}]`, err);
-    await logCronRun({ functionName: FUNCTION_NAME, status: 'error', errorMessage: err.message, durationMs: Date.now() - startTime });
-    return errorResponse(req, err.message, 500);
+    const errMsg = err?.message || String(err);
+    console.error(`[${FUNCTION_NAME}]`, errMsg);
+    await logCronRun({ functionName: FUNCTION_NAME, status: 'error', errorMessage: errMsg, durationMs: Date.now() - startTime }).catch(() => {});
+    try {
+      return errorResponse(req, errMsg, 500);
+    } catch {
+      // req may be closed — return minimal response
+      return new Response(JSON.stringify({ error: errMsg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 });
