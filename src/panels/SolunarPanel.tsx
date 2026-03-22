@@ -93,9 +93,9 @@ export default function SolunarPanel({}: PanelComponentProps) {
         </div>
       </div>
 
-      {/* Feeding Periods */}
+      {/* Activity Windows */}
       <div className="space-y-1.5">
-        <div className="text-[10px] font-display tracking-widest text-white/30 uppercase">Feeding Periods</div>
+        <div className="text-[10px] font-display tracking-widest text-white/30 uppercase">Peak Activity Periods</div>
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
           <span className="text-[10px] font-mono text-white/50 w-10">Major</span>
@@ -115,7 +115,7 @@ export default function SolunarPanel({}: PanelComponentProps) {
       {/* Rating */}
       {rating > 0 && (
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-white/40">Rating</span>
+          <span className="text-[10px] font-mono text-white/40">Activity Potential</span>
           <div className="flex gap-0.5">
             {[1, 2, 3, 4, 5].map(n => (
               <Star
