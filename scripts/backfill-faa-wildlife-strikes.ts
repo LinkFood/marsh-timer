@@ -1,28 +1,25 @@
 /**
- * Backfill FAA Wildlife Strike data from local CSV into hunt_knowledge
+ * Backfill FAA Wildlife Strike data via Socrata API into hunt_knowledge
  *
  * The FAA Wildlife Strike Database has 300K+ records of bird-aircraft strikes
  * since 1990 — essentially an involuntary 24/7 bird census from 500+ airports.
  *
- * Data source: https://wildlife.faa.gov/download (bulk CSV download)
+ * Data source: https://datahub.transportation.gov/resource/jhay-dgxy.json (Socrata SODA API)
+ * No CSV download needed — queries the API directly with pagination.
  *
  * Usage:
- *   # First download CSV from https://wildlife.faa.gov/download and save to data/
- *   mkdir -p data
- *   CSV_PATH=./data/faa-wildlife-strikes.csv SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/backfill-faa-wildlife-strikes.ts
+ *   SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/backfill-faa-wildlife-strikes.ts
  *
  * Resume support:
- *   START_LINE=5000  — skip first N data lines (for resuming after crash)
+ *   START_OFFSET=5000  — skip first N records (for resuming after crash)
  */
-
-import { readFileSync } from "fs";
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const VOYAGE_KEY = process.env.VOYAGE_API_KEY!;
-const CSV_PATH = process.env.CSV_PATH || "./data/faa-wildlife-strikes.csv";
-const START_LINE = parseInt(process.env.START_LINE || "0", 10);
+const START_OFFSET = parseInt(process.env.START_OFFSET || "0", 10);
+const PAGE_SIZE = 1000; // Socrata max per request
 
 if (!SERVICE_KEY) {
   console.error("SUPABASE_SERVICE_ROLE_KEY required");
@@ -56,34 +53,18 @@ const SKIP_SPECIES = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
-// CSV parser — handles quoted fields with commas inside
+// Helpers
 // ---------------------------------------------------------------------------
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (const char of line) {
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === "," && !inQuotes) {
-      result.push(current.trim());
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
-
-// ---------------------------------------------------------------------------
-// Date parser — MM/DD/YYYY or ISO to YYYY-MM-DD
-// ---------------------------------------------------------------------------
 
 function parseDate(dateStr: string): string | null {
   if (!dateStr) return null;
-
+  // Socrata often returns ISO 8601: 2024-01-15T00:00:00.000
+  const isoMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
   // MM/DD/YYYY
   const slashMatch = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (slashMatch) {
@@ -91,27 +72,68 @@ function parseDate(dateStr: string): string | null {
     const d = slashMatch[2].padStart(2, "0");
     return `${slashMatch[3]}-${m}-${d}`;
   }
-
-  // YYYY-MM-DD already
-  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-    return dateStr.slice(0, 10);
-  }
-
-  // Try Date parse as last resort
-  const parsed = new Date(dateStr);
-  if (!isNaN(parsed.getTime())) {
-    return parsed.toISOString().split("T")[0];
-  }
-
   return null;
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Socrata API fetch
 // ---------------------------------------------------------------------------
 
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+const SOCRATA_BASE = "https://datahub.transportation.gov/resource/jhay-dgxy.json";
+
+interface SocrataRecord {
+  incident_date?: string;
+  state?: string;
+  species?: string;
+  num_struck?: string;
+  damage?: string;
+  airport_id?: string;
+  airport?: string;
+  height?: string;
+  speed?: string;
+  phase_of_flt?: string;
+  sky?: string;
+  precip?: string;
+  remarks?: string;
+  time?: string;
+  operator?: string;
+  atype?: string;
+  [key: string]: string | undefined;
+}
+
+async function fetchPage(offset: number): Promise<SocrataRecord[]> {
+  const url = `${SOCRATA_BASE}?$limit=${PAGE_SIZE}&$offset=${offset}&$order=incident_date ASC`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 429 && attempt < 2) {
+        console.log(`  Socrata 429, waiting ${(attempt + 1) * 30}s...`);
+        await delay((attempt + 1) * 30000);
+        continue;
+      }
+      if (res.status >= 500 && attempt < 2) {
+        console.log(`  Socrata ${res.status}, retry ${attempt + 1}/3...`);
+        await delay((attempt + 1) * 5000);
+        continue;
+      }
+      throw new Error(`Socrata ${res.status}: ${await res.text()}`);
+    } catch (err) {
+      if (attempt < 2) {
+        console.log(`  Socrata network error, retry ${attempt + 1}/3: ${err}`);
+        await delay((attempt + 1) * 10000);
+        continue;
+      }
+      throw err;
+    }
+  }
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -214,209 +236,176 @@ async function upsertBatch(rows: Record<string, unknown>[]): Promise<number> {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("=== FAA Wildlife Strike CSV Backfill ===");
-  console.log(`CSV: ${CSV_PATH}`);
-  if (START_LINE > 0) console.log(`Resuming from line: ${START_LINE}`);
-
-  // Read CSV
-  let csvText: string;
-  try {
-    csvText = readFileSync(CSV_PATH, "utf-8");
-  } catch (err) {
-    console.error(`Failed to read CSV: ${err}`);
-    console.error("Download from https://wildlife.faa.gov/download and save to data/");
-    process.exit(1);
-  }
-
-  const lines = csvText.split("\n");
-  if (lines.length < 2) {
-    console.error("CSV appears empty");
-    process.exit(1);
-  }
-
-  // Parse header
-  const headerLine = lines[0];
-  const headers = parseCSVLine(headerLine);
-  const colIndex: Record<string, number> = {};
-  for (let i = 0; i < headers.length; i++) {
-    colIndex[headers[i].toUpperCase()] = i;
-  }
-
-  // Verify required columns exist
-  const requiredCols = ["INCIDENT_DATE", "STATE", "SPECIES"];
-  for (const col of requiredCols) {
-    if (colIndex[col] === undefined) {
-      console.error(`Missing required column: ${col}`);
-      console.error(`Found columns: ${headers.join(", ")}`);
-      process.exit(1);
-    }
-  }
-
-  const col = (fields: string[], name: string): string => {
-    const idx = colIndex[name];
-    return idx !== undefined && idx < fields.length ? fields[idx] : "";
-  };
-
-  const totalDataLines = lines.length - 1; // minus header
-  console.log(`Total CSV lines: ${totalDataLines}`);
-  console.log(`Columns: ${headers.length} (${headers.slice(0, 10).join(", ")}...)`);
+  console.log("=== FAA Wildlife Strike API Backfill ===");
+  console.log(`Source: Socrata SODA API (datahub.transportation.gov)`);
+  console.log(`Page size: ${PAGE_SIZE}`);
+  if (START_OFFSET > 0) console.log(`Resuming from offset: ${START_OFFSET}`);
   console.log("---");
 
+  let offset = START_OFFSET;
   let totalProcessed = 0;
   let totalEmbedded = 0;
   let totalSkipped = 0;
   let totalErrors = 0;
+  let emptyPages = 0;
 
-  // Accumulate entries for batch processing
-  let batch: Array<{ embedText: string; row: Record<string, unknown> }> = [];
-
-  for (let lineNum = 1; lineNum < lines.length; lineNum++) {
-    const line = lines[lineNum];
-    if (!line.trim()) continue;
-
-    // Skip lines before START_LINE
-    if (lineNum - 1 < START_LINE) continue;
-
-    const fields = parseCSVLine(line);
-
-    // Extract fields
-    const incidentDate = col(fields, "INCIDENT_DATE");
-    const state = col(fields, "STATE").toUpperCase().trim();
-    const species = col(fields, "SPECIES").trim();
-    const numStruckRaw = col(fields, "NUM_STRUCK");
-    const damage = col(fields, "DAMAGE").trim() || "None";
-    const airportId = col(fields, "AIRPORT_ID").trim();
-    const airport = col(fields, "AIRPORT").trim();
-    const height = col(fields, "HEIGHT").trim();
-    const speed = col(fields, "SPEED").trim();
-    const phaseOfFlight = col(fields, "PHASE_OF_FLT").trim();
-    const sky = col(fields, "SKY").trim();
-    const precip = col(fields, "PRECIP").trim();
-    const remarks = col(fields, "REMARKS").trim();
-    const time = col(fields, "TIME").trim();
-
-    // Filter: skip rows with no species, no state, or unknown species
-    if (!species || SKIP_SPECIES.has(species.toUpperCase())) {
-      totalSkipped++;
-      continue;
-    }
-    if (!state || !VALID_STATES.has(state)) {
-      totalSkipped++;
-      continue;
+  while (true) {
+    console.log(`\nFetching page at offset ${offset}...`);
+    let records: SocrataRecord[];
+    try {
+      records = await fetchPage(offset);
+    } catch (err) {
+      console.error(`Fatal fetch error at offset ${offset}: ${err}`);
+      totalErrors++;
+      break;
     }
 
-    // Parse date
-    const date = parseDate(incidentDate);
-    if (!date) {
-      totalSkipped++;
+    if (records.length === 0) {
+      emptyPages++;
+      if (emptyPages >= 3) {
+        console.log("3 consecutive empty pages — reached end of dataset");
+        break;
+      }
+      offset += PAGE_SIZE;
       continue;
     }
+    emptyPages = 0;
 
-    const numStruck = numStruckRaw ? parseInt(numStruckRaw, 10) || null : null;
-    const heightFt = height ? parseInt(height, 10) || null : null;
-    const speedKts = speed ? parseInt(speed, 10) || null : null;
-    const speciesLower = species.toLowerCase().replace(/\s+/g, "-");
-    const damageLevel = damage.toLowerCase().replace(/\s+/g, "-");
+    console.log(`  Got ${records.length} records`);
 
-    // Build embed text
-    const embedParts = [
-      `wildlife-strike`,
-      state,
-      date,
-      `species:${species}`,
-      numStruck ? `struck:${numStruck}` : null,
-      `damage:${damage}`,
-      airportId ? `airport:${airportId}` : null,
-      heightFt ? `height:${heightFt}ft` : null,
-      phaseOfFlight ? `phase:${phaseOfFlight}` : null,
-      sky ? `sky:${sky}` : null,
-      precip ? `precip:${precip}` : null,
-    ];
-    const embedText = embedParts.filter(Boolean).join(" | ");
+    // Accumulate entries for batch processing
+    let batch: Array<{ embedText: string; row: Record<string, unknown> }> = [];
 
-    // Build title for upsert dedup
-    const title = `Wildlife Strike: ${species} at ${airport || airportId || "unknown"} (${date})`;
+    for (const rec of records) {
+      const state = (rec.state || "").toUpperCase().trim();
+      const species = (rec.species || "").trim();
+      const incidentDate = rec.incident_date || "";
 
-    // Build tags
-    const tags: string[] = [state, "wildlife-strike", "faa", speciesLower, damageLevel];
+      // Filter
+      if (!species || SKIP_SPECIES.has(species.toUpperCase())) {
+        totalSkipped++;
+        continue;
+      }
+      if (!state || !VALID_STATES.has(state)) {
+        totalSkipped++;
+        continue;
+      }
 
-    // Build row for hunt_knowledge
-    const row: Record<string, unknown> = {
-      title,
-      content: embedText,
-      content_type: "wildlife-strike",
-      state_abbr: state,
-      species: null,
-      effective_date: date,
-      tags,
-      metadata: {
-        source: "faa-wildlife-strike-database",
-        airport_id: airportId || null,
-        airport_name: airport || null,
-        bird_species: species,
-        num_struck: numStruck,
-        damage: damage,
-        height_ft: heightFt,
-        speed_kts: speedKts,
-        phase_of_flight: phaseOfFlight || null,
-        sky_condition: sky || null,
-        precipitation: precip || null,
-        remarks: remarks || null,
-        time: time || null,
-      },
-    };
+      const date = parseDate(incidentDate);
+      if (!date) {
+        totalSkipped++;
+        continue;
+      }
 
-    batch.push({ embedText, row });
-    totalProcessed++;
+      const damage = (rec.damage || "None").trim();
+      const airportId = (rec.airport_id || "").trim();
+      const airport = (rec.airport || "").trim();
+      const height = rec.height ? parseInt(rec.height, 10) || null : null;
+      const speed = rec.speed ? parseInt(rec.speed, 10) || null : null;
+      const numStruck = rec.num_struck ? parseInt(rec.num_struck, 10) || null : null;
+      const phaseOfFlight = (rec.phase_of_flt || "").trim();
+      const sky = (rec.sky || "").trim();
+      const precip = (rec.precip || "").trim();
+      const remarks = (rec.remarks || "").trim();
+      const time = (rec.time || "").trim();
+      const speciesLower = species.toLowerCase().replace(/\s+/g, "-");
+      const damageLevel = damage.toLowerCase().replace(/\s+/g, "-");
 
-    // Process in batches of 20 (embed) then upsert in 50s
-    if (batch.length >= 20) {
+      // Build embed text
+      const embedParts = [
+        `wildlife-strike`,
+        state,
+        date,
+        `species:${species}`,
+        numStruck ? `struck:${numStruck}` : null,
+        `damage:${damage}`,
+        airportId ? `airport:${airportId}` : null,
+        height ? `height:${height}ft` : null,
+        phaseOfFlight ? `phase:${phaseOfFlight}` : null,
+        sky ? `sky:${sky}` : null,
+        precip ? `precip:${precip}` : null,
+      ];
+      const embedText = embedParts.filter(Boolean).join(" | ");
+
+      const title = `Wildlife Strike: ${species} at ${airport || airportId || "unknown"} (${date})`;
+      const tags: string[] = [state, "wildlife-strike", "faa", speciesLower, damageLevel];
+
+      const row: Record<string, unknown> = {
+        title,
+        content: embedText,
+        content_type: "wildlife-strike",
+        state_abbr: state,
+        species: null,
+        effective_date: date,
+        tags,
+        metadata: {
+          source: "faa-wildlife-strike-database",
+          airport_id: airportId || null,
+          airport_name: airport || null,
+          bird_species: species,
+          num_struck: numStruck,
+          damage: damage,
+          height_ft: height,
+          speed_kts: speed,
+          phase_of_flight: phaseOfFlight || null,
+          sky_condition: sky || null,
+          precipitation: precip || null,
+          remarks: remarks || null,
+          time: time || null,
+        },
+      };
+
+      batch.push({ embedText, row });
+      totalProcessed++;
+
+      // Process in batches of 20
+      if (batch.length >= 20) {
+        try {
+          const texts = batch.map((b) => b.embedText);
+          const embeddings = await embedBatch(texts);
+          const rows = batch.map((b, idx) => ({
+            ...b.row,
+            embedding: JSON.stringify(embeddings[idx]),
+          }));
+          const upserted = await upsertBatch(rows);
+          totalEmbedded += upserted;
+        } catch (err) {
+          console.error(`  Batch error at offset ${offset}: ${err}`);
+          totalErrors++;
+        }
+        batch = [];
+        await delay(100);
+      }
+
+      // Checkpoint every 500 entries
+      if (totalProcessed % 500 === 0) {
+        console.log(
+          `[checkpoint] offset:${offset} | processed:${totalProcessed} | embedded:${totalEmbedded} | skipped:${totalSkipped} | errors:${totalErrors}`
+        );
+      }
+    }
+
+    // Flush remaining batch for this page
+    if (batch.length > 0) {
       try {
         const texts = batch.map((b) => b.embedText);
         const embeddings = await embedBatch(texts);
-
         const rows = batch.map((b, idx) => ({
           ...b.row,
           embedding: JSON.stringify(embeddings[idx]),
         }));
-
         const upserted = await upsertBatch(rows);
         totalEmbedded += upserted;
       } catch (err) {
-        console.error(`  Batch error at line ${lineNum}: ${err}`);
+        console.error(`  Flush error at offset ${offset}: ${err}`);
         totalErrors++;
       }
-      batch = [];
-
-      // Rate limit between batches
-      await delay(100);
     }
 
-    // Checkpoint every 500 entries
-    if (totalProcessed % 500 === 0) {
-      console.log(
-        `[checkpoint] line:${lineNum} | processed:${totalProcessed} | embedded:${totalEmbedded} | skipped:${totalSkipped} | errors:${totalErrors}`
-      );
-    }
-  }
+    offset += PAGE_SIZE;
 
-  // Flush remaining batch
-  if (batch.length > 0) {
-    try {
-      const texts = batch.map((b) => b.embedText);
-      const embeddings = await embedBatch(texts);
-
-      const rows = batch.map((b, idx) => ({
-        ...b.row,
-        embedding: JSON.stringify(embeddings[idx]),
-      }));
-
-      const upserted = await upsertBatch(rows);
-      totalEmbedded += upserted;
-    } catch (err) {
-      console.error(`  Final batch error: ${err}`);
-      totalErrors++;
-    }
+    // Brief pause between pages to be polite to Socrata
+    await delay(500);
   }
 
   console.log("\n===== COMPLETE =====");
