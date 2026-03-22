@@ -31,6 +31,7 @@ const CHECKPOINT_FILE = join(SCRIPTS_DIR, ".orchestrator-v2-checkpoint.json");
 const LOG_FILE = join(SCRIPTS_DIR, ".orchestrator-v2.log");
 
 const MAX_CONCURRENT = 3;
+const MAX_RETRIES = 3;                // Max retries per pipe before giving up
 const LAYER_DELAY_MS = 60_000;        // 60s between starting new pipes
 const STALL_WARN_MS = 5 * 60_000;     // 5 min no output = warning
 const STALL_KILL_MS = 10 * 60_000;    // 10 min no output = stalled
@@ -73,6 +74,7 @@ interface PipeState {
   error?: string;
   entriesLogged?: number;
   lastOutputAt?: string;
+  retryCount?: number;
 }
 
 interface Checkpoint {
@@ -584,8 +586,9 @@ function startPipe(pipe: PipeConfig, cp: Checkpoint): RunningPipe {
       log(`INTERRUPTED: ${pipe.name} (will resume on restart)`);
     } else {
       state.status = "failed";
+      state.retryCount = (state.retryCount || 0) + 1;
       state.error = `Exit code ${code}. Last output: ${rp.lastLine.slice(0, 200)}`;
-      log(`FAILED: ${pipe.name} (exit ${code})`);
+      log(`FAILED: ${pipe.name} (exit ${code}, attempt ${state.retryCount}/${MAX_RETRIES})`);
     }
     saveCheckpoint(cp);
 
@@ -609,6 +612,15 @@ function scheduleNext(cp: Checkpoint) {
     const state = cp.pipes[pipe.name];
     if (!state) continue;
     if (state.status !== "pending" && state.status !== "failed") continue;
+
+    // Skip pipes that have exceeded max retries
+    if (state.status === "failed" && (state.retryCount || 0) >= MAX_RETRIES) {
+      log(`GIVING UP: ${pipe.name} — failed ${state.retryCount} times, skipping`);
+      state.status = "skipped";
+      state.error = `Exceeded ${MAX_RETRIES} retries. Last error: ${state.error}`;
+      saveCheckpoint(cp);
+      continue;
+    }
 
     // Check required env vars
     if (pipe.requiredEnv) {
