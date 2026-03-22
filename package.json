@@ -16,16 +16,13 @@
     "import-csv": "node scripts/import-csv.mjs"
   },
   "dependencies": {
-    "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@supabase/supabase-js": "^2.84.0",
     "@tanstack/react-query": "^5.90.21",
     "@turf/turf": "^7.3.4",
-    "@vercel/edge": "^1.2.2",
     "lucide-react": "^0.462.0",
     "mapbox-gl": "^3.19.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-grid-layout": "^2.2.2",
     "react-router-dom": "^6.30.1",
     "tailwindcss-animate": "^1.0.7",
     "topojson-client": "3"
