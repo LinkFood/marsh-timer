@@ -12,7 +12,8 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const VOYAGE_KEY = process.env.VOYAGE_API_KEY!;
 
 if (!SERVICE_KEY) { console.error("SUPABASE_SERVICE_ROLE_KEY required"); process.exit(1); }
-if (!VOYAGE_KEY) { console.error("VOYAGE_API_KEY required"); process.exit(1); }
+const USE_EDGE_FN = !VOYAGE_KEY;
+if (USE_EDGE_FN) console.log("No VOYAGE_API_KEY — using edge function for embeddings (slower)");
 
 const START_YEAR = parseInt(process.env.START_YEAR || "2015");
 const START_MONTH = parseInt(process.env.START_MONTH || "10");
@@ -27,7 +28,31 @@ const STATES = [
 // Snow months: Oct-Mar
 const SNOW_MONTHS = [10, 11, 12, 1, 2, 3];
 
+async function embedViaEdgeFn(text: string, retries = 3): Promise<number[]> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ text, input_type: "document" }),
+      });
+      if (res.ok) return (await res.json()).embedding;
+      if (res.status >= 500 && attempt < retries - 1) { await new Promise(r => setTimeout(r, (attempt + 1) * 5000)); continue; }
+      throw new Error(`Edge fn: ${res.status}`);
+    } catch (err) {
+      if (attempt < retries - 1) { await new Promise(r => setTimeout(r, (attempt + 1) * 10000)); continue; }
+      throw err;
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
 async function embed(texts: string[]): Promise<number[][]> {
+  if (USE_EDGE_FN) {
+    const results: number[][] = [];
+    for (const t of texts) { results.push(await embedViaEdgeFn(t)); await new Promise(r => setTimeout(r, 100)); }
+    return results;
+  }
   const results: number[][] = [];
   for (let i = 0; i < texts.length; i += 20) {
     const chunk = texts.slice(i, i + 20);

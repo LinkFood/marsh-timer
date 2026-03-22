@@ -23,10 +23,8 @@ if (!SERVICE_KEY) {
   console.error("SUPABASE_SERVICE_ROLE_KEY required");
   process.exit(1);
 }
-if (!VOYAGE_KEY) {
-  console.error("VOYAGE_API_KEY required");
-  process.exit(1);
-}
+const USE_EDGE_FN = !VOYAGE_KEY;
+if (USE_EDGE_FN) console.log("No VOYAGE_API_KEY — using edge function for embeddings (slower)");
 
 const START_YEAR = process.env.START_YEAR ? parseInt(process.env.START_YEAR) : null;
 
@@ -154,7 +152,31 @@ async function fetchAndParseSeason(filename: string): Promise<IceDay[]> {
 
 // ---------- Embedding ----------
 
+async function embedViaEdgeFn(text: string, retries = 3): Promise<number[]> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-generate-embedding`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ text, input_type: "document" }),
+      });
+      if (res.ok) return (await res.json()).embedding;
+      if (res.status >= 500 && attempt < retries - 1) { await delay((attempt + 1) * 5000); continue; }
+      throw new Error(`Edge fn: ${res.status}`);
+    } catch (err) {
+      if (attempt < retries - 1) { await delay((attempt + 1) * 10000); continue; }
+      throw err;
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
 async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
+  if (USE_EDGE_FN) {
+    const results: number[][] = [];
+    for (const t of texts) { results.push(await embedViaEdgeFn(t)); await delay(100); }
+    return results;
+  }
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const res = await fetch("https://api.voyageai.com/v1/embeddings", {
@@ -181,7 +203,6 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
         await delay((attempt + 1) * 5000);
         continue;
       }
-      // Never retry 4xx (except 429)
       throw new Error(`Voyage error: ${res.status} ${await res.text()}`);
     } catch (err) {
       if (attempt < retries - 1) {
