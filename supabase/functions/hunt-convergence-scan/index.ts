@@ -159,7 +159,7 @@ serve(async (req: Request) => {
         query_embedding: embedding,
         match_threshold: 0.4,
         match_count: 10,
-        filter_state_abbr: null, // Search nationally for precedents
+        filter_state_abbr: state_abbr,
       });
       historicalMatches = (matches || []).filter((m: any) =>
         m.effective_date && new Date(m.effective_date) < new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)

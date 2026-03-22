@@ -48,7 +48,7 @@ serve(async (req) => {
         // Query all graded outcomes for this source + window
         const { data: rows, error: qErr } = await supabase
           .from('hunt_alert_outcomes')
-          .select('state_abbr, outcome_status')
+          .select('state_abbr, outcome_grade')
           .eq('outcome_checked', true)
           .eq('alert_source', alertSource)
           .gte('graded_at', cutoffStr);
@@ -68,7 +68,7 @@ serve(async (req) => {
         const national = emptyAgg();
 
         for (const row of rows) {
-          const status = row.outcome_status as OutcomeStatus;
+          const status = row.outcome_grade as OutcomeStatus;
           const st = row.state_abbr as string | null;
 
           // National
