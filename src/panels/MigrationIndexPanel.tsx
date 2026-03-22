@@ -1,5 +1,7 @@
 import { useMurmurationIndex } from '@/hooks/useMurmurationIndex';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useMapAction } from '@/contexts/MapActionContext';
+import { useDeck } from '@/contexts/DeckContext';
 import type { PanelComponentProps } from './PanelTypes';
 
 function indexColor(val: number): string {
@@ -12,6 +14,8 @@ function indexColor(val: number): string {
 
 export default function MigrationIndexPanel({}: PanelComponentProps) {
   const { data, loading } = useMurmurationIndex();
+  const { flyTo } = useMapAction();
+  const { setSelectedState } = useDeck();
 
   if (loading) {
     return (
@@ -66,9 +70,16 @@ export default function MigrationIndexPanel({}: PanelComponentProps) {
           <div className="text-[10px] font-mono tracking-wider text-white/30 uppercase mb-1.5">Top States</div>
           <div className="flex flex-wrap gap-1">
             {data.top_states.map(st => (
-              <span key={st} className="text-[10px] font-mono text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 rounded px-1.5 py-0.5">
+              <button
+                key={st}
+                onClick={() => {
+                  flyTo(st);
+                  setSelectedState(st);
+                }}
+                className="text-[10px] font-mono text-cyan-400 bg-cyan-400/10 border border-cyan-400/20 rounded px-1.5 py-0.5 hover:bg-cyan-400/20 transition-colors cursor-pointer"
+              >
                 {st}
-              </span>
+              </button>
             ))}
           </div>
         </div>

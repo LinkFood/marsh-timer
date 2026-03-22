@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, ShieldAlert, CloudRain, Info } from 'lucide-react';
 import { useNWSAlerts } from '@/hooks/useNWSAlerts';
+import { useMapAction } from '@/contexts/MapActionContext';
 import { useDeck } from '@/contexts/DeckContext';
 import type { PanelComponentProps } from './PanelTypes';
 
@@ -25,6 +26,17 @@ const SEVERITY_CONFIG: Record<string, { border: string; badge: string; icon: typ
   Minor:   { border: 'border-l-blue-500', badge: 'bg-blue-500/20 text-blue-400', icon: Info },
 };
 
+const STATE_ABBRS = Object.keys(STATE_NAMES);
+
+function extractStateAbbr(areaDesc: string): string | null {
+  if (!areaDesc) return null;
+  // Match ", XX" or "; XX" where XX is a valid state abbreviation
+  for (const abbr of STATE_ABBRS) {
+    if (areaDesc.includes(`, ${abbr}`) || areaDesc.includes(`; ${abbr}`)) return abbr;
+  }
+  return null;
+}
+
 function formatTime(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -34,7 +46,8 @@ function formatTime(iso: string): string {
 
 export default function NWSAlertsPanel({}: PanelComponentProps) {
   const { alertsGeoJSON } = useNWSAlerts();
-  const { selectedState } = useDeck();
+  const { flyTo } = useMapAction();
+  const { selectedState, setSelectedState } = useDeck();
 
   const allAlerts = useMemo(() => {
     if (!alertsGeoJSON?.features) return [];
@@ -86,11 +99,18 @@ export default function NWSAlertsPanel({}: PanelComponentProps) {
       {alerts.map((alert, i) => {
         const config = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.Minor;
         const Icon = config.icon;
+        const stateAbbr = extractStateAbbr(alert.areaDesc);
         return (
-          <div
+          <button
             key={i}
-            className={`border-l-2 ${config.border} rounded-r bg-white/[0.02] px-2.5 py-2
-              hover:bg-white/[0.05] transition-colors`}
+            onClick={() => {
+              if (stateAbbr) {
+                flyTo(stateAbbr);
+                setSelectedState(stateAbbr);
+              }
+            }}
+            className={`w-full text-left border-l-2 ${config.border} rounded-r bg-white/[0.02] px-2.5 py-2
+              hover:bg-white/[0.05] transition-colors${stateAbbr ? ' cursor-pointer' : ' cursor-default'}`}
           >
             <div className="flex items-center gap-2 mb-1">
               <Icon size={13} className="text-white/50 shrink-0" />
@@ -103,7 +123,7 @@ export default function NWSAlertsPanel({}: PanelComponentProps) {
             <div className="text-[9px] font-mono text-white/20">
               {formatTime(alert.onset)} — {formatTime(alert.expires)}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
