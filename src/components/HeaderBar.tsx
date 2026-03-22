@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare } from "lucide-react";
+import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare, Activity } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
@@ -213,6 +214,13 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
               <MessageSquare className="w-4 h-4" />
             </button>
           )}
+          <Link
+            to="/ops"
+            className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Ops Dashboard"
+          >
+            <Activity className="w-4 h-4" />
+          </Link>
           <AlertBell />
           {onHelpOpen && (
             <button

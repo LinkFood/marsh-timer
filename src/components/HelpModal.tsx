@@ -17,7 +17,7 @@ const STEPS = [
   {
     icon: Database,
     title: "The Brain",
-    body: "The Brain contains 486K+ embedded data points from 21 sources including eBird, NOAA, NASA, NWS, USGS, BirdCast, Drought Monitor, and more. Every piece of data is searchable via Brain Search. Ask the Brain anything — it finds historical matches for current conditions and surfaces patterns nobody hypothesized.",
+    body: "The Brain contains 2M+ embedded data points from 25+ sources including eBird, NOAA, NASA, NWS, USGS, BirdCast, Drought Monitor, and more. Every piece of data is searchable via Brain Search. Ask the Brain anything — it finds historical matches for current conditions and surfaces patterns nobody hypothesized.",
   },
   {
     icon: Feather,

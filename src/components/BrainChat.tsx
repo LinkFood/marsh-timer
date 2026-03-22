@@ -97,7 +97,7 @@ export default function BrainChat({ species, stateAbbr, isMobile, onActionsReady
             <p className="text-[11px] font-body text-white/40 text-center mb-1">
               {brainStats
                 ? `${brainStats.total_entries.toLocaleString()} entries from ${brainStats.sources} sources`
-                : '486K+ data points from 21 sources'}
+                : '2M+ data points from 25+ sources'}
             </p>
             {brainStats && (
               <p className="text-[9px] font-mono text-cyan-400/50 text-center mb-4">

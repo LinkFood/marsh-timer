@@ -29,7 +29,7 @@ export const PANEL_REGISTRY: PanelDef[] = [
   { id: 'brain-activity', label: 'Brain Activity', category: 'analytics', description: 'Cron health + brain stats', defaultW: 3, defaultH: 3, component: lazy(() => import('./BrainActivityPanel')), refreshInterval: 'real-time', dataSourceCount: 14, dataSources: ['All Crons'] },
   { id: 'admin-console', label: 'Admin Console', category: 'analytics', description: 'System health, cron status, web discoveries', defaultW: 4, defaultH: 5, component: lazy(() => import('./AdminConsolePanel')), refreshInterval: 'real-time', dataSourceCount: 14, dataSources: ['All Crons'] },
   { id: 'pattern-timeline', label: 'Pattern Timeline', category: 'analytics', description: 'Historical pattern matches for current conditions', defaultW: 3, defaultH: 4, component: lazy(() => import('./PatternTimelinePanel')), refreshInterval: 'on-demand', dataSourceCount: 21, dataSources: ['Brain Search'] },
-  { id: 'brain-search', label: 'Brain Search', category: 'intelligence', description: 'Search 486K+ brain entries', defaultW: 3, defaultH: 4, component: lazy(() => import('./BrainSearchPanel')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
+  { id: 'brain-search', label: 'Brain Search', category: 'intelligence', description: 'Search 2M+ brain entries', defaultW: 3, defaultH: 4, component: lazy(() => import('./BrainSearchPanel')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
   { id: 'chat', label: 'Brain Chat', category: 'intelligence', description: 'Ask the environmental intelligence engine', defaultW: 3, defaultH: 5, component: lazy(() => import('./ChatPanelInline')), refreshInterval: 'real-time', dataSourceCount: 21, dataSources: ['All Sources'] },
 ];
 

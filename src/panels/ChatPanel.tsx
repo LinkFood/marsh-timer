@@ -147,7 +147,7 @@ export default function ChatPanel() {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[9px] font-mono text-white/40">The Brain</span>
         </div>
-        <span className="text-[9px] font-mono text-white/30">486K+ entries</span>
+        <span className="text-[9px] font-mono text-white/30">2M+ entries</span>
       </div>
     </div>
   );
