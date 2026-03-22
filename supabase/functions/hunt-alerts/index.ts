@@ -127,7 +127,7 @@ serve(async (req) => {
       return successResponse(req, { alerts: [], generated_at: new Date().toISOString() });
     }
 
-    // Vector search for matching hunting patterns per interesting state
+    // Vector search for matching environmental patterns per interesting state
     const supabase = createSupabaseClient();
     const embedUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-generate-embedding`;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;

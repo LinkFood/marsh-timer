@@ -105,11 +105,11 @@ function formatDataForClaude(
 // ---------------------------------------------------------------------------
 
 async function extractPatterns(stateName: string, dataText: string, weatherOnly: boolean): Promise<string[]> {
-  const migrationPrompt = `You are a waterfowl migration analyst. Analyze this historical duck sighting + weather data for ${stateName} and extract actionable hunting intelligence patterns.
+  const migrationPrompt = `You are a waterfowl migration analyst. Analyze this historical duck sighting + weather data for ${stateName} and extract actionable environmental intelligence patterns.
 
 ${dataText}
 
-Extract 5-10 specific, data-backed patterns. Each pattern should be a standalone insight a duck hunter could use. Focus on:
+Extract 5-10 specific, data-backed patterns. Each pattern should be a standalone insight an observer could use. Focus on:
 - Weather conditions that correlate with high sighting counts (cold fronts, pressure drops, wind direction, temperature)
 - Timing patterns (which weeks/months peak, how they shift year to year)
 - Notable migration triggers (first hard freeze, sustained cold, wind shifts)
@@ -117,13 +117,13 @@ Extract 5-10 specific, data-backed patterns. Each pattern should be a standalone
 Format: Return ONLY a JSON array of pattern strings. Each string should be 1-2 sentences, specific and quantitative where possible.
 Return ONLY the JSON array, no other text.`;
 
-  const weatherOnlyPrompt = `You are a waterfowl hunting weather analyst. Analyze this historical weather data for ${stateName} during duck season months (Sept-Feb). Based on your knowledge of how waterfowl respond to weather, extract patterns that hunters should know about.
+  const weatherOnlyPrompt = `You are a waterfowl weather analyst. Analyze this historical weather data for ${stateName} during duck season months (Sept-Feb). Based on your knowledge of how waterfowl respond to weather, extract patterns that observers should know about.
 
 ${dataText}
 
 Extract 5-8 specific, actionable patterns. Focus on:
 - Cold front patterns and timing (pressure drops, temp crashes, wind shifts)
-- Typical weather windows that experienced hunters target
+- Typical weather windows that correlate with waterfowl movement
 - Month-by-month weather progression and what it means for duck movement
 - Wind direction patterns and what they signal
 

@@ -109,7 +109,7 @@ serve(async (req) => {
             const month = parseInt(dateStr.slice(4, 6));
             const day = parseInt(dateStr.slice(6, 8));
 
-            // Filter to hunting/migration season months
+            // Filter to migration season months
             if (!SEASON_MONTHS.includes(month)) {
               totalSkipped++;
               continue;

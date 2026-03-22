@@ -103,7 +103,7 @@ function latLonToState(lat: number, lon: number): string | null {
 // METAR fetch
 // ---------------------------------------------------------------------------
 
-// Key ASOS stations — 3-5 per state, covering major hunting regions + metro areas
+// Key ASOS stations — 3-5 per state, covering major monitoring regions + metro areas
 // ~200 stations total, fetched in batches of 40 (API ID limit per request)
 const METAR_STATIONS = [
   // AL

@@ -6,7 +6,7 @@ import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
-// NWS API supports filtering by event — fetch only hunting-relevant alerts
+// NWS API supports filtering by event — fetch only environmentally-relevant alerts
 // Split into batches to keep URLs under length limits
 const EVENT_BATCHES = [
   ['Winter Storm Warning', 'Winter Storm Watch', 'Winter Weather Advisory', 'Cold Weather Advisory', 'Wind Chill Warning', 'Wind Chill Advisory'],
@@ -53,7 +53,7 @@ serve(async (req) => {
   try {
     console.log('[hunt-nws-monitor] Starting NWS alert scan');
 
-    // 1. Fetch hunting-relevant NWS alerts using event type filters (avoids 2.8MB full response)
+    // 1. Fetch environmentally-relevant NWS alerts using event type filters (avoids 2.8MB full response)
     const nwsHeaders = {
       'User-Agent': 'DuckCountdown/1.0 (duckcountdown.com)',
       'Accept': 'application/geo+json',
@@ -77,7 +77,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[hunt-nws-monitor] ${relevant.length} hunting-relevant alerts`);
+    console.log(`[hunt-nws-monitor] ${relevant.length} environmentally-relevant alerts`);
 
     if (relevant.length === 0) {
       // Still clean up expired, then return
