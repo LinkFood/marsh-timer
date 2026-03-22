@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
-import type { HuntAlert } from '@/hooks/useHuntAlerts';
+import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { FeatureCollection } from 'geojson';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import BrainHeartbeat from '@/components/BrainHeartbeat';
@@ -27,7 +27,7 @@ interface DeckLayoutProps {
   convergenceAlerts: ConvergenceAlert[];
   weatherEventsGeoJSON: FeatureCollection | null;
   nwsAlertsGeoJSON: FeatureCollection | null;
-  huntAlerts: HuntAlert[];
+  huntAlerts: PatternAlert[];
   murmurationIndex: MurmurationData | null;
   children: ReactNode;
 }

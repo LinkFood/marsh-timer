@@ -1,6 +1,6 @@
 import { useState, Component, type ReactNode } from 'react';
 import { X, Plus, Clock } from 'lucide-react';
-import HuntChat from '@/components/HuntChat';
+import BrainChat from '@/components/BrainChat';
 import { useDeck } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatHistory, type ChatSession } from '@/hooks/useChatHistory';
@@ -41,8 +41,8 @@ export default function ChatPanel() {
   const [showHistory, setShowHistory] = useState(false);
   const { sessions, loading: historyLoading } = useChatHistory();
 
-  // Callbacks passed down to HuntChat via ref-like pattern
-  // We'll use a state-based approach: HuntChat exposes clearMessages/loadSession via useChat
+  // Callbacks passed down to BrainChat via ref-like pattern
+  // We'll use a state-based approach: BrainChat exposes clearMessages/loadSession via useChat
   // ChatPanel needs to call them. We pass callbacks up via props.
   const [chatActions, setChatActions] = useState<{
     clearMessages: () => void;
@@ -130,7 +130,7 @@ export default function ChatPanel() {
         <div className="flex-1 min-h-0">
           {chatOpen && (
             <ChatErrorBoundary>
-              <HuntChat
+              <BrainChat
                 species={species}
                 stateAbbr={selectedState}
                 isMobile={isMobile}

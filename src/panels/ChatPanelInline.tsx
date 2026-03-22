@@ -1,4 +1,4 @@
-import HuntChat from '@/components/HuntChat';
+import BrainChat from '@/components/BrainChat';
 import { useDeck } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import type { PanelComponentProps } from './PanelTypes';
@@ -9,7 +9,7 @@ export default function ChatPanelInline({}: PanelComponentProps) {
 
   return (
     <div className="h-full">
-      <HuntChat species={species} stateAbbr={selectedState} isMobile={isMobile} />
+      <BrainChat species={species} stateAbbr={selectedState} isMobile={isMobile} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { AlertTriangle, Thermometer, Wind, Gauge, Droplets } from 'lucide-react';
-import { useHuntAlerts } from '@/hooks/useHuntAlerts';
+import { usePatternAlerts } from '@/hooks/usePatternAlerts';
 import { useMapAction } from '@/contexts/MapActionContext';
 import { useDeck } from '@/contexts/DeckContext';
 import PanelTabs from '@/components/PanelTabs';
@@ -11,8 +11,8 @@ const SEVERITY_COLORS: Record<string, string> = {
   medium: 'bg-orange-500/20 text-orange-400',
 };
 
-export default function HuntAlertsPanel({}: PanelComponentProps) {
-  const { alerts, loading } = useHuntAlerts();
+export default function PatternAlertsPanel({}: PanelComponentProps) {
+  const { alerts, loading } = usePatternAlerts();
   const { flyTo } = useMapAction();
   const { selectedState } = useDeck();
   const [activeTab, setActiveTab] = useState('all');

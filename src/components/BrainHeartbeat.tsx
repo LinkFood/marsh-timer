@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
-import type { HuntAlert } from '@/hooks/useHuntAlerts';
+import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { FeatureCollection } from 'geojson';
 import { useBrainActivity } from '@/hooks/useBrainActivity';
 import { useDataSourceHealth, type DataSourceStatus } from '@/hooks/useDataSourceHealth';
@@ -19,7 +19,7 @@ interface BrainHeartbeatProps {
   convergenceAlerts: ConvergenceAlert[];
   weatherEventsGeoJSON: FeatureCollection | null;
   nwsAlertsGeoJSON: FeatureCollection | null;
-  huntAlerts: HuntAlert[];
+  huntAlerts: PatternAlert[];
   murmurationIndex: MurmurationData | null;
 }
 

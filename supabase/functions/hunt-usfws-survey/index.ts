@@ -61,7 +61,7 @@ const DUCK_SPECIES: SpeciesEstimate[] = [
     changeFromLTAPct: -17,
     nawmpObjective: 7.77,
     surveyArea: "traditional",
-    notes: "Most abundant and most hunted duck in North America. 2025 estimate nearly equal to 2024. Remains 17% below the long-term average (1955-2024). Eastern North America mallard estimate 1.1M, similar to 2024 and 10% below LTA.",
+    notes: "Most abundant and most commonly harvested waterfowl species in North America. 2025 estimate nearly equal to 2024. Remains 17% below the long-term average (1955-2024). Eastern North America mallard estimate 1.1M, similar to 2024 and 10% below LTA.",
   },
   {
     species: "Gadwall",
@@ -157,7 +157,7 @@ const DUCK_SPECIES: SpeciesEstimate[] = [
     changeFromLTAPct: 0,
     nawmpObjective: 0.69,
     surveyArea: "traditional",
-    notes: "Population at long-term average. Canvasbacks are a premier diving duck prized by hunters. Numbers have been relatively stable in recent years.",
+    notes: "Population at long-term average. Canvasbacks are a premier diving duck and an iconic waterfowl species. Numbers have been relatively stable in recent years.",
   },
   {
     species: "Scaup (Lesser and Greater combined)",
@@ -412,7 +412,7 @@ serve(async (req) => {
       `Above-average species: Gadwall (+17%), Wigeon (+22%), Redhead (+25%) | ` +
       `At-average: Green-winged Teal, Shoveler, Canvasback | ` +
       `Habitat: Prairie drought persists, lowest pond count since 2004. Eastern Canada/Great Lakes in good condition. ` +
-      `USFWS recommends liberal hunting frameworks for 2026-2027 season across all four flyways. ` +
+      `USFWS recommends liberal management frameworks for 2026-2027 season across all four flyways. ` +
       `Survey covers 2M+ sq mi of breeding habitat across Alaska, central Canada, and northcentral U.S. since 1955.`;
 
     entries.push({

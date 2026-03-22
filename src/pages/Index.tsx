@@ -10,7 +10,7 @@ import HeaderBar from "@/components/HeaderBar";
 import { useWeatherTiles } from "@/hooks/useWeatherTiles";
 import { useEBirdMapSightings } from "@/hooks/useEBirdMapSightings";
 import { useNationalWeather } from "@/hooks/useNationalWeather";
-import { useHuntAlerts } from "@/hooks/useHuntAlerts";
+import { usePatternAlerts } from "@/hooks/usePatternAlerts";
 import { useConvergenceScores } from "@/hooks/useConvergenceScores";
 import { useConvergenceAlerts } from "@/hooks/useConvergenceAlerts";
 import { useCountyGeoJSON } from "@/hooks/useCountyGeoJSON";
@@ -84,7 +84,7 @@ const Index = () => {
   const weatherCache = useNationalWeather();
 
   // Data hooks — panels/ticker
-  const { alerts } = useHuntAlerts();
+  const { alerts } = usePatternAlerts();
   const { scores: convergenceScores } = useConvergenceScores();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
   const { data: murmurationIndex } = useMurmurationIndex();

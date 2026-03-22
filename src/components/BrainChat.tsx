@@ -17,7 +17,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(ms / 86400000)}d ago`;
 }
 
-interface HuntChatProps {
+interface BrainChatProps {
   species: Species;
   stateAbbr: string | null;
   isMobile: boolean;
@@ -27,7 +27,7 @@ interface HuntChatProps {
   }) => void;
 }
 
-export default function HuntChat({ species, stateAbbr, isMobile, onActionsReady }: HuntChatProps) {
+export default function BrainChat({ species, stateAbbr, isMobile, onActionsReady }: BrainChatProps) {
   const { flyTo, setMapMode } = useMapAction();
 
   const handleMapAction = useCallback((action: { type: string; target: string }) => {

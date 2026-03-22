@@ -505,7 +505,7 @@ const deerFacts: Record<string, string[]> = {
   "Alabama": [
     "Alabama supports one of the largest white-tailed deer populations in the Southeast, with over 1.5 million animals.",
     "The Black Belt region produces mature whitetails with substantial antler growth due to rich calcium soils.",
-    "Alabama's deer activity season runs from mid-October to early February, one of the longest in the nation."
+    "Alabama's deer management season runs from mid-October to early February, one of the longest in the nation."
   ],
   "Alaska": [
     "Alaska's Sitka blacktail deer inhabit the coastal rainforests of Southeast Alaska and Kodiak Island.",
@@ -515,12 +515,12 @@ const deerFacts: Record<string, string[]> = {
   "Arizona": [
     "Arizona's Coues whitetail deer, found in the southern mountains, is one of the most elusive subspecies in North America.",
     "The Kaibab Plateau north of the Grand Canyon supports significant mule deer populations.",
-    "Arizona uses a draw system for most deer management units, with some units having less than 5% allocation rates."
+    "Arizona uses a draw system for most deer management units, with some units having less than 5% permit allocation rates."
   ],
   "Arkansas": [
     "Arkansas supports over 1 million white-tailed deer across diverse habitats from the Ozarks to the Delta.",
     "The Ozark National Forest provides vast public land with productive whitetail habitat.",
-    "Arkansas supports modern firearms, muzzleloader, and archery seasons across separate management periods."
+    "Arkansas manages deer through multiple regulated seasons across separate management periods."
   ],
   "California": [
     "California has the largest mule deer population of any state, with an estimated 450,000 animals.",
@@ -530,27 +530,27 @@ const deerFacts: Record<string, string[]> = {
   "Colorado": [
     "Colorado holds the largest mule deer population in the nation at over 400,000 animals.",
     "Units 61 and 62 on the Uncompahgre Plateau support some of the state's most mature mule deer populations.",
-    "Colorado's 4th rifle season in November coincides with the mule deer rut, when mature bucks are most active."
+    "Colorado's late November management season coincides with the mule deer rut, when mature bucks are most active."
   ],
   "Connecticut": [
     "Connecticut's deer density exceeds 30 per square mile in some areas, among the highest in New England.",
     "Fairfield County in southwestern CT consistently supports the state's densest whitetail populations.",
-    "Connecticut allows crossbow use during the entire archery season, expanding management capacity."
+    "Connecticut's deer management program includes extended archery periods, expanding population control capacity."
   ],
   "Delaware": [
     "Despite its small size, Delaware manages over 12,000 deer annually from a dense population.",
     "Sussex County in southern Delaware supports the majority of the state's mature whitetail populations.",
-    "Delaware allows shotguns only for firearm deer season — no centerfire rifles are permitted."
+    "Delaware restricts firearm deer management to shotguns only — no centerfire rifles are permitted."
   ],
   "Florida": [
     "Florida has three deer subspecies: the Osceola, the Virginia whitetail, and the diminutive Key deer (protected).",
     "Eglin Air Force Base in the Panhandle offers some of Florida's most extensive deer habitat at over 460,000 acres.",
-    "Florida's deer season can start as early as July in some zones, the earliest opener in the country."
+    "Florida's deer management season can start as early as July in some zones, the earliest in the country."
   ],
   "Georgia": [
     "Georgia manages approximately 350,000 deer per season, ranking in the top 5 nationally.",
     "Dooly and Hancock counties in central Georgia consistently support mature whitetail populations with substantial antler growth.",
-    "Georgia allows baiting for deer in most counties, a management practice prohibited in many other states."
+    "Georgia permits baiting for deer management in most counties, a practice prohibited in many other states."
   ],
   "Hawaii": [
     "Hawaii supports axis deer on Maui, Molokai, and Lanai — an exotic species introduced in 1868.",
@@ -563,39 +563,39 @@ const deerFacts: Record<string, string[]> = {
     "Idaho's general season tags are available over-the-counter, making it one of the most accessible western states for deer observation."
   ],
   "Illinois": [
-    "Illinois is a top-5 state for mature whitetails, with Pike County being the epicenter of trophy-class deer.",
-    "Illinois is a shotgun/muzzleloader/archery-only state — no centerfire rifles are allowed for deer.",
+    "Illinois is a top-5 state for mature whitetails, with Pike County supporting some of the largest-bodied deer in the Midwest.",
+    "Illinois restricts deer management to shotgun, muzzleloader, and archery — no centerfire rifles are permitted.",
     "The Golden Triangle of Pike, Adams, and Brown counties supports some of the densest mature whitetail populations in the Midwest."
   ],
   "Indiana": [
     "Indiana manages over 120,000 deer annually, with Parke and Brown counties being top producers.",
-    "Indiana allows rifles only in specific counties — most of the state is restricted to shotgun, muzzleloader, and handgun.",
+    "Indiana permits rifles for deer management only in specific counties — most of the state is restricted to other methods.",
     "The southern Indiana hills and creek bottoms support the state's most substantial whitetail populations."
   ],
   "Iowa": [
-    "Iowa is widely considered the top state for mature whitetails, with more trophy-class deer per square mile than anywhere.",
-    "Iowa's one-buck limit and limited nonresident tags keep pressure low and buck age structure high.",
+    "Iowa is widely considered the top state for mature whitetails, with more large-bodied deer per square mile than anywhere.",
+    "Iowa's conservative management limits keep pressure low and buck age structure high.",
     "Allamakee, Clayton, and Winneshiek counties in northeast Iowa consistently support the densest mature buck populations."
   ],
   "Kansas": [
     "Kansas ranks in the top 3 for mature whitetails, rivaling Iowa and Illinois in antler quality.",
     "The Flint Hills region's mix of tallgrass prairie and creek timber produces substantial whitetail populations.",
-    "Kansas allows one buck per season, maintaining older age classes in the herd."
+    "Kansas limits buck harvest to one per season, maintaining older age classes in the herd."
   ],
   "Kentucky": [
     "Kentucky manages over 130,000 deer annually and supports multiple world-class whitetail populations.",
     "The Land Between the Lakes NRA offers 170,000 acres of public land deer habitat in western Kentucky.",
-    "Kentucky's archery season opens in early September, one of the earliest bow seasons in the East."
+    "Kentucky's deer management season opens in early September, one of the earliest in the East."
   ],
   "Louisiana": [
     "Louisiana's deer population exceeds 1 million, concentrated in the piney woods and bottomland hardwoods.",
     "The Atchafalaya Basin and surrounding areas support some of the heaviest-bodied whitetails in the South.",
-    "Louisiana allows dogs for deer drives in certain parishes, a traditional practice dating back centuries."
+    "Louisiana permits dog-assisted deer management in certain parishes, a traditional practice dating back centuries."
   ],
   "Maine": [
     "Maine's North Woods hold the largest whitetail deer in New England, with bucks commonly exceeding 200 lbs.",
     "Aroostook and Penobscot counties in northern Maine support the state's most substantial deer populations.",
-    "Maine allows statewide rifle use, including .30-06 and .308 — a tradition since territorial days."
+    "Maine's deer management program permits statewide rifle use, a tradition since territorial days."
   ],
   "Maryland": [
     "Maryland's deer density exceeds 40 per square mile in parts of the Western Shore, among the highest in the East.",
@@ -610,7 +610,7 @@ const deerFacts: Record<string, string[]> = {
   "Michigan": [
     "Michigan has over 1.5 million deer and issues more deer licenses than any state except Texas.",
     "The Upper Peninsula offers vast public land and mature bucks in a wilderness setting.",
-    "Michigan's firearm season opener on November 15 is an unofficial state holiday, with over 600,000 participants afield."
+    "Michigan's November 15 deer management season opener is an unofficial state holiday, with over 600,000 participants afield."
   ],
   "Minnesota": [
     "Minnesota manages over 200,000 deer annually from a herd of approximately 1 million whitetails.",
@@ -620,12 +620,12 @@ const deerFacts: Record<string, string[]> = {
   "Mississippi": [
     "Mississippi's deer herd exceeds 1.5 million, one of the largest per-capita populations in the country.",
     "The Delta region's fertile agricultural land grows whitetails with wide, heavy antlers.",
-    "Mississippi allows up to 5 bucks per season on private land in some zones, reflecting the dense population."
+    "Mississippi permits up to 5 bucks per management season on private land in some zones, reflecting the dense population."
   ],
   "Missouri": [
     "Missouri is a top-10 whitetail state, with Pike, Macon, and Mercer counties leading in mature deer density.",
     "The Mark Twain National Forest provides over 1.5 million acres of public deer habitat in the Ozarks.",
-    "Missouri's firearms season in November typically yields over 100,000 deer in just 11 days."
+    "Missouri's November management season typically results in over 100,000 deer harvested in just 11 days."
   ],
   "Montana": [
     "Montana supports both mule deer and whitetail populations, with the Breaks country producing giant muleys.",
@@ -645,12 +645,12 @@ const deerFacts: Record<string, string[]> = {
   "New Hampshire": [
     "New Hampshire's deer herd has grown to over 100,000, with the Merrimack Valley being the densest region.",
     "Hillsborough and Rockingham counties in southern NH consistently support the state's most substantial whitetail populations.",
-    "New Hampshire's muzzleloader season extends through December, offering late-season observation opportunities after rifle season."
+    "New Hampshire's management season extends through December, offering late-season deer activity monitoring opportunities."
   ],
   "New Jersey": [
     "New Jersey has one of the highest deer densities in the nation at over 40 per square mile in some areas.",
     "Hunterdon and Warren counties in northwest NJ are the top whitetail producers in the state.",
-    "New Jersey's six-day firearm season with shotgun-only rules creates concentrated deer management activity."
+    "New Jersey's six-day management season with shotgun-only rules creates concentrated deer population control activity."
   ],
   "New Mexico": [
     "New Mexico supports mule deer, Coues whitetail, and free-range elk populations, sometimes in overlapping habitat.",
@@ -675,12 +675,12 @@ const deerFacts: Record<string, string[]> = {
   "Ohio": [
     "Ohio ranks in the top 5 nationally for mature whitetails and is a premier archery destination.",
     "The southeastern hill country (Guernsey, Tuscarawas, Coshocton counties) consistently supports the densest buck populations.",
-    "Ohio is shotgun/muzzleloader-only for gun season — no centerfire rifles — contributing to higher buck survival."
+    "Ohio restricts deer management to shotgun and muzzleloader — no centerfire rifles — contributing to higher buck survival."
   ],
   "Oklahoma": [
     "Oklahoma supports both whitetail and mule deer, with the Wichita Mountains providing a unique crossover zone.",
     "The southeastern counties of Pushmataha and LeFlore support Oklahoma's most substantial whitetail populations.",
-    "Oklahoma's generous six-deer management limit (multiple bucks allowed) is one of the most liberal in the country."
+    "Oklahoma's generous six-deer harvest limit (multiple bucks allowed) is one of the most liberal management programs in the country."
   ],
   "Oregon": [
     "Oregon supports blacktail deer on the west side and mule deer on the east side of the Cascades.",
@@ -690,17 +690,17 @@ const deerFacts: Record<string, string[]> = {
   "Pennsylvania": [
     "Pennsylvania has one of the largest deer herds in the East at over 1.5 million animals.",
     "The north-central counties (Potter, Tioga, Clinton) are the heart of Pennsylvania's Big Woods deer tradition.",
-    "Pennsylvania's concurrent antlerless season during rifle season allows simultaneous doe management."
+    "Pennsylvania's concurrent antlerless season allows simultaneous doe population management."
   ],
   "Rhode Island": [
     "Rhode Island's deer population exceeds 18,000, high density for the smallest state in the nation.",
     "The Arcadia Management Area in the western part of the state offers the best public deer habitat.",
-    "Rhode Island allows crossbows during the entire archery season, increasing management capacity in this densely settled state."
+    "Rhode Island's extended archery management period increases population control capacity in this densely settled state."
   ],
   "South Carolina": [
-    "South Carolina's deer season runs August through January, one of the longest continuous seasons in the country.",
+    "South Carolina's deer management season runs August through January, one of the longest continuous seasons in the country.",
     "The Lowcountry's ACE Basin and Santee Delta support heavy-bodied whitetails with unique antler characteristics.",
-    "South Carolina allows Sunday activity and permits the use of dogs for deer drives in many counties."
+    "South Carolina permits dog-assisted deer management in many counties, a traditional practice in the Southeast."
   ],
   "South Dakota": [
     "South Dakota's Black Hills support notable mule deer populations, while the Missouri River breaks hold significant whitetails.",
@@ -725,12 +725,12 @@ const deerFacts: Record<string, string[]> = {
   "Vermont": [
     "Vermont's Green Mountains and Northeast Kingdom provide classic New England deer habitat.",
     "Bennington and Windham counties in southern Vermont support the state's largest whitetail populations.",
-    "Vermont's November rifle season is a deeply ingrained cultural tradition, with opening day treated as an unofficial holiday."
+    "Vermont's November deer management season is a deeply ingrained cultural tradition, with opening day treated as an unofficial holiday."
   ],
   "Virginia": [
     "Virginia manages over 200,000 deer annually, with the Shenandoah Valley being the most productive region.",
     "Rappahannock and Fauquier counties in the Piedmont consistently support Virginia's densest whitetail populations.",
-    "Virginia allows Sunday activity on private land and select public lands, expanded in recent years."
+    "Virginia permits Sunday deer management activity on private land and select public lands, expanded in recent years."
   ],
   "Washington": [
     "Washington supports blacktail on the west side, mule deer in the east, and whitetails in the northeast corner.",
@@ -740,10 +740,10 @@ const deerFacts: Record<string, string[]> = {
   "West Virginia": [
     "West Virginia manages over 100,000 deer annually from its mountainous terrain and deep hollows.",
     "Hampshire, Hardy, and Grant counties in the Eastern Panhandle support the state's densest whitetail populations.",
-    "West Virginia's buck-only firearms season in November is followed by an antlerless-only season in December."
+    "West Virginia's buck-only management season in November is followed by an antlerless-only season in December."
   ],
   "Wisconsin": [
-    "Wisconsin's 9-day gun season is a cultural phenomenon, with over 600,000 participants taking to the woods.",
+    "Wisconsin's 9-day deer management season is a cultural phenomenon, with over 600,000 participants taking to the woods.",
     "Buffalo and Trempealeau counties in the Driftless Area consistently support the state's densest mature buck populations.",
     "Wisconsin's CWD management in the southern farmland zone has created intensive management regulations since 2002."
   ],
@@ -788,7 +788,7 @@ const turkeyFacts: Record<string, string[]> = {
   "Delaware": [
     "Delaware's turkey population has rebounded to over 3,000 birds, concentrated in Kent and Sussex counties.",
     "The Blackbird State Forest and surrounding agricultural land provide the state's best turkey habitat.",
-    "Delaware's spring season is limited to a 2-bird limit with shotgun-only regulations."
+    "Delaware's spring turkey management season is limited to a 2-bird limit with shotgun-only regulations."
   ],
   "Florida": [
     "Florida's Osceola turkey is a unique subspecies found nowhere else in the world.",
@@ -893,7 +893,7 @@ const turkeyFacts: Record<string, string[]> = {
   "New Hampshire": [
     "New Hampshire's turkey population has grown to over 40,000 from just 25 birds released in 1975.",
     "Sullivan and Cheshire counties in the southwestern part of the state support the most gobblers.",
-    "New Hampshire's fall turkey season allows either-sex management with shotgun or archery."
+    "New Hampshire's fall turkey management season allows either-sex harvest for population control."
   ],
   "New Jersey": [
     "New Jersey's turkey population exceeds 20,000, thriving in the agricultural-forest interface.",
@@ -943,7 +943,7 @@ const turkeyFacts: Record<string, string[]> = {
   "Rhode Island": [
     "Rhode Island's turkey population has grown from zero to over 3,500 since reintroduction in 1980.",
     "The Arcadia Management Area and George Washington Management Area support the best public turkey habitat.",
-    "Rhode Island's spring season is shotgun-only with a 1-bird limit and a short season window."
+    "Rhode Island's spring turkey management season allows a 1-bird limit with a short season window."
   ],
   "South Carolina": [
     "South Carolina's Lowcountry and Francis Marion National Forest support classic Eastern turkey habitat.",
@@ -973,7 +973,7 @@ const turkeyFacts: Record<string, string[]> = {
   "Vermont": [
     "Vermont's turkey population has grown to over 45,000 from just 17 birds released in 1969.",
     "Bennington and Rutland counties in the southern Green Mountains support the most spring gobblers.",
-    "Vermont's fall turkey season allows either-sex management and includes both archery and shotgun options."
+    "Vermont's fall turkey management season allows either-sex harvest for population control."
   ],
   "Virginia": [
     "Virginia supports over 15,000 gobblers annually, with the Blue Ridge and Piedmont leading production.",
@@ -1006,22 +1006,22 @@ const doveFacts: Record<string, string[]> = {
   "Alabama": [
     "Alabama's September dove season is a social tradition, with gatherings on sunflower fields statewide.",
     "The Black Belt's agricultural fields support some of the highest dove densities in the Southeast.",
-    "Alabama allows 15 doves per day and permits the use of spinning-wing decoys on managed fields."
+    "Alabama's daily dove management limit is 15 birds, with regulated activity on managed fields."
   ],
   "Arizona": [
     "Arizona's white-winged dove population has expanded significantly, making the state a major dove concentration area.",
     "The agricultural valleys around Yuma, Buckeye, and Casa Grande are Arizona's top dove habitat areas.",
-    "Arizona holds a special early white-winged dove season before the regular mourning dove opener."
+    "Arizona holds a special early white-winged dove management season before the regular mourning dove season."
   ],
   "Arkansas": [
     "Arkansas' rice and soybean fields in the Grand Prairie attract massive concentrations of mourning doves.",
-    "The September 1 dove opener is one of the most anticipated dates on the Arkansas outdoor calendar.",
+    "The September 1 dove season is one of the most anticipated dates on the Arkansas outdoor calendar.",
     "Stuttgart and the surrounding Delta region offer managed public dove fields on WMAs."
   ],
   "California": [
     "California is one of the top dove states, with populations supporting over 1 million birds managed annually.",
     "The Imperial Valley and Sacramento Valley are California's premier dove habitat corridors.",
-    "Eurasian collared-doves can be taken without limit in California — they don't count toward the mourning dove total."
+    "Eurasian collared-doves can be harvested without limit in California — they are classified separately from mourning doves."
   ],
   "Colorado": [
     "Colorado's eastern plains along the Arkansas River corridor support excellent mourning dove populations over grain stubble.",
@@ -1051,7 +1051,7 @@ const doveFacts: Record<string, string[]> = {
   "Idaho": [
     "Idaho's Snake River Plain and Treasure Valley are the state's most productive dove habitat areas.",
     "The agricultural fields near Boise, Nampa, and Caldwell attract large September mourning dove flights.",
-    "Idaho's dove season opens September 1, with limits of 15 birds per day in the Pacific Flyway."
+    "Idaho's dove management season opens September 1, with a daily limit of 15 birds in the Pacific Flyway."
   ],
   "Illinois": [
     "Illinois ranks in the top 10 nationally for mourning dove populations, with over 500,000 managed annually.",
@@ -1059,7 +1059,7 @@ const doveFacts: Record<string, string[]> = {
     "Public dove fields at state sites like Jim Edgar Panther Creek and Clinton Lake offer managed access."
   ],
   "Indiana": [
-    "Indiana's September dove opener is one of the most popular small game events in the state.",
+    "Indiana's September dove season is one of the most popular small game events in the state.",
     "The Wabash Valley and White River agricultural corridors attract heavy dove concentrations.",
     "Dove activity over managed sunflower fields at state fish and wildlife areas is an Indiana tradition."
   ],
@@ -1071,7 +1071,7 @@ const doveFacts: Record<string, string[]> = {
   "Kansas": [
     "Kansas is a top-5 state for dove populations, with the Flint Hills and south-central prairies leading density.",
     "Cheyenne Bottoms and the surrounding farmland attract massive dove flights in early September.",
-    "Kansas allows 15 doves per day and its September opener is considered the unofficial start to fall field activity."
+    "Kansas allows 15 doves per day and its September season is considered the unofficial start to fall field activity."
   ],
   "Kentucky": [
     "Kentucky's dove fields at Peabody and West Kentucky WMAs provide popular managed public access.",
@@ -1079,7 +1079,7 @@ const doveFacts: Record<string, string[]> = {
     "Kentucky manages over 500,000 mourning doves annually, ranking in the top 15 nationally."
   ],
   "Louisiana": [
-    "Louisiana's September dove opener is a major social event, with field gatherings statewide.",
+    "Louisiana's September dove season is a major social event, with field gatherings statewide.",
     "The rice prairies of Acadiana and the cotton fields of northeast Louisiana are top dove areas.",
     "Louisiana supports over 1 million doves per season, ranking in the top 5 nationally."
   ],
@@ -1101,7 +1101,7 @@ const doveFacts: Record<string, string[]> = {
   "Mississippi": [
     "Mississippi ranks in the top 10 for dove populations, with the Delta's grain fields attracting massive flights.",
     "Managed dove fields on WMAs across the state provide some of the best public-access opportunities in the Southeast.",
-    "The September 1 opener is Mississippi's most popular small game field day of the year."
+    "The September 1 season start is Mississippi's most popular small game field day of the year."
   ],
   "Missouri": [
     "Missouri supports over 1.5 million doves per season, consistently ranking in the top 5 nationally.",
@@ -1136,7 +1136,7 @@ const doveFacts: Record<string, string[]> = {
   "New Mexico": [
     "New Mexico supports both white-winged and mourning dove populations, with strong flights through the Rio Grande valley.",
     "The Mesilla Valley near Las Cruces and the Pecos Valley near Carlsbad are top dove staging areas.",
-    "New Mexico's early September dove opener attracts participants from across the Southwest to its agricultural valleys."
+    "New Mexico's early September dove season attracts participants from across the Southwest to its agricultural valleys."
   ],
   "North Carolina": [
     "North Carolina's managed dove fields on game lands provide excellent September field access statewide.",
@@ -1156,7 +1156,7 @@ const doveFacts: Record<string, string[]> = {
   "Oklahoma": [
     "Oklahoma is a top-3 state for dove populations, with over 2 million birds managed annually.",
     "The wheat stubble fields of central and southwestern Oklahoma attract enormous September dove flights.",
-    "Oklahoma's September 1 dove opener is the most participated field event in the state."
+    "Oklahoma's September 1 dove season is the most participated field event in the state."
   ],
   "Oregon": [
     "Oregon's dove populations are concentrated in the agricultural valleys east of the Cascades.",
@@ -1186,7 +1186,7 @@ const doveFacts: Record<string, string[]> = {
   "Tennessee": [
     "Tennessee's managed dove fields on WMAs like Forks of the River and Yanahli offer excellent public access.",
     "The agricultural counties of west Tennessee from Jackson to Memphis support the highest dove populations.",
-    "Tennessee's September 1 dove opener is the most popular small game field day in the state."
+    "Tennessee's September 1 dove season is the most popular small game field day in the state."
   ],
   "Texas": [
     "Texas leads the nation in dove populations, with 5-7 million mourning and white-winged doves managed annually.",

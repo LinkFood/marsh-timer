@@ -1968,7 +1968,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       while (Math.abs(e.lngLat.lng - coords[0]) > 180) {
         coords[0] += e.lngLat.lng > coords[0] ? 360 : -360;
       }
-      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10 })
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "signal-popup", offset: 10 })
         .setLngLat(coords)
         .setHTML(getSightingPopupHTML(props.name || "Unknown", props.count || 0, props.location || "", props.date || "", props.recency || "old"))
         .addTo(map);
@@ -2011,7 +2011,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         "Very Low": "#64748b", "Low": "#64748b", "Moderate": "#facc15", "Good": "#fb923c", "Excellent": "#ef4444",
       };
       const actColor = activityColors[props.activity_level] || "#94a3b8";
-      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10 })
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "signal-popup", offset: 10 })
         .setLngLat(coords)
         .setHTML(`
           <div style="font-family:Inter,sans-serif;padding:4px 0;min-width:150px;max-width:240px">
@@ -2072,7 +2072,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           <div style="font-size:11px;color:rgba(255,255,255,0.7);max-height:120px;overflow-y:auto;line-height:1.4;">${(props.description || '').slice(0, 300)}${(props.description || '').length > 300 ? '...' : ''}</div>
         </div>
       `;
-      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10, maxWidth: '300px' })
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "signal-popup", offset: 10, maxWidth: '300px' })
         .setLngLat(e.lngLat)
         .setHTML(html)
         .addTo(map);
@@ -2100,7 +2100,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           <div style="font-size:11px;color:rgba(255,255,255,0.7);line-height:1.4;">${props.content || ''}</div>
         </div>
       `;
-      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "hunt-popup", offset: 10 })
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "signal-popup", offset: 10 })
         .setLngLat(e.lngLat)
         .setHTML(html)
         .addTo(map);
@@ -2131,7 +2131,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             popupRef.current = new mapboxgl.Popup({
               closeButton: false,
               closeOnClick: false,
-              className: "hunt-popup",
+              className: "signal-popup",
               offset: 10,
             })
               .setLngLat(centroid)

@@ -1,5 +1,13 @@
 import type { Species } from "./types";
 
+// HUNTING-SPECIFIC MODULE
+// These links point to state wildlife agency regulation pages.
+// They are hunting-specific but retained because:
+// 1. Regulation seasons directly drive wildlife activity patterns
+// 2. Season dates affect field pressure and animal movement
+// 3. State agency pages are primary sources for wildlife management data
+// Future: generalize to wildlife management regulation links
+
 const waterfowlLinks: Record<string, string> = {
   "AL": "https://www.outdooralabama.com/hunting/migratory-birds",
   "AK": "https://www.adfg.alaska.gov/index.cfm?adfg=waterfowl.main",

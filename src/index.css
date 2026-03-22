@@ -154,7 +154,7 @@
     50% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.8); }
   }
 
-  .hunt-popup .mapboxgl-popup-content {
+  .signal-popup .mapboxgl-popup-content {
     background: transparent;
     padding: 0;
     box-shadow: none;
@@ -162,7 +162,7 @@
     overflow: hidden;
   }
 
-  .hunt-popup .mapboxgl-popup-tip {
+  .signal-popup .mapboxgl-popup-tip {
     display: none;
   }
 }

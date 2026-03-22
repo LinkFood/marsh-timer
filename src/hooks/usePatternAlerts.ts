@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-export interface HuntAlert {
+export interface PatternAlert {
   stateAbbr: string;
   stateName: string;
   severity: "high" | "medium";
@@ -16,8 +16,8 @@ export interface HuntAlert {
 
 const REFRESH_MS = 60 * 60 * 1000; // 60 minutes
 
-export function useHuntAlerts() {
-  const [alerts, setAlerts] = useState<HuntAlert[]>([]);
+export function usePatternAlerts() {
+  const [alerts, setAlerts] = useState<PatternAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -49,7 +49,7 @@ export function useHuntAlerts() {
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
-          console.warn('Request timed out: hunt alerts');
+          console.warn('Request timed out: pattern alerts');
         }
         if (!cancelled) setError(true);
       } finally {
