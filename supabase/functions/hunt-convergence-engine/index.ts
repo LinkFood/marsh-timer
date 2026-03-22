@@ -212,7 +212,7 @@ async function scorePattern(
   moonPhase: string,
   migrationDetails: string,
 ): Promise<{ score: number; summary: string; signals: Record<string, unknown> }> {
-  const searchText = `${stateName} hunting conditions: ${weatherDetails}, ${moonPhase}, ${migrationDetails}`;
+  const searchText = `${stateName} environmental conditions: ${weatherDetails}, ${moonPhase}, ${migrationDetails}`;
 
   let score = 0;
   let summary = 'no historical match';

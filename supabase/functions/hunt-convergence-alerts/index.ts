@@ -253,7 +253,7 @@ serve(async (req) => {
       // Deliver to users via Slack (best-effort)
       const stateName = STATE_NAMES[candidate.state_abbr] ?? candidate.state_abbr;
       const alertMessage = [
-        `DUCK COUNTDOWN ALERT -- ${stateName}`,
+        `ENVIRONMENTAL ALERT -- ${stateName}`,
         `Score: ${candidate.score}/100 (was ${candidate.previous_score}/100)`,
         candidate.reasoning,
         ``,

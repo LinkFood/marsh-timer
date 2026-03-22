@@ -55,7 +55,7 @@ function formatBrief(params: {
 }): string {
   const { favoriteScores, top3, primeWindows, alerts, today, brainCountStr } = params;
 
-  let brief = `DUCK COUNTDOWN DAILY BRIEF -- ${today}\n\n`;
+  let brief = `ENVIRONMENTAL INTELLIGENCE BRIEF -- ${today}\n\n`;
 
   // Your states
   if (favoriteScores.length > 0) {

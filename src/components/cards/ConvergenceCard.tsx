@@ -139,11 +139,11 @@ export default function ConvergenceCard({
         {showGuide && (
           <div className="mt-1.5 space-y-1">
             {[
-              { color: '#ef4444', label: '80-100 \u2014 Outstanding. Drop everything and go.' },
-              { color: '#fb923c', label: '60-79 \u2014 Strong. Solid day, worth the trip.' },
-              { color: '#facc15', label: '40-59 \u2014 Fair. Average conditions.' },
-              { color: '#3b82f6', label: '20-39 \u2014 Poor. Tough hunting.' },
-              { color: 'rgba(100,100,100,0.5)', label: '0-19 \u2014 Skip it. Stay home.' },
+              { color: '#ef4444', label: '80-100 \u2014 Exceptional. Multiple signals converging.' },
+              { color: '#fb923c', label: '60-79 \u2014 Strong. Clear pattern alignment.' },
+              { color: '#facc15', label: '40-59 \u2014 Moderate. Mixed conditions.' },
+              { color: '#3b82f6', label: '20-39 \u2014 Weak. Limited convergence.' },
+              { color: 'rgba(100,100,100,0.5)', label: '0-19 \u2014 Minimal. Insufficient signal activity.' },
             ].map(({ color: dotColor, label }) => (
               <div key={dotColor} className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />

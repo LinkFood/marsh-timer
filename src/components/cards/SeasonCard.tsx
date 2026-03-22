@@ -49,7 +49,7 @@ export default function SeasonCard({ data }: SeasonCardProps) {
         </div>
       )}
       {bagLimit !== undefined && bagLimit > 0 && (
-        <p className="text-[10px] text-muted-foreground mt-1">Bag limit: {bagLimit}</p>
+        <p className="text-[10px] text-muted-foreground mt-1">Limit: {bagLimit}</p>
       )}
     </div>
   );

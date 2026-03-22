@@ -10,7 +10,7 @@ export interface DataSourceDef {
 
 export const DATA_SOURCE_CATALOG: DataSourceDef[] = [
   // Weather
-  { id: 'open-meteo', name: 'Live Weather Forecasts', provider: 'Open-Meteo', category: 'weather', cronFunction: 'hunt-weather-watchdog', refreshInterval: 'daily', description: '50-state 16-day forecast + hunting event detection' },
+  { id: 'open-meteo', name: 'Live Weather Forecasts', provider: 'Open-Meteo', category: 'weather', cronFunction: 'hunt-weather-watchdog', refreshInterval: 'daily', description: '50-state 16-day forecast + environmental event detection' },
   { id: 'asos-metar', name: 'Real-Time Station Data', provider: 'ASOS/METAR', category: 'weather', cronFunction: 'hunt-weather-realtime', refreshInterval: '15min', description: '130-station live weather monitoring' },
   { id: 'nws-alerts', name: 'NWS Severe Alerts', provider: 'NWS API', category: 'weather', cronFunction: 'hunt-nws-monitor', refreshInterval: '3hr', description: 'Filtered severe weather alerts' },
   { id: 'rainviewer', name: 'Weather Radar', provider: 'RainViewer', category: 'weather', refreshInterval: 'real-time', description: 'Live radar overlay (frontend)' },
@@ -39,7 +39,7 @@ export const DATA_SOURCE_CATALOG: DataSourceDef[] = [
   { id: 'scout-reports', name: 'Scout Reports', provider: 'Internal AI', category: 'intelligence', cronFunction: 'hunt-scout-report', refreshInterval: 'daily', description: 'Daily AI scout briefs' },
 
   // Government
-  { id: 'species-knowledge', name: 'Species Knowledge', provider: 'Curated', category: 'government', refreshInterval: 'static', description: '152 behavioral entries across 39 waterfowl + game' },
+  { id: 'species-knowledge', name: 'Species Knowledge', provider: 'Curated', category: 'government', refreshInterval: 'static', description: '152 behavioral entries across 39 monitored species' },
   { id: 'state-regulations', name: 'State Regulations', provider: 'State DNRs', category: 'government', refreshInterval: 'static', description: 'Hunting regulation links per species/state' },
 ];
 

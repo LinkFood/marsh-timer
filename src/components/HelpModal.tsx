@@ -22,7 +22,7 @@ const STEPS = [
   {
     icon: Feather,
     title: "Signal Domains",
-    body: "Use the signal domain selector in the header to filter by biological indicator type: All Signals, Waterfowl, Big Game, Upland, or specific species. Each domain weights the convergence engine differently based on which environmental signals matter most for that domain.",
+    body: "All Signals shows cross-domain convergence. Individual species domains weight the convergence engine toward that species' environmental sensitivities.",
   },
   {
     icon: MessageSquare,

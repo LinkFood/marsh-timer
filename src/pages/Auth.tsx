@@ -30,7 +30,7 @@ export default function Auth() {
             DUCK COUNTDOWN
           </h1>
           <p className="text-xs text-white/30 mt-2 tracking-wide uppercase">
-            Hunting Intelligence Platform
+            Environmental Intelligence Platform
           </p>
         </div>
         <button
