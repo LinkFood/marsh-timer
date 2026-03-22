@@ -19,6 +19,7 @@ const TYPE_CONFIG: Record<string, { icon: typeof Activity; color: string; bg: st
   nws: { icon: AlertTriangle, color: 'text-red-400', bg: 'bg-red-400/10' },
   migration: { icon: Radio, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
   brain: { icon: Activity, color: 'text-purple-400', bg: 'bg-purple-400/10' },
+  'compound-risk': { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10' },
 };
 
 const SEVERITY_DOT: Record<string, string> = {

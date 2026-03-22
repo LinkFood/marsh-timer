@@ -501,22 +501,17 @@ serve(async (req) => {
     const embeddings = await batchEmbed(embedTexts, 'document');
 
     if (embeddings && embeddings.length === embedTexts.length) {
-      // Query-on-write: brain scan for cross-domain pattern matches
+      // Fire-and-forget brain scans — don't await, these are the timeout killer
       for (let j = 0; j < embedMeta.length; j++) {
-        try {
-          const scan = await scanBrainOnWrite(embeddings[j], {
-            state_abbr: embedMeta[j].state_abbr,
-            exclude_content_type: 'weather-realtime',
-          });
+        const idx = j;
+        scanBrainOnWrite(embeddings[idx], {
+          state_abbr: embedMeta[idx].state_abbr,
+          exclude_content_type: 'weather-realtime',
+        }).then(scan => {
           if (scan.matches.length > 0) {
-            embedMeta[j].metadata = {
-              ...embedMeta[j].metadata,
-              pattern_matches: scan.matches,
-              pattern_scan_at: new Date().toISOString(),
-            };
-            console.log(`[hunt-weather-realtime] Brain scan: ${embedMeta[j].title} -> ${scan.matches.length} pattern matches`);
+            console.log(`[hunt-weather-realtime] Brain scan: ${embedMeta[idx].title} -> ${scan.matches.length} pattern matches`);
           }
-        } catch { /* scanning is best-effort */ }
+        }).catch(() => {});
       }
 
       // Insert into hunt_knowledge in batches of 50
@@ -548,6 +543,39 @@ serve(async (req) => {
       }
     } else {
       console.error(`[hunt-weather-realtime] Embedding count mismatch: expected ${embedTexts.length}, got ${embeddings?.length ?? 0}`);
+    }
+
+    // -----------------------------------------------------------------
+    // 6b. Trigger convergence scan for states with high-severity events
+    // -----------------------------------------------------------------
+    const highSeverityStates = new Set<string>();
+    for (const evt of allEvents) {
+      if ((evt.severity === 'high' || evt.event_type === 'front-passage') && evt.state_abbr) {
+        highSeverityStates.add(evt.state_abbr);
+      }
+    }
+
+    if (highSeverityStates.size > 0) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+      for (const state of highSeverityStates) {
+        fetch(`${supabaseUrl}/functions/v1/hunt-convergence-scan`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({
+            state_abbr: state,
+            trigger_event: 'High-severity weather event detected',
+            trigger_type: 'weather-realtime',
+            trigger_severity: 'high',
+          }),
+        }).catch(err => console.error(`[convergence-scan] Trigger failed for ${state}:`, err));
+      }
+
+      console.log(`[hunt-weather-realtime] Triggered convergence scan for ${highSeverityStates.size} states: ${[...highSeverityStates].join(', ')}`);
     }
 
     // -----------------------------------------------------------------

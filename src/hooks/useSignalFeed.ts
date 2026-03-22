@@ -5,7 +5,7 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export interface SignalItem {
   id: string;
-  type: 'convergence' | 'weather' | 'nws' | 'migration' | 'brain';
+  type: 'convergence' | 'weather' | 'nws' | 'migration' | 'brain' | 'compound-risk';
   title: string;
   body: string;
   stateAbbr: string | null;
@@ -24,15 +24,17 @@ export function useSignalFeed() {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const headers = { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY };
 
-      const [convRes, weatherRes, nwsRes] = await Promise.all([
+      const [convRes, weatherRes, nwsRes, riskRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?select=id,state_abbr,score,previous_score,alert_type,reasoning,created_at&created_at=gte.${since}&order=created_at.desc&limit=15`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/hunt_weather_events?select=id,event_type,states,severity,title,created_at&created_at=gte.${since}&order=created_at.desc&limit=15`, { headers }),
         fetch(`${SUPABASE_URL}/rest/v1/hunt_nws_alerts?select=id,event,headline,states,severity,created_at&created_at=gte.${since}&order=created_at.desc&limit=10`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since}&order=created_at.desc&limit=10`, { headers }),
       ]);
 
       const convData = convRes.ok ? await convRes.json() : [];
       const weatherData = weatherRes.ok ? await weatherRes.json() : [];
       const nwsData = nwsRes.ok ? await nwsRes.json() : [];
+      const riskData = riskRes.ok ? await riskRes.json() : [];
 
       const merged: SignalItem[] = [];
 
@@ -72,6 +74,18 @@ export function useSignalFeed() {
           stateAbbr: Array.isArray(n.states) ? n.states[0] : n.states,
           severity: n.severity === 'Extreme' || n.severity === 'Severe' ? 'high' : n.severity === 'Moderate' ? 'medium' : 'low',
           timestamp: n.created_at,
+        });
+      }
+
+      for (const item of riskData) {
+        merged.push({
+          id: `risk-${item.id}`,
+          type: 'compound-risk',
+          title: item.title || 'Compound Risk Alert',
+          body: item.content?.slice(0, 200) || '',
+          stateAbbr: item.state_abbr,
+          severity: 'high',
+          timestamp: item.created_at,
         });
       }
 
