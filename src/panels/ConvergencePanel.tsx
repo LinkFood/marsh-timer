@@ -3,10 +3,13 @@ import { useConvergenceScores } from '@/hooks/useConvergenceScores';
 import { useConvergenceHistoryAll } from '@/hooks/useConvergenceHistory';
 import { useMapAction } from '@/contexts/MapActionContext';
 import { useDeck } from '@/contexts/DeckContext';
+import { stateFlyways, type FlywayName } from '@/data/flyways';
 import Sparkline from '@/components/charts/Sparkline';
 import PanelTabs from '@/components/PanelTabs';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { PanelComponentProps } from './PanelTypes';
+
+const FLYWAYS: FlywayName[] = ['Atlantic', 'Mississippi', 'Central', 'Pacific'];
 
 const COMPONENTS = [
   { key: 'weather_component', label: 'Weather', max: 25, color: 'bg-amber-400' },
@@ -42,12 +45,18 @@ export default function ConvergencePanel({ isFullscreen }: PanelComponentProps) 
   const { selectedState, setSelectedState } = useDeck();
   const [activeTab, setActiveTab] = useState(isFullscreen ? 'all' : 'top10');
   const [expandedState, setExpandedState] = useState<string | null>(null);
+  const [flywayFilter, setFlywayFilter] = useState<FlywayName | null>(null);
 
   const allStates = useMemo(() => {
     return Array.from(scores.values()).sort((a, b) => b.score - a.score);
   }, [scores]);
 
-  const displayStates = activeTab === 'top10' ? topStates : allStates;
+  const tabStates = activeTab === 'top10' ? topStates : allStates;
+
+  const displayStates = useMemo(() => {
+    if (!flywayFilter) return tabStates;
+    return tabStates.filter(s => stateFlyways[s.state_abbr] === flywayFilter);
+  }, [tabStates, flywayFilter]);
 
   function handleClick(abbr: string) {
     setExpandedState(prev => prev === abbr ? null : abbr);
@@ -80,6 +89,25 @@ export default function ConvergencePanel({ isFullscreen }: PanelComponentProps) 
         active={activeTab}
         onChange={setActiveTab}
       />
+
+      {/* Flyway filter */}
+      <div className="flex gap-1 px-2 py-1 border-b border-white/[0.06]">
+        <button
+          onClick={() => setFlywayFilter(null)}
+          className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${!flywayFilter ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/30 hover:text-white/50'}`}
+        >
+          ALL
+        </button>
+        {FLYWAYS.map(fw => (
+          <button
+            key={fw}
+            onClick={() => setFlywayFilter(fw)}
+            className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${flywayFilter === fw ? 'bg-cyan-500/20 text-cyan-400' : 'text-white/30 hover:text-white/50'}`}
+          >
+            {fw.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
       {/* Header row */}
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-white/[0.06]">
