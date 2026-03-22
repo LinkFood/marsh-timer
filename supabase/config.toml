@@ -519,6 +519,9 @@ verify_jwt = false
 [functions.hunt-synthesis-reviewer]
 verify_jwt = false
 
+[functions.hunt-convergence-scan]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
