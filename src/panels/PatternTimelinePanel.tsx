@@ -35,7 +35,7 @@ export default function PatternTimelinePanel({ isFullscreen }: PanelComponentPro
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 text-white/20">
         <History size={20} />
-        <span className="text-[10px]">Select a state to find historical pattern matches</span>
+        <span className="text-[10px]">Select a state or wait for convergence data to find pattern matches</span>
         <span className="text-[9px] text-white/15">The brain searches for similar past conditions</span>
       </div>
     );
