@@ -22,6 +22,13 @@ serve(async (req) => {
       'hunt-alert-grader', 'hunt-alert-calibration', 'hunt-solunar-precompute',
       'hunt-absence-detector', 'hunt-disaster-watch',
       'hunt-convergence-scan', 'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
+      'hunt-birdweather-daily', 'hunt-snow-cover-daily', 'hunt-snotel-daily',
+      'hunt-gbif-daily', 'hunt-multi-species-daily', 'hunt-search-trends-daily',
+      'hunt-query-signal-daily', 'hunt-power-outage-6h',
+      'hunt-climate-indices-weekly', 'hunt-movebank-weekly',
+      'hunt-phenology-weekly', 'hunt-crop-progress-weekly',
+      'hunt-historical-news-weekly', 'hunt-usfws-survey-monthly',
+      'hunt-drought-monitor', 'hunt-inaturalist-weekly',
     ];
 
     // Fetch last 5 runs per function in one query using IN filter + higher limit
@@ -80,6 +87,22 @@ serve(async (req) => {
       { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
       { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
       { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
+      { name: 'hunt-birdweather-daily', schedule: 'daily 5:30am', critical: false },
+      { name: 'hunt-snow-cover-daily', schedule: 'daily 7am', critical: false },
+      { name: 'hunt-snotel-daily', schedule: 'daily 8am', critical: false },
+      { name: 'hunt-gbif-daily', schedule: 'daily 9:45am', critical: false },
+      { name: 'hunt-multi-species-daily', schedule: 'daily 11am', critical: false },
+      { name: 'hunt-search-trends-daily', schedule: 'daily 12pm', critical: false },
+      { name: 'hunt-query-signal-daily', schedule: 'daily 11pm', critical: false },
+      { name: 'hunt-power-outage-6h', schedule: 'every 6hr', critical: false },
+      { name: 'hunt-climate-indices-weekly', schedule: 'weekly Mon 11am', critical: false },
+      { name: 'hunt-movebank-weekly', schedule: 'weekly Mon 2pm', critical: false },
+      { name: 'hunt-phenology-weekly', schedule: 'weekly Wed 9am', critical: false },
+      { name: 'hunt-crop-progress-weekly', schedule: 'weekly Fri 2pm', critical: false },
+      { name: 'hunt-historical-news-weekly', schedule: 'weekly Sat 8am', critical: false },
+      { name: 'hunt-usfws-survey-monthly', schedule: 'monthly 1st 6am', critical: false },
+      { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
+      { name: 'hunt-inaturalist-weekly', schedule: 'weekly Wed 11am', critical: false },
     ];
 
     const health = expected.map(cron => {

@@ -30,6 +30,22 @@ const EXPECTED_CRONS = [
   { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
   { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
   { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
+  { name: 'hunt-birdweather-daily', schedule: 'daily 5:30am', critical: false },
+  { name: 'hunt-snow-cover-daily', schedule: 'daily 7am', critical: false },
+  { name: 'hunt-snotel-daily', schedule: 'daily 8am', critical: false },
+  { name: 'hunt-gbif-daily', schedule: 'daily 9:45am', critical: false },
+  { name: 'hunt-multi-species-daily', schedule: 'daily 11am', critical: false },
+  { name: 'hunt-search-trends-daily', schedule: 'daily 12pm', critical: false },
+  { name: 'hunt-query-signal-daily', schedule: 'daily 11pm', critical: false },
+  { name: 'hunt-power-outage-6h', schedule: 'every 6hr', critical: false },
+  { name: 'hunt-climate-indices-weekly', schedule: 'weekly Mon 11am', critical: false },
+  { name: 'hunt-movebank-weekly', schedule: 'weekly Mon 2pm', critical: false },
+  { name: 'hunt-phenology-weekly', schedule: 'weekly Wed 9am', critical: false },
+  { name: 'hunt-crop-progress-weekly', schedule: 'weekly Fri 2pm', critical: false },
+  { name: 'hunt-historical-news-weekly', schedule: 'weekly Sat 8am', critical: false },
+  { name: 'hunt-usfws-survey-monthly', schedule: 'monthly 1st 6am', critical: false },
+  { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
+  { name: 'hunt-inaturalist-weekly', schedule: 'weekly Wed 11am', critical: false },
 ];
 
 const CRON_NAMES = EXPECTED_CRONS.map(c => c.name);
