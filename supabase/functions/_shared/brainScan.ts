@@ -66,6 +66,35 @@ export async function scanBrainOnWrite(
       similarity: r.similarity,
     }));
 
+    // Detect cross-domain convergence
+    const uniqueTypes = new Set(matches.map(m => m.content_type));
+    if (uniqueTypes.size >= 3) {
+      console.log(`[brainScan] Cross-domain convergence detected: ${uniqueTypes.size} types — ${[...uniqueTypes].join(', ')}`);
+    }
+
+    // Count synthesis reinforcements
+    const synthesisMatches = matches.filter(m => m.content_type === 'ai-synthesis');
+    if (synthesisMatches.length >= 2) {
+      console.log(`[brainScan] New data reinforcing ${synthesisMatches.length} synthesis entries`);
+      for (const syn of synthesisMatches) {
+        try {
+          const { data: existing } = await supabase
+            .from('hunt_knowledge')
+            .select('metadata, signal_weight')
+            .eq('id', syn.id)
+            .single();
+          if (existing) {
+            const meta = existing.metadata || {};
+            const confirmations = (meta.confirmations || 0) + 1;
+            await supabase.from('hunt_knowledge').update({
+              signal_weight: Math.min(2.0, (existing.signal_weight || 1.0) + 0.05),
+              metadata: { ...meta, confirmations, last_confirmed: new Date().toISOString() },
+            }).eq('id', syn.id);
+          }
+        } catch { /* best-effort */ }
+      }
+    }
+
     return { matches, scanned: true };
   } catch (err) {
     console.warn('[brainScan] scan failed (non-fatal):', err);
