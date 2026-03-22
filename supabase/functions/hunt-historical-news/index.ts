@@ -5,17 +5,17 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
-// Search terms targeting historical wildlife/hunting content
+// Search terms targeting historical wildlife/environmental content
 const SEARCH_TERMS = [
   "duck migration",
   "goose flight",
-  "deer hunting season",
+  "deer season",
   "wild turkey",
-  "waterfowl hunting",
+  "waterfowl migration",
   "bird migration",
 ];
 
-// Hunting/migration season months (October-February)
+// Migration season months (October-February)
 const SEASON_MONTHS = [10, 11, 12, 1, 2];
 
 // State abbreviation lookup from Chronicling America state facet values
@@ -142,7 +142,7 @@ serve(async (req) => {
                   : term.includes("goose") ? "goose"
                   : term.includes("deer") ? "deer"
                   : term.includes("turkey") ? "turkey"
-                  : term.includes("bird") ? "duck"
+                  : term.includes("bird") ? null
                   : null,
                 effective_date: isoDate,
                 metadata: {

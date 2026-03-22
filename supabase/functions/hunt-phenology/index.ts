@@ -28,7 +28,7 @@ const STATES = [
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY",
 ];
 
-// Phenophase descriptions we care about for hunting pattern correlation
+// Phenophase descriptions we care about for environmental pattern correlation
 const KEY_PHENOPHASES = new Set([
   "Breaking leaf buds",
   "Leaves",

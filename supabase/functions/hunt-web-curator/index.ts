@@ -55,7 +55,7 @@ serve(async (req: Request) => {
 
 For each web discovery, decide:
 EMBED — Contains specific environmental/scientific data from credible sources (.gov, .edu, research institutions, NOAA, USGS, eBird, NWS). Fills a genuine knowledge gap. Has specific data points (numbers, dates, measurements, locations).
-SKIP — Opinion piece, marketing, hunting gear review, forum post, duplicate of standard knowledge, outdated (>2 years unless historical reference data), no specific data points, or general information easily found anywhere.
+SKIP — Opinion piece, marketing, retail marketing, forum post, duplicate of standard knowledge, outdated (>2 years unless historical reference data), no specific data points, or general information easily found anywhere.
 FLAG — Potentially valuable but from unfamiliar source, contradicts known data, or you're uncertain about quality.
 
 Be selective. The brain's strength is curated, high-quality data. Only embed content that genuinely adds environmental intelligence value.

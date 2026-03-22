@@ -139,7 +139,7 @@ serve(async (req) => {
     for (let i = 0; i < interesting.length; i += batchSize) {
       const batch = interesting.slice(i, i + batchSize);
       const batchResults = await Promise.all(batch.map(async (c): Promise<HuntAlert> => {
-        const conditionText = `${c.stateName} weather: ${Math.round(c.tempDropF)}F temperature drop, ${Math.round(c.maxWindMph)}mph wind, ${c.pressureChangeMb.toFixed(1)}mb pressure change, ${c.totalPrecipMm.toFixed(1)}mm precipitation. Hunting conditions and migration patterns.`;
+        const conditionText = `${c.stateName} weather: ${Math.round(c.tempDropF)}F temperature drop, ${Math.round(c.maxWindMph)}mph wind, ${c.pressureChangeMb.toFixed(1)}mb pressure change, ${c.totalPrecipMm.toFixed(1)}mm precipitation. Environmental conditions and migration patterns.`;
 
         let patterns: string[] = [];
         try {
