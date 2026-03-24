@@ -50,7 +50,7 @@ export default function BrainSearchPanel({}: PanelComponentProps) {
         },
         body: JSON.stringify({
           query: query.trim(),
-          species,
+          species: species === 'all' ? null : species,
           limit: 15,
         }),
       });

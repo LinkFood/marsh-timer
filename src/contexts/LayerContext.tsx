@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useMemo, useEffect, t
 import { LAYER_REGISTRY, LAYER_PRESETS, LAYER_MAP } from '@/layers/LayerRegistry';
 import type { LayerPreset } from '@/layers/LayerTypes';
 
-const STORAGE_KEY = 'dc-layers-v1';
+const STORAGE_KEY = 'dc-layers-v2';
 
 function getDefaultLayers(): Set<string> {
   return new Set(LAYER_REGISTRY.filter(l => l.defaultOn).map(l => l.id));

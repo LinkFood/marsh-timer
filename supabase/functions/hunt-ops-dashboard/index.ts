@@ -105,19 +105,27 @@ serve(async (req) => {
         .order('created_at', { ascending: false })
         .limit(20),
 
-      // 8. Cron logs for health
-      supabase
-        .from('hunt_cron_log')
-        .select('*')
-        .in('function_name', CRON_NAMES)
-        .order('created_at', { ascending: false })
-        .limit(CRON_NAMES.length * 5),
+      // 8. Cron logs — placeholder (per-function queries below)
+      Promise.resolve({ data: null }),
     ]);
+
+    // Per-function cron log queries — all in parallel (avoids global LIMIT skewing)
+    const cronLogResults = (await Promise.all(
+      CRON_NAMES.map(name =>
+        supabase
+          .from('hunt_cron_log')
+          .select('*')
+          .eq('function_name', name)
+          .order('created_at', { ascending: false })
+          .limit(5)
+          .then(res => res.data || [])
+      )
+    )).flat();
 
     // Build cron health (same logic as hunt-cron-health)
     const latest: Record<string, any> = {};
     const history: Record<string, any[]> = {};
-    for (const log of (cronLogs.data || [])) {
+    for (const log of cronLogResults) {
       if (!latest[log.function_name]) {
         latest[log.function_name] = log;
       }
