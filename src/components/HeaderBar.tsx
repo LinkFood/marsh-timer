@@ -1,9 +1,10 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare, Activity } from "lucide-react";
+import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare, Activity, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
 import { getSeasonsForSpecies } from "@/data/seasons";
+import { useDeck } from "@/contexts/DeckContext";
 import UserMenu from './UserMenu';
 import GridPresetSelector from './GridPresetSelector';
 import DeckSelector from './DeckSelector';
@@ -39,6 +40,7 @@ interface HeaderBarProps {
 }
 
 const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHelpOpen, onToggleLayers, onToggleChat, onTogglePanelAdd }: HeaderBarProps) => {
+  const { selectedState, setSelectedState } = useDeck();
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [geoResults, setGeoResults] = useState<GeoResult[]>([]);
@@ -79,6 +81,13 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
     "South Dakota":"SD",Tennessee:"TN",Texas:"TX",Utah:"UT",Vermont:"VT",
     Virginia:"VA",Washington:"WA","West Virginia":"WV",Wisconsin:"WI",Wyoming:"WY",
   };
+
+  // Reverse lookup: abbreviation → full state name (for breadcrumb)
+  const ABBR_TO_STATE: Record<string, string> = useMemo(() => {
+    const rev: Record<string, string> = {};
+    for (const [name, abbr] of Object.entries(STATE_ABBRS)) rev[abbr] = name;
+    return rev;
+  }, []);
 
   const geocode = useCallback(async (q: string) => {
     if (!MAPBOX_TOKEN || q.length < 2) { setGeoResults([]); return; }
@@ -165,6 +174,20 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
               DC
             </span>
           </button>
+          {selectedState && (
+            <div className="flex items-center gap-1 text-sm text-gray-400">
+              <span className="text-gray-500 text-xs">US</span>
+              <ChevronRight className="w-3 h-3 text-gray-600" />
+              <span className="text-white text-xs">{ABBR_TO_STATE[selectedState] || selectedState}</span>
+              <button
+                onClick={() => setSelectedState(null)}
+                className="ml-0.5 p-0.5 hover:bg-gray-700 rounded transition-colors"
+                aria-label="Return to national view"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
           <DeckSelector />
         </div>
 
