@@ -1819,25 +1819,33 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
     map.on("load", async () => {
       // Create score pill background image (dark rounded rect)
-      const pillW = 40, pillH = 24, pillR = 6;
-      const pillCanvas = document.createElement("canvas");
-      pillCanvas.width = pillW;
-      pillCanvas.height = pillH;
-      const pCtx = pillCanvas.getContext("2d")!;
-      pCtx.beginPath();
-      pCtx.moveTo(pillR, 0);
-      pCtx.lineTo(pillW - pillR, 0);
-      pCtx.arcTo(pillW, 0, pillW, pillR, pillR);
-      pCtx.lineTo(pillW, pillH - pillR);
-      pCtx.arcTo(pillW, pillH, pillW - pillR, pillH, pillR);
-      pCtx.lineTo(pillR, pillH);
-      pCtx.arcTo(0, pillH, 0, pillH - pillR, pillR);
-      pCtx.lineTo(0, pillR);
-      pCtx.arcTo(0, 0, pillR, 0, pillR);
-      pCtx.closePath();
-      pCtx.fillStyle = "rgba(10,15,30,0.85)";
-      pCtx.fill();
-      map.addImage("score-pill", { width: pillW, height: pillH, data: pCtx.getImageData(0, 0, pillW, pillH).data } as any);
+      try {
+        const pillW = 40, pillH = 24, pillR = 6;
+        const pillCanvas = document.createElement("canvas");
+        pillCanvas.width = pillW;
+        pillCanvas.height = pillH;
+        const pCtx = pillCanvas.getContext("2d");
+        if (pCtx) {
+          pCtx.beginPath();
+          pCtx.moveTo(pillR, 0);
+          pCtx.lineTo(pillW - pillR, 0);
+          pCtx.arcTo(pillW, 0, pillW, pillR, pillR);
+          pCtx.lineTo(pillW, pillH - pillR);
+          pCtx.arcTo(pillW, pillH, pillW - pillR, pillH, pillR);
+          pCtx.lineTo(pillR, pillH);
+          pCtx.arcTo(0, pillH, 0, pillH - pillR, pillR);
+          pCtx.lineTo(0, pillR);
+          pCtx.arcTo(0, 0, pillR, 0, pillR);
+          pCtx.closePath();
+          pCtx.fillStyle = "rgba(10,15,30,0.85)";
+          pCtx.fill();
+          map.addImage("score-pill", { width: pillW, height: pillH, data: pCtx.getImageData(0, 0, pillW, pillH).data } as any);
+        } else {
+          console.warn('[MapView] Failed to get 2d context for score-pill canvas');
+        }
+      } catch (err) {
+        console.warn('[MapView] Failed to create score-pill image:', err);
+      }
 
       // Pulsing dot images for convergence hotspots (score >= 70)
       const createPulsingDot = (color: [number, number, number]) => {
@@ -1890,8 +1898,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         return pulsingDot;
       };
 
-      map.addImage('pulsing-dot-fire', createPulsingDot([239, 68, 68]) as any, { pixelRatio: 2 });
-      map.addImage('pulsing-dot-hot', createPulsingDot([251, 146, 60]) as any, { pixelRatio: 2 });
+      try {
+        map.addImage('pulsing-dot-fire', createPulsingDot([239, 68, 68]) as any, { pixelRatio: 2 });
+        map.addImage('pulsing-dot-hot', createPulsingDot([251, 146, 60]) as any, { pixelRatio: 2 });
+      } catch (err) {
+        console.warn('[MapView] Failed to create pulsing-dot images:', err);
+      }
 
       const response = await fetch(TOPO_URL);
       const topoData = (await response.json()) as Topology;

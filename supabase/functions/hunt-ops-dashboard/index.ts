@@ -57,12 +57,12 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
-    // Run all queries in parallel
+    // Run all queries in parallel — heavy stats read from precomputed cache
     const [
       brainEstimate,
       growthToday,
-      growthByDay,
-      contentTypes,
+      cachedGrowth,
+      cachedTypes,
       alertPerf,
       discoveries,
       scans,
@@ -71,17 +71,25 @@ serve(async (req) => {
       // 1. Brain total — approximate count from pg_class
       supabase.rpc('hunt_ops_brain_total'),
 
-      // 2. Growth today
+      // 2. Growth today (estimated count — avoids full scan)
       supabase
         .from('hunt_knowledge')
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'estimated', head: true })
         .gte('created_at', new Date().toISOString().slice(0, 10)),
 
-      // 3. Growth by day (30d)
-      supabase.rpc('hunt_ops_growth_by_day'),
+      // 3. Growth by day — from precomputed cache (instant)
+      supabase
+        .from('hunt_ops_cache')
+        .select('value')
+        .eq('key', 'growth_by_day')
+        .single(),
 
-      // 4. Content type breakdown
-      supabase.rpc('hunt_ops_content_types'),
+      // 4. Content type breakdown — from precomputed cache (instant)
+      supabase
+        .from('hunt_ops_cache')
+        .select('value')
+        .eq('key', 'content_types')
+        .single(),
 
       // 5. Alert performance (30d)
       supabase.rpc('hunt_ops_alert_performance'),
@@ -168,8 +176,8 @@ serve(async (req) => {
       brain: {
         total: brainEstimate.data ?? 0,
         growth_today: growthToday.count ?? 0,
-        growth_by_day: growthByDay.data ?? [],
-        content_types: contentTypes.data ?? [],
+        growth_by_day: cachedGrowth.data?.value ?? [],
+        content_types: cachedTypes.data?.value ?? [],
       },
       crons: {
         crons: cronHealth,
