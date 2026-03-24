@@ -33,7 +33,16 @@ serve(async (req: Request) => {
     const today = now.toISOString().split('T')[0];
     let synthesized = 0;
 
-    for (const state of STATE_ABBRS) {
+    // Batch support: split 50 states into 5 batches of 10
+    const batchNum = body.batch ? Number(body.batch) : null;
+    let statesToProcess = STATE_ABBRS;
+    if (batchNum && batchNum >= 1 && batchNum <= 5) {
+      const start = (batchNum - 1) * 10;
+      statesToProcess = STATE_ABBRS.slice(start, start + 10);
+      console.log(`[${FUNCTION_NAME}] Batch ${batchNum}: processing ${statesToProcess.join(', ')}`);
+    }
+
+    for (const state of statesToProcess) {
       const { data: entries } = await supabase
         .from('hunt_knowledge')
         .select('id, title, content, content_type, metadata, effective_date')
@@ -131,7 +140,7 @@ Format: Start with the state and the pattern, then the evidence, then the confid
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    const summary = { states_checked: STATE_ABBRS.length, synthesized };
+    const summary = { states_checked: statesToProcess.length, synthesized, batch: batchNum };
     await logCronRun({ functionName: FUNCTION_NAME, status: 'success', summary, durationMs: Date.now() - startTime });
     return successResponse(req, summary);
   } catch (err: any) {

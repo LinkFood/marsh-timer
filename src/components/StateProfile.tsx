@@ -53,6 +53,14 @@ function seasonStatus(dates: Array<{ open: string; close: string }>): { label: s
   return { label: 'CLOSED', color: 'text-red-400' };
 }
 
+interface DisasterWatch {
+  id: string;
+  title: string;
+  content: string;
+  metadata: { confidence?: number; pattern_type?: string; [key: string]: any } | null;
+  created_at: string;
+}
+
 interface StateProfileProps {
   stateAbbr: string;
   species: Species;
@@ -77,6 +85,7 @@ interface StateProfileProps {
     score: number;
     created_at: string;
   }>;
+  disasterWatches?: DisasterWatch[];
   onBack: () => void;
   isMobile: boolean;
 }
@@ -354,6 +363,7 @@ export default function StateProfile({
   species,
   convergenceScore,
   convergenceAlerts,
+  disasterWatches = [],
   onBack,
   isMobile,
 }: StateProfileProps) {
@@ -452,6 +462,39 @@ export default function StateProfile({
             </div>
           </div>
         </div>
+
+        {/* Disaster Watch (only if entries exist) */}
+        {disasterWatches.length > 0 && (
+          <div className="rounded-xl bg-red-500/[0.06] border border-red-500/20 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={14} className="text-red-400" />
+              <span className="text-[10px] font-display tracking-widest text-red-400/80 uppercase">
+                DISASTER WATCH ({disasterWatches.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {disasterWatches.map((dw) => {
+                const confidence = dw.metadata?.confidence ?? 0;
+                const confColor = confidence >= 70 ? 'text-red-400' : confidence >= 40 ? 'text-amber-400' : 'text-white/40';
+                return (
+                  <div key={dw.id} className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 bg-red-500" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono text-white/70">{dw.title}</span>
+                        <span className={`text-[9px] font-mono ${confColor}`}>{confidence}%</span>
+                      </div>
+                      <p className="text-[10px] font-body text-white/30 mt-0.5 line-clamp-2">{dw.content?.slice(0, 200)}</p>
+                    </div>
+                    <span className="text-[9px] font-mono text-white/20 shrink-0">
+                      {new Date(dw.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Section 1: Convergence Trend */}
         <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">

@@ -26,6 +26,7 @@ function timeAgo(ts: string): string {
 export default function EventTicker({ convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON }: EventTickerProps) {
   const [hovered, setHovered] = useState(false);
   const [compoundAlerts, setCompoundAlerts] = useState<any[]>([]);
+  const [disasterAlerts, setDisasterAlerts] = useState<any[]>([]);
 
   useEffect(() => {
     const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -33,11 +34,16 @@ export default function EventTicker({ convergenceAlerts, weatherEventsGeoJSON, n
     if (!SUPABASE_URL) return;
 
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=title,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since}&order=created_at.desc&limit=5`, {
-      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY },
-    })
+    const headers = { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY };
+
+    fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=title,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since}&order=created_at.desc&limit=5`, { headers })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setCompoundAlerts(data); })
+      .catch(() => {});
+
+    fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=title,state_abbr,created_at,metadata&content_type=eq.disaster-watch&created_at=gte.${since}&order=created_at.desc&limit=5`, { headers })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setDisasterAlerts(data.filter((d: any) => (d.metadata?.confidence ?? 0) > 50)); })
       .catch(() => {});
   }, []);
 
@@ -84,9 +90,18 @@ export default function EventTicker({ convergenceAlerts, weatherEventsGeoJSON, n
       });
     }
 
+    for (const d of disasterAlerts) {
+      const confidence = d.metadata?.confidence ?? 0;
+      all.push({
+        text: `CLIMATE WARNING: ${d.title} (${confidence}% confidence)`,
+        colorClass: 'bg-orange-500',
+        timestamp: d.created_at,
+      });
+    }
+
     all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return all.slice(0, 15);
-  }, [convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON, compoundAlerts]);
+  }, [convergenceAlerts, weatherEventsGeoJSON, nwsAlertsGeoJSON, compoundAlerts, disasterAlerts]);
 
   if (items.length === 0) {
     return (

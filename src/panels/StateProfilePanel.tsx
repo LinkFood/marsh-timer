@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useDeck } from '@/contexts/DeckContext';
 import { useConvergenceScores } from '@/hooks/useConvergenceScores';
 import { useConvergenceAlerts } from '@/hooks/useConvergenceAlerts';
@@ -8,6 +9,21 @@ export default function StateProfilePanel({}: PanelComponentProps) {
   const { species, selectedState, setSelectedState } = useDeck();
   const { scores } = useConvergenceScores();
   const { alerts } = useConvergenceAlerts();
+  const [disasterWatches, setDisasterWatches] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!selectedState) { setDisasterWatches([]); return; }
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!SUPABASE_URL) return;
+
+    fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,metadata,created_at&content_type=eq.disaster-watch&state_abbr=eq.${selectedState}&order=created_at.desc&limit=5`, {
+      headers: { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY },
+    })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setDisasterWatches(data); })
+      .catch(() => setDisasterWatches([]));
+  }, [selectedState]);
 
   if (!selectedState) {
     return (
@@ -50,6 +66,7 @@ export default function StateProfilePanel({}: PanelComponentProps) {
         species={species}
         convergenceScore={formattedScore}
         convergenceAlerts={convergenceAlerts}
+        disasterWatches={disasterWatches}
         onBack={() => setSelectedState(null)}
         isMobile={false}
       />
