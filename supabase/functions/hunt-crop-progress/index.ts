@@ -49,6 +49,19 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
+    // Season gate: NASS only publishes crop progress Apr-Nov
+    const currentMonth = new Date().getUTCMonth() + 1; // 1-indexed
+    if (currentMonth < 4 || currentMonth > 11) {
+      console.log(`[hunt-crop-progress] Off-season (month ${currentMonth}), skipping. NASS publishes Apr-Nov.`);
+      await logCronRun({
+        functionName: 'hunt-crop-progress',
+        status: 'success',
+        summary: { skipped: true, reason: 'off_season', month: currentMonth },
+        durationMs: Date.now() - startTime,
+      });
+      return successResponse(req, { skipped: true, reason: 'off_season', month: currentMonth });
+    }
+
     // Determine year — use current year
     const currentYear = new Date().getUTCFullYear();
 
@@ -141,7 +154,7 @@ serve(async (req) => {
 
             const rows = chunk.map((e, j) => ({
               ...e.meta,
-              embedding: JSON.stringify(embeddings[j]),
+              embedding: embeddings[j],
             }));
 
             const { error: upsertError } = await supabase

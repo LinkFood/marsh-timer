@@ -40,7 +40,7 @@ serve(async (req) => {
       .in("content_type", INTERESTING_TYPES)
       .gte("created_at", sevenDaysAgo.toISOString())
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(50);
 
     if (seedError || !seeds || seeds.length === 0) {
       await logCronRun({
@@ -52,8 +52,8 @@ serve(async (req) => {
       return successResponse(req, { correlations: 0, reason: "no recent data" });
     }
 
-    // Pick 10 random seeds
-    const shuffled = seeds.sort(() => Math.random() - 0.5).slice(0, 10);
+    // Pick 3 random seeds (reduced from 10 to stay within 150s timeout)
+    const shuffled = seeds.sort(() => Math.random() - 0.5).slice(0, 3);
 
     let totalCorrelations = 0;
     let errors = 0;
@@ -79,14 +79,6 @@ serve(async (req) => {
           });
 
         if (matchError || !matches) continue;
-
-        // Filter to different content types only
-        // Log what we're finding
-        console.log(`  Seed: ${seed.content_type} "${seed.title?.slice(0, 40)}"`);
-        console.log(`  Matches: ${matches.length} total`);
-        for (const m of matches.slice(0, 5)) {
-          console.log(`    ${m.similarity?.toFixed(3)} | ${m.content_type} | ${m.title?.slice(0, 40)}`);
-        }
 
         const crossDomain = matches.filter(
           (m: any) => m.content_type !== seed.content_type && m.similarity >= 0.65
@@ -154,7 +146,7 @@ serve(async (req) => {
       const embeddings = await batchEmbed(texts);
       const rows = chunk.map((e, j) => ({
         ...e.meta,
-        embedding: JSON.stringify(embeddings[j]),
+        embedding: embeddings[j],
       }));
 
       const { error: upsertError } = await supabase

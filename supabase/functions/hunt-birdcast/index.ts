@@ -198,16 +198,36 @@ serve(async (req) => {
 
   const startTime = Date.now();
   try {
-    console.log('[hunt-birdcast] Starting BirdCast scraper run');
+    const body = await req.json().catch(() => ({}));
+    const batch: number | null = body.batch ?? null; // 1-5, or null for all
+
+    console.log(`[hunt-birdcast] Starting BirdCast scraper run (batch=${batch ?? 'all'})`);
 
     // Check migration season
     if (!isInMigrationSeason()) {
       console.log('[hunt-birdcast] Outside migration season, skipping');
+      await logCronRun({
+        functionName: 'hunt-birdcast',
+        status: 'success',
+        summary: { skipped: true, reason: 'outside_migration_season', batch: batch ?? 'all' },
+        durationMs: Date.now() - startTime,
+      });
       return successResponse(req, { skipped: true, reason: 'outside_migration_season' });
     }
 
     const supabase = createSupabaseClient();
     const today = new Date().toISOString().split('T')[0];
+
+    let statesToProcess: string[];
+    if (batch !== null && batch >= 1 && batch <= 5) {
+      const batchSize = Math.ceil(STATE_ABBRS.length / 5);
+      const start = (batch - 1) * batchSize;
+      statesToProcess = STATE_ABBRS.slice(start, start + batchSize);
+    } else {
+      statesToProcess = STATE_ABBRS;
+    }
+
+    console.log(`[hunt-birdcast] Processing ${statesToProcess.length} states: ${statesToProcess.join(',')}`);
 
     const rows: BirdcastRow[] = [];
     const embedTexts: string[] = [];
@@ -215,8 +235,8 @@ serve(async (req) => {
     let fetchErrors = 0;
     let parseErrors = 0;
 
-    // Process all 50 states with 1s delay between requests
-    for (const abbr of STATE_ABBRS) {
+    // Process states with 1s delay between requests
+    for (const abbr of statesToProcess) {
       const url = `https://dashboard.birdcast.org/region/US-${abbr}`;
 
       try {
@@ -364,6 +384,7 @@ serve(async (req) => {
     // Done
     // -----------------------------------------------------------------------
     const summary = {
+      batch: batch ?? 'all',
       states_scraped: rows.length,
       fetch_errors: fetchErrors,
       parse_errors: parseErrors,

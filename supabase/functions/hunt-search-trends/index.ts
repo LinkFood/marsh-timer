@@ -224,7 +224,7 @@ serve(async (req) => {
 
         const rows = chunk.map((e, j) => ({
           ...e.meta,
-          embedding: JSON.stringify(embeddings[j]),
+          embedding: embeddings[j],
         }));
 
         const { error: upsertError } = await supabase

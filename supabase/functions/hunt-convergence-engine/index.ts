@@ -482,12 +482,20 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const trigger = body.trigger || 'daily';
     const requestedStates: string[] | undefined = body.states;
+    const batch: number | null = body.batch ?? null; // 1-5, or null for all
 
-    const statesToScore = requestedStates && requestedStates.length > 0
-      ? requestedStates.filter((s: string) => STATE_ABBRS.includes(s))
-      : STATE_ABBRS;
+    let statesToScore: string[];
+    if (requestedStates && requestedStates.length > 0) {
+      statesToScore = requestedStates.filter((s: string) => STATE_ABBRS.includes(s));
+    } else if (batch !== null && batch >= 1 && batch <= 5) {
+      const batchSize = Math.ceil(STATE_ABBRS.length / 5);
+      const start = (batch - 1) * batchSize;
+      statesToScore = STATE_ABBRS.slice(start, start + batchSize);
+    } else {
+      statesToScore = STATE_ABBRS;
+    }
 
-    console.log(`[hunt-convergence-engine] Starting. trigger=${trigger}, states=${statesToScore.length}`);
+    console.log(`[hunt-convergence-engine] Starting. trigger=${trigger}, batch=${batch ?? 'all'}, states=${statesToScore.length} (${statesToScore.join(',')})`);
 
     const supabase = createSupabaseClient();
     const today = new Date().toISOString().split('T')[0];
@@ -641,6 +649,7 @@ serve(async (req) => {
     }));
 
     const summary = {
+      batch: batch ?? 'all',
       states_scored: allResults.length,
       top_5: top5,
       trigger,

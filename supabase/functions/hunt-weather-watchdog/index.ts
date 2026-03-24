@@ -146,17 +146,34 @@ serve(async (req) => {
 
   const startTime = Date.now();
   try {
-    console.log('[hunt-weather-watchdog] Starting daily weather watchdog run');
+    const body = await req.json().catch(() => ({}));
+    const batch = body.batch ?? null; // 1-5, or null for all
+
+    const allEntries = Object.entries(STATE_CENTROIDS);
+    let entries: typeof allEntries;
+
+    if (batch !== null && batch >= 1 && batch <= 5) {
+      const batchSize = Math.ceil(allEntries.length / 5);
+      const start = (batch - 1) * batchSize;
+      entries = allEntries.slice(start, start + batchSize);
+      console.log(`[hunt-weather-watchdog] Starting batch ${batch}/5 (${entries.length} states: ${entries.map(e => e[0]).join(',')})`);
+    } else {
+      entries = allEntries;
+      console.log('[hunt-weather-watchdog] Starting full run (all states)');
+    }
 
     const supabase = createSupabaseClient();
-    const entries = Object.entries(STATE_CENTROIDS);
 
     // -----------------------------------------------------------------------
-    // 1. Bulk Open-Meteo fetch — 2 batches of 25 states to avoid TLS errors
+    // 1. Bulk Open-Meteo fetch — split into sub-batches of 10 to avoid TLS errors
     // -----------------------------------------------------------------------
-    const midpoint = Math.ceil(entries.length / 2);
-    const batch1Entries = entries.slice(0, midpoint);
-    const batch2Entries = entries.slice(midpoint);
+    const SUB_BATCH_SIZE = 10;
+    const subBatches: (typeof entries)[] = [];
+    for (let i = 0; i < entries.length; i += SUB_BATCH_SIZE) {
+      subBatches.push(entries.slice(i, i + SUB_BATCH_SIZE));
+    }
+    const batch1Entries = subBatches[0] || [];
+    const batch2Entries = subBatches[1] || [];
 
     async function fetchBatch(batchEntries: typeof entries, batchLabel: string): Promise<unknown[]> {
       const batchLats = batchEntries.map(([, s]) => s.lat).join(",");
@@ -188,10 +205,12 @@ serve(async (req) => {
       return results;
     }
 
-    const forecasts1 = await fetchBatch(batch1Entries, 'batch 1/2');
-    await new Promise(r => setTimeout(r, 1000));
-    const forecasts2 = await fetchBatch(batch2Entries, 'batch 2/2');
-    const forecasts: unknown[] = [...forecasts1, ...forecasts2];
+    const forecasts: unknown[] = [];
+    for (let sb = 0; sb < subBatches.length; sb++) {
+      if (sb > 0) await new Promise(r => setTimeout(r, 1000));
+      const sbForecasts = await fetchBatch(subBatches[sb], `sub-batch ${sb + 1}/${subBatches.length}`);
+      forecasts.push(...sbForecasts);
+    }
 
     console.log(`[hunt-weather-watchdog] Received forecasts for ${forecasts.length} states`);
 
@@ -410,24 +429,29 @@ serve(async (req) => {
       const embeddings = await batchEmbed(embedTexts, 'document');
 
       if (embeddings && embeddings.length === embedTexts.length) {
-        // Query-on-write: scan brain for pattern matches on weather events
-        for (let j = 0; j < embedMeta.length; j++) {
-          if (embedMeta[j].content_type === 'weather-event') {
-            try {
-              const scan = await scanBrainOnWrite(embeddings[j], {
-                state_abbr: embedMeta[j].state_abbr,
-                exclude_content_type: 'weather-event',
-              });
-              if (scan.matches.length > 0) {
-                embedMeta[j].metadata = {
-                  ...embedMeta[j].metadata,
-                  pattern_matches: scan.matches,
-                  pattern_scan_at: new Date().toISOString(),
-                };
-                console.log(`[hunt-weather-watchdog] Brain scan: ${embedMeta[j].title} → ${scan.matches.length} pattern matches`);
-              }
-            } catch { /* scanning is best-effort */ }
+        // Skip brain scans in batch mode to stay within 150s timeout.
+        // Brain scans are handled by hunt-convergence-scan for batch runs.
+        if (batch === null) {
+          for (let j = 0; j < embedMeta.length; j++) {
+            if (embedMeta[j].content_type === 'weather-event') {
+              try {
+                const scan = await scanBrainOnWrite(embeddings[j], {
+                  state_abbr: embedMeta[j].state_abbr,
+                  exclude_content_type: 'weather-event',
+                });
+                if (scan.matches.length > 0) {
+                  embedMeta[j].metadata = {
+                    ...embedMeta[j].metadata,
+                    pattern_matches: scan.matches,
+                    pattern_scan_at: new Date().toISOString(),
+                  };
+                  console.log(`[hunt-weather-watchdog] Brain scan: ${embedMeta[j].title} → ${scan.matches.length} pattern matches`);
+                }
+              } catch { /* scanning is best-effort */ }
+            }
           }
+        } else {
+          console.log(`[hunt-weather-watchdog] Skipping brain scans in batch mode`);
         }
 
         // Upsert into hunt_knowledge in batches
@@ -468,6 +492,7 @@ serve(async (req) => {
     // 7. Done
     // -----------------------------------------------------------------------
     const summary = {
+      batch: batch ?? 'all',
       states_processed: historyRows.length,
       forecast_rows: forecastRows.length,
       events_detected: allEvents.length,
