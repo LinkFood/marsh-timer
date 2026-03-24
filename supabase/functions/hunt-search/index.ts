@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
+import { generateEmbedding } from '../_shared/embedding.ts';
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
@@ -26,20 +27,10 @@ serve(async (req) => {
     const supabase = createSupabaseClient();
     const resultLimit = Math.min(maxResults || 10, 20);
 
-    // Generate embedding for query
-    const embedUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-generate-embedding`;
-    const embedRes = await fetch(embedUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-      },
-      body: JSON.stringify({ text: query, input_type: 'query' }),
-    });
-
+    // Generate embedding for query directly via Voyage API (no HTTP hop)
     let vectorResults: unknown[] = [];
-    if (embedRes.ok) {
-      const { embedding } = await embedRes.json();
+    try {
+      const embedding = await generateEmbedding(query, 'query');
       if (embedding) {
         const { data } = await supabase.rpc('search_hunt_knowledge_v3', {
           query_embedding: embedding,
@@ -63,6 +54,8 @@ serve(async (req) => {
         });
         vectorResults = deduped;
       }
+    } catch (embedError) {
+      console.error('[hunt-search] embedding failed:', embedError);
     }
 
     // Group results by content_type for display
