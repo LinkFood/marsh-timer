@@ -166,6 +166,8 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
 
 // The shared system prompt rules appended to every handler's system prompt
 const BRAIN_RULES = `
+SYSTEM CAPABILITY: You have access to 2.4M+ environmental data entries across 55+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 22 automated crons continuously ingest new data.
+
 CRITICAL RULES:
 1. ONLY state facts that come from the provided context data. Never invent data.
 2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
@@ -612,7 +614,21 @@ async function handleRecentActivity(
     });
   }
 
-  // 7. Build context for Sonnet
+  // 7. Fetch pattern links + convergence for state context
+  const [patternLinks, convergenceData] = await Promise.all([
+    getRecentPatternLinks(stateAbbr),
+    stateAbbr
+      ? supabase
+          .from('hunt_convergence_scores')
+          .select('*')
+          .eq('state_abbr', stateAbbr)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  // 8. Build context for Sonnet
   const contextLines = [
     `## Brain Activity Summary (last 24 hours)`,
     `Total new entries: ${recentCounts?.length || 0}`,
@@ -625,6 +641,21 @@ async function handleRecentActivity(
     `### Latest pipeline activity:`,
     ...(recentCrons || []).slice(0, 5).map((c: any) => `- ${c.function_name}: ${c.status} at ${c.created_at}`),
   ];
+
+  // Convergence breakdown
+  const convData = convergenceData?.data;
+  if (convData) {
+    contextLines.push(`### Convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank})`);
+    contextLines.push(`Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`);
+  }
+
+  // Pattern links
+  if (patternLinks.length > 0) {
+    contextLines.push(`### Live pattern connections (last 72h):`);
+    patternLinks.forEach(l => {
+      contextLines.push(`- ${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`);
+    });
+  }
 
   return {
     cards,
@@ -713,9 +744,9 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     };
   }
 
-  // Fetch weather + convergence + brain search in parallel
+  // Fetch weather + convergence + brain search + historical in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const [weatherRes, convergenceResult, brainResults, patternLinks, seasonStatus] = await Promise.all([
+  const [weatherRes, convergenceResult, brainResults, patternLinks, seasonStatus, historicalResults] = await Promise.all([
     fetch(weatherUrl, {
       method: 'POST',
       headers: {
@@ -737,11 +768,19 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       state_abbr: stateAbbr,
       recency_weight: 0.5,
       exclude_du_report: true,
-      limit: 5,
+      limit: 12,
       min_similarity: 0.4,
     }),
     getRecentPatternLinks(stateAbbr),
     getSeasonStatus(species, stateAbbr),
+    // Historical: what happened last time conditions looked like this?
+    searchBrain({
+      query: `historical pattern ${stateAbbr} ${state.name} weather precedent similar conditions`,
+      state_abbr: stateAbbr,
+      recency_weight: 0.0,
+      limit: 5,
+      min_similarity: 0.35,
+    }),
   ]);
 
   if (!weatherRes.ok) {
@@ -771,6 +810,18 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   let linksInsight = '';
   if (patternLinks.length > 0) {
     linksInsight = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
+  }
+
+  // Convergence breakdown for system prompt
+  let convergenceInsight = '';
+  if (convData) {
+    convergenceInsight = `\n\nConvergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}). Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
+  }
+
+  // Historical precedent context
+  let historicalInsight = '';
+  if (Array.isArray(historicalResults) && historicalResults.length > 0) {
+    historicalInsight = `\n\nHistorical precedents (what happened when similar conditions aligned in ${stateAbbr}):\n${historicalResults.map(v => `- [${v.content_type}] ${v.title}: ${v.content.length > 300 ? v.content.substring(0, 300) + '...' : v.content}`).join('\n')}`;
   }
 
   const cards: unknown[] = [{
@@ -832,9 +883,9 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   return {
     cards,
-    systemPrompt: `You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. Be specific with numbers and states.
+    systemPrompt: `You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. When historical precedents are provided, explain what happened last time these conditions aligned. Be specific with numbers and states.
 ${BRAIN_RULES}`,
-    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}\n\nBrain historical patterns (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}\n\nQuery: ${query}`,
+    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}${convergenceInsight}\n\nBrain data (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}${historicalInsight}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
@@ -1080,14 +1131,14 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
   const isComparative = !stateAbbr && /\b(best|top|where|which state|compare|recommend)\b/i.test(query);
 
   const supabase = createSupabaseClient();
-  const [brainResults, patternLinks, topStatesResult] = await Promise.all([
+  const [brainResults, patternLinks, topStatesResult, convergenceData, historicalResults] = await Promise.all([
     searchBrain({
       query: searchQuery,
       species: species,
       state_abbr: stateAbbr || undefined,
       recency_weight: (dateFrom || dateTo) ? 0.0 : 0.3,  // No recency bias when searching historical dates
       exclude_du_report: !mentionsDU,
-      limit: 8,
+      limit: 15,
       min_similarity: 0.3,
       date_from: dateFrom,
       date_to: dateTo,
@@ -1100,6 +1151,26 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
           .order('score', { ascending: false })
           .limit(10)
       : Promise.resolve({ data: null }),
+    // Fetch convergence score for the state if mentioned
+    stateAbbr
+      ? supabase
+          .from('hunt_convergence_scores')
+          .select('*')
+          .eq('state_abbr', stateAbbr)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // Historical pattern search: "what happened last time conditions looked like this?"
+    stateAbbr
+      ? searchBrain({
+          query: `historical pattern ${stateAbbr} similar conditions precedent`,
+          state_abbr: stateAbbr,
+          recency_weight: 0.0,
+          limit: 5,
+          min_similarity: 0.35,
+        })
+      : Promise.resolve([]),
   ]);
 
   // Web search if brain is thin
@@ -1197,30 +1268,69 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
     topStatesContext += `\n\nNote: Check season dates before recommending — some of these states may have closed seasons right now.`;
   }
 
+  // Convergence score breakdown for the queried state
+  let convergenceContext = '';
+  const convData = convergenceData?.data;
+  if (convData) {
+    convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
+    convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
+    if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
+  }
+
+  // Historical pattern matches
+  let historicalContext = '';
+  if (Array.isArray(historicalResults) && historicalResults.length > 0) {
+    historicalContext = `\n\nHistorical precedents (what happened when similar conditions aligned):\n${historicalResults.map(v => `- [${v.content_type}] ${v.title}: ${v.content.length > 300 ? v.content.substring(0, 300) + '...' : v.content}`).join('\n')}`;
+  }
+
   const similarities = brainResults.map(v => v.similarity);
   const minSim = similarities.length > 0 ? Math.min(...similarities).toFixed(2) : '0';
   const maxSim = similarities.length > 0 ? Math.max(...similarities).toFixed(2) : '0';
 
   return {
     cards,
-    systemPrompt: `You are an environmental intelligence analyst with access to a brain containing 591K+ embedded data entries across weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
+    systemPrompt: `You are an environmental intelligence analyst with access to a brain containing 2.4M+ embedded data entries across 55+ content types including weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
 ${BRAIN_RULES}`,
-    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${webContext}\n\nQuestion: ${query}`,
+    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${convergenceContext}${historicalContext}${webContext}\n\nQuestion: ${query}`,
     _webResults: webResults,
   } as HandlerResult & { _webResults: TavilyResult[] };
 }
 
 async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = '', dateFrom?: string | null, dateTo?: string | null): Promise<HandlerResult & { _webResults?: TavilyResult[] }> {
-  // Light brain search — only include if high-similarity matches exist
-  const brainResults = await searchBrain({
-    query: message,
-    recency_weight: (dateFrom || dateTo) ? 0.0 : 0.2,  // No recency bias when searching historical dates
-    exclude_du_report: true,
-    limit: (dateFrom || dateTo) ? 8 : 3,  // More results for historical queries
-    min_similarity: (dateFrom || dateTo) ? 0.3 : 0.5,  // Lower threshold for historical queries
-    date_from: dateFrom,
-    date_to: dateTo,
-  });
+  const supabase = createSupabaseClient();
+
+  // Brain search + convergence + pattern links + historical in parallel
+  const [brainResults, convergenceData, patternLinks, historicalResults] = await Promise.all([
+    searchBrain({
+      query: message,
+      state_abbr: stateAbbr || undefined,
+      recency_weight: (dateFrom || dateTo) ? 0.0 : 0.2,
+      exclude_du_report: true,
+      limit: (dateFrom || dateTo) ? 12 : 8,
+      min_similarity: (dateFrom || dateTo) ? 0.3 : 0.4,
+      date_from: dateFrom,
+      date_to: dateTo,
+    }),
+    stateAbbr
+      ? supabase
+          .from('hunt_convergence_scores')
+          .select('*')
+          .eq('state_abbr', stateAbbr)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    getRecentPatternLinks(stateAbbr),
+    stateAbbr
+      ? searchBrain({
+          query: `historical pattern ${stateAbbr} similar conditions precedent`,
+          state_abbr: stateAbbr,
+          recency_weight: 0.0,
+          limit: 5,
+          min_similarity: 0.35,
+        })
+      : Promise.resolve([]),
+  ]);
 
   // Web search if brain is thin
   let webContext = '';
@@ -1240,13 +1350,34 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
 
   let brainContext = '';
   if (brainResults.length > 0) {
-    brainContext = `\n\nRelevant knowledge (cite if useful):\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
+    brainContext = `\n\nRelevant knowledge (${brainResults.length} entries, cite if useful):\n${brainResults.map(v => `[${v.content_type}] ${v.title}: ${v.content}`).join('\n')}`;
+  }
+
+  // Convergence score breakdown
+  let convergenceContext = '';
+  const convData = convergenceData?.data;
+  if (convData) {
+    convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
+    convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
+    if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
+  }
+
+  // Pattern links
+  let linksContext = '';
+  if (patternLinks.length > 0) {
+    linksContext = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
+  }
+
+  // Historical precedents
+  let historicalContext = '';
+  if (Array.isArray(historicalResults) && historicalResults.length > 0) {
+    historicalContext = `\n\nHistorical precedents:\n${historicalResults.map(v => `- [${v.content_type}] ${v.title}: ${v.content.length > 300 ? v.content.substring(0, 300) + '...' : v.content}`).join('\n')}`;
   }
 
   return {
     cards: [],
     systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. Adapt your framing to the user's context — environmental research, agriculture, ecology, weather, or general awareness. Your core function is environmental pattern recognition.${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
-${conversationContext}${brainContext}${webContext}
+${conversationContext}${brainContext}${convergenceContext}${linksContext}${historicalContext}${webContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
     userContent: message,

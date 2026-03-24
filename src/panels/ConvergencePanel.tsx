@@ -44,7 +44,12 @@ export default function ConvergencePanel({ isFullscreen }: PanelComponentProps) 
   const { flyTo } = useMapAction();
   const { selectedState, setSelectedState } = useDeck();
   const [activeTab, setActiveTab] = useState(isFullscreen ? 'all' : 'top10');
-  const [expandedState, setExpandedState] = useState<string | null>(null);
+  // Auto-expand top 5 states by default
+  const top5Abbrs = useMemo(() => new Set(topStates.slice(0, 5).map(s => s.state_abbr)), [topStates]);
+  const [expandedStates, setExpandedStates] = useState<Set<string> | null>(null);
+
+  // Initialize expanded set from top 5 on first render
+  const effectiveExpanded = expandedStates ?? top5Abbrs;
   const [flywayFilter, setFlywayFilter] = useState<FlywayName | null>(null);
 
   const allStates = useMemo(() => {
@@ -59,7 +64,16 @@ export default function ConvergencePanel({ isFullscreen }: PanelComponentProps) 
   }, [tabStates, flywayFilter]);
 
   function handleClick(abbr: string) {
-    setExpandedState(prev => prev === abbr ? null : abbr);
+    setExpandedStates(prev => {
+      const current = prev ?? top5Abbrs;
+      const next = new Set(current);
+      if (next.has(abbr)) {
+        next.delete(abbr);
+      } else {
+        next.add(abbr);
+      }
+      return next;
+    });
     setSelectedState(abbr);
   }
 
@@ -122,7 +136,7 @@ export default function ConvergencePanel({ isFullscreen }: PanelComponentProps) 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {displayStates.map((s, i) => {
           const sparkData = historyMap.get(s.state_abbr) || [];
-          const isExpanded = isFullscreen || expandedState === s.state_abbr;
+          const isExpanded = isFullscreen || effectiveExpanded.has(s.state_abbr);
           return (
             <div key={s.state_abbr}>
               <button

@@ -50,6 +50,8 @@ export default function BrainChat({ species, stateAbbr, isMobile, onActionsReady
   const [brainStats, setBrainStats] = useState<{
     total_entries: number;
     sources: number;
+    content_types: number;
+    active_crons: number;
     high_signal_count: number;
     alerts_active: number;
     last_update: string | null;
@@ -96,21 +98,20 @@ export default function BrainChat({ species, stateAbbr, isMobile, onActionsReady
             </p>
             <p className="text-[11px] font-body text-white/40 text-center mb-1">
               {brainStats
-                ? `${brainStats.total_entries.toLocaleString()} entries from ${brainStats.sources} sources`
+                ? `${brainStats.total_entries.toLocaleString()} entries across ${brainStats.content_types || brainStats.sources} types`
                 : '2M+ data points from 25+ sources'}
             </p>
             {brainStats && (
-              <p className="text-[9px] font-mono text-cyan-400/50 text-center mb-4">
+              <p className="text-[9px] font-mono text-cyan-400/50 text-center mb-1">
+                {brainStats.active_crons > 0 && `${brainStats.active_crons} crons active · `}
                 {brainStats.alerts_active > 0 && `${brainStats.alerts_active} alerts active · `}
                 {brainStats.high_signal_count > 0 && `${brainStats.high_signal_count} signals (24h) · `}
                 {brainStats.last_update && `Updated ${timeAgo(brainStats.last_update)}`}
               </p>
             )}
-            {!brainStats && (
-              <p className="text-[11px] font-body text-white/40 text-center mb-4">
-                Ask me anything.
-              </p>
-            )}
+            <p className="text-[10px] font-body text-white/30 text-center mb-4">
+              Ask me about any environmental pattern across 50 states, from 1950 to today.
+            </p>
             <div className="flex flex-col gap-1.5 w-full max-w-[280px]">
               {suggestedPrompts.map((prompt) => (
                 <button

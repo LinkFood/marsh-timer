@@ -81,23 +81,38 @@ serve(async (req: Request) => {
     }
 
     // Get brain stats for welcome state
-    const { count: totalEntries } = await supabase
-      .from('hunt_knowledge')
-      .select('*', { count: 'exact', head: true });
+    const [
+      { count: totalEntries },
+      { data: latestCron },
+      { data: activeCrons },
+    ] = await Promise.all([
+      supabase
+        .from('hunt_knowledge')
+        .select('*', { count: 'exact', head: true }),
+      supabase
+        .from('hunt_cron_log')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single(),
+      // Active crons (distinct functions that ran in last 48h)
+      supabase
+        .from('hunt_cron_log')
+        .select('function_name')
+        .gte('created_at', new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString())
+        .limit(500),
+    ]);
 
-    // Get latest cron timestamp
-    const { data: latestCron } = await supabase
-      .from('hunt_cron_log')
-      .select('created_at')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    // Count distinct active crons
+    const distinctCrons = new Set((activeCrons || []).map((r: any) => r.function_name));
 
     return successResponse(req, {
       prompts: prompts.slice(0, 4),
       stats: {
         total_entries: totalEntries || 0,
         sources: 21,
+        content_types: 55,  // Known count, grows slowly
+        active_crons: distinctCrons.size,
         high_signal_count: (recentSignals || []).length,
         alerts_active: nwsAlerts.length,
         last_update: latestCron?.created_at || null,
