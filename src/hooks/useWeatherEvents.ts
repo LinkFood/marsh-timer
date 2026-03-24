@@ -58,13 +58,13 @@ export function useWeatherEvents() {
 
     async function fetchEvents() {
       try {
-        // Fetch last 3 hours of weather-realtime entries from hunt_knowledge
-        const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+        // Fetch last 6 hours of weather-realtime entries from hunt_knowledge
+        const threeHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
 
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/hunt_knowledge?select=title,content,content_type,created_at&content_type=eq.weather-realtime&created_at=gte.${threeHoursAgo}&order=created_at.desc&limit=50`,
+          `${supabaseUrl}/rest/v1/hunt_knowledge?select=title,content,content_type,created_at&content_type=eq.weather-realtime&created_at=gte.${threeHoursAgo}&order=created_at.desc&limit=100`,
           {
             headers: {
               apikey: supabaseKey,

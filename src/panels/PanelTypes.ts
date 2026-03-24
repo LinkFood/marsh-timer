@@ -51,9 +51,10 @@ export interface PanelComponentProps {
 }
 
 export const DEFAULT_LAYOUT: PanelInstance[] = [
-  { panelId: 'whats-happening', instanceId: 'whats-happening-1', x: 0, y: 0, w: 3, h: 4 },
-  { panelId: 'convergence', instanceId: 'convergence-1', x: 3, y: 0, w: 3, h: 4 },
-  { panelId: 'pattern-timeline', instanceId: 'pattern-timeline-1', x: 6, y: 0, w: 3, h: 4 },
-  { panelId: 'weather-events', instanceId: 'weather-events-1', x: 9, y: 0, w: 3, h: 4 },
-  { panelId: 'brain-search', instanceId: 'brain-search-1', x: 0, y: 4, w: 3, h: 4 },
+  { panelId: 'chat', instanceId: 'chat-1', x: 0, y: 0, w: 4, h: 5 },
+  { panelId: 'whats-happening', instanceId: 'whats-happening-1', x: 4, y: 0, w: 4, h: 4 },
+  { panelId: 'convergence', instanceId: 'convergence-1', x: 8, y: 0, w: 4, h: 4 },
+  { panelId: 'pattern-timeline', instanceId: 'pattern-timeline-1', x: 0, y: 5, w: 3, h: 4 },
+  { panelId: 'weather-events', instanceId: 'weather-events-1', x: 3, y: 5, w: 3, h: 4 },
+  { panelId: 'brain-search', instanceId: 'brain-search-1', x: 6, y: 5, w: 3, h: 4 },
 ];

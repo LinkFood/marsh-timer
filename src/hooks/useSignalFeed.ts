@@ -5,7 +5,7 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export interface SignalItem {
   id: string;
-  type: 'convergence' | 'weather' | 'nws' | 'migration' | 'brain' | 'compound-risk' | 'disaster-watch';
+  type: 'convergence' | 'weather' | 'nws' | 'migration' | 'brain' | 'compound-risk' | 'disaster-watch' | 'weather-realtime';
   title: string;
   body: string;
   stateAbbr: string | null;
@@ -21,15 +21,17 @@ export function useSignalFeed() {
     if (!SUPABASE_URL || !SUPABASE_KEY) { setLoading(false); return; }
 
     try {
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
       const headers = { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY };
 
-      const [convRes, weatherRes, nwsRes, riskRes, disasterRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?select=id,state_abbr,score,previous_score,alert_type,reasoning,created_at&created_at=gte.${since}&order=created_at.desc&limit=15`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_weather_events?select=id,event_type,states,severity,title,created_at&created_at=gte.${since}&order=created_at.desc&limit=15`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_nws_alerts?select=id,event,headline,states,severity,created_at&created_at=gte.${since}&order=created_at.desc&limit=10`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since}&order=created_at.desc&limit=10`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,effective_date,created_at,metadata&content_type=eq.disaster-watch&created_at=gte.${since}&order=created_at.desc&limit=10`, { headers }),
+      const [convRes, weatherRes, nwsRes, riskRes, disasterRes, realtimeRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?select=id,state_abbr,score,previous_score,alert_type,reasoning,created_at&created_at=gte.${since48h}&order=created_at.desc&limit=15`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_weather_events?select=id,event_type,states,severity,title,created_at&created_at=gte.${since48h}&order=created_at.desc&limit=15`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_nws_alerts?select=id,event,headline,states,severity,created_at&created_at=gte.${since24h}&order=created_at.desc&limit=10`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since48h}&order=created_at.desc&limit=10`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,effective_date,created_at,metadata&content_type=eq.disaster-watch&created_at=gte.${since48h}&order=created_at.desc&limit=10`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.weather-realtime&created_at=gte.${since24h}&order=created_at.desc&limit=15`, { headers }),
       ]);
 
       const convData = convRes.ok ? await convRes.json() : [];
@@ -37,6 +39,7 @@ export function useSignalFeed() {
       const nwsData = nwsRes.ok ? await nwsRes.json() : [];
       const riskData = riskRes.ok ? await riskRes.json() : [];
       const disasterData = disasterRes.ok ? await disasterRes.json() : [];
+      const realtimeData = realtimeRes.ok ? await realtimeRes.json() : [];
 
       const merged: SignalItem[] = [];
 
@@ -101,6 +104,25 @@ export function useSignalFeed() {
           body: item.content?.slice(0, 200) || '',
           stateAbbr: item.state_abbr,
           severity: confidence >= 70 ? 'high' : confidence >= 40 ? 'medium' : 'low',
+          timestamp: item.created_at,
+        });
+      }
+
+      for (const item of Array.isArray(realtimeData) ? realtimeData : []) {
+        const content = (item.content || '').toLowerCase();
+        let severity: 'high' | 'medium' | 'low' = 'low';
+        if (content.includes('front passage') || content.includes('rapid') || content.includes('severe')) {
+          severity = 'high';
+        } else if (content.includes('significant') || content.includes('wind shift') || content.includes('temperature drop')) {
+          severity = 'medium';
+        }
+        merged.push({
+          id: `realtime-${item.id}`,
+          type: 'weather-realtime',
+          title: item.title || 'Weather Station Update',
+          body: item.content?.slice(0, 200) || '',
+          stateAbbr: item.state_abbr,
+          severity,
           timestamp: item.created_at,
         });
       }

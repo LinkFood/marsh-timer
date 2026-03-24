@@ -140,6 +140,25 @@ export function getPopupHTML(
   const signalStr = score != null
     ? `<span style="${S.signalValue(tierColor)}">Signal: ${score}/100</span>`
     : `<span style="font-size:11px;color:rgba(255,255,255,0.3)">No signal</span>`;
+  const rankStr = convergenceRank != null && convergenceRank > 0
+    ? `<div style="font-size:9px;color:rgba(255,255,255,0.4);margin-top:2px">#${convergenceRank} of 50 states</div>`
+    : '';
+
+  // --- Top signal: highest scoring component ---
+  let topSignalStr = '';
+  if (convergence && score != null) {
+    const components: [string, number][] = [
+      ['Weather', convergence.weather_component],
+      ['Migration', convergence.migration_component],
+      ['BirdCast', convergence.birdcast_component],
+      ['Solunar', convergence.solunar_component],
+      ['Pattern', convergence.pattern_component],
+    ];
+    const top = components.reduce((a, b) => b[1] > a[1] ? b : a);
+    if (top[1] > 0) {
+      topSignalStr = `<div style="font-size:9px;color:rgba(255,255,255,0.45);margin-top:1px">Top signal: ${top[0]}</div>`;
+    }
+  }
 
   const headerSection = `
     <div style="${S.section}">
@@ -147,6 +166,8 @@ export function getPopupHTML(
         <span style="${S.stateName}">${stateName.toUpperCase()}</span>
         ${signalStr}
       </div>
+      ${rankStr}
+      ${topSignalStr}
     </div>
   `;
 

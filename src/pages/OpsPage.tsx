@@ -259,7 +259,8 @@ export default function OpsPage() {
           <Card title="Brain Growth">
             {data.brain.growth_by_day.length > 0 && (
               <div className="mb-4">
-                <h4 className="text-[10px] font-mono text-white/40 mb-2">Entries per Day (30d)</h4>
+                <h4 className="text-[10px] font-mono text-white/40 mb-0.5">Daily Ingest Rate</h4>
+                <p className="text-[9px] font-mono text-white/25 mb-2">New entries added per day (not cumulative total)</p>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={data.brain.growth_by_day}>
                     <XAxis

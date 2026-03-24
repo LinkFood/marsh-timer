@@ -20,6 +20,8 @@ const TYPE_CONFIG: Record<string, { icon: typeof Activity; color: string; bg: st
   migration: { icon: Radio, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
   brain: { icon: Activity, color: 'text-purple-400', bg: 'bg-purple-400/10' },
   'compound-risk': { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10' },
+  'disaster-watch': { icon: AlertTriangle, color: 'text-orange-400', bg: 'bg-orange-400/10' },
+  'weather-realtime': { icon: CloudLightning, color: 'text-sky-400', bg: 'bg-sky-400/10' },
 };
 
 const SEVERITY_DOT: Record<string, string> = {
@@ -69,8 +71,9 @@ export default function WhatsHappeningPanel({ isFullscreen }: PanelComponentProp
       />
       <div className="flex-1 min-h-0 overflow-y-auto">
         {filtered.length === 0 && (
-          <div className="flex items-center justify-center h-full text-white/30 text-[10px]">
-            No signals in the last 24 hours
+          <div className="flex flex-col items-center justify-center h-full text-white/30 text-[10px] px-4 text-center gap-1">
+            <span>No signals in the last 48 hours.</span>
+            <span>The system is monitoring 50 states across 55 data types.</span>
           </div>
         )}
         {filtered.map(item => {

@@ -131,8 +131,9 @@ export default function WeatherEventsPanel({}: PanelComponentProps) {
 
   if (events.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-white/40 text-xs">
-        {selectedState ? `No weather events for ${selectedState}` : 'No active weather events'}
+      <div className="flex flex-col items-center justify-center h-full text-white/40 text-xs px-4 text-center gap-1">
+        <span>{selectedState ? `No weather events for ${selectedState}` : 'No active weather events'}</span>
+        <span className="text-[10px] text-white/25">Station data refreshes every 15 minutes across 27 ASOS stations</span>
       </div>
     );
   }
