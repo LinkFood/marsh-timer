@@ -1,10 +1,62 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { FeatureCollection } from 'geojson';
 import { useBrainActivity } from '@/hooks/useBrainActivity';
 import { useDataSourceHealth, type DataSourceStatus } from '@/hooks/useDataSourceHealth';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+interface CronHealthSummary {
+  healthy: number;
+  total: number;
+}
+
+function useCronHealth(): CronHealthSummary {
+  const [summary, setSummary] = useState<CronHealthSummary>({ healthy: 0, total: 0 });
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
+    fetchedRef.current = true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    fetch(`${SUPABASE_URL}/functions/v1/hunt-cron-health`, {
+      headers: { Authorization: `Bearer ${SUPABASE_KEY}` },
+      signal: controller.signal,
+    })
+      .then(r => r.json())
+      .then((data: any) => {
+        if (data && typeof data.healthy_count === 'number' && Array.isArray(data.crons)) {
+          setSummary({ healthy: data.healthy_count, total: data.crons.length });
+        }
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timeout));
+
+    // Refresh every 60s
+    const interval = setInterval(() => {
+      fetch(`${SUPABASE_URL}/functions/v1/hunt-cron-health`, {
+        headers: { Authorization: `Bearer ${SUPABASE_KEY}` },
+      })
+        .then(r => r.json())
+        .then((data: any) => {
+          if (data && typeof data.healthy_count === 'number' && Array.isArray(data.crons)) {
+            setSummary({ healthy: data.healthy_count, total: data.crons.length });
+          }
+        })
+        .catch(() => {});
+    }, 60000);
+
+    return () => { clearInterval(interval); controller.abort(); clearTimeout(timeout); };
+  }, []);
+
+  return summary;
+}
 
 interface MurmurationData {
   index: number;
@@ -247,6 +299,7 @@ const BrainHeartbeat = ({
 }: BrainHeartbeatProps) => {
   const { activity, loading } = useBrainActivity();
   const { sources, summary, loading: healthLoading } = useDataSourceHealth();
+  const cronHealth = useCronHealth();
   const [healthOpen, setHealthOpen] = useState(false);
 
   const cronDots = useMemo(() => {
@@ -257,7 +310,8 @@ const BrainHeartbeat = ({
     });
   }, [activity.recentCrons]);
 
-  const cronsHealthy = activity.activeCrons >= 25;
+  const cronPct = cronHealth.total > 0 ? cronHealth.healthy / cronHealth.total : 0;
+  const cronColor = cronPct > 0.8 ? 'text-emerald-400' : cronPct > 0.5 ? 'text-amber-400' : 'text-red-400';
   const hasErrors = summary.error > 0;
 
   return (
@@ -298,8 +352,8 @@ const BrainHeartbeat = ({
           EMB: {activity.totalEmbeddingsToday}
         </span>
         <span className="relative">
-          <span className={`text-[10px] font-mono ${cronsHealthy ? 'text-emerald-400' : 'text-amber-400'}`}>
-            CRONS: {activity.activeCrons}/25
+          <span className={`text-[10px] font-mono ${cronColor}`}>
+            CRONS: {cronHealth.healthy}/{cronHealth.total}
           </span>
           {hasErrors && (
             <span className="absolute -top-0.5 -right-2 w-1.5 h-1.5 rounded-full bg-red-500" />
@@ -318,7 +372,7 @@ const BrainHeartbeat = ({
         className="sm:hidden flex items-center px-2 shrink-0 border-l border-white/[0.06] h-full hover:bg-white/[0.04] transition-colors"
       >
         <span className="relative">
-          <span className={`text-[9px] font-mono ${cronsHealthy ? 'text-emerald-400' : 'text-amber-400'}`}>
+          <span className={`text-[9px] font-mono ${cronColor}`}>
             SRC
           </span>
           {hasErrors && (

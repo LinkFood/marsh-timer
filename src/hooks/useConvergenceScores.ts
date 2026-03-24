@@ -43,7 +43,7 @@ export function useConvergenceScores() {
     async function fetchScores() {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        const timeout = setTimeout(() => controller.abort(), 30000);
 
         // Try today first, fall back to yesterday if empty (convergence engine runs at 8am UTC)
         let date = todayISO();

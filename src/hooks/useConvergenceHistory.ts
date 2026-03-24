@@ -38,7 +38,7 @@ export function useConvergenceHistory(stateAbbr: string | null, days = 30) {
     const sinceStr = since.toISOString().split('T')[0];
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     fetch(
       `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?state_abbr=eq.${stateAbbr}&date=gte.${sinceStr}&select=date,score,weather_component,solunar_component,migration_component,pattern_component,birdcast_component,water_component,photoperiod_component,tide_component&order=date.asc`,
@@ -75,7 +75,7 @@ export function useConvergenceHistory(stateAbbr: string | null, days = 30) {
 }
 
 /** Fetch convergence history for ALL states (last N days), returns Map<state, scores[]> */
-export function useConvergenceHistoryAll(days = 14) {
+export function useConvergenceHistoryAll(days = 7) {
   const [historyMap, setHistoryMap] = useState<Map<string, number[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const fetchedRef = useRef(false);
@@ -88,7 +88,7 @@ export function useConvergenceHistoryAll(days = 14) {
     const sinceStr = since.toISOString().split('T')[0];
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     fetch(
       `${SUPABASE_URL}/rest/v1/hunt_convergence_scores?date=gte.${sinceStr}&select=state_abbr,date,score&order=date.asc&limit=1000`,
