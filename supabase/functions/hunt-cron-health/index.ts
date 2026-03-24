@@ -23,41 +23,39 @@ serve(async (req) => {
       'hunt-absence-detector', 'hunt-disaster-watch',
       'hunt-convergence-scan', 'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
       'hunt-convergence-alerts-pm',
-      'hunt-birdweather-daily', 'hunt-snow-cover-daily', 'hunt-snotel-daily',
-      'hunt-gbif-daily', 'hunt-multi-species-daily', 'hunt-search-trends-daily',
-      'hunt-query-signal-daily', 'hunt-power-outage-6h',
-      'hunt-climate-indices-weekly', 'hunt-movebank-weekly',
-      'hunt-phenology-weekly', 'hunt-crop-progress-weekly',
-      'hunt-historical-news-weekly', 'hunt-usfws-survey-monthly',
-      'hunt-drought-monitor', 'hunt-inaturalist-weekly',
+      'hunt-birdweather', 'hunt-snow-cover', 'hunt-snotel',
+      'hunt-gbif', 'hunt-multi-species', 'hunt-search-trends',
+      'hunt-query-signal', 'hunt-power-outage',
+      'hunt-climate-indices', 'hunt-movebank',
+      'hunt-phenology', 'hunt-crop-progress',
+      'hunt-historical-news', 'hunt-usfws-survey',
+      'hunt-drought-monitor', 'hunt-inaturalist',
     ];
 
-    // Fetch last 5 runs per function in one query using IN filter + higher limit
-    const { data: logs, error } = await supabase
-      .from('hunt_cron_log')
-      .select('*')
-      .in('function_name', cronNames)
-      .order('created_at', { ascending: false })
-      .limit(cronNames.length * 5);
-
-    if (error) {
-      console.error('[hunt-cron-health] Query error:', error);
-      return errorResponse(req, 'Failed to query cron logs', 500);
-    }
-
-    // Group by function name, take latest per function
+    // Query per function to avoid high-frequency crons (convergence-scan)
+    // flooding results and hiding other functions' logs
     const latest: Record<string, any> = {};
     const history: Record<string, any[]> = {};
 
-    for (const log of (logs || [])) {
-      if (!latest[log.function_name]) {
-        latest[log.function_name] = log;
-      }
-      if (!history[log.function_name]) {
-        history[log.function_name] = [];
-      }
-      if (history[log.function_name].length < 5) {
-        history[log.function_name].push(log);
+    // Batch into groups of 5 to avoid too many parallel queries
+    const batchSize = 5;
+    for (let i = 0; i < cronNames.length; i += batchSize) {
+      const batch = cronNames.slice(i, i + batchSize);
+      const promises = batch.map(async (fn) => {
+        const { data } = await supabase
+          .from('hunt_cron_log')
+          .select('*')
+          .eq('function_name', fn)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        return { fn, data: data || [] };
+      });
+      const results = await Promise.all(promises);
+      for (const { fn, data } of results) {
+        if (data.length > 0) {
+          latest[fn] = data[0];
+          history[fn] = data;
+        }
       }
     }
 
@@ -88,22 +86,22 @@ serve(async (req) => {
       { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
       { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
       { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
-      { name: 'hunt-birdweather-daily', schedule: 'daily 5:30am', critical: false },
-      { name: 'hunt-snow-cover-daily', schedule: 'daily 7am', critical: false },
-      { name: 'hunt-snotel-daily', schedule: 'daily 8am', critical: false },
-      { name: 'hunt-gbif-daily', schedule: 'daily 9:45am', critical: false },
-      { name: 'hunt-multi-species-daily', schedule: 'daily 11am', critical: false },
-      { name: 'hunt-search-trends-daily', schedule: 'daily 12pm', critical: false },
-      { name: 'hunt-query-signal-daily', schedule: 'daily 11pm', critical: false },
-      { name: 'hunt-power-outage-6h', schedule: 'every 3hr', critical: true },
-      { name: 'hunt-climate-indices-weekly', schedule: 'weekly Mon 11am', critical: false },
-      { name: 'hunt-movebank-weekly', schedule: 'weekly Mon 2pm', critical: false },
-      { name: 'hunt-phenology-weekly', schedule: 'weekly Wed 9am', critical: false },
-      { name: 'hunt-crop-progress-weekly', schedule: 'weekly Fri 2pm', critical: false },
-      { name: 'hunt-historical-news-weekly', schedule: 'weekly Sat 8am', critical: false },
-      { name: 'hunt-usfws-survey-monthly', schedule: 'monthly 1st 6am', critical: false },
+      { name: 'hunt-birdweather', schedule: 'daily 5:30am', critical: false },
+      { name: 'hunt-snow-cover', schedule: 'daily 7am', critical: false },
+      { name: 'hunt-snotel', schedule: 'daily 8am', critical: false },
+      { name: 'hunt-gbif', schedule: 'daily 9:45am', critical: false },
+      { name: 'hunt-multi-species', schedule: 'daily 11am', critical: false },
+      { name: 'hunt-search-trends', schedule: 'daily 12pm', critical: false },
+      { name: 'hunt-query-signal', schedule: 'daily 11pm', critical: false },
+      { name: 'hunt-power-outage', schedule: 'every 3hr', critical: true },
+      { name: 'hunt-climate-indices', schedule: 'weekly Mon 11am', critical: false },
+      { name: 'hunt-movebank', schedule: 'weekly Mon 2pm', critical: false },
+      { name: 'hunt-phenology', schedule: 'weekly Wed 9am', critical: false },
+      { name: 'hunt-crop-progress', schedule: 'weekly Fri 2pm', critical: false },
+      { name: 'hunt-historical-news', schedule: 'weekly Sat 8am', critical: false },
+      { name: 'hunt-usfws-survey', schedule: 'monthly 1st 6am', critical: false },
       { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
-      { name: 'hunt-inaturalist-weekly', schedule: 'weekly Wed 11am', critical: false },
+      { name: 'hunt-inaturalist', schedule: 'weekly Wed 11am', critical: false },
       { name: 'hunt-convergence-alerts-pm', schedule: 'daily 4pm', critical: false },
     ];
 
