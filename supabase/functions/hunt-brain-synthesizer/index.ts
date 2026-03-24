@@ -13,6 +13,17 @@ serve(async (req: Request) => {
   const cors = handleCors(req);
   if (cors) return cors;
 
+  // Cache request data before any async work
+  let body: Record<string, any> = {};
+  try {
+    body = await req.json().catch(() => ({}));
+  } catch {
+    return new Response(JSON.stringify({ error: 'Request closed' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
   const startTime = Date.now();
   const supabase = createSupabaseClient();
 

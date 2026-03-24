@@ -270,6 +270,7 @@ serve(async (req) => {
             title: `disaster-watch ${a.signature.toLowerCase().replace(/\s+/g, "-")} ${today}`,
             content: text,
             content_type: "disaster-watch",
+            signal_weight: 2.0,
             tags: ["disaster-watch", "early-warning", "climate-signature", a.signature.toLowerCase().split(" ")[0]],
             species: null,
             state_abbr: null,
