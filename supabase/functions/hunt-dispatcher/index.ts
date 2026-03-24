@@ -118,7 +118,7 @@ async function getRecentPatternLinks(stateAbbr: string | null, limit = 5): Promi
   }
 }
 
-// Check if a hunting season is currently open for a species/state
+// Check if a season is currently open for a species/state
 async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ isOpen: boolean; nextOpen?: string; status: string }> {
   try {
     const supabase = createSupabaseClient();
