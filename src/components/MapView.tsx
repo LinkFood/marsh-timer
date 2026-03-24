@@ -2314,8 +2314,11 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     const map = mapRef.current;
     if (!map) return;
 
+    // Reset flyingRef — if a previous animation's moveend never fired (interrupted),
+    // this prevents the ref from staying stuck true and blocking all future flyTo calls.
+    flyingRef.current = false;
+
     if (selectedState) {
-      if (flyingRef.current) return; // Already flying to search coordinates — don't override with centroid
       const centroid = centroidsRef.current.get(selectedState);
       if (centroid) {
         flyingRef.current = true;
