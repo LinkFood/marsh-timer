@@ -203,16 +203,31 @@ Default, Equal Grid (no map), Map Focus, 2 Column, 3 Column, 4 Column, Command C
 
 ## Backfill Scripts
 
+**Use `orchestrator-v2.ts`** — manages concurrency, checkpoints, retries, and layered startup.
+
+```
+VOYAGE_API_KEY=... npx tsx scripts/orchestrator-v2.ts          # Run from checkpoint
+npx tsx scripts/orchestrator-v2.ts --status                     # Show pipe status
+npx tsx scripts/orchestrator-v2.ts --reset                      # Reset checkpoint
+npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe solo
+```
+
+**Concurrency rules (learned the hard way):**
+- **3 pipes max concurrent** on Supabase Pro. Monitor IO every 20 min before bumping higher.
+- **Layer startup 60s** between pipes — don't slam Supabase with simultaneous writes.
+- **ebird-history is always safe** — rate-limited 200 req/hr, minimal IO.
+- **MAX_RETRIES = 3** — dead APIs (FAA) skip after 3 failures, no infinite loops.
+- **Reset checkpoint** when restarting: set "running" pipes back to "pending".
+- Pass `VOYAGE_API_KEY` env var for direct Voyage embeddings (faster than edge fn fallback).
+
 | Script | Target | Status |
 |--------|--------|--------|
-| backfill-birdcast-historical.ts | 50K BirdCast radar (2021-2025) | Running |
-| backfill-storm-events.ts | 300K+ NOAA storm events | Running (414K done) |
-| correlate-bio-environmental.ts | 10K+ bird↔environment correlations | Ready to run |
+| orchestrator-v2.ts | 19 pipes, layered concurrent | Active |
+| backfill-storm-events.ts | 300K+ NOAA storm events | Running (1.2M+ done) |
+| correlate-bio-environmental.ts | 10K+ bird↔environment correlations | Done (949) |
 | dedup-storm-events.ts | Remove county-level duplicates | Ready (dry-run first) |
-| backfill-ebird-history.ts | eBird 5yr history | Partially done |
-| orchestrator.ts | Auto-sequences pipes | Available |
-
-All scripts: `SUPABASE_SERVICE_ROLE_KEY=... VOYAGE_API_KEY=... npx tsx scripts/NAME.ts`
+| backfill-faa-wildlife-strikes.ts | FAA wildlife strikes | Needs CSV download (API down) |
+| backfill-bird-banding.ts | Bird banding data | Needs CSV download |
 
 ## Mapbox Features
 
@@ -257,7 +272,7 @@ Card types: weather, season, solunar, convergence, pattern, source, pattern-link
 - All hunt_ tables share Supabase project with JAC Agent OS — never touch JAC tables.
 - Pin supabase-js@2.84.0 in edge functions. Pin std@0.168.0.
 - NEVER retry 4xx errors — only 5xx and network errors.
-- NEVER run more than 2 light backfill pipes simultaneously. Heavy pipes (storm events) run solo.
+- NEVER run more than 3 backfill pipes simultaneously (Supabase Pro IO budget). Use orchestrator-v2.ts with 60s layered startup. Monitor IO every 20 min.
 - Shared module change → redeploy every function that imports it.
 - Every early-return path calls logCronRun.
 - NEVER use `$$` inside pg_cron — use `$cron$`/`$body$`.

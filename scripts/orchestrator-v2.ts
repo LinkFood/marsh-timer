@@ -30,7 +30,7 @@ const SCRIPTS_DIR = import.meta.dirname || __dirname;
 const CHECKPOINT_FILE = join(SCRIPTS_DIR, ".orchestrator-v2-checkpoint.json");
 const LOG_FILE = join(SCRIPTS_DIR, ".orchestrator-v2.log");
 
-const MAX_CONCURRENT = 3;
+const MAX_CONCURRENT = 4;
 const MAX_RETRIES = 3;                // Max retries per pipe before giving up
 const LAYER_DELAY_MS = 60_000;        // 60s between starting new pipes
 const STALL_WARN_MS = 5 * 60_000;     // 5 min no output = warning

@@ -1,0 +1,184 @@
+{
+  "pipes": {
+    "ebird-history": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY",
+        "START_YEAR": "2024"
+      },
+      "startedAt": "2026-03-22T14:11:08.247Z",
+      "lastOutputAt": "2026-03-22T21:42:05.744Z",
+      "entriesLogged": 1080,
+      "completedAt": "2026-03-22T21:42:05.769Z"
+    },
+    "earthquakes": {
+      "status": "done",
+      "resumeEnv": {
+        "START_YEAR": "2026"
+      },
+      "startedAt": "2026-03-22T14:12:08.249Z",
+      "lastOutputAt": "2026-03-22T14:58:20.983Z",
+      "entriesLogged": 34003,
+      "completedAt": "2026-03-22T14:58:21.008Z"
+    },
+    "weather-history": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-03-22T13:25:27.899Z",
+      "lastOutputAt": "2026-03-22T13:34:06.626Z",
+      "entriesLogged": 38958,
+      "completedAt": "2026-03-22T13:34:06.650Z"
+    },
+    "birdcast-historical": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY",
+        "START_YEAR": "2025"
+      },
+      "startedAt": "2026-03-22T14:13:08.250Z",
+      "lastOutputAt": "2026-03-22T20:55:26.291Z",
+      "entriesLogged": 30752,
+      "completedAt": "2026-03-22T20:55:26.316Z"
+    },
+    "inaturalist": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-03-22T14:14:08.251Z",
+      "lastOutputAt": "2026-03-22T16:20:37.691Z",
+      "completedAt": "2026-03-22T16:20:37.714Z"
+    },
+    "snow-cover": {
+      "status": "done",
+      "resumeEnv": {
+        "START_YEAR": "2026",
+        "START_MONTH": "03"
+      },
+      "startedAt": "2026-03-22T14:58:21.011Z",
+      "lastOutputAt": "2026-03-22T16:59:37.853Z",
+      "entriesLogged": 3135,
+      "completedAt": "2026-03-22T16:59:37.877Z"
+    },
+    "faa-strikes": {
+      "status": "skipped",
+      "resumeEnv": {},
+      "startedAt": "2026-03-22T16:20:40.127Z",
+      "lastOutputAt": "2026-03-22T16:20:41.163Z",
+      "retryCount": 3,
+      "error": "Exceeded 3 retries. Last error: Exit code 1. Last output:   GET probe failed: SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    },
+    "kp-index": {
+      "status": "done",
+      "resumeEnv": {
+        "START_DATE": "2025-10-09"
+      },
+      "startedAt": "2026-03-22T16:20:41.179Z",
+      "lastOutputAt": "2026-03-22T16:36:34.486Z",
+      "entriesLogged": 14964,
+      "completedAt": "2026-03-22T16:36:34.507Z"
+    },
+    "nifc-fires": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-03-22T16:36:34.507Z",
+      "lastOutputAt": "2026-03-22T16:46:32.898Z",
+      "completedAt": "2026-03-22T16:46:32.928Z"
+    },
+    "noaa-acis": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-03-22T16:46:32.929Z",
+      "lastOutputAt": "2026-03-22T20:39:09.148Z",
+      "entriesLogged": 1300,
+      "completedAt": "2026-03-22T20:39:09.180Z"
+    },
+    "birdweather": {
+      "status": "done",
+      "resumeEnv": {
+        "START_DATE": "2026-03-20"
+      },
+      "startedAt": "2026-03-22T16:59:37.878Z",
+      "lastOutputAt": "2026-03-22T19:38:10.182Z",
+      "entriesLogged": 16137,
+      "completedAt": "2026-03-22T19:38:10.197Z"
+    },
+    "historical-news": {
+      "status": "running",
+      "resumeEnv": {
+        "START_TERM": "4",
+        "START_PAGE": "323"
+      },
+      "startedAt": "2026-03-22T19:38:10.197Z",
+      "lastOutputAt": "2026-03-23T05:21:39.685Z"
+    },
+    "correlate-bio-env": {
+      "status": "done",
+      "resumeEnv": {
+        "START_OFFSET": "900"
+      },
+      "startedAt": "2026-03-22T20:39:09.181Z",
+      "lastOutputAt": "2026-03-22T20:44:37.927Z",
+      "entriesLogged": 1005,
+      "completedAt": "2026-03-22T20:44:37.947Z"
+    },
+    "drought-monitor": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-03-22T20:44:37.948Z",
+      "lastOutputAt": "2026-03-22T20:55:46.299Z",
+      "completedAt": "2026-03-22T20:55:46.326Z"
+    },
+    "ebird-hotspots": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-03-22T20:55:26.317Z",
+      "lastOutputAt": "2026-03-22T21:02:49.305Z",
+      "completedAt": "2026-03-22T21:02:49.330Z"
+    },
+    "crop-progress": {
+      "status": "skipped",
+      "resumeEnv": {},
+      "error": "Missing env: NASS_API_KEY"
+    },
+    "glerl-ice": {
+      "status": "done",
+      "resumeEnv": {
+        "START_YEAR": "2025"
+      },
+      "startedAt": "2026-03-22T20:55:46.327Z",
+      "lastOutputAt": "2026-03-22T20:58:42.953Z",
+      "entriesLogged": 2688,
+      "completedAt": "2026-03-22T20:58:42.977Z"
+    },
+    "climate-indices": {
+      "status": "done",
+      "resumeEnv": {
+        "START_INDEX": "PNA"
+      },
+      "startedAt": "2026-03-22T20:58:42.978Z",
+      "lastOutputAt": "2026-03-22T21:04:01.446Z",
+      "completedAt": "2026-03-22T21:04:01.469Z"
+    },
+    "dedup-storm-events": {
+      "status": "done",
+      "resumeEnv": {
+        "DRY_RUN": "true"
+      },
+      "startedAt": "2026-03-22T21:02:49.331Z",
+      "lastOutputAt": "2026-03-22T21:15:45.303Z",
+      "completedAt": "2026-03-22T21:15:45.320Z"
+    }
+  },
+  "lastUpdated": "2026-03-23T05:21:44.195Z"
+}
