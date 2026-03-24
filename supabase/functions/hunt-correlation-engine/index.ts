@@ -21,6 +21,18 @@ const INTERESTING_TYPES = [
 ];
 
 serve(async (req) => {
+  // Cache request data before any async work — request object can become invalid
+  // when concurrent calls arrive
+  try {
+    req.headers.get('authorization');
+  } catch {
+    console.error('[hunt-correlation-engine] Cannot read headers: request closed before processing');
+    return new Response(JSON.stringify({ error: 'Request closed before processing' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -173,13 +185,21 @@ serve(async (req) => {
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
-    console.error("Fatal:", err);
+    const errMsg = String(err);
+    console.error("Fatal:", errMsg);
     await logCronRun({
       functionName: "hunt-correlation-engine",
       status: "error",
-      errorMessage: String(err),
+      errorMessage: errMsg,
       durationMs,
-    });
-    return errorResponse(req, String(err), 500);
+    }).catch(() => {});
+    try {
+      return errorResponse(req, errMsg, 500);
+    } catch {
+      return new Response(JSON.stringify({ error: errMsg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 });

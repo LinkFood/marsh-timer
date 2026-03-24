@@ -474,12 +474,33 @@ async function scoreState(
 // ---------------------------------------------------------------------------
 
 serve(async (req) => {
+  // Cache request data before any async work — request object can become invalid
+  // when concurrent calls arrive
+  try {
+    req.headers.get('authorization');
+  } catch {
+    console.error('[hunt-convergence-engine] Cannot read headers: request closed before processing');
+    return new Response(JSON.stringify({ error: 'Request closed before processing' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
   const startTime = Date.now();
   try {
-    const body = await req.json().catch(() => ({}));
+    let body: Record<string, any> = {};
+    try {
+      body = await req.json().catch(() => ({}));
+    } catch {
+      await logCronRun({ functionName: 'hunt-convergence-engine', status: 'error', errorMessage: 'Request body unreadable (connection closed)', durationMs: Date.now() - startTime });
+      return new Response(JSON.stringify({ error: 'Request body unreadable' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const trigger = body.trigger || 'daily';
     const requestedStates: string[] | undefined = body.states;
     const batch: number | null = body.batch ?? null; // 1-5, or null for all
@@ -665,13 +686,21 @@ serve(async (req) => {
     });
     return successResponse(req, summary);
   } catch (error) {
-    console.error('[hunt-convergence-engine] Fatal error:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('[hunt-convergence-engine] Fatal error:', errMsg);
     await logCronRun({
       functionName: 'hunt-convergence-engine',
       status: 'error',
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: errMsg,
       durationMs: Date.now() - startTime,
-    });
-    return errorResponse(req, 'Internal server error', 500);
+    }).catch(() => {});
+    try {
+      return errorResponse(req, 'Internal server error', 500);
+    } catch {
+      return new Response(JSON.stringify({ error: errMsg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 });

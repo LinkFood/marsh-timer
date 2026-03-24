@@ -212,14 +212,30 @@ serve(async (req) => {
 
     console.log(`Found ${entries.length} environment-related trending searches`);
 
+    // Filter out entries with empty/null text before embedding
+    const validEntries = entries.filter(e => {
+      if (!e.text || e.text.trim().length === 0) {
+        console.warn('  Skipping entry with empty text');
+        return false;
+      }
+      return true;
+    });
+
+    // Truncate title to avoid unique constraint issues (max 500 chars)
+    for (const entry of validEntries) {
+      if (typeof entry.meta.title === 'string' && entry.meta.title.length > 500) {
+        entry.meta.title = entry.meta.title.substring(0, 500);
+      }
+    }
+
     // Embed and insert in batches of 20
     let totalEmbedded = 0;
     let embedErrors = 0;
 
-    for (let i = 0; i < entries.length; i += 20) {
+    for (let i = 0; i < validEntries.length; i += 20) {
       try {
-        const chunk = entries.slice(i, i + 20);
-        const texts = chunk.map(e => e.text);
+        const chunk = validEntries.slice(i, i + 20);
+        const texts = chunk.map(e => e.text.substring(0, 8000)); // Voyage token limit guard
         const embeddings = await batchEmbed(texts);
 
         const rows = chunk.map((e, j) => ({

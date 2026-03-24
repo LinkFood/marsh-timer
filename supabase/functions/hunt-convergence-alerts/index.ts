@@ -234,21 +234,26 @@ serve(async (req) => {
       const outcomeDeadline = new Date();
       outcomeDeadline.setUTCHours(outcomeDeadline.getUTCHours() + 72);
 
-      await supabase.from('hunt_alert_outcomes').insert({
-        alert_source: 'convergence-alert',
-        state_abbr: candidate.state_abbr,
-        alert_date: today,
-        predicted_outcome: {
-          claim: enrichedReasoning || `${candidate.alert_type} alert: score ${candidate.previous_score}→${candidate.score}`,
-          expected_signals: ['migration-spike-extreme', 'migration-spike-significant', 'weather-event'],
-          severity: candidate.alert_type,
-          score: candidate.score,
-          previous_score: candidate.previous_score,
-          change: candidate.change,
-        },
-        outcome_window_hours: 72,
-        outcome_deadline: outcomeDeadline.toISOString(),
-      }).catch(err => console.error('[hunt-convergence-alerts] Outcome insert failed:', err));
+      try {
+        const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
+          alert_source: 'convergence-alert',
+          state_abbr: candidate.state_abbr,
+          alert_date: today,
+          predicted_outcome: {
+            claim: enrichedReasoning || `${candidate.alert_type} alert: score ${candidate.previous_score}→${candidate.score}`,
+            expected_signals: ['migration-spike-extreme', 'migration-spike-significant', 'weather-event'],
+            severity: candidate.alert_type,
+            score: candidate.score,
+            previous_score: candidate.previous_score,
+            change: candidate.change,
+          },
+          outcome_window_hours: 72,
+          outcome_deadline: outcomeDeadline.toISOString(),
+        });
+        if (outcomeErr) console.error('[hunt-convergence-alerts] Outcome insert failed:', outcomeErr.message);
+      } catch (err) {
+        console.error('[hunt-convergence-alerts] Outcome insert failed:', err);
+      }
 
       // Deliver to users via Slack (best-effort)
       const stateName = STATE_NAMES[candidate.state_abbr] ?? candidate.state_abbr;

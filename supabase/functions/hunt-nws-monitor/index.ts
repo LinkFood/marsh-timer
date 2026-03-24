@@ -46,6 +46,20 @@ function slugify(text: string): string {
 }
 
 serve(async (req) => {
+  // Cache request data before any async work — request object can become invalid
+  // when concurrent calls arrive
+  let authHeader = '';
+  let body: Record<string, unknown> = {};
+  try {
+    authHeader = req.headers.get('authorization') || '';
+  } catch {
+    console.error('[hunt-nws-monitor] Cannot read headers: request closed before processing');
+    return new Response(JSON.stringify({ error: 'Request closed before processing' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -182,14 +196,22 @@ serve(async (req) => {
     });
     return successResponse(req, result);
   } catch (error) {
-    console.error('[hunt-nws-monitor]', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('[hunt-nws-monitor]', errMsg);
     await logCronRun({
       functionName: 'hunt-nws-monitor',
       status: 'error',
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: errMsg,
       durationMs: Date.now() - startTime,
-    });
-    return errorResponse(req, 'Internal server error', 500);
+    }).catch(() => {});
+    try {
+      return errorResponse(req, 'Internal server error', 500);
+    } catch {
+      return new Response(JSON.stringify({ error: errMsg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 });
 
