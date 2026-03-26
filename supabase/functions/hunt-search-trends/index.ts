@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { handleCors, getCorsHeaders } from '../_shared/cors.ts';
+import { handleCors } from '../_shared/cors.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -233,16 +234,39 @@ serve(async (req) => {
     let embedErrors = 0;
 
     for (let i = 0; i < validEntries.length; i += 20) {
-      try {
-        const chunk = validEntries.slice(i, i + 20);
-        const texts = chunk.map(e => e.text.substring(0, 8000)); // Voyage token limit guard
-        const embeddings = await batchEmbed(texts);
+      const chunk = validEntries.slice(i, i + 20);
+      const texts = chunk.map(e => e.text.substring(0, 8000)); // Voyage token limit guard
 
-        const rows = chunk.map((e, j) => ({
+      let embeddings: number[][];
+      try {
+        embeddings = await batchEmbed(texts);
+      } catch (batchErr) {
+        // Batch failed — try each item individually so one bad item doesn't kill the rest
+        console.warn(`  Batch embed failed, falling back to individual: ${batchErr}`);
+        embeddings = [];
+        for (let j = 0; j < texts.length; j++) {
+          try {
+            const [single] = await batchEmbed([texts[j]]);
+            embeddings.push(single);
+          } catch (itemErr) {
+            console.error(`  Embed failed for item ${i + j} ("${chunk[j].meta.title}"): ${itemErr}`);
+            embeddings.push([]); // placeholder — will be filtered out below
+            embedErrors++;
+          }
+        }
+      }
+
+      // Filter out entries whose embeddings failed (empty array)
+      const rows = chunk
+        .map((e, j) => ({
           ...e.meta,
           embedding: embeddings[j],
-        }));
+        }))
+        .filter(r => Array.isArray(r.embedding) && r.embedding.length > 0);
 
+      if (rows.length === 0) continue;
+
+      try {
         const { error: upsertError } = await supabase
           .from("hunt_knowledge")
           .upsert(rows, { onConflict: "title" });
@@ -254,7 +278,7 @@ serve(async (req) => {
           totalEmbedded += rows.length;
         }
       } catch (err) {
-        console.error(`  Embed/upsert error: ${err}`);
+        console.error(`  Upsert error: ${err}`);
         embedErrors++;
       }
     }
@@ -292,10 +316,7 @@ serve(async (req) => {
         : undefined,
     };
 
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
-    });
+    return cronResponse(result);
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
@@ -306,10 +327,7 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...getCorsHeaders(req), "Content-Type": "application/json" },
-    });
+    return cronErrorResponse(String(err));
   }
 });
 

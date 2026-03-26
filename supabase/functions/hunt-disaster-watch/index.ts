@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -189,10 +189,16 @@ serve(async (req) => {
     const supabase = createSupabaseClient();
 
     // Fetch the most recent 8 months of each index from the brain
+    // Scope to last 12 months to avoid full-table sort on 2.4M rows
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    const dateFloor = twelveMonthsAgo.toISOString().split("T")[0];
+
     const { data: entries, error: fetchError } = await supabase
       .from("hunt_knowledge")
       .select("title, content, metadata")
       .eq("content_type", "climate-index")
+      .gte("effective_date", dateFloor)
       .order("effective_date", { ascending: false })
       .limit(100);
 
@@ -203,7 +209,7 @@ serve(async (req) => {
         errorMessage: fetchError?.message || "No data",
         durationMs: Date.now() - startTime,
       });
-      return errorResponse(req, fetchError?.message || "No data", 500);
+      return cronErrorResponse(fetchError?.message || "No data");
     }
 
     // Parse into index → recent values
@@ -347,7 +353,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse(req, {
+    return cronResponse({
       alerts: alerts.map(a => ({
         signature: a.signature,
         confidence: a.confidence,
@@ -369,6 +375,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(req, String(err), 500);
+    return cronErrorResponse(String(err));
   }
 });
