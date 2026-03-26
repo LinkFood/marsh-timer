@@ -399,6 +399,9 @@ verify_jwt = false
 [functions.hunt-convergence-alerts]
 verify_jwt = false
 
+[functions.hunt-convergence-alerts-pm]
+verify_jwt = false
+
 [functions.hunt-du-alerts]
 verify_jwt = false
 

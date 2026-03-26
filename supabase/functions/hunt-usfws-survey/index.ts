@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -485,7 +485,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse(req, {
+    return cronResponse({
       survey_year: SURVEY_YEAR,
       total_entries: entries.length,
       embedded: totalEmbedded,
@@ -502,6 +502,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(req, String(err), 500);
+    return cronErrorResponse(String(err), 500);
   }
 });

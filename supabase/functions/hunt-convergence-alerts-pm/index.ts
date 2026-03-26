@@ -1,0 +1,327 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { handleCors } from '../_shared/cors.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
+import { createSupabaseClient } from '../_shared/supabase.ts';
+import { STATE_NAMES } from '../_shared/states.ts';
+import { logCronRun } from '../_shared/cronLog.ts';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ConvergenceScore {
+  state_abbr: string;
+  date: string;
+  score: number;
+  reasoning: string;
+}
+
+interface ThrottleRecord {
+  state_abbr: string;
+  throttle_until: string | null;
+}
+
+interface AlertCandidate {
+  state_abbr: string;
+  alert_type: 'score_jump' | 'threshold_cross' | 'nws_severe';
+  score: number;
+  previous_score: number;
+  change: number;
+  reasoning: string;
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const SCORE_JUMP_THRESHOLD = 30;    // Alert if score jumps 30+ points
+const SCORE_CROSS_THRESHOLD = 75;   // Alert if score crosses above 75
+const THROTTLE_HOURS = 48;          // Don't re-alert same state within 48 hours
+const MAX_ALERTS_PER_USER_PER_DAY = 3;
+
+// ---------------------------------------------------------------------------
+// Main Handler — Afternoon check (PM run)
+// ---------------------------------------------------------------------------
+
+serve(async (req) => {
+  const corsResponse_ = handleCors(req);
+  if (corsResponse_) return corsResponse_;
+
+  const startTime = Date.now();
+  try {
+    const supabase = createSupabaseClient();
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const yesterday = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+    const threeHoursAgo = new Date(now.getTime() - 3 * 3600000).toISOString();
+
+    console.log(`[hunt-convergence-alerts-pm] Checking alert conditions for ${today}`);
+
+    // Fetch today's and yesterday's convergence scores
+    const [todayResult, yesterdayResult] = await Promise.all([
+      supabase
+        .from('hunt_convergence_scores')
+        .select('state_abbr, date, score, reasoning')
+        .eq('date', today),
+      supabase
+        .from('hunt_convergence_scores')
+        .select('state_abbr, date, score, reasoning')
+        .eq('date', yesterday),
+    ]);
+
+    const todayScores: ConvergenceScore[] = todayResult.data ?? [];
+    const yesterdayScores: ConvergenceScore[] = yesterdayResult.data ?? [];
+
+    if (todayScores.length === 0) {
+      console.log('[hunt-convergence-alerts-pm] No scores for today, skipping');
+      const summary = { alerts_triggered: 0, users_notified: 0, skipped: 'no scores for today' };
+      await logCronRun({
+        functionName: 'hunt-convergence-alerts-pm',
+        status: 'success',
+        summary,
+        durationMs: Date.now() - startTime,
+      });
+      return cronResponse(summary);
+    }
+
+    // Build yesterday lookup
+    const yesterdayMap = new Map<string, number>();
+    for (const s of yesterdayScores) {
+      yesterdayMap.set(s.state_abbr, s.score);
+    }
+
+    // Check throttle: get recent alerts per state
+    const { data: recentAlerts } = await supabase
+      .from('hunt_convergence_alerts')
+      .select('state_abbr, throttle_until')
+      .gte('throttle_until', now.toISOString());
+
+    const throttledStates = new Set<string>();
+    for (const a of (recentAlerts ?? []) as ThrottleRecord[]) {
+      if (a.throttle_until && new Date(a.throttle_until) > now) {
+        throttledStates.add(a.state_abbr);
+      }
+    }
+
+    // Check for new severe NWS alerts (created in last 3 hours)
+    const { data: newSevereAlerts } = await supabase
+      .from('hunt_nws_alerts')
+      .select('event_type, severity, headline, states')
+      .in('severity', ['Severe', 'Extreme'])
+      .gte('created_at', threeHoursAgo);
+
+    const nwsSevereStates = new Set<string>();
+    for (const alert of (newSevereAlerts ?? [])) {
+      for (const st of (alert.states as string[] ?? [])) {
+        nwsSevereStates.add(st);
+      }
+    }
+
+    // Evaluate alert conditions for each state
+    const candidates: AlertCandidate[] = [];
+
+    for (const score of todayScores) {
+      const { state_abbr, score: todayScore, reasoning } = score;
+
+      // Skip throttled states
+      if (throttledStates.has(state_abbr)) continue;
+
+      const yesterdayScore = yesterdayMap.get(state_abbr) ?? 0;
+      const change = todayScore - yesterdayScore;
+
+      // Check: Score jump (30+ point increase)
+      if (change >= SCORE_JUMP_THRESHOLD) {
+        candidates.push({
+          state_abbr,
+          alert_type: 'score_jump',
+          score: todayScore,
+          previous_score: yesterdayScore,
+          change,
+          reasoning,
+        });
+        continue; // One alert per state
+      }
+
+      // Check: Threshold cross (crossed above 75)
+      if (todayScore >= SCORE_CROSS_THRESHOLD && yesterdayScore < SCORE_CROSS_THRESHOLD) {
+        candidates.push({
+          state_abbr,
+          alert_type: 'threshold_cross',
+          score: todayScore,
+          previous_score: yesterdayScore,
+          change,
+          reasoning,
+        });
+        continue;
+      }
+
+      // Check: NWS severe alert in state
+      if (nwsSevereStates.has(state_abbr)) {
+        candidates.push({
+          state_abbr,
+          alert_type: 'nws_severe',
+          score: todayScore,
+          previous_score: yesterdayScore,
+          change,
+          reasoning: `Severe weather alert issued. ${reasoning}`,
+        });
+      }
+    }
+
+    console.log(`[hunt-convergence-alerts-pm] ${candidates.length} alert candidates found`);
+
+    let alertsTriggered = 0;
+    let usersNotified = 0;
+
+    const throttleUntil = new Date(now.getTime() + THROTTLE_HOURS * 3600000).toISOString();
+
+    for (const candidate of candidates) {
+      // Check historical accuracy for this state
+      const { data: calibration } = await supabase
+        .from('hunt_alert_calibration')
+        .select('accuracy_rate, precision_rate, total_alerts')
+        .eq('alert_source', 'convergence-alert')
+        .eq('state_abbr', candidate.state_abbr)
+        .eq('window_days', 90)
+        .maybeSingle();
+
+      let confidenceModifier = '';
+      if (calibration && calibration.total_alerts >= 5) {
+        const accuracy = Number(calibration.accuracy_rate);
+        if (accuracy < 0.4) {
+          console.log(`[hunt-convergence-alerts-pm] Suppressing ${candidate.state_abbr} — 90d accuracy only ${(accuracy * 100).toFixed(0)}%`);
+          continue; // skip this alert
+        } else if (accuracy > 0.75) {
+          confidenceModifier = `\nHistorical accuracy for this pattern in ${candidate.state_abbr}: ${(accuracy * 100).toFixed(0)}% (${calibration.total_alerts} alerts).`;
+        } else {
+          confidenceModifier = `\nHistorical accuracy: ${(accuracy * 100).toFixed(0)}% over ${calibration.total_alerts} alerts.`;
+        }
+      }
+
+      const enrichedReasoning = (candidate.reasoning || '') + confidenceModifier;
+
+      // Find users with this state in favorite_states
+      const { data: interestedUsers } = await supabase
+        .from('hunt_user_settings')
+        .select('user_id, settings, alert_delivery')
+        .contains('favorite_states', [candidate.state_abbr]);
+
+      const userIds = (interestedUsers ?? []).map((u: { user_id: string }) => u.user_id);
+
+      // Insert alert record
+      const { error: insertError } = await supabase
+        .from('hunt_convergence_alerts')
+        .insert({
+          state_abbr: candidate.state_abbr,
+          date: today,
+          alert_type: candidate.alert_type,
+          score: candidate.score,
+          previous_score: candidate.previous_score,
+          change: candidate.change,
+          reasoning: enrichedReasoning,
+          delivered_to: userIds,
+          throttle_until: throttleUntil,
+        });
+
+      if (insertError) {
+        console.error(`[hunt-convergence-alerts-pm] Insert error for ${candidate.state_abbr}:`, insertError.message);
+        continue;
+      }
+
+      alertsTriggered++;
+
+      // Track outcome for grading
+      const outcomeDeadline = new Date();
+      outcomeDeadline.setUTCHours(outcomeDeadline.getUTCHours() + 72);
+
+      try {
+        const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
+          alert_source: 'convergence-alert',
+          state_abbr: candidate.state_abbr,
+          alert_date: today,
+          predicted_outcome: {
+            claim: enrichedReasoning || `${candidate.alert_type} alert: score ${candidate.previous_score}→${candidate.score}`,
+            expected_signals: ['migration-spike-extreme', 'migration-spike-significant', 'weather-event'],
+            severity: candidate.alert_type,
+            score: candidate.score,
+            previous_score: candidate.previous_score,
+            change: candidate.change,
+          },
+          outcome_window_hours: 72,
+          outcome_deadline: outcomeDeadline.toISOString(),
+        });
+        if (outcomeErr) console.error('[hunt-convergence-alerts-pm] Outcome insert failed:', outcomeErr.message);
+      } catch (err) {
+        console.error('[hunt-convergence-alerts-pm] Outcome insert failed:', err);
+      }
+
+      // Deliver to users via Slack (best-effort)
+      const stateName = STATE_NAMES[candidate.state_abbr] ?? candidate.state_abbr;
+      const alertMessage = [
+        `ENVIRONMENTAL ALERT -- ${stateName}`,
+        `Score: ${candidate.score}/100 (was ${candidate.previous_score}/100)`,
+        candidate.reasoning,
+        ``,
+        `Data from duckcountdown.com`,
+      ].join('\n');
+
+      for (const user of (interestedUsers ?? [])) {
+        // Check per-user daily alert limit
+        const { count } = await supabase
+          .from('hunt_convergence_alerts')
+          .select('id', { count: 'exact', head: true })
+          .eq('date', today)
+          .contains('delivered_to', [user.user_id]);
+
+        if ((count ?? 0) > MAX_ALERTS_PER_USER_PER_DAY) {
+          console.log(`[hunt-convergence-alerts-pm] User ${user.user_id} exceeded daily alert limit`);
+          continue;
+        }
+
+        // Only deliver if user has slack delivery configured
+        if (user.alert_delivery !== 'slack') continue;
+
+        const channelId = user.settings?.slack_channel_id as string | undefined;
+        if (!channelId) continue;
+
+        try {
+          const slackToken = Deno.env.get('SLACK_BOT_TOKEN');
+          if (slackToken) {
+            await fetch('https://slack.com/api/chat.postMessage', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${slackToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ channel: channelId, text: alertMessage }),
+            });
+            usersNotified++;
+          }
+        } catch { /* never throw from Slack code */ }
+      }
+    }
+
+    console.log(`[hunt-convergence-alerts-pm] Done: ${alertsTriggered} alerts, ${usersNotified} users notified`);
+
+    const summary = {
+      alerts_triggered: alertsTriggered,
+      users_notified: usersNotified,
+    };
+    await logCronRun({
+      functionName: 'hunt-convergence-alerts-pm',
+      status: 'success',
+      summary,
+      durationMs: Date.now() - startTime,
+    });
+    return cronResponse(summary);
+  } catch (err) {
+    console.error('[hunt-convergence-alerts-pm] Fatal error:', err);
+    await logCronRun({
+      functionName: 'hunt-convergence-alerts-pm',
+      status: 'error',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      durationMs: Date.now() - startTime,
+    });
+    return cronErrorResponse(err instanceof Error ? err.message : 'Unknown error', 500);
+  }
+});

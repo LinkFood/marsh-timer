@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
@@ -154,7 +154,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse({ date: d1, embedded: totalEmbedded, errors, durationMs });
+    return cronResponse({ date: d1, embedded: totalEmbedded, errors, durationMs });
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
@@ -165,6 +165,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(String(err), 500);
+    return cronErrorResponse(String(err), 500);
   }
 });
