@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
@@ -212,7 +212,7 @@ serve(async (req) => {
         summary: { skipped: true, reason: 'outside_migration_season', batch: batch ?? 'all' },
         durationMs: Date.now() - startTime,
       });
-      return successResponse(req, { skipped: true, reason: 'outside_migration_season' });
+      return cronResponse({ skipped: true, reason: 'outside_migration_season' });
     }
 
     const supabase = createSupabaseClient();
@@ -401,7 +401,7 @@ serve(async (req) => {
       durationMs: Date.now() - startTime,
     });
 
-    return successResponse(req, summary);
+    return cronResponse(summary);
   } catch (error) {
     console.error('[hunt-birdcast] Fatal error:', error);
     await logCronRun({
@@ -410,6 +410,6 @@ serve(async (req) => {
       errorMessage: error instanceof Error ? error.message : String(error),
       durationMs: Date.now() - startTime,
     });
-    return errorResponse(req, 'Internal server error', 500);
+    return cronErrorResponse('Internal server error', 500);
   }
 });

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -350,7 +350,7 @@ serve(async (req) => {
         summary: { date, embedded: 0, note: "no data returned from AWDB" },
         durationMs,
       });
-      return successResponse(req, { date, embedded: 0, errors, durationMs });
+      return cronResponse({ date, embedded: 0, errors, durationMs });
     }
 
     // Embed and upsert in batches of 20
@@ -391,7 +391,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse(req, { date, embedded: totalEmbedded, errors, durationMs });
+    return cronResponse({ date, embedded: totalEmbedded, errors, durationMs });
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
@@ -402,6 +402,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(req, String(err), 500);
+    return cronErrorResponse(String(err), 500);
   }
 });

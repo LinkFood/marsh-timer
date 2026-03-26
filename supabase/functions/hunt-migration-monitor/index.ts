@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
@@ -64,7 +64,7 @@ serve(async (req) => {
   const startTime = Date.now();
   try {
     const ebirdKey = Deno.env.get('EBIRD_API_KEY');
-    if (!ebirdKey) return errorResponse(req, 'EBIRD_API_KEY not configured', 500);
+    if (!ebirdKey) return cronErrorResponse('EBIRD_API_KEY not configured', 500);
 
     const body = await req.json().catch(() => ({}));
     const states: string[] = body.states && Array.isArray(body.states) && body.states.length > 0
@@ -329,7 +329,7 @@ serve(async (req) => {
       summary,
       durationMs: Date.now() - startTime,
     });
-    return successResponse(req, summary);
+    return cronResponse(summary);
   } catch (err) {
     console.log(`${LOG_PREFIX} Fatal error: ${err.message}`);
     await logCronRun({
@@ -338,6 +338,6 @@ serve(async (req) => {
       errorMessage: err instanceof Error ? err.message : String(err),
       durationMs: Date.now() - startTime,
     });
-    return errorResponse(req, err.message, 500);
+    return cronErrorResponse(err.message, 500);
   }
 });

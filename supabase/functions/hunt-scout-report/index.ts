@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_NAMES } from '../_shared/states.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -254,7 +254,7 @@ serve(async (req) => {
       summary,
       durationMs: Date.now() - startTime,
     });
-    return successResponse(req, summary);
+    return cronResponse(summary);
   } catch (err) {
     console.error('[hunt-scout-report] Fatal error:', err);
     await logCronRun({
@@ -263,6 +263,6 @@ serve(async (req) => {
       errorMessage: err instanceof Error ? err.message : String(err),
       durationMs: Date.now() - startTime,
     });
-    return errorResponse(req, err instanceof Error ? err.message : 'Unknown error', 500);
+    return cronErrorResponse(err instanceof Error ? err.message : 'Unknown error', 500);
   }
 });
