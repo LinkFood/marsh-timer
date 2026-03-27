@@ -48,7 +48,7 @@ export default function DeckLayout({
   // Side-by-side: map left (60%), panels right (40%) — desktop only
   if (gridPreset === 'side-by-side' && !isMobile) {
     return (
-      <div className="h-full w-full overflow-hidden bg-[#0a0f1a] flex flex-col">
+      <div className="deck-layout h-full w-full overflow-hidden bg-[#0a0f1a] flex flex-col">
         {/* Row 1: BrainHeartbeat */}
         <div className="shrink-0 overflow-hidden">
           <ErrorBoundary fallback={<div className="h-7 bg-red-900/20 flex items-center px-3"><span className="text-[10px] text-red-400">Heartbeat error</span></div>}>
@@ -116,7 +116,7 @@ export default function DeckLayout({
 
   return (
     <div
-      className="h-full w-full overflow-hidden bg-[#0a0f1a]"
+      className="deck-layout h-full w-full overflow-hidden bg-[#0a0f1a]"
       style={{ display: 'grid', gridTemplateRows: gridRows }}
     >
       {/* Row 1: BrainHeartbeat */}

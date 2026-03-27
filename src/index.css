@@ -169,6 +169,9 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+html:has(.deck-layout) {
   overflow: hidden;
 }
 
