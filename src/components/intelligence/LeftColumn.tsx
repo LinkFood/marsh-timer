@@ -79,7 +79,9 @@ export default function LeftColumn({ scores, arcs, historyMap, selectedState, on
           {migration ? (
             <>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ fontSize: 16, fontFamily: 'monospace', fontWeight: 800, color: '#60a5fa' }}>{migration.index.toFixed(1)}</span>
+                <span style={{ fontSize: migration.index >= 1000 ? 12 : 16, fontFamily: 'monospace', fontWeight: 800, color: '#60a5fa' }}>
+                  {migration.index >= 1000 ? `${(migration.index / 1000).toFixed(1)}k` : migration.index.toFixed(1)}
+                </span>
                 <span style={{ fontSize: 8, fontFamily: 'monospace', color: migration.change_pct >= 0 ? '#34d399' : '#f87171', fontWeight: 700 }}>
                   {migration.change_pct >= 0 ? '+' : ''}{migration.change_pct.toFixed(1)}%
                 </span>

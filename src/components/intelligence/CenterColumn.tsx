@@ -92,11 +92,15 @@ export default function CenterColumn({
   return (
     <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Scout brief */}
+      {/* Scout brief — truncated to ~2 sentences */}
       <div style={{ padding: '6px 12px', borderBottom: '1px solid #1f2937', backgroundColor: '#060b1430' }}>
         {report ? (
           <p style={{ fontSize: 9, fontFamily: "'Georgia',serif", color: '#ffffff55', lineHeight: 1.5, margin: 0 }}>
-            {report.brief_text}
+            {(() => {
+              const sentences = report.brief_text.split(/(?<=[.!?])\s+/);
+              const truncated = sentences.slice(0, 3).join(' ');
+              return truncated.length < report.brief_text.length ? truncated + ' …' : truncated;
+            })()}
           </p>
         ) : (
           <p style={{ fontSize: 9, fontFamily: 'monospace', color: '#ffffff15', margin: 0 }}>Awaiting daily brief...</p>

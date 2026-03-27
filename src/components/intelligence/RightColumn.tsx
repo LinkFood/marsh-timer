@@ -48,7 +48,7 @@ interface RightColumnProps {
   totalGraded: number;
   bySource: Array<{ source: string; total: number; accuracy: number }>;
   sources: DataSourceStatus[];
-  sourceSummary: { total: number; online: number; error: number };
+  sourceSummary: { total: number; online: number; stale: number; error: number; static: number; unknown: number };
 }
 
 export default function RightColumn({
@@ -193,7 +193,7 @@ export default function RightColumn({
       {/* Data Sources */}
       <div style={{ padding: '8px 10px' }}>
         <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#ffffff18', letterSpacing: 2, marginBottom: 5 }}>
-          SOURCES &mdash; {sourceSummary.online}/{sourceSummary.total}
+          SOURCES &mdash; {sourceSummary.online + sourceSummary.static}/{sourceSummary.total}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
           {sources.map(d => {

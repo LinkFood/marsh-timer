@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useOpsData } from '@/hooks/useOpsData';
 import { useStateArcs } from '@/hooks/useStateArcs';
 import { useBrainActivity } from '@/hooks/useBrainActivity';
@@ -92,6 +92,14 @@ export default function IntelligencePage() {
   const { totalGraded, bySource } = useTrackRecord();
   const weatherMap = useNationalWeather();
   const { messages, loading: chatLoading, streaming, sendMessage } = useChat('all', selectedState);
+
+  // Auto-select top state on first load so the page isn't empty
+  useEffect(() => {
+    if (!selectedState && scores.size > 0) {
+      const top = Array.from(scores.values()).sort((a, b) => b.score - a.score)[0];
+      if (top) setSelectedState(top.state_abbr);
+    }
+  }, [scores, selectedState]);
 
   // Ticker items from signal feed
   const tickerItems = useMemo(() =>
