@@ -558,8 +558,26 @@ serve(async (req) => {
     if (highSeverityStates.size > 0) {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
       const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+      let triggeredCount = 0;
+      let throttledCount = 0;
 
       for (const state of highSeverityStates) {
+        // Throttle: skip if a compound-risk-alert exists for this state in the last 3 hours
+        const { data: recentScan } = await supabase
+          .from('hunt_knowledge')
+          .select('id')
+          .eq('content_type', 'compound-risk-alert')
+          .eq('state_abbr', state)
+          .gte('created_at', threeHoursAgo)
+          .limit(1)
+          .maybeSingle();
+
+        if (recentScan) {
+          throttledCount++;
+          continue;
+        }
+
         fetch(`${supabaseUrl}/functions/v1/hunt-convergence-scan`, {
           method: 'POST',
           headers: {
@@ -573,9 +591,10 @@ serve(async (req) => {
             trigger_severity: 'high',
           }),
         }).catch(err => console.error(`[convergence-scan] Trigger failed for ${state}:`, err));
+        triggeredCount++;
       }
 
-      console.log(`[hunt-weather-realtime] Triggered convergence scan for ${highSeverityStates.size} states: ${[...highSeverityStates].join(', ')}`);
+      console.log(`[hunt-weather-realtime] Convergence scan: ${triggeredCount} triggered, ${throttledCount} throttled (3hr dedup) out of ${highSeverityStates.size} high-severity states`);
     }
 
     // -----------------------------------------------------------------

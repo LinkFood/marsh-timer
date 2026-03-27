@@ -41,7 +41,7 @@ interface SignalFound {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 20;
+const MAX_PER_RUN = 200;
 
 const DIRECT_QUERY_CONTENT_TYPES = [
   'migration-spike-extreme',

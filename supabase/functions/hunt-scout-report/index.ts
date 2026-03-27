@@ -121,7 +121,7 @@ serve(async (req) => {
     // Dynamic brain count
     const { count: brainCount } = await supabase
       .from('hunt_knowledge')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'estimated', head: true });
     const brainCountStr = brainCount ? `${Math.round(brainCount / 1000)}K+` : '1M+';
 
     // Fetch users with briefs enabled

@@ -60,7 +60,7 @@ serve(async (req: Request) => {
       // Check for new data that reinforces
       const { count: newDataCount } = await supabase
         .from('hunt_knowledge')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'estimated', head: true })
         .eq('state_abbr', syn.state_abbr)
         .neq('content_type', 'ai-synthesis')
         .gt('created_at', syn.created_at);

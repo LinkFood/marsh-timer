@@ -225,7 +225,7 @@ async function checkNewData(supabase: any, alert: any): Promise<FireResult | nul
 
   const { data: entries, count } = await supabase
     .from('hunt_knowledge')
-    .select('content_type, state, created_at', { count: 'exact' })
+    .select('content_type, state, created_at', { count: 'estimated' })
     .eq('content_type', contentType)
     .gt('created_at', since)
     .limit(5);

@@ -240,22 +240,35 @@ Never predict outcomes. State what signals are converging and what happened hist
       console.error(`[${FUNCTION_NAME}] Insert error:`, insertErr.message);
     }
 
-    // 8. Track for grading
-    const outcomeDeadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
-      alert_source: 'compound-risk',
-      state_abbr,
-      alert_date: today,
-      predicted_outcome: {
-        claim: `${convergingCount} domains converging in ${state_abbr}: ${Object.keys(domains).join(', ')}`,
-        expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
-        severity: trigger_severity,
-        converging_domains: convergingCount,
-      },
-      outcome_window_hours: 168,
-      outcome_deadline: outcomeDeadline.toISOString(),
-    });
-    if (outcomeErr) console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, outcomeErr.message);
+    // 8. Track for grading (deduplicate: one outcome per state per day)
+    const { data: existingOutcome } = await supabase
+      .from('hunt_alert_outcomes')
+      .select('id')
+      .eq('alert_source', 'compound-risk')
+      .eq('state_abbr', state_abbr)
+      .eq('alert_date', today)
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingOutcome) {
+      const outcomeDeadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
+        alert_source: 'compound-risk',
+        state_abbr,
+        alert_date: today,
+        predicted_outcome: {
+          claim: `${convergingCount} domains converging in ${state_abbr}: ${Object.keys(domains).join(', ')}`,
+          expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
+          severity: trigger_severity,
+          converging_domains: convergingCount,
+        },
+        outcome_window_hours: 168,
+        outcome_deadline: outcomeDeadline.toISOString(),
+      });
+      if (outcomeErr) console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, outcomeErr.message);
+    } else {
+      console.log(`[${FUNCTION_NAME}] Outcome already exists for ${state_abbr} on ${today}, skipping`);
+    }
 
     const summary = {
       state: state_abbr,

@@ -88,7 +88,7 @@ serve(async (req: Request) => {
     ] = await Promise.all([
       supabase
         .from('hunt_knowledge')
-        .select('*', { count: 'exact', head: true }),
+        .select('*', { count: 'estimated', head: true }),
       supabase
         .from('hunt_cron_log')
         .select('created_at')

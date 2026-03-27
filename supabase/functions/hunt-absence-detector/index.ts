@@ -44,7 +44,7 @@ serve(async (req) => {
       // Recent activity (last 7 days)
       const { count: recentCount } = await supabase
         .from('hunt_knowledge')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'estimated', head: true })
         .in('content_type', BIRD_TYPES)
         .eq('state_abbr', state)
         .gte('created_at', oneWeekAgo.toISOString());
@@ -52,7 +52,7 @@ serve(async (req) => {
       // Baseline activity (8-28 days ago)
       const { count: baselineCount } = await supabase
         .from('hunt_knowledge')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'estimated', head: true })
         .in('content_type', BIRD_TYPES)
         .eq('state_abbr', state)
         .gte('created_at', fourWeeksAgo.toISOString())
