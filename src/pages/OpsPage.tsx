@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, RefreshCw, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Activity, RefreshCw, ChevronDown, ChevronRight, ArrowLeft, Brain } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { useOpsData } from '@/hooks/useOpsData';
+import { useIntelligenceFeed, type IntelItem } from '@/hooks/useIntelligenceFeed';
 
 function timeAgo(iso: string | null | undefined): string {
   if (!iso) return 'never';
@@ -85,8 +86,30 @@ function CronRow({ cron }: { cron: any }) {
   );
 }
 
+const INTEL_BORDER: Record<string, string> = {
+  'correlation-discovery': 'border-l-purple-400',
+  'anomaly-alert': 'border-l-amber-400',
+  'alert-grade': 'border-l-green-400',
+  'compound-risk-alert': 'border-l-red-400',
+  'convergence-score': 'border-l-cyan-400',
+  'disaster-watch': 'border-l-orange-400',
+  'migration-spike-extreme': 'border-l-emerald-400',
+  'migration-spike-significant': 'border-l-emerald-400',
+};
+
+const FEED_TABS: { label: string; value: string | undefined }[] = [
+  { label: 'All', value: undefined },
+  { label: 'Anomalies', value: 'anomaly-alert' },
+  { label: 'Correlations', value: 'correlation-discovery' },
+  { label: 'Grades', value: 'alert-grade' },
+  { label: 'Alerts', value: 'compound-risk-alert' },
+  { label: 'Disaster', value: 'disaster-watch' },
+];
+
 export default function OpsPage() {
   const { data, loading, error, refetch } = useOpsData();
+  const [feedFilter, setFeedFilter] = useState<string | undefined>(undefined);
+  const { items: intelItems, loading: feedLoading } = useIntelligenceFeed(feedFilter);
 
   const totalCrons = Array.isArray(data.crons.crons) ? data.crons.crons.length : 0;
   const lastEmbed = data.brain.content_types.length > 0
@@ -111,8 +134,10 @@ export default function OpsPage() {
     .sort((a, b) => b.count - a.count)
     .map(ct => {
       const ageMs = ct.latest ? Date.now() - new Date(ct.latest).getTime() : Infinity;
+      const ageHours = ageMs / (60 * 60 * 1000);
       const stale = ageMs > 48 * 60 * 60 * 1000;
-      return { ...ct, stale };
+      const freshDot = ageHours < 6 ? 'bg-emerald-400' : ageHours < 24 ? 'bg-amber-400' : 'bg-red-400';
+      return { ...ct, stale, freshDot };
     });
 
   // Alert pie data
@@ -155,7 +180,7 @@ export default function OpsPage() {
             <Activity size={16} className="text-cyan-400" />
             <div className="hidden sm:flex flex-col">
               <span className="text-xs font-display font-bold tracking-widest text-white/90">DUCK COUNTDOWN</span>
-              <span className="text-[7px] tracking-[0.2em] text-white/40 -mt-0.5">OPS DASHBOARD</span>
+              <span className="text-[7px] tracking-[0.2em] text-white/40 -mt-0.5">INTELLIGENCE CONTROL</span>
             </div>
             <span className="text-xs font-display font-bold tracking-widest text-white/90 sm:hidden">OPS</span>
           </div>
@@ -189,6 +214,67 @@ export default function OpsPage() {
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left column */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Intelligence Feed */}
+          <Card title="">
+            <div className="flex items-center gap-2 -mt-3 mb-3">
+              <Brain size={14} className="text-cyan-400" />
+              <h3 className="text-xs font-mono uppercase tracking-widest text-white/50">Intelligence Feed</h3>
+            </div>
+            <div className="flex items-center gap-1 mb-3 flex-wrap">
+              {FEED_TABS.map(tab => (
+                <button
+                  key={tab.label}
+                  onClick={() => setFeedFilter(tab.value)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                    feedFilter === tab.value
+                      ? 'bg-cyan-400/20 text-cyan-400'
+                      : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="max-h-96 overflow-y-auto -mx-4 -mb-4 space-y-0">
+              {feedLoading ? (
+                <>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="px-4 py-3 border-b border-gray-800/30">
+                      <div className="h-3 bg-white/[0.06] rounded animate-pulse w-3/4 mb-2" />
+                      <div className="h-2 bg-white/[0.04] rounded animate-pulse w-1/2" />
+                    </div>
+                  ))}
+                </>
+              ) : intelItems.length === 0 ? (
+                <div className="flex items-center justify-center h-20 text-white/20 text-[10px] font-mono">
+                  No intelligence activity in the last 48 hours
+                </div>
+              ) : (
+                intelItems.map((item: IntelItem) => (
+                  <div
+                    key={item.id}
+                    className={`px-4 py-2 border-b border-gray-800/30 border-l-4 ${
+                      INTEL_BORDER[item.content_type] || 'border-l-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs text-white/80 font-mono truncate flex-1">{item.title}</span>
+                      {item.state_abbr && (
+                        <span className="text-[9px] font-mono bg-cyan-400/15 text-cyan-400 px-1.5 py-0.5 rounded shrink-0">
+                          {item.state_abbr}
+                        </span>
+                      )}
+                      <span className="text-[10px] font-mono text-white/30 shrink-0">{timeAgo(item.created_at)}</span>
+                    </div>
+                    {item.content && (
+                      <p className="text-[10px] font-mono text-white/50 line-clamp-2">{item.content}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+
           {/* Cron Health */}
           <Card title="Cron Health">
             <div className="flex items-center gap-3 mb-3 text-[10px] font-mono">
@@ -318,11 +404,14 @@ export default function OpsPage() {
                           <td className="px-2 py-1 text-right text-white/40">{ct.count.toLocaleString()}</td>
                           <td className="px-2 py-1 text-right text-white/40">{timeAgo(ct.latest)}</td>
                           <td className="px-4 py-1 text-right">
-                            {ct.stale ? (
-                              <span className="text-amber-400">STALE</span>
-                            ) : (
-                              <span className="text-emerald-400">OK</span>
-                            )}
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className={`w-1.5 h-1.5 rounded-full ${ct.freshDot}`} />
+                              {ct.stale ? (
+                                <span className="text-amber-400">STALE</span>
+                              ) : (
+                                <span className="text-emerald-400">OK</span>
+                              )}
+                            </span>
                           </td>
                         </tr>
                       ))}

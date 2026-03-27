@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode, type ReactElement } from 'react';
+import { useState, useMemo, type ReactNode, type ReactElement } from 'react';
 import type { ChatMessage as ChatMessageType, ChatCard } from '@/hooks/useChat';
 import WeatherCard from './cards/WeatherCard';
 import SeasonCard from './cards/SeasonCard';
@@ -7,6 +7,7 @@ import AlertCard from './cards/AlertCard';
 import ConvergenceCard from './cards/ConvergenceCard';
 import PatternCard from './cards/PatternCard';
 import PatternLinksCard from './cards/PatternLinksCard';
+import CrossDomainPatternCard from './cards/CrossDomainPatternCard';
 import { MapPin, Compass, Database } from 'lucide-react';
 
 interface ChatMessageProps {
@@ -123,6 +124,8 @@ function renderCard(card: ChatCard, index: number) {
       );
     case 'pattern-links':
       return <PatternLinksCard key={index} data={card.data as any} />;
+    case 'cross-domain-pattern':
+      return <CrossDomainPatternCard key={index} data={card.data as any} />;
     case 'activity': {
       const d = card.data || {};
       return (
@@ -189,9 +192,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
   }
 
   const cards = Array.isArray(message.cards) ? message.cards : [];
-  const BRAIN_CARD_TYPES = ['pattern', 'source', 'convergence', 'weather', 'activity', 'pattern-links', 'alert'];
+  const BRAIN_CARD_TYPES = ['pattern', 'source', 'convergence', 'weather', 'activity', 'alert'];
   const brainCards = cards.filter(c => BRAIN_CARD_TYPES.includes(c.type));
-  const aiCards = cards.filter(c => !BRAIN_CARD_TYPES.includes(c.type));
+  const narrativeCards = cards.filter(c => c.type === 'pattern-links' || c.type === 'cross-domain-pattern');
+  const aiCards = cards.filter(c => !BRAIN_CARD_TYPES.includes(c.type) && c.type !== 'pattern-links' && c.type !== 'cross-domain-pattern');
+  const [showAllCards, setShowAllCards] = useState(false);
 
   return (
     <div className="flex items-start gap-2 mb-3 animate-in fade-in duration-300">
@@ -199,32 +204,19 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         <Compass className="w-3.5 h-3.5 text-cyan-400/60" />
       </div>
       <div className="max-w-[85%] space-y-2">
-        {/* Brain section — always shown for assistant messages */}
-        <div className="rounded-xl px-3.5 py-2.5 text-xs font-body bg-white/[0.04] border border-cyan-400/30">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Database size={10} className="text-cyan-400/60" />
-            <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-wider">From the Brain</span>
-          </div>
-          {brainCards.length > 0 ? (
-            <div className="space-y-2">
-              {brainCards.map((card, i) => renderCard(card, i))}
-            </div>
-          ) : (
-            <p className="text-[10px] text-white/40">Brain searched — no matching data found</p>
-          )}
-        </div>
-
-        {/* AI interpretation section */}
+        {/* AI Answer — first and prominent */}
         <div className="rounded-xl px-3.5 py-2.5 text-xs font-body bg-white/[0.04] text-white/80 border border-white/[0.08]">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Compass size={10} className="text-white/30" />
-            <span className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">AI Interpretation</span>
-          </div>
           <div className="chat-markdown leading-relaxed">{parsedContent}</div>
           {message.mapAction && (
             <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-cyan-400/50">
               <MapPin className="w-3 h-3" />
               <span>Viewing {message.mapAction.target} on map</span>
+            </div>
+          )}
+          {/* Narrative cards (pattern links, cross-domain) inline with answer */}
+          {narrativeCards.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {narrativeCards.map((card, i) => renderCard(card, i))}
             </div>
           )}
           {aiCards.length > 0 && (
@@ -236,6 +228,29 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
+
+        {/* Evidence section — collapsible brain cards */}
+        {brainCards.length > 0 && (
+          <div className="rounded-xl px-3.5 py-2.5 text-xs font-body bg-white/[0.02] border border-cyan-400/10">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Database size={10} className="text-cyan-400/40" />
+              <span className="text-[10px] font-semibold text-cyan-400/50 uppercase tracking-wider">
+                Evidence ({brainCards.length} matches)
+              </span>
+            </div>
+            <div className="space-y-2">
+              {(showAllCards ? brainCards : brainCards.slice(0, 5)).map((card, i) => renderCard(card, i))}
+            </div>
+            {brainCards.length > 5 && !showAllCards && (
+              <button
+                onClick={() => setShowAllCards(true)}
+                className="mt-2 text-[10px] text-cyan-400/60 hover:text-cyan-400 transition-colors"
+              >
+                Show {brainCards.length - 5} more matches
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

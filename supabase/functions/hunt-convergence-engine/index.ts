@@ -684,6 +684,27 @@ serve(async (req) => {
       summary,
       durationMs: Date.now() - startTime,
     });
+
+    // Fire-and-forget: generate briefs for top 20 states
+    try {
+      const topStates = allResults
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 20)
+        .map(r => r.state_abbr);
+
+      const briefUrl = `${Deno.env.get('SUPABASE_URL') || 'https://rvhyotvklfowklzjahdd.supabase.co'}/functions/v1/hunt-state-brief`;
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+
+      for (const abbr of topStates) {
+        fetch(briefUrl, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state_abbr: abbr }),
+        }).catch(() => {}); // fire-and-forget
+      }
+      console.log(`[hunt-convergence-engine] Triggered briefs for ${topStates.length} states`);
+    } catch { /* best-effort */ }
+
     return successResponse(req, summary);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);

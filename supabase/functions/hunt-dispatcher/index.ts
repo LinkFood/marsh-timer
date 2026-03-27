@@ -166,17 +166,19 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
 
 // The shared system prompt rules appended to every handler's system prompt
 const BRAIN_RULES = `
-SYSTEM CAPABILITY: You have access to 2.4M+ environmental data entries across 55+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 22 automated crons continuously ingest new data.
+SYSTEM CAPABILITY: You have access to 2.4M+ environmental data entries across 55+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 42 automated crons continuously ingest new data.
 
 CRITICAL RULES:
-1. ONLY state facts that come from the provided context data. Never invent data.
-2. When you reference brain data, prefix it with "📊 From our data:" or "📊 Based on [N] brain entries:"
-3. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
-4. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
-5. If you must add general context beyond the data, clearly label it: "General context (not from brain data):"
-6. Never include external URLs, links, or website references in your response. All information comes from the brain's embedded data.
-7. You are an environmental intelligence system, not a chatbot. Lead with data. Be specific — state names, numbers, dates, signal types.
-8. When suggesting follow-up questions, frame them around environmental signals and patterns, not hunting.
+1. ANSWER THE QUESTION FIRST in 2-3 clear, direct sentences. Be opinionated. Lead with what matters most. State your assessment before showing evidence.
+2. THEN provide supporting evidence organized by theme, not as a data dump. Use short paragraphs, not exhaustive lists.
+3. ONLY state facts that come from the provided context data. Never invent data.
+4. When you reference brain data, prefix it with "From our data:" or "Based on [N] brain entries:"
+5. When the brain has NO relevant data, say clearly: "The brain doesn't have specific data on this yet."
+6. NEVER fill in with general knowledge when brain data is missing — acknowledge the gap instead.
+7. If you must add general context beyond the data, clearly label it: "General context (not from brain data):"
+8. Never include external URLs, links, or website references in your response. All information comes from the brain's embedded data.
+9. You are an environmental intelligence system, not a chatbot. Lead with data. Be specific — state names, numbers, dates, signal types.
+10. When suggesting follow-up questions, frame them around environmental signals and patterns, not hunting.
    Good: "What patterns are converging in Idaho right now?" / "How do current conditions compare to last year?" / "What usually follows when these conditions align?"
    Bad: "What patterns should I watch for duck hunting in Idaho?" / "Best spots for deer in Texas?"
 `;
@@ -655,6 +657,31 @@ async function handleRecentActivity(
     patternLinks.forEach(l => {
       contextLines.push(`- ${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`);
     });
+    cards.push({
+      type: 'pattern-links',
+      data: {
+        links: patternLinks.slice(0, 5).map(l => ({
+          source: l.source_title,
+          sourceType: l.source_content_type,
+          matched: l.matched_title,
+          matchedType: l.matched_content_type,
+          similarity: l.similarity,
+          when: l.created_at,
+        })),
+      },
+    });
+    cards.push({
+      type: 'cross-domain-pattern',
+      data: {
+        connections: patternLinks.slice(0, 3).map((l: Record<string, unknown>) => ({
+          source: l.source_title || 'Unknown',
+          sourceType: l.source_content_type || '',
+          matched: l.matched_title || 'Unknown',
+          matchedType: l.matched_content_type || '',
+          similarity: l.similarity || 0,
+        })),
+      },
+    });
   }
 
   return {
@@ -879,11 +906,23 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
         })),
       },
     });
+    cards.push({
+      type: 'cross-domain-pattern',
+      data: {
+        connections: patternLinks.slice(0, 3).map((l: Record<string, unknown>) => ({
+          source: l.source_title || 'Unknown',
+          sourceType: l.source_content_type || '',
+          matched: l.matched_title || 'Unknown',
+          matchedType: l.matched_content_type || '',
+          similarity: l.similarity || 0,
+        })),
+      },
+    });
   }
 
   return {
     cards,
-    systemPrompt: `You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. When historical precedents are provided, explain what happened last time these conditions aligned. Be specific with numbers and states.
+    systemPrompt: `Start with a 2-3 sentence assessment of current conditions and what they mean. You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. When historical precedents are provided, explain what happened last time these conditions aligned. Be specific with numbers and states.
 ${BRAIN_RULES}`,
     userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}${convergenceInsight}\n\nBrain data (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}${historicalInsight}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
@@ -1260,6 +1299,18 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
         })),
       },
     });
+    cards.push({
+      type: 'cross-domain-pattern',
+      data: {
+        connections: patternLinks.slice(0, 3).map((l: Record<string, unknown>) => ({
+          source: l.source_title || 'Unknown',
+          sourceType: l.source_content_type || '',
+          matched: l.matched_title || 'Unknown',
+          matchedType: l.matched_content_type || '',
+          similarity: l.similarity || 0,
+        })),
+      },
+    });
   }
 
   let topStatesContext = '';
@@ -1289,7 +1340,7 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
 
   return {
     cards,
-    systemPrompt: `You are an environmental intelligence analyst with access to a brain containing 2.4M+ embedded data entries across 55+ content types including weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
+    systemPrompt: `Lead with a 2-3 sentence direct answer to the user's question. Then organize supporting evidence by theme. You are an environmental intelligence analyst with access to a brain containing 2.4M+ embedded data entries across 55+ content types including weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
 ${BRAIN_RULES}`,
     userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${convergenceContext}${historicalContext}${webContext}\n\nQuestion: ${query}`,
     _webResults: webResults,

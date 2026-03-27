@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Suspense, lazy, type ReactNode } from 'react';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { FeatureCollection } from 'geojson';
@@ -13,6 +13,8 @@ import PanelDockMobile from './PanelDockMobile';
 import BottomBar from './BottomBar';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
+
+const StateIntelView = lazy(() => import('@/components/StateIntelView'));
 
 interface MurmurationData {
   index: number;
@@ -41,7 +43,7 @@ export default function DeckLayout({
   children,
 }: DeckLayoutProps) {
   const isMobile = useIsMobile();
-  const { gridPreset, panelsCollapsed, mapHeight } = useDeck();
+  const { gridPreset, panelsCollapsed, mapHeight, selectedState } = useDeck();
 
   // Side-by-side: map left (60%), panels right (40%) — desktop only
   if (gridPreset === 'side-by-side' && !isMobile) {
@@ -78,7 +80,13 @@ export default function DeckLayout({
           </div>
           <div className="w-[40%] overflow-hidden border-l border-white/[0.06]">
             <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
-              <PanelDock />
+              {selectedState ? (
+                <Suspense fallback={<div className="flex-1 bg-[#0a0f1a] animate-pulse" />}>
+                  <StateIntelView />
+                </Suspense>
+              ) : (
+                <PanelDock />
+              )}
             </ErrorBoundary>
           </div>
         </div>
@@ -140,10 +148,16 @@ export default function DeckLayout({
         </ErrorBoundary>
       </div>
 
-      {/* Row 4: Panel dock */}
+      {/* Row 4: Panel dock or State Intel */}
       <div className="overflow-hidden">
         <ErrorBoundary fallback={<div className="h-full flex items-center justify-center"><span className="text-[10px] text-red-400">Panel dock error</span></div>}>
-          {isMobile ? <PanelDockMobile /> : <PanelDock />}
+          {selectedState ? (
+            <Suspense fallback={<div className="flex-1 bg-[#0a0f1a] animate-pulse" />}>
+              <StateIntelView />
+            </Suspense>
+          ) : (
+            isMobile ? <PanelDockMobile /> : <PanelDock />
+          )}
         </ErrorBoundary>
       </div>
 

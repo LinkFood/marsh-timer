@@ -474,6 +474,9 @@ verify_jwt = false
 [functions.hunt-historical-news]
 verify_jwt = false
 
+[functions.hunt-intelligence-feed]
+verify_jwt = false
+
 [functions.hunt-query-signal]
 verify_jwt = false
 
@@ -526,6 +529,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.hunt-ops-dashboard]
+verify_jwt = false
+
+[functions.hunt-state-brief]
 verify_jwt = false
 
 [edge_runtime]
