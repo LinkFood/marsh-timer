@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { enrichWithPatternScan } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { transitionArc, fireNarrator } from '../_shared/arcReactor.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -333,6 +334,25 @@ serve(async (req) => {
           errors++;
         } else {
           console.log(`[hunt-alert-grader] Graded ${alert.id}: ${grade}`);
+        }
+
+        // === ARC REACTOR: Transition arc to grade ===
+        try {
+          const { data: linkedArc } = await supabase
+            .from('hunt_state_arcs')
+            .select('id, current_act')
+            .eq('state_abbr', alert.state_abbr)
+            .in('current_act', ['recognition', 'outcome'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (linkedArc) {
+            await transitionArc(supabase, linkedArc.id, 'grade', { grade });
+            fireNarrator(alert.state_abbr || 'US', 'grade_assigned', { arc_id: linkedArc.id, use_opus: true });
+          }
+        } catch (arcErr) {
+          console.error('[hunt-alert-grader] Arc reactor error:', arcErr);
         }
       } catch (alertErr) {
         console.error(`[hunt-alert-grader] Error grading ${alert.id}:`, alertErr);

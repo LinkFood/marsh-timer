@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { callClaude, CLAUDE_MODELS, parseTextContent } from '../_shared/anthropic.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { getOpenArc, createArc, transitionArc, fireNarrator } from '../_shared/arcReactor.ts';
 
 const FUNCTION_NAME = 'hunt-convergence-scan';
 
@@ -268,6 +269,43 @@ Never predict outcomes. State what signals are converging and what happened hist
       if (outcomeErr) console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, outcomeErr.message);
     } else {
       console.log(`[${FUNCTION_NAME}] Outcome already exists for ${state_abbr} on ${today}, skipping`);
+    }
+
+    // === ARC REACTOR: Create or transition arc ===
+    try {
+      const existingArc = await getOpenArc(supabase, state_abbr);
+
+      if (!existingArc) {
+        // No open arc — create directly in recognition (buildup was implicit)
+        const arcResult = await createArc(supabase, state_abbr, 'recognition', {
+          buildup_signals: {
+            domains: Object.keys(domains),
+            convergence_score: domainQueries[7]?.data?.[0]?.score || 0,
+            trigger: `${convergingCount} domains converging: ${Object.keys(domains).join(', ')}`,
+          },
+          recognition_claim: {
+            claim: `${convergingCount} domains converging in ${state_abbr}`,
+            expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
+            pattern_type: 'compound-risk',
+          },
+          outcome_deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+        if (arcResult) fireNarrator(state_abbr, 'arc_created');
+      } else if (existingArc.current_act === 'buildup') {
+        // Transition from buildup to recognition
+        await transitionArc(supabase, existingArc.id, 'recognition', {
+          recognition_claim: {
+            claim: `${convergingCount} domains converging in ${state_abbr}`,
+            expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
+            pattern_type: 'compound-risk',
+          },
+          outcome_deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+        fireNarrator(state_abbr, 'act_transition');
+      }
+      // If arc already in recognition/outcome/grade, don't overwrite
+    } catch (arcErr) {
+      console.error(`[${FUNCTION_NAME}] Arc reactor error:`, arcErr);
     }
 
     const summary = {

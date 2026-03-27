@@ -1,46 +1,203 @@
 # Duck Countdown — CLAUDE.md
 
-## The Thesis
+> **This is the single source of truth.** If it's not in this document, it doesn't exist yet. Every session starts here.
 
-The environment is a system. Duck Countdown is environmental OSINT — an embedding engine that fuses every public data source affecting ecological patterns into one vector space. Animals are biological sensors that detect environmental shifts before instruments do. Migration anomalies predict flooding. Pressure pattern matches precede severe weather. Water level convergence signals drought cascades. The brain doesn't predict — it recognizes. 1M+ entries, 25+ data sources, 25+ content types, 50 states, one vector space. Hunting is one lens into this intelligence. So is agriculture. So is disaster preparedness. The pipeline IS the product.
+---
 
-**THE EMBEDDING LAW:** Every piece of data that enters the system MUST be embedded via Voyage AI → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
+## What This Is
 
-## How the Brain Works
+Duck Countdown is a pattern recognition engine with a self-learning feedback loop. It embeds every public environmental data source into one 512-dimensional vector space — weather, water, seismic, fire, crop, drought, climate indices, satellite, wildlife migration, acoustic, tidal, geomagnetic, phenological — and finds cross-domain connections that no single data source reveals.
+
+The brain doesn't predict. It recognizes. "The last N times these conditions aligned, here's what happened." Then it tracks whether the pattern played out, grades itself, and adjusts confidence for next time. The grading loop is the intelligence. Without it, this is just a search engine.
+
+**This is not a hunting app.** Hunting was the first lens. The brain is domain-agnostic. It works for agriculture, disaster preparedness, ecology, fishing, forestry — any domain where environmental patterns matter. The name "Duck Countdown" stays because it's the brand and the domain.
+
+---
+
+## The Brain
+
+### Pipeline
 
 ```
-INGEST → EMBED → STORE → SCAN → GRADE
+TRIGGER → WATCH → REPORT → GRADE → ANALYZE
 ```
 
-1. **Ingest:** Data enters from 25+ public APIs, bulk downloads, or real-time station feeds
-2. **Embed:** 512-dim vector from Voyage AI (voyage-3-lite) via hunt-generate-embedding
-3. **Store:** hunt_knowledge with content_type, state_abbr, species, effective_date, tags, metadata
-4. **Scan:** scanBrainOnWrite() queries brain for cross-domain pattern matches. If similarity > 0.65, creates hunt_pattern_links and may fire alerts
-5. **Grade:** Alert grader tracks predictions, grades them after outcome window closes, embeds grades back. Brain learns from mistakes.
+Every piece of intelligence follows this arc:
 
-Search and alerts are the same operation. Search = user pulls. Alerts = data pushes. Same RPC, same filters, same vector space.
+1. **Trigger:** Data enters from 25+ APIs, crons fire, embeddings land in hunt_knowledge. scanBrainOnWrite() searches the vector space for cross-domain matches on every write. If similarity > 0.65, creates hunt_pattern_links.
 
-**Show Don't Predict:** "The last N times these conditions aligned, here's what happened." Never "it WILL happen."
+2. **Watch:** Convergence engine scores 50 states daily across 8 weighted domains. When 3+ domains converge in a state, a compound-risk alert fires. The brain is now watching that state.
 
-## Brain State
+3. **Report:** The system makes a claim — not "X will happen" but "this pattern has historically produced X." The claim, its basis, and expected signals are recorded in hunt_alert_outcomes with a deadline (72hr for convergence-alerts, 168hr for compound-risk).
 
-2,184,000+ entries in hunt_knowledge. Growing via crons + event-driven convergence scans. Heading to 3M+.
+4. **Grade:** After the deadline passes, hunt-alert-grader searches for outcome signals (NWS alerts, storm events, weather events) and grades: confirmed, partially_confirmed, missed, or false_alarm. Grades are embedded back into hunt_knowledge — the brain searches its own track record.
 
-**Content types (25+):** storm-event, usgs-water, earthquake-event, photoperiod, noaa-tide, geomagnetic-kp, fire-activity, birdweather-daily, crop-data, drought-weekly, gbif-monthly, climate-index, historical-newspaper, weather-event, nws-alert, birdcast-daily, birdcast-historical, convergence-score, weather-forecast, migration-spike-*, migration-lull, migration-daily, bio-environmental-correlation, bio-absence-signal, alert-grade, alert-calibration, web-discovery, anomaly-alert, correlation-discovery, disaster-watch, hunting-knowledge, species-behavior, du_report, du_alert
+5. **Analyze:** hunt-alert-calibration aggregates grades weekly into rolling accuracy per source and state. hunt-convergence-alerts suppresses future alerts from sources with <40% historical accuracy. The brain gets more honest over time.
 
-**AI Stack:**
-- **Haiku** — intent classification (routing only, 200ms)
-- **Sonnet** — response generation (streaming SSE, 2-4s)
-- **Tavily** — web search when brain results are thin (<3 matches)
-- **Opus** — daily web curator (reviews staged discoveries, auto-embeds good ones)
+### The Embedding Law
 
-**Self-Improving Loop:**
-- hunt-alert-grader: daily, grades predictions as confirmed/partial/missed/false_alarm
-- hunt-alert-calibration: weekly, computes rolling accuracy per source/state
-- hunt-convergence-alerts: suppresses alerts with <40% historical accuracy
-- Grades embedded back into hunt_knowledge — brain searches its own track record
+Every piece of data that enters the system MUST be embedded via Voyage AI (voyage-3-lite, 512-dim) → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
 
-## Cron Schedule (20 scheduled)
+### Brain State (as of 2026-03-26)
+
+- **2,400,000+** entries in hunt_knowledge
+- **55** content types
+- **50** states tracked
+- **Growing** via 20+ crons + event-driven convergence scans
+- **Self-grading loop** active — first grades expected March 27-29, 2026
+
+Content types: storm-event, usgs-water, earthquake-event, photoperiod, noaa-tide, geomagnetic-kp, fire-activity, birdweather-daily, crop-data, drought-weekly, gbif-monthly, climate-index, historical-newspaper, weather-event, nws-alert, birdcast-daily, birdcast-historical, convergence-score, weather-forecast, migration-spike-*, migration-lull, migration-daily, bio-environmental-correlation, bio-absence-signal, alert-grade, alert-calibration, web-discovery, anomaly-alert, correlation-discovery, disaster-watch, hunting-knowledge, species-behavior, du_report, du_alert, compound-risk-alert
+
+### 8-Component Convergence Scoring
+
+Each state gets a daily score from 0-135 across these weighted domains:
+
+| Domain | Max Weight | Source |
+|--------|-----------|--------|
+| Weather | 25 | ASOS stations, Open-Meteo, NWS |
+| Migration | 25 | eBird sighting density |
+| BirdCast | 20 | Radar migration intensity |
+| Solunar | 15 | Lunar phase, feeding windows |
+| Water | 15 | USGS stream gauges |
+| Pattern | 15 | Historical pattern match strength |
+| Photoperiod | 10 | Solar calculations |
+| Tide | 10 | NOAA tidal stations |
+
+---
+
+## What Exists Today
+
+### Backend — Strong
+- 2.4M+ vector embeddings in one searchable brain
+- 52 Deno edge functions (28 brain writers, 5 intelligence layer, 5 self-graders, 5 brain readers, 9 utilities)
+- 20+ scheduled crons feeding data continuously
+- Self-grading loop (alert-grader → alert-calibration → grade suppression)
+- scanBrainOnWrite pattern matching on every data ingest
+- Convergence engine scoring 50 states daily
+- AI chat pipeline: Haiku (intent routing) → Sonnet (streaming response) → Tavily (web search fallback)
+- Opus daily web curator reviewing staged discoveries
+- Ops dashboard at /ops with cron health, brain growth, alert performance
+
+### Frontend — Intelligence Page Started
+- React 18 + TypeScript + Vite + Tailwind
+- Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets
+- 25 lazy-loaded panels in 4 categories (Intelligence, Migration, Weather, Analytics)
+- 7 grid layout presets including Command Center (side-by-side)
+- Panel system: drag, minimize, fullscreen, share, close
+- Streaming AI chat with dynamic prompts
+- Real-time event ticker
+- Brain heartbeat live status
+- Mobile responsive at 375px
+- Google OAuth via Supabase Auth
+- `/intelligence` route (initial build — March 26)
+- StateIntelView component (state-level intelligence when state selected)
+- hunt-state-brief, hunt-intelligence-feed, hunt-convergence-alerts-pm edge functions
+
+### What's Still Missing — The Full Product
+
+The Intelligence Page route exists and the backend functions to support it are deployed. But the synthesis agent — the layer that stitches discrete pipeline steps into coherent narrative arcs per state — is not built yet. The page can show data, but it can't yet show the brain *thinking through a story*: the buildup, the recognition, the outcome, the grade, the reasoning about why it was right or wrong. That synthesis layer is what turns this from a dashboard into a product.
+
+---
+
+## The Intelligence Page (TO BUILD)
+
+### The Vision
+
+A new route at `/intelligence` that becomes the primary experience. Not a dashboard. Not a feed. A window into a system that reasons about environmental patterns in real time and shows its work.
+
+### The Arc Model
+
+Every state that has something happening is a **story** with a narrative arc:
+
+**Act 1 — Buildup:** Signals converge across domains. The brain sees weather shifting, migration patterns deviating, water levels moving. It shows what it's seeing: "4 domains converging in Texas. Pressure dropping 12mb while migration density spiking 340% above baseline."
+
+**Act 2 — Recognition:** The brain searches its history. "The last 14 times I saw this combination in March in Gulf states, 8 resulted in significant weather events within 72 hours. My track record on this pattern type is 62%." It makes a claim — not a prediction, a recognition.
+
+**Act 3 — Outcome:** Reality unfolds. NWS alerts fire or they don't. Storm events get logged or they don't. The brain is watching for confirmation signals in real time.
+
+**Act 4 — Grade:** The grading loop fires. Confirmed, partial, missed, false alarm. And critically — the brain reasons about the grade. Which component was the strong signal? Which was noise? The grade feeds back into future confidence weighting.
+
+### What It Shows (Real-Time, Updates as Crons Fire)
+
+**State Board:** All 50 states, ranked by activity. States with active arcs rise to the top. Each state shows: convergence score, converging domains, which act of the arc it's in, confidence level from historical accuracy. Grouped by severity: Critical, Elevated, Normal, Quiet.
+
+**Live Intelligence Feed:** The brain's activity stream, filtered to what matters. Compound-risk alerts, pattern matches, anomaly detections, correlation discoveries, grading results. Each entry shows the reasoning — why the brain flagged it, what historical patterns it matched, what it expects.
+
+**Pattern Track Record:** The self-grading loop made visible. Per-state accuracy, per-source accuracy, how confidence is shifting over time. "Texas compound-risk calls: 67% confirmed over 12 alerts." This section is sparse until grading data accumulates — show a "Learning..." state.
+
+### The Synthesis Agent (TO BUILD)
+
+The Intelligence Page needs a backend layer that doesn't exist yet — a synthesis agent that stitches discrete pipeline steps into coherent narrative arcs per state. Today, the convergence engine scores, the alert system fires, the grader grades, but nothing synthesizes. Nothing says "Texas has been building for 3 days, here's the full story." This agent:
+
+- Runs continuously (or on every significant data ingest)
+- Maintains arc state per state: which act, what signals are active, what claims are open
+- Produces the narrative that the frontend renders
+- Reasons about grades — which component was right, which was noise
+- Uses the vector space to find connections that no rules-based system would catch
+- Is NOT purely rules-based — rules provide structure (the arc), but the embeddings provide discovery
+
+### Technical Requirements
+
+- Supabase Realtime subscriptions for live updates (postgres_changes on hunt_knowledge, hunt_convergence_scores, hunt_alert_outcomes)
+- New route: `/intelligence` in App.tsx
+- May require `REPLICA IDENTITY FULL` on key tables for filtered Realtime subscriptions
+- Dark theme matching existing site (bg-gray-950, cyan/teal accents)
+- Mobile-first — state board becomes vertical list on mobile
+- The map is NOT on this page — it stays accessible from header as a drill-down tool
+
+---
+
+## Architecture Reference
+
+### Stack
+
+| Layer | Tech |
+|-------|------|
+| Framework | React 18, TypeScript, Vite |
+| Styling | Tailwind CSS |
+| Map | Mapbox GL JS (satellite-streets-v12, globe projection, 3D terrain, fog/atmosphere) |
+| Panel Layout | CSS Grid 12-col |
+| Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`, `/auth`, `/ops`, `/intelligence`) — `/intelligence` is the primary product page |
+| Icons | Lucide React |
+| Fonts | Playfair Display (headings), Lora (body) |
+| Auth | Supabase Auth (Google OAuth) |
+| AI Chat | Haiku (routing) → Sonnet (streaming SSE) → Tavily (web fallback) |
+| AI Curator | Opus (daily web discovery review) |
+| Embeddings | Voyage AI voyage-3-lite (512-dim) |
+| DB | Supabase Postgres + pgvector (512-dim IVFFlat) |
+| Edge Functions | Deno (Supabase Edge Functions) |
+| Hosting | Vercel (frontend, auto-deploy on push) + Supabase (backend) |
+
+### Edge Functions (55 total)
+
+**Brain Writers (28):** hunt-weather-watchdog, hunt-weather-realtime, hunt-migration-monitor, hunt-birdcast, hunt-nasa-power, hunt-nws-monitor, hunt-solunar-precompute, hunt-convergence-engine, hunt-du-map, hunt-du-alerts, hunt-drought-monitor, hunt-inaturalist, hunt-birdweather, hunt-climate-indices, hunt-log, hunt-power-outage, hunt-usfws-survey, hunt-extract-patterns, hunt-historical-news, hunt-gbif, hunt-snow-cover, hunt-snotel, hunt-phenology, hunt-crop-progress, hunt-multi-species, hunt-movebank, hunt-search-trends, hunt-query-signal
+
+**Intelligence Layer (5):** hunt-anomaly-detector, hunt-correlation-engine, hunt-disaster-watch, hunt-absence-detector, hunt-web-curator
+
+**Self-Graders (5):** hunt-forecast-tracker, hunt-migration-report-card, hunt-convergence-report-card, hunt-alert-grader, hunt-alert-calibration
+
+**Brain Readers (8):** hunt-dispatcher, hunt-search, hunt-alerts, hunt-suggested-prompts, hunt-ops-summary, hunt-state-brief, hunt-intelligence-feed, hunt-convergence-alerts-pm
+
+**Utilities (9):** hunt-generate-embedding, hunt-weather, hunt-solunar, hunt-scout-report, hunt-convergence-alerts, hunt-check-user-alerts, hunt-cron-health, hunt-feedback, hunt-recall
+
+All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
+
+### Shared Edge Function Modules (_shared/)
+
+| Module | Purpose |
+|--------|---------|
+| anthropic.ts | callClaude + callClaudeStream + CLAUDE_MODELS + cost calculation |
+| brainScan.ts | scanBrainOnWrite + enrichWithPatternScan |
+| cors.ts | handleCors + getCorsHeaders |
+| cronLog.ts | logCronRun (object signature: functionName, status, summary, errorMessage, durationMs) |
+| embedding.ts | generateEmbedding + batchEmbed (Voyage AI, max 20 per batch) |
+| response.ts | successResponse + errorResponse + cronResponse + cronErrorResponse |
+| supabase.ts | createSupabaseClient (service role) |
+| states.ts | STATE_ABBRS array |
+| tavily.ts | searchWeb (Tavily API, advanced depth) |
+| rateLimit.ts | checkRateLimit |
+
+### Cron Schedule
 
 | Time (UTC) | Function | Purpose |
 |------------|----------|---------|
@@ -48,13 +205,13 @@ Search and alerts are the same operation. Search = user pulls. Alerts = data pus
 | Every 3hr | hunt-nws-monitor | NWS severe weather alerts |
 | 6:00 AM | hunt-weather-watchdog | 50-state forecast + events |
 | 6:30 AM | hunt-nasa-power | NASA POWER satellite |
-| 7:00 AM | hunt-migration-monitor | eBird spike detection (+ brain scan triggers) |
+| 7:00 AM | hunt-migration-monitor | eBird spike detection (+ brain scan) |
 | 7:00 AM | hunt-web-curator | Opus reviews web discoveries |
 | 8:00 AM | hunt-convergence-engine | 50-state convergence scoring |
 | 8:15 AM | hunt-convergence-alerts | Score spike detection (grade-aware) |
 | 9:00 AM | hunt-scout-report | Daily environmental brief |
 | 9:30 AM | hunt-anomaly-detector | Statistical outlier detection (2σ) |
-| 10:00 AM | hunt-birdcast | BirdCast radar migration (+ brain scan triggers) |
+| 10:00 AM | hunt-birdcast | BirdCast radar migration (+ brain scan) |
 | 10:00 AM | hunt-forecast-tracker | Forecast accuracy grading |
 | 10:30 AM | hunt-correlation-engine | Cross-domain pattern discovery |
 | 11:00 AM | hunt-migration-report-card | 7-day migration prediction grading |
@@ -67,47 +224,47 @@ Search and alerts are the same operation. Search = user pulls. Alerts = data pus
 | Sun 2pm | hunt-absence-detector | Bird absence detection |
 | Wed 6am | hunt-disaster-watch | Climate index disaster signatures |
 
-All cron functions MUST call `logCronRun` on EVERY exit path. The `hunt-cron-health` endpoint depends on these logs.
+All cron functions MUST call `logCronRun` on EVERY exit path.
 
-## Edge Functions (52 total)
+### Database Tables (hunt_ prefix)
 
-### Brain Writers
-hunt-weather-watchdog, hunt-weather-realtime, hunt-migration-monitor, hunt-birdcast, hunt-nasa-power, hunt-nws-monitor, hunt-solunar-precompute, hunt-convergence-engine, hunt-du-map, hunt-du-alerts, hunt-drought-monitor, hunt-inaturalist, hunt-birdweather, hunt-climate-indices, hunt-log, hunt-power-outage, hunt-usfws-survey, hunt-extract-patterns, hunt-historical-news, hunt-gbif, hunt-snow-cover, hunt-snotel, hunt-phenology, hunt-crop-progress, hunt-multi-species, hunt-movebank, hunt-search-trends, hunt-query-signal
+**Core Brain:**
+| Table | Purpose |
+|-------|---------|
+| hunt_knowledge | THE BRAIN — 2.4M+ vector embeddings (512-dim IVFFlat) |
+| hunt_pattern_links | Cross-domain pattern correlations from scanBrainOnWrite |
+| hunt_convergence_scores | 50-state daily convergence scores (8 components) |
+| hunt_convergence_alerts | Score spike alerts |
+| hunt_alert_outcomes | Universal alert outcome tracker (claims + deadlines + grades) |
+| hunt_alert_calibration | Rolling accuracy stats per source/state |
+| hunt_cron_log | Cron execution log |
 
-### Intelligence Layer
-hunt-anomaly-detector, hunt-correlation-engine, hunt-disaster-watch, hunt-absence-detector, hunt-web-curator
+**Data:**
+| Table | Purpose |
+|-------|---------|
+| hunt_seasons | Season data per species/state |
+| hunt_migration_history | eBird sighting density (5 years) |
+| hunt_weather_history | Daily weather aggregates (5 years) |
+| hunt_weather_forecast | 16-day forecast per state |
+| hunt_weather_events | Detected weather events |
+| hunt_nws_alerts | NWS severe weather |
+| hunt_solunar_precomputed | 365-day solunar data |
+| hunt_birdcast | Daily BirdCast radar migration |
+| hunt_web_discoveries | Staged web research (Tavily → Opus curator) |
 
-### Self-Graders
-hunt-forecast-tracker, hunt-migration-report-card, hunt-convergence-report-card, hunt-alert-grader, hunt-alert-calibration
+**User:**
+| Table | Purpose |
+|-------|---------|
+| hunt_profiles | User profiles |
+| hunt_user_settings | Preferences, query counts |
+| hunt_conversations | Chat history |
+| hunt_tasks | Token/cost tracking |
+| hunt_deck_configs | Saved panel layouts |
+| hunt_user_alerts | User-configurable alerts |
+| hunt_user_alert_history | Alert notification history |
+| hunt_state_briefs | AI-generated state narrative briefs for Intelligence Page |
 
-### Brain Readers
-hunt-dispatcher (Haiku routes → Sonnet streams), hunt-search, hunt-alerts, hunt-suggested-prompts, hunt-ops-summary
-
-### Utilities
-hunt-generate-embedding, hunt-weather, hunt-solunar, hunt-scout-report, hunt-convergence-alerts, hunt-check-user-alerts, hunt-cron-health, hunt-feedback, hunt-recall, hunt-murmuration-index
-
-All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
-
-## Stack
-
-| Layer | Tech |
-|-------|------|
-| Framework | React 18, TypeScript, Vite |
-| Styling | Tailwind CSS |
-| Map | Mapbox GL JS (satellite-streets-v12, globe projection, 3D terrain, fog/atmosphere) |
-| Panel Layout | CSS Grid 12-col (react-grid-layout removed — crashes in Vite prod) |
-| Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`, `/auth`) |
-| Icons | Lucide React |
-| Fonts | Playfair Display (headings), Lora (body) |
-| OG Tags | Vercel Edge Middleware (`middleware.ts`) |
-| Auth | Supabase Auth (Google OAuth) |
-| AI Chat | Haiku (routing) → Sonnet (streaming SSE) → Tavily (web search) |
-| AI Curator | Opus (daily web discovery review) |
-| Embeddings | Voyage AI voyage-3-lite (512-dim) |
-| DB | Supabase Postgres + pgvector (512-dim IVFFlat) |
-| Edge Functions | Deno (Supabase Edge Functions) |
-
-## Frontend Architecture
+### Frontend Architecture
 
 ```
 src/
@@ -122,166 +279,102 @@ src/
     PanelDockMobile.tsx      # Vertical stack for mobile
     BottomBar.tsx            # Category filters + panel collapse + add panel
   panels/                    # 25 panels (lazy-loaded, error-bounded)
-    PanelRegistry.ts         # All panels cataloged with metadata (refreshInterval, dataSources)
-    PanelWrapper.tsx         # Chrome: drag handle, title, minimize, fullscreen (Portal), share, close
-    WidgetManager.tsx        # Slide-out panel catalog (replaced PanelAddMenu)
+    PanelRegistry.ts         # All panels cataloged with metadata
+    PanelWrapper.tsx         # Chrome: drag handle, title, minimize, fullscreen, share, close
+    WidgetManager.tsx        # Slide-out panel catalog
   components/
-    MapView.tsx              # Mapbox GL — 3D extrusion, fog, feature-state hover, glow effects
-    HeaderBar.tsx            # Brand + subtitle + DeckSelector + GridPresetSelector + species + actions
-    BrainHeartbeat.tsx       # Live status + clickable data source health dropdown (Portal)
+    MapView.tsx              # Mapbox GL — 3D extrusion, fog, feature-state hover
+    HeaderBar.tsx            # Brand + DeckSelector + GridPresetSelector + species + actions
+    BrainHeartbeat.tsx       # Live status + health dropdown
     EventTicker.tsx          # 32px scrolling event strip
-    HuntChat.tsx             # Dynamic prompts, live welcome stats, streaming responses
-    ChatMessage.tsx          # FROM THE BRAIN (expanded card types) + AI INTERPRETATION
-    GridPresetSelector.tsx   # 7 layout presets including Command Center (side-by-side)
-    DeckSelector.tsx         # Save/load deck configurations
-    AlertBell.tsx            # User alert notifications
-    AlertManager.tsx         # Create/manage user-configurable alerts
-    PanelTabs.tsx            # Shared tab strip component
+    HuntChat.tsx             # Streaming AI chat with dynamic prompts
+    ChatMessage.tsx          # Brain cards + AI interpretation
   hooks/                     # 31 data hooks
-  data/                      # types (Species includes 'all'), speciesConfig, seasons, dataSourceCatalog
+  data/                      # types, speciesConfig, seasons, dataSourceCatalog
   lib/                       # supabase, seasonUtils, isobars, terminator, migrationFront, panelShare
+  pages/
+    IntelligencePage.tsx     # /intelligence — the product (brain thinking in real time)
+    OpsPage.tsx              # /ops — system health dashboard
+    StateIntelView.tsx       # Replaces PanelDock when state selected — deep state intelligence view
 ```
 
-## 25 Panels
+### Chat Architecture
 
-**Intelligence:** Convergence Scores (expandable 8-component breakdown), Convergence Alerts, Daily Brief, Pattern Alerts, State Profile, Brain Search, Brain Chat, What's Happening (real-time signal feed), Map View, Pattern Timeline
+7 intents: `weather | solunar | season_info | search | recent_activity | self_assessment | general`
 
-**Migration:** Migration Index, eBird Feed, DU Reports, State Screener
+Each handler returns `HandlerResult { cards, systemPrompt, userContent, mapAction? }`. Streams via SSE or returns JSON fallback. Dynamic prompts via hunt-suggested-prompts (queries live brain activity).
 
-**Weather:** Weather Events, NWS Alerts, Weather Forecast, Solunar
-
-**Analytics:** History Replay, Convergence History, Brain Activity, Admin Console
-
-## Signal Domains (Species Selector)
+### Signal Domains
 
 ```typescript
 type Species = 'all' | 'duck' | 'goose' | 'deer' | 'turkey' | 'dove';
 ```
 
-Default is `'all'` — shows cross-domain environmental convergence. Each species filters convergence weights.
+Default is `'all'` — cross-domain environmental convergence. Each species filters convergence weights. These are biological signal domains, not just game animals.
 
-## Grid Presets
+### Backfill Scripts
 
-Default, Equal Grid (no map), Map Focus, 2 Column, 3 Column, 4 Column, Command Center (side-by-side: map 60% left, panels 40% right)
+Use `orchestrator-v2.ts` for all backfills. Manages concurrency, checkpoints, retries, layered startup.
 
-## Database Tables (hunt_ prefix)
-
-### Core
-| Table | Purpose |
-|-------|---------|
-| hunt_knowledge | **THE BRAIN** — 1M+ vector embeddings (512-dim) |
-| hunt_pattern_links | Cross-domain pattern correlations |
-| hunt_convergence_scores | 50-state daily convergence scores |
-| hunt_convergence_alerts | Score spike alerts + outcome tracking |
-| hunt_alert_outcomes | Universal alert outcome tracker |
-| hunt_alert_calibration | Rolling accuracy stats per source/state |
-| hunt_cron_log | Cron execution log |
-
-### Data
-| Table | Purpose |
-|-------|---------|
-| hunt_seasons | Season data per species/state |
-| hunt_migration_history | eBird sighting density (5 years) |
-| hunt_weather_history | Daily weather aggregates (5 years) |
-| hunt_weather_forecast | 16-day forecast per state |
-| hunt_weather_events | Detected weather events |
-| hunt_nws_alerts | NWS severe weather |
-| hunt_solunar_precomputed | 365-day solunar data |
-| hunt_birdcast | Daily BirdCast radar migration |
-| hunt_web_discoveries | Staged web research (Tavily → Opus curator) |
-
-### User
-| Table | Purpose |
-|-------|---------|
-| hunt_profiles | User profiles |
-| hunt_user_settings | Preferences, query counts |
-| hunt_conversations | Chat history |
-| hunt_tasks | Token/cost tracking |
-| hunt_deck_configs | Saved panel layouts (6 builtin templates) |
-| hunt_user_alerts | User-configurable alerts |
-| hunt_user_alert_history | Alert notification history |
-
-## Backfill Scripts
-
-**Use `orchestrator-v2.ts`** — manages concurrency, checkpoints, retries, and layered startup.
-
-```
+```bash
 VOYAGE_API_KEY=... npx tsx scripts/orchestrator-v2.ts          # Run from checkpoint
 npx tsx scripts/orchestrator-v2.ts --status                     # Show pipe status
 npx tsx scripts/orchestrator-v2.ts --reset                      # Reset checkpoint
 npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe solo
 ```
 
-**Concurrency rules (learned the hard way):**
-- **3 pipes max concurrent** on Supabase Pro. Monitor IO every 20 min before bumping higher.
-- **Layer startup 60s** between pipes — don't slam Supabase with simultaneous writes.
-- **ebird-history is always safe** — rate-limited 200 req/hr, minimal IO.
-- **MAX_RETRIES = 3** — dead APIs (FAA) skip after 3 failures, no infinite loops.
-- **Reset checkpoint** when restarting: set "running" pipes back to "pending".
-- Pass `VOYAGE_API_KEY` env var for direct Voyage embeddings (faster than edge fn fallback).
+---
 
-| Script | Target | Status |
-|--------|--------|--------|
-| orchestrator-v2.ts | 19 pipes, layered concurrent | Active |
-| backfill-storm-events.ts | 300K+ NOAA storm events | Running (1.2M+ done) |
-| correlate-bio-environmental.ts | 10K+ bird↔environment correlations | Done (949) |
-| dedup-storm-events.ts | Remove county-level duplicates | Ready (dry-run first) |
-| backfill-faa-wildlife-strikes.ts | FAA wildlife strikes | Needs CSV download (API down) |
-| backfill-bird-banding.ts | Bird banding data | Needs CSV download |
+## Recent Fixes (March 26, 2026)
 
-## Mapbox Features
+All previously known issues have been resolved and deployed:
 
-- Globe projection with always-on fog/atmosphere + stars
-- 3D fill-extrusion choropleth (states rise by convergence score)
-- Feature-state hover (smooth, no full repaint)
-- Migration front glow layer + animated dash
-- eBird cluster data-driven sizing + color ramp + glow
-- Cinematic flyTo with pitch: 45, bearing: -15
-- 27+ custom layers in 5 categories + 4 presets
-- Default zoom: 4.2 (US fills viewport)
+| Issue | Resolution |
+|-------|-----------|
+| Alert grading at 0% — RPC queried wrong table | DB fixed — RPC now queries hunt_alert_outcomes |
+| 12K duplicate compound-risk outcomes | DB fixed — 11,825 dupes deleted |
+| hunt-alert-grader MAX_PER_RUN too low (20) | Deployed — bumped to 200 |
+| hunt-convergence-scan missing dedup | Deployed — dedup check added |
+| Convergence-scan searched entire 2.4M brain | Deployed — state filter added to vector search |
+| 5 functions used exact count on 2.4M rows | Deployed — changed to estimated count |
+| 15 crons showed "never_run" on ops | Deployed — naming mismatch fixed in EXPECTED_CRONS |
+| weather-realtime fired convergence-scan 2400x/day | Deployed — 3hr throttle added |
+| Map state click not navigating | Fixed March 24 |
+| ALL SIGNALS button broken | Fixed March 24 |
 
-## Shared Edge Function Modules (_shared/)
-
-| Module | Purpose |
-|--------|---------|
-| anthropic.ts | callClaude + callClaudeStream + CLAUDE_MODELS + cost calculation |
-| brainScan.ts | scanBrainOnWrite + enrichWithPatternScan |
-| cors.ts | handleCors + getCorsHeaders |
-| cronLog.ts | logCronRun (object signature: functionName, status, summary, errorMessage, durationMs) |
-| embedding.ts | generateEmbedding + batchEmbed (Voyage AI, max 20 per batch) |
-| response.ts | successResponse + errorResponse |
-| supabase.ts | createSupabaseClient (service role) |
-| states.ts | STATE_ABBRS array |
-| tavily.ts | searchWeb (Tavily API, advanced depth) |
-| rateLimit.ts | checkRateLimit |
-
-## Chat Architecture
-
-7 intents: `weather | solunar | season_info | search | recent_activity | self_assessment | general`
-
-Each handler returns `HandlerResult { cards, systemPrompt, userContent, mapAction? }`. Main function streams via SSE or returns JSON (fallback).
-
-Dynamic prompts via hunt-suggested-prompts edge function (queries live brain activity). Welcome state shows live entry count + alert count.
-
-Card types: weather, season, solunar, convergence, pattern, source, pattern-links, alert, activity
+---
 
 ## Rules
 
-- Mobile-first. Every feature must work on 375px.
-- Brand stays "DUCK COUNTDOWN" with "ENVIRONMENTAL INTELLIGENCE" subtitle.
-- All hunt_ tables share Supabase project with JAC Agent OS — never touch JAC tables.
-- Pin supabase-js@2.84.0 in edge functions. Pin std@0.168.0.
+### Absolute Rules (Break These and Things Die)
+- **THE EMBEDDING LAW:** Every piece of data MUST be embedded via Voyage AI → hunt_knowledge. No exceptions.
+- All hunt_ tables share Supabase project with JAC Agent OS — **NEVER touch JAC tables.**
+- Pin `supabase-js@2.84.0` in edge functions. Pin `std@0.168.0`.
 - NEVER retry 4xx errors — only 5xx and network errors.
-- NEVER run more than 3 backfill pipes simultaneously (Supabase Pro IO budget). Use orchestrator-v2.ts with 60s layered startup. Monitor IO every 20 min.
-- Shared module change → redeploy every function that imports it.
-- Every early-return path calls logCronRun.
+- Every early-return path in cron functions calls `logCronRun`.
+- Shared module change → redeploy EVERY function that imports it.
 - NEVER use `$$` inside pg_cron — use `$cron$`/`$body$`.
 - NEVER use psql or `db execute` — REST API only.
-- ALWAYS embed new data. THE EMBEDDING LAW.
+
+### Performance Rules (Learned the Hard Way)
+- NEVER run more than 3 backfill pipes simultaneously (Supabase Pro IO budget).
+- Use orchestrator-v2.ts with 60s layered startup between pipes.
+- Monitor IO every 20 min when running backfills.
+- NEVER use `{ count: 'exact' }` on hunt_knowledge — use `{ count: 'estimated' }`.
+- Always pass state filter to vector search RPCs when searching for a specific state.
+
+### Design Rules
+- Mobile-first. Every feature must work on 375px.
+- Brand stays "DUCK COUNTDOWN" with "ENVIRONMENTAL INTELLIGENCE" subtitle.
+- Dark theme: bg-gray-950, cyan/teal accents.
+- Fonts: Playfair Display (headings), Lora (body).
+- Show don't predict. "The last N times these conditions aligned, here's what happened." Never "it WILL happen."
 
 ---
+
+## Project Info
 
 **Domain:** duckcountdown.com
 **Repo:** github.com/LinkFood/marsh-timer
 **Hosting:** Vercel (frontend, auto-deploy on push) + Supabase `rvhyotvklfowklzjahdd` (backend)
-**Strategic Roadmap:** /Users/jameschellis/Desktop/JWC/DCD/DCD/DUCK-COUNTDOWN-STRATEGIC-ROADMAP.docx
+**Supabase Plan:** Pro (watch IO budget)

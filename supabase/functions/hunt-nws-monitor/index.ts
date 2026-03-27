@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { getOpenArc, addOutcomeSignal, fireNarrator } from '../_shared/arcReactor.ts';
 
 // NWS API supports filtering by event — fetch only environmentally-relevant alerts
 // Split into batches to keep URLs under length limits
@@ -292,5 +293,31 @@ async function embedAlerts(
     } else {
       console.log(`[hunt-nws-monitor] Embedded ${batch.length} alerts into hunt_knowledge`);
     }
+  }
+
+  // === ARC REACTOR: Check for outcome signals ===
+  try {
+    const severeStates = new Set<string>();
+    for (const item of meta) {
+      if (['Severe', 'Extreme'].includes(item.severity) && item.states?.[0]) {
+        severeStates.add(item.states[0]);
+      }
+    }
+    for (const st of severeStates) {
+      const openArc = await getOpenArc(supabase, st);
+      if (openArc && ['recognition', 'outcome'].includes(openArc.current_act)) {
+        const matchedItem = meta.find(m => m.states?.[0] === st);
+        const eventLabel = matchedItem?.title?.split(' - ')[0] || 'severe weather';
+        await addOutcomeSignal(supabase, openArc.id, {
+          signal: `NWS Alert: ${eventLabel}`,
+          timestamp: new Date().toISOString(),
+          match_type: 'direct_confirmation',
+          source: 'hunt-nws-monitor',
+        }, openArc.outcome_signals || []);
+        fireNarrator(st, 'outcome_signal');
+      }
+    }
+  } catch (arcErr) {
+    console.error('[hunt-nws-monitor] Arc reactor error:', arcErr);
   }
 }

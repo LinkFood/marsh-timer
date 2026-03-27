@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Brain, TrendingUp, TrendingDown, Minus, Shield } from 'lucide-react';
+import { ArrowLeft, Brain, TrendingUp, TrendingDown, Minus, Shield, Zap } from 'lucide-react';
 import { useOpsData } from '@/hooks/useOpsData';
 import { useConvergenceScores, type ConvergenceScore } from '@/hooks/useConvergenceScores';
 import { useIntelligenceFeed, type IntelItem } from '@/hooks/useIntelligenceFeed';
 import { useAlertCalibration } from '@/hooks/useAlertCalibration';
+import { useStateArcs, type StateArc } from '@/hooks/useStateArcs';
+import StateArcCard from '@/components/intelligence/StateArcCard';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -133,6 +135,16 @@ export default function IntelligencePage() {
   const [feedFilter, setFeedFilter] = useState<string | undefined>(undefined);
   const { items: intelItems, loading: feedLoading } = useIntelligenceFeed(feedFilter);
   const { bySource, byState, overallAccuracy, calibrations, loading: calLoading } = useAlertCalibration();
+  const { arcs, loading: arcsLoading } = useStateArcs();
+
+  // Map arcs by state for quick lookup
+  const arcsByState = useMemo(() => {
+    const map = new Map<string, StateArc>();
+    for (const arc of arcs) {
+      if (!map.has(arc.state_abbr)) map.set(arc.state_abbr, arc);
+    }
+    return map;
+  }, [arcs]);
 
   // Sort all states by score descending
   const sortedStates = useMemo(() => {
@@ -183,6 +195,10 @@ export default function IntelligencePage() {
               <span className="text-[8px] font-mono text-white/40 uppercase">Brain</span>
             </div>
             <div className="flex flex-col items-center px-2">
+              <span className="text-sm font-mono font-bold text-orange-400">{arcs.length}</span>
+              <span className="text-[8px] font-mono text-white/40 uppercase">Active Arcs</span>
+            </div>
+            <div className="flex flex-col items-center px-2">
               <span className="text-sm font-mono font-bold text-white">{totalGraded.toLocaleString()}</span>
               <span className="text-[8px] font-mono text-white/40 uppercase">Graded</span>
             </div>
@@ -230,8 +246,15 @@ export default function IntelligencePage() {
                     <span className="w-2 h-2 rounded-full bg-red-400" />
                     <span className="text-[10px] font-mono text-red-400 uppercase tracking-wider">Critical ({tiers.critical.length})</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {tiers.critical.map(s => <StateCard key={s.state_abbr} score={s} navigate={navigate} />)}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {tiers.critical.map(s => {
+                      const arc = arcsByState.get(s.state_abbr);
+                      return arc ? (
+                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => navigate(`/all/${s.state_abbr}`)} />
+                      ) : (
+                        <StateCard key={s.state_abbr} score={s} navigate={navigate} />
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -241,8 +264,15 @@ export default function IntelligencePage() {
                     <span className="w-2 h-2 rounded-full bg-amber-400" />
                     <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider">Elevated ({tiers.elevated.length})</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {tiers.elevated.map(s => <StateCard key={s.state_abbr} score={s} navigate={navigate} />)}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {tiers.elevated.map(s => {
+                      const arc = arcsByState.get(s.state_abbr);
+                      return arc ? (
+                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => navigate(`/all/${s.state_abbr}`)} />
+                      ) : (
+                        <StateCard key={s.state_abbr} score={s} navigate={navigate} />
+                      );
+                    })}
                   </div>
                 </div>
               )}

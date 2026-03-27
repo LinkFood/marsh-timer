@@ -513,6 +513,9 @@ verify_jwt = false
 [functions.hunt-alert-grader]
 verify_jwt = false
 
+[functions.hunt-arc-narrator]
+verify_jwt = false
+
 [functions.hunt-suggested-prompts]
 verify_jwt = false
 

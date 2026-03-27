@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { generateEmbedding, batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { getOpenArc, createArc, transitionArc } from '../_shared/arcReactor.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -684,6 +685,49 @@ serve(async (req) => {
       summary,
       durationMs: Date.now() - startTime,
     });
+
+    // === ARC REACTOR: Detect buildup conditions ===
+    try {
+      for (const r of allResults) {
+        const prev = prevMap.get(r.state_abbr);
+        const scoreDelta = prev ? r.score - prev : 0;
+
+        // Count converging domains (components > 0)
+        const activeDomains: string[] = [];
+        if (r.weather > 0) activeDomains.push('weather');
+        if (r.migration > 0) activeDomains.push('migration');
+        if (r.birdcast > 0) activeDomains.push('birdcast');
+        if (r.solunar > 0) activeDomains.push('solunar');
+        if (r.pattern > 0) activeDomains.push('pattern');
+        if (r.water > 0) activeDomains.push('water');
+
+        if (scoreDelta > 15 && activeDomains.length >= 2) {
+          const existingArc = await getOpenArc(supabase, r.state_abbr);
+          if (!existingArc) {
+            await createArc(supabase, r.state_abbr, 'buildup', {
+              buildup_signals: {
+                domains: activeDomains,
+                convergence_score: r.score,
+                score_trend: [prev || 0, r.score],
+                trigger: `Score rose ${scoreDelta} points, ${activeDomains.length} domains converging`,
+              },
+            });
+          } else if (existingArc.current_act === 'buildup') {
+            // Update existing buildup with latest signals
+            await transitionArc(supabase, existingArc.id, 'buildup', {
+              buildup_signals: {
+                domains: activeDomains,
+                convergence_score: r.score,
+                score_trend: [prev || 0, r.score],
+                trigger: `Score rose ${scoreDelta} points, ${activeDomains.length} domains converging`,
+              },
+            });
+          }
+        }
+      }
+    } catch (arcErr) {
+      console.error('[hunt-convergence-engine] Arc reactor error:', arcErr);
+    }
 
     // Fire-and-forget: generate briefs for top 20 states
     try {

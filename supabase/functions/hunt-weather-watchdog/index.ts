@@ -6,6 +6,7 @@ import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { getOpenArc, addOutcomeSignal, fireNarrator } from '../_shared/arcReactor.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -486,6 +487,36 @@ serve(async (req) => {
       }
     } catch (embedErr) {
       console.error('[hunt-weather-watchdog] Embedding error:', embedErr);
+    }
+
+    // -----------------------------------------------------------------------
+    // 6b. ARC REACTOR: Check for outcome signals from high-severity events
+    // -----------------------------------------------------------------------
+    try {
+      const highSevStates = new Set<string>();
+      for (const evt of allEvents) {
+        if (evt.severity === 'high' && evt.state_abbr) {
+          highSevStates.add(evt.state_abbr);
+        }
+      }
+      for (const st of highSevStates) {
+        const openArc = await getOpenArc(supabase, st);
+        if (openArc && ['recognition', 'outcome'].includes(openArc.current_act)) {
+          const evts = allEvents
+            .filter(e => e.state_abbr === st && e.severity === 'high')
+            .map(e => e.event_type)
+            .join(', ');
+          await addOutcomeSignal(supabase, openArc.id, {
+            signal: `Weather: ${evts}`,
+            timestamp: new Date().toISOString(),
+            match_type: 'direct_confirmation',
+            source: 'hunt-weather-watchdog',
+          }, openArc.outcome_signals || []);
+          fireNarrator(st, 'outcome_signal');
+        }
+      }
+    } catch (arcErr) {
+      console.error('[hunt-weather-watchdog] Arc reactor error:', arcErr);
     }
 
     // -----------------------------------------------------------------------
