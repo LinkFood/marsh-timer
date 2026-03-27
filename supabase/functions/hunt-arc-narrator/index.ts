@@ -40,8 +40,14 @@ serve(async (req) => {
     }
 
     let processed = 0;
+    const HARD_TIMEOUT_MS = 120_000; // Stop at 120s to leave room for logging
+    const MAX_PER_SWEEP = 10; // Process max 10 arcs per invocation
 
-    for (const arc of arcsToProcess) {
+    for (const arc of arcsToProcess.slice(0, isSweep ? MAX_PER_SWEEP : arcsToProcess.length)) {
+      if (Date.now() - startTime > HARD_TIMEOUT_MS) {
+        console.log(`[hunt-arc-narrator] Hit ${HARD_TIMEOUT_MS}ms timeout after ${processed} arcs`);
+        break;
+      }
       try {
         // 1. Gather context
         const today = new Date().toISOString().slice(0, 10);
