@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Brain, Clock, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { useOpsData } from '@/hooks/useOpsData';
 import { useStateArcs, type StateArc } from '@/hooks/useStateArcs';
-import { useBrainJournal, type JournalEntry } from '@/hooks/useBrainJournal';
+import { useBrainJournal, FILTER_PRESETS, type JournalEntry } from '@/hooks/useBrainJournal';
 import { useConvergenceScores } from '@/hooks/useConvergenceScores';
 import CountdownClock from '@/components/intelligence/CountdownClock';
 
@@ -46,7 +46,41 @@ const ACT_COLORS: Record<string, string> = {
   grade: 'bg-emerald-400/20 text-emerald-400',
 };
 
+const ACT_BORDER: Record<string, string> = {
+  buildup: 'border-l-4 border-l-amber-400',
+  recognition: 'border-l-4 border-l-orange-400',
+  outcome: 'border-l-4 border-l-red-400',
+  grade: 'border-l-4 border-l-emerald-400',
+};
+
+const ACT_DOT_COLOR: Record<string, string> = {
+  buildup: 'bg-amber-400',
+  recognition: 'bg-orange-400',
+  outcome: 'bg-red-400',
+  grade: 'bg-emerald-400',
+};
+
+const JOURNAL_TABS: { key: string; label: string }[] = [
+  { key: 'brain', label: 'Brain Activity' },
+  { key: 'all', label: 'All' },
+  { key: 'weather', label: 'Weather' },
+  { key: 'migration', label: 'Migration' },
+  { key: 'alerts', label: 'Alerts' },
+  { key: 'grades', label: 'Grades' },
+];
+
 // ── Helpers ──
+
+function renderNarrative(text: string): JSX.Element {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  return (
+    <span>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? <strong key={i} className="text-white/90">{part}</strong> : part
+      )}
+    </span>
+  );
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -83,6 +117,13 @@ function groupByDay(entries: JournalEntry[]): { date: string; label: string; ent
   });
 }
 
+function getArcTier(arc: StateArc, score: number): 'critical' | 'elevated' | 'active' {
+  if (arc.current_act === 'grade') return 'critical';
+  if (arc.current_act === 'outcome' && score >= 60) return 'critical';
+  if (arc.current_act === 'recognition' || arc.current_act === 'outcome') return 'elevated';
+  return 'active';
+}
+
 // ── Journal Entry Component ──
 
 function JournalRow({ entry, expanded, onToggle }: { entry: JournalEntry; expanded: boolean; onToggle: () => void }) {
@@ -113,14 +154,14 @@ function JournalRow({ entry, expanded, onToggle }: { entry: JournalEntry; expand
               </span>
             )}
             {entry.signal_weight > 1.2 && (
-              <span className="text-[8px] font-mono text-amber-400/60">×{entry.signal_weight.toFixed(1)}</span>
+              <span className="text-[8px] font-mono text-amber-400/60">x{entry.signal_weight.toFixed(1)}</span>
             )}
             <span className="ml-auto shrink-0 text-white/20">
               {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             </span>
           </div>
           <p className={`text-[11px] font-mono text-white/70 ${expanded ? '' : 'line-clamp-2'}`}>
-            {entry.title}
+            {renderNarrative(entry.title)}
           </p>
         </div>
       </button>
@@ -129,7 +170,7 @@ function JournalRow({ entry, expanded, onToggle }: { entry: JournalEntry; expand
       {expanded && (
         <div className="pl-[28px] pr-4 pb-3">
           <div className="bg-white/[0.02] rounded-lg p-3 border border-white/[0.06] text-[10px] font-mono text-white/60 leading-relaxed whitespace-pre-wrap">
-            {entry.content}
+            {renderNarrative(entry.content)}
           </div>
           {entry.metadata && Object.keys(entry.metadata).length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
@@ -146,31 +187,105 @@ function JournalRow({ entry, expanded, onToggle }: { entry: JournalEntry; expand
   );
 }
 
-// ── Active Arc Banner ──
+// ── Arc Banner — Critical Tier (full card) ──
 
-function ArcBanner({ arc }: { arc: StateArc }) {
+function ArcBannerFull({ arc, score, selected, onClick }: { arc: StateArc; score: number; selected: boolean; onClick: () => void }) {
   const actColor = ACT_COLORS[arc.current_act] || 'bg-white/10 text-white/50';
+  const borderColor = ACT_BORDER[arc.current_act] || '';
   const domains = Array.isArray((arc.buildup_signals as Record<string, unknown>)?.domains)
     ? ((arc.buildup_signals as Record<string, unknown>).domains as string[])
     : [];
 
   return (
-    <div className="bg-gray-900/80 border border-gray-800 rounded-lg p-3 flex items-center gap-3">
-      <span className={`text-[8px] font-mono uppercase px-2 py-1 rounded ${actColor}`}>
-        {arc.current_act}
-      </span>
-      <div className="min-w-0 flex-1">
-        <span className="text-[11px] font-mono text-white/80">
-          {arc.state_abbr} — {domains.length > 0 ? `${domains.length} domains` : 'arc active'}
-        </span>
+    <button onClick={onClick} className="w-full text-left">
+      <div className={`bg-gray-900/80 border border-gray-800 rounded-lg p-4 ${borderColor} ${selected ? 'ring-1 ring-cyan-400/40' : ''}`}>
+        <div className="flex items-center gap-3 mb-2">
+          <span className="text-lg font-mono font-bold text-cyan-400">{score}</span>
+          <span className="text-[8px] text-white/30 font-mono">/ 135</span>
+          <span className={`text-[8px] font-mono uppercase px-2 py-1 rounded ${actColor}`}>
+            {arc.current_act}
+          </span>
+          <span className="text-[12px] font-mono font-bold text-white/90 ml-auto">{arc.state_abbr}</span>
+          {arc.outcome_deadline && (
+            <CountdownClock deadline={arc.outcome_deadline} />
+          )}
+        </div>
+        {domains.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {domains.map(d => (
+              <span key={d} className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-cyan-400/10 text-cyan-400/60">
+                {d}
+              </span>
+            ))}
+          </div>
+        )}
         {arc.narrative && (
-          <p className="text-[9px] font-mono text-white/40 line-clamp-1 mt-0.5">{arc.narrative}</p>
+          <p className="text-[10px] font-mono text-white/50 line-clamp-2">
+            {renderNarrative(arc.narrative)}
+          </p>
         )}
       </div>
-      {arc.outcome_deadline && (
-        <CountdownClock deadline={arc.outcome_deadline} />
-      )}
-    </div>
+    </button>
+  );
+}
+
+// ── Arc Banner — Elevated Tier (medium card) ──
+
+function ArcBannerMedium({ arc, score, selected, onClick }: { arc: StateArc; score: number; selected: boolean; onClick: () => void }) {
+  const actColor = ACT_COLORS[arc.current_act] || 'bg-white/10 text-white/50';
+  const borderColor = ACT_BORDER[arc.current_act] || '';
+  const domains = Array.isArray((arc.buildup_signals as Record<string, unknown>)?.domains)
+    ? ((arc.buildup_signals as Record<string, unknown>).domains as string[])
+    : [];
+
+  return (
+    <button onClick={onClick} className="w-full text-left">
+      <div className={`bg-gray-900/80 border border-gray-800 rounded-lg p-3 ${borderColor} ${selected ? 'ring-1 ring-cyan-400/40' : ''}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-mono font-bold text-cyan-400">{score}</span>
+          <span className={`text-[8px] font-mono uppercase px-1.5 py-0.5 rounded ${actColor}`}>
+            {arc.current_act}
+          </span>
+          <span className="text-[11px] font-mono font-bold text-white/80 ml-auto">{arc.state_abbr}</span>
+        </div>
+        {domains.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1">
+            {domains.slice(0, 4).map(d => (
+              <span key={d} className="text-[7px] font-mono px-1 py-0.5 rounded bg-cyan-400/10 text-cyan-400/60">
+                {d}
+              </span>
+            ))}
+            {domains.length > 4 && (
+              <span className="text-[7px] font-mono text-white/30">+{domains.length - 4}</span>
+            )}
+          </div>
+        )}
+        {arc.narrative && (
+          <p className="text-[9px] font-mono text-white/40 line-clamp-1">
+            {renderNarrative(arc.narrative)}
+          </p>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ── Arc Pill — Active Tier (compact) ──
+
+function ArcPill({ arc, score, selected, onClick }: { arc: StateArc; score: number; selected: boolean; onClick: () => void }) {
+  const dotColor = ACT_DOT_COLOR[arc.current_act] || 'bg-white/30';
+
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono whitespace-nowrap transition-colors ${
+        selected ? 'bg-cyan-400/20 text-cyan-400' : 'bg-gray-900/60 text-white/50 hover:bg-white/[0.04] hover:text-white/70'
+      }`}
+    >
+      <span className="font-bold">{arc.state_abbr}</span>
+      <span className="text-white/30">{score}</span>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+    </button>
   );
 }
 
@@ -182,13 +297,27 @@ export default function IntelligencePage() {
   const { scores } = useConvergenceScores();
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { entries, loading: journalLoading } = useBrainJournal(stateFilter);
+  const [journalTab, setJournalTab] = useState('brain');
+  const { entries, loading: journalLoading } = useBrainJournal(stateFilter, journalTab);
 
-  // States with active arcs, sorted by score
-  const activeArcStates = useMemo(() => {
-    return arcs
-      .map(a => ({ ...a, score: scores.get(a.state_abbr)?.score || 0 }))
+  // States with active arcs, sorted by score, grouped into tiers
+  const tieredArcs = useMemo(() => {
+    const withScore = arcs
+      .map(a => ({ arc: a, score: scores.get(a.state_abbr)?.score || 0 }))
       .sort((a, b) => b.score - a.score);
+
+    const critical: typeof withScore = [];
+    const elevated: typeof withScore = [];
+    const active: typeof withScore = [];
+
+    for (const item of withScore) {
+      const tier = getArcTier(item.arc, item.score);
+      if (tier === 'critical') critical.push(item);
+      else if (tier === 'elevated') elevated.push(item);
+      else active.push(item);
+    }
+
+    return { critical, elevated, active };
   }, [arcs, scores]);
 
   // Top states by score (for filter pills)
@@ -203,6 +332,10 @@ export default function IntelligencePage() {
 
   const totalGraded = opsData.alerts.confirmed + opsData.alerts.partial + opsData.alerts.missed + opsData.alerts.false_alarm;
   const systemHealthy = opsData.crons.error_count === 0;
+
+  const handleArcClick = (stateAbbr: string) => {
+    setStateFilter(stateFilter === stateAbbr ? null : stateAbbr);
+  };
 
   if (opsLoading && journalLoading) {
     return (
@@ -237,12 +370,19 @@ export default function IntelligencePage() {
               <span className="text-sm font-mono font-bold text-orange-400">{arcs.length}</span>
               <span className="text-[8px] font-mono text-white/40">arcs</span>
             </div>
-            <div className="flex flex-col items-center px-2">
-              <span className={`text-sm font-mono font-bold ${opsData.alerts.accuracy >= 60 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {opsData.alerts.accuracy}%
-              </span>
-              <span className="text-[8px] font-mono text-white/40">accuracy</span>
-            </div>
+            {totalGraded < 10 ? (
+              <div className="flex flex-col items-center px-2">
+                <span className="text-[9px] font-mono text-white/30 italic">Learning</span>
+                <span className="text-[8px] font-mono text-white/40">{totalGraded}/10</span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center px-2">
+                <span className={`text-sm font-mono font-bold ${opsData.alerts.accuracy >= 60 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {opsData.alerts.accuracy}%
+                </span>
+                <span className="text-[8px] font-mono text-white/40">accuracy</span>
+              </div>
+            )}
             <span className={`w-2 h-2 rounded-full shrink-0 ${systemHealthy ? 'bg-emerald-400' : 'bg-red-400'}`} />
           </div>
         </div>
@@ -250,18 +390,67 @@ export default function IntelligencePage() {
 
       <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
 
-        {/* ── Active Arcs ── */}
-        {activeArcStates.length > 0 && (
+        {/* ── Critical Arcs ── */}
+        {tieredArcs.critical.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Clock size={12} className="text-orange-400" />
-              <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Active Arcs</span>
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+              <span className="text-[10px] font-mono text-red-400/80 uppercase tracking-wider font-bold">Critical</span>
+              <span className="text-[9px] font-mono text-white/20">({tieredArcs.critical.length})</span>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              {tieredArcs.critical.map(({ arc, score }) => (
+                <ArcBannerFull
+                  key={arc.id}
+                  arc={arc}
+                  score={score}
+                  selected={stateFilter === arc.state_abbr}
+                  onClick={() => handleArcClick(arc.state_abbr)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Elevated Arcs ── */}
+        {tieredArcs.elevated.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-orange-400" />
+              <span className="text-[10px] font-mono text-orange-400/80 uppercase tracking-wider font-bold">Elevated</span>
+              <span className="text-[9px] font-mono text-white/20">({tieredArcs.elevated.length})</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {activeArcStates.map(a => (
-                <button key={a.id} onClick={() => setStateFilter(stateFilter === a.state_abbr ? null : a.state_abbr)}>
-                  <ArcBanner arc={a} />
-                </button>
+              {tieredArcs.elevated.map(({ arc, score }) => (
+                <ArcBannerMedium
+                  key={arc.id}
+                  arc={arc}
+                  score={score}
+                  selected={stateFilter === arc.state_abbr}
+                  onClick={() => handleArcClick(arc.state_abbr)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Active Arcs (Buildup) — Compact Pills ── */}
+        {tieredArcs.active.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Clock size={12} className="text-amber-400/60" />
+              <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Active</span>
+              <span className="text-[9px] font-mono text-white/20">({tieredArcs.active.length})</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {tieredArcs.active.map(({ arc, score }) => (
+                <ArcPill
+                  key={arc.id}
+                  arc={arc}
+                  score={score}
+                  selected={stateFilter === arc.state_abbr}
+                  onClick={() => handleArcClick(arc.state_abbr)}
+                />
               ))}
             </div>
           </div>
@@ -287,6 +476,23 @@ export default function IntelligencePage() {
               }`}
             >
               {abbr}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Journal Type Filter Tabs ── */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide pb-1">
+          {JOURNAL_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setJournalTab(tab.key)}
+              className={`px-3 py-1.5 rounded text-[10px] font-mono whitespace-nowrap transition-colors ${
+                journalTab === tab.key
+                  ? 'bg-cyan-400/15 text-cyan-400 border border-cyan-400/30'
+                  : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04] border border-transparent'
+              }`}
+            >
+              {tab.label}
             </button>
           ))}
         </div>
