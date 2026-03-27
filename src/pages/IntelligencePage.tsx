@@ -1,24 +1,30 @@
 import { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Brain, TrendingUp, TrendingDown, Minus, Shield, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Brain, Clock, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { useOpsData } from '@/hooks/useOpsData';
-import { useConvergenceScores, type ConvergenceScore } from '@/hooks/useConvergenceScores';
-import { useIntelligenceFeed, type IntelItem } from '@/hooks/useIntelligenceFeed';
-import { useAlertCalibration } from '@/hooks/useAlertCalibration';
 import { useStateArcs, type StateArc } from '@/hooks/useStateArcs';
-import StateArcCard from '@/components/intelligence/StateArcCard';
-import ArcDetailView from '@/components/intelligence/ArcDetailView';
+import { useBrainJournal, type JournalEntry } from '@/hooks/useBrainJournal';
+import { useConvergenceScores } from '@/hooks/useConvergenceScores';
+import CountdownClock from '@/components/intelligence/CountdownClock';
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── Content type display config ──
 
-function timeAgo(iso: string | null | undefined): string {
-  if (!iso) return 'never';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60000) return '<1m';
-  if (ms < 3600000) return `${Math.floor(ms / 60000)}m`;
-  if (ms < 86400000) return `${Math.floor(ms / 3600000)}h`;
-  return `${Math.floor(ms / 86400000)}d`;
-}
+const TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  'compound-risk-alert': { label: 'COMPOUND RISK', color: 'text-red-400 border-red-400/40', icon: '🔴' },
+  'convergence-score':   { label: 'CONVERGENCE', color: 'text-cyan-400 border-cyan-400/40', icon: '📊' },
+  'anomaly-alert':       { label: 'ANOMALY', color: 'text-amber-400 border-amber-400/40', icon: '⚡' },
+  'correlation-discovery': { label: 'CORRELATION', color: 'text-purple-400 border-purple-400/40', icon: '🔗' },
+  'alert-grade':         { label: 'GRADE', color: 'text-emerald-400 border-emerald-400/40', icon: '✓' },
+  'arc-grade-reasoning': { label: 'POST-MORTEM', color: 'text-emerald-300 border-emerald-300/40', icon: '🧠' },
+  'arc-fingerprint':     { label: 'ARC CLOSED', color: 'text-white/50 border-white/20', icon: '📁' },
+  'state-brief':         { label: 'DAILY BRIEF', color: 'text-cyan-300 border-cyan-300/40', icon: '📋' },
+  'disaster-watch':      { label: 'DISASTER WATCH', color: 'text-orange-400 border-orange-400/40', icon: '🌀' },
+  'migration-spike-extreme': { label: 'MIGRATION SPIKE', color: 'text-emerald-400 border-emerald-400/40', icon: '🦆' },
+  'migration-spike-significant': { label: 'MIGRATION', color: 'text-emerald-300 border-emerald-300/40', icon: '🦆' },
+  'nws-alert':           { label: 'NWS ALERT', color: 'text-red-300 border-red-300/40', icon: '⚠️' },
+  'weather-event':       { label: 'WEATHER', color: 'text-blue-400 border-blue-400/40', icon: '🌧️' },
+  'bio-absence-signal':  { label: 'ABSENCE', color: 'text-gray-400 border-gray-400/40', icon: '👻' },
+};
 
 const STATE_NAMES: Record<string, string> = {
   AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",
@@ -33,415 +39,300 @@ const STATE_NAMES: Record<string, string> = {
   VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming",
 };
 
-const COMPONENT_LABELS: { key: keyof ConvergenceScore; label: string; color: string }[] = [
-  { key: 'weather_component', label: 'WX', color: 'bg-blue-400/20 text-blue-300' },
-  { key: 'migration_component', label: 'MIG', color: 'bg-emerald-400/20 text-emerald-300' },
-  { key: 'birdcast_component', label: 'BIRD', color: 'bg-green-400/20 text-green-300' },
-  { key: 'water_component', label: 'H2O', color: 'bg-sky-400/20 text-sky-300' },
-  { key: 'solunar_component', label: 'SOL', color: 'bg-yellow-400/20 text-yellow-300' },
-  { key: 'pattern_component', label: 'PAT', color: 'bg-purple-400/20 text-purple-300' },
-  { key: 'photoperiod_component', label: 'PHO', color: 'bg-orange-400/20 text-orange-300' },
-  { key: 'tide_component', label: 'TIDE', color: 'bg-teal-400/20 text-teal-300' },
-];
-
-function scoreTier(score: number): { border: string; bg: string; text: string; label: string } {
-  if (score >= 75) return { border: 'border-red-400/60', bg: 'bg-red-400/10', text: 'text-red-400', label: 'Critical' };
-  if (score >= 50) return { border: 'border-amber-400/60', bg: 'bg-amber-400/10', text: 'text-amber-400', label: 'Elevated' };
-  if (score >= 25) return { border: 'border-cyan-400/60', bg: 'bg-cyan-400/10', text: 'text-cyan-400', label: 'Normal' };
-  return { border: 'border-white/10', bg: 'bg-white/[0.03]', text: 'text-white/30', label: 'Quiet' };
-}
-
-const INTEL_BORDER: Record<string, string> = {
-  'correlation-discovery': 'border-l-purple-400',
-  'anomaly-alert': 'border-l-amber-400',
-  'alert-grade': 'border-l-green-400',
-  'compound-risk-alert': 'border-l-red-400',
-  'convergence-score': 'border-l-cyan-400',
-  'disaster-watch': 'border-l-orange-400',
-  'migration-spike-extreme': 'border-l-emerald-400',
-  'migration-spike-significant': 'border-l-emerald-400',
+const ACT_COLORS: Record<string, string> = {
+  buildup: 'bg-amber-400/20 text-amber-400',
+  recognition: 'bg-orange-400/20 text-orange-400',
+  outcome: 'bg-red-400/20 text-red-400',
+  grade: 'bg-emerald-400/20 text-emerald-400',
 };
 
-const FEED_TABS: { label: string; value: string | undefined }[] = [
-  { label: 'All', value: undefined },
-  { label: 'Compound Risk', value: 'compound-risk-alert' },
-  { label: 'Anomalies', value: 'anomaly-alert' },
-  { label: 'Correlations', value: 'correlation-discovery' },
-  { label: 'Grades', value: 'alert-grade' },
-];
+// ── Helpers ──
 
-// ── Sub-components ───────────────────────────────────────────────────
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const isToday = d.toDateString() === now.toDateString();
+  const isYesterday = new Date(now.getTime() - 86400000).toDateString() === d.toDateString();
 
-function Card({ title, children, className = '' }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-gray-900 rounded-lg border border-gray-800 p-4 ${className}`}>
-      {title && <h3 className="text-xs font-mono uppercase tracking-widest text-white/50 mb-3">{title}</h3>}
-      {children}
-    </div>
-  );
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  if (diffMs < 60000) return 'just now';
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
-function StateCard({ score, navigate }: { score: ConvergenceScore; navigate: (path: string) => void }) {
-  const tier = scoreTier(score.score);
-  const topComponents = COMPONENT_LABELS
-    .filter(c => (score[c.key] as number) > 0)
-    .sort((a, b) => (score[b.key] as number) - (score[a.key] as number))
-    .slice(0, 3);
+function groupByDay(entries: JournalEntry[]): { date: string; label: string; entries: JournalEntry[] }[] {
+  const groups = new Map<string, JournalEntry[]>();
+  const now = new Date();
+
+  for (const entry of entries) {
+    const d = new Date(entry.created_at);
+    const key = d.toISOString().slice(0, 10);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(entry);
+  }
+
+  return Array.from(groups.entries()).map(([date, entries]) => {
+    const d = new Date(date + 'T12:00:00');
+    const isToday = d.toDateString() === now.toDateString();
+    const isYesterday = new Date(now.getTime() - 86400000).toDateString() === d.toDateString();
+    const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    return { date, label, entries };
+  });
+}
+
+// ── Journal Entry Component ──
+
+function JournalRow({ entry, expanded, onToggle }: { entry: JournalEntry; expanded: boolean; onToggle: () => void }) {
+  const cfg = TYPE_CONFIG[entry.content_type] || { label: entry.content_type, color: 'text-white/40 border-white/20', icon: '•' };
 
   return (
-    <button
-      onClick={() => navigate(`/all/${score.state_abbr}`)}
-      className={`${tier.bg} border ${tier.border} rounded-lg p-2.5 flex items-start gap-2.5 hover:brightness-125 transition-all text-left w-full`}
-    >
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-mono font-bold text-sm shrink-0 ${tier.bg} ${tier.text}`}>
-        {Math.round(score.score)}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-xs font-mono font-bold text-white/90">{score.state_abbr}</span>
-          <span className="text-[8px] font-mono text-white/30 truncate">{STATE_NAMES[score.state_abbr] || ''}</span>
+    <div className="group">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition-colors text-left"
+      >
+        {/* Timeline dot + line */}
+        <div className="flex flex-col items-center shrink-0 pt-0.5">
+          <div className={`w-2 h-2 rounded-full border ${cfg.color} shrink-0`} />
+          <div className="w-px flex-1 bg-white/[0.06] mt-1" />
         </div>
-        <div className="flex flex-wrap gap-0.5">
-          {topComponents.map(c => (
-            <span key={c.key} className={`text-[8px] px-1 py-0.5 rounded font-mono ${c.color}`}>
-              {c.label}
+
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-[10px] font-mono text-white/30">{formatTime(entry.created_at)}</span>
+            <span className={`text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border ${cfg.color}`}>
+              {cfg.label}
             </span>
-          ))}
+            {entry.state_abbr && (
+              <span className="text-[9px] font-mono bg-cyan-400/10 text-cyan-400/80 px-1.5 py-0.5 rounded">
+                {entry.state_abbr}
+              </span>
+            )}
+            {entry.signal_weight > 1.2 && (
+              <span className="text-[8px] font-mono text-amber-400/60">×{entry.signal_weight.toFixed(1)}</span>
+            )}
+            <span className="ml-auto shrink-0 text-white/20">
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+          </div>
+          <p className={`text-[11px] font-mono text-white/70 ${expanded ? '' : 'line-clamp-2'}`}>
+            {entry.title}
+          </p>
         </div>
-      </div>
-    </button>
-  );
-}
+      </button>
 
-function AccuracyBar({ label, accuracy, total }: { label: string; accuracy: number; total: number }) {
-  const barColor = accuracy >= 70 ? 'bg-emerald-400' : accuracy >= 50 ? 'bg-amber-400' : 'bg-red-400';
-  return (
-    <div className="flex items-center gap-2 text-[10px] font-mono">
-      <span className="w-28 text-white/50 truncate">{label}</span>
-      <div className="flex-1 h-2 bg-white/[0.06] rounded-full overflow-hidden">
-        <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${accuracy}%` }} />
-      </div>
-      <span className="w-10 text-right text-white/70">{accuracy}%</span>
-      <span className="w-10 text-right text-white/30">n={total}</span>
+      {/* Expanded content */}
+      {expanded && (
+        <div className="pl-[28px] pr-4 pb-3">
+          <div className="bg-white/[0.02] rounded-lg p-3 border border-white/[0.06] text-[10px] font-mono text-white/60 leading-relaxed whitespace-pre-wrap">
+            {entry.content}
+          </div>
+          {entry.metadata && Object.keys(entry.metadata).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {Object.entries(entry.metadata).slice(0, 6).map(([k, v]) => (
+                <span key={k} className="text-[8px] font-mono text-white/20 bg-white/[0.03] px-1.5 py-0.5 rounded">
+                  {k}: {typeof v === 'object' ? JSON.stringify(v).slice(0, 40) : String(v).slice(0, 40)}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Main Page ────────────────────────────────────────────────────────
+// ── Active Arc Banner ──
+
+function ArcBanner({ arc }: { arc: StateArc }) {
+  const actColor = ACT_COLORS[arc.current_act] || 'bg-white/10 text-white/50';
+  const domains = Array.isArray((arc.buildup_signals as Record<string, unknown>)?.domains)
+    ? ((arc.buildup_signals as Record<string, unknown>).domains as string[])
+    : [];
+
+  return (
+    <div className="bg-gray-900/80 border border-gray-800 rounded-lg p-3 flex items-center gap-3">
+      <span className={`text-[8px] font-mono uppercase px-2 py-1 rounded ${actColor}`}>
+        {arc.current_act}
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="text-[11px] font-mono text-white/80">
+          {arc.state_abbr} — {domains.length > 0 ? `${domains.length} domains` : 'arc active'}
+        </span>
+        {arc.narrative && (
+          <p className="text-[9px] font-mono text-white/40 line-clamp-1 mt-0.5">{arc.narrative}</p>
+        )}
+      </div>
+      {arc.outcome_deadline && (
+        <CountdownClock deadline={arc.outcome_deadline} />
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ──
 
 export default function IntelligencePage() {
-  const navigate = useNavigate();
   const { data: opsData, loading: opsLoading } = useOpsData();
-  const { scores, loading: scoresLoading } = useConvergenceScores();
-  const [selectedArcId, setSelectedArcId] = useState<string | null>(null);
-  const [feedFilter, setFeedFilter] = useState<string | undefined>(undefined);
-  const { items: intelItems, loading: feedLoading } = useIntelligenceFeed(feedFilter);
-  const { bySource, byState, overallAccuracy, calibrations, loading: calLoading } = useAlertCalibration();
-  const { arcs, loading: arcsLoading } = useStateArcs();
+  const { arcs } = useStateArcs();
+  const { scores } = useConvergenceScores();
+  const [stateFilter, setStateFilter] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { entries, loading: journalLoading } = useBrainJournal(stateFilter);
 
-  // Map arcs by state for quick lookup
-  const arcsByState = useMemo(() => {
-    const map = new Map<string, StateArc>();
-    for (const arc of arcs) {
-      if (!map.has(arc.state_abbr)) map.set(arc.state_abbr, arc);
-    }
-    return map;
-  }, [arcs]);
+  // States with active arcs, sorted by score
+  const activeArcStates = useMemo(() => {
+    return arcs
+      .map(a => ({ ...a, score: scores.get(a.state_abbr)?.score || 0 }))
+      .sort((a, b) => b.score - a.score);
+  }, [arcs, scores]);
 
-  // Sort all states by score descending
-  const sortedStates = useMemo(() => {
-    return Array.from(scores.values()).sort((a, b) => b.score - a.score);
+  // Top states by score (for filter pills)
+  const topStates = useMemo(() => {
+    return Array.from(scores.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20)
+      .map(s => s.state_abbr);
   }, [scores]);
 
-  // Group into tiers
-  const tiers = useMemo(() => {
-    const critical = sortedStates.filter(s => s.score >= 75);
-    const elevated = sortedStates.filter(s => s.score >= 50 && s.score < 75);
-    const normal = sortedStates.filter(s => s.score >= 25 && s.score < 50);
-    const quiet = sortedStates.filter(s => s.score < 25);
-    return { critical, elevated, normal, quiet };
-  }, [sortedStates]);
+  const grouped = useMemo(() => groupByDay(entries), [entries]);
 
   const totalGraded = opsData.alerts.confirmed + opsData.alerts.partial + opsData.alerts.missed + opsData.alerts.false_alarm;
-  const lastEmbed = opsData.brain.content_types.length > 0
-    ? opsData.brain.content_types.reduce((latest, ct) => (!latest || ct.latest > latest ? ct.latest : latest), '')
-    : null;
   const systemHealthy = opsData.crons.error_count === 0;
 
-  if (opsLoading && scoresLoading) {
+  if (opsLoading && journalLoading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-white/30 text-sm font-mono tracking-widest uppercase">Loading intelligence...</div>
+        <div className="text-white/30 text-sm font-mono tracking-widest uppercase">Loading journal...</div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* ── Header Bar ── */}
+      {/* ── Header ── */}
       <div className="sticky top-0 z-50 bg-gray-900/95 backdrop-blur border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Link to="/" className="p-1.5 rounded hover:bg-white/[0.05] transition-colors" aria-label="Back to dashboard">
+            <Link to="/" className="p-1.5 rounded hover:bg-white/[0.05] transition-colors">
               <ArrowLeft size={16} className="text-white/50" />
             </Link>
+            <Brain size={16} className="text-cyan-400" />
             <div className="hidden sm:flex flex-col">
-              <span className="text-xs font-display font-bold tracking-widest text-white/90">DUCK COUNTDOWN</span>
-              <span className="text-[7px] tracking-[0.2em] text-white/40 -mt-0.5">ENVIRONMENTAL INTELLIGENCE</span>
+              <span className="text-xs font-display font-bold tracking-widest text-white/90">BRAIN JOURNAL</span>
+              <span className="text-[7px] tracking-[0.2em] text-white/40 -mt-0.5">WATCH THE BRAIN THINK</span>
             </div>
-            <span className="text-xs font-display font-bold tracking-widest text-white/90 sm:hidden">INTEL</span>
+            <span className="text-xs font-display font-bold tracking-widest text-white/90 sm:hidden">JOURNAL</span>
           </div>
-          <div className="flex items-center gap-1 sm:gap-3 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="flex flex-col items-center px-2">
               <span className="text-sm font-mono font-bold text-cyan-400">{opsData.brain.total.toLocaleString()}</span>
-              <span className="text-[8px] font-mono text-white/40 uppercase">Brain</span>
+              <span className="text-[8px] font-mono text-white/40">entries</span>
             </div>
             <div className="flex flex-col items-center px-2">
               <span className="text-sm font-mono font-bold text-orange-400">{arcs.length}</span>
-              <span className="text-[8px] font-mono text-white/40 uppercase">Active Arcs</span>
-            </div>
-            <div className="flex flex-col items-center px-2">
-              <span className="text-sm font-mono font-bold text-white">{totalGraded.toLocaleString()}</span>
-              <span className="text-[8px] font-mono text-white/40 uppercase">Graded</span>
+              <span className="text-[8px] font-mono text-white/40">arcs</span>
             </div>
             <div className="flex flex-col items-center px-2">
               <span className={`text-sm font-mono font-bold ${opsData.alerts.accuracy >= 60 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {opsData.alerts.accuracy}%
               </span>
-              <span className="text-[8px] font-mono text-white/40 uppercase">Accuracy</span>
+              <span className="text-[8px] font-mono text-white/40">accuracy</span>
             </div>
-            <div className="flex flex-col items-center px-2">
-              <span className="text-sm font-mono font-bold text-white/50">{timeAgo(lastEmbed)}</span>
-              <span className="text-[8px] font-mono text-white/40 uppercase">Updated</span>
-            </div>
-            <span className={`w-2 h-2 rounded-full shrink-0 ml-1 ${systemHealthy ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            <span className={`w-2 h-2 rounded-full shrink-0 ${systemHealthy ? 'bg-emerald-400' : 'bg-red-400'}`} />
           </div>
         </div>
       </div>
 
-      {/* ── Main Content ── */}
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
 
-        {/* ── 50-State Convergence Board ── */}
-        <Card title="">
-          <div className="flex items-center gap-2 -mt-3 mb-4">
-            <Shield size={14} className="text-cyan-400" />
-            <h3 className="text-xs font-mono uppercase tracking-widest text-white/50">50-State Convergence Board</h3>
-            <span className="text-[9px] font-mono text-white/20 ml-auto">{sortedStates.length} states reporting</span>
-          </div>
-
-          {selectedArcId && (() => {
-            const selectedArc = arcs.find(a => a.id === selectedArcId);
-            if (!selectedArc) return null;
-            return (
-              <div className="mb-4">
-                <ArcDetailView arc={selectedArc} onClose={() => setSelectedArcId(null)} />
-              </div>
-            );
-          })()}
-
-          {scoresLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="h-16 bg-white/[0.03] rounded-lg animate-pulse" />
-              ))}
+        {/* ── Active Arcs ── */}
+        {activeArcStates.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Clock size={12} className="text-orange-400" />
+              <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider">Active Arcs</span>
             </div>
-          ) : sortedStates.length === 0 ? (
-            <div className="flex items-center justify-center h-24 text-white/20 text-[10px] font-mono">
-              No convergence data available
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {tiers.critical.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-red-400" />
-                    <span className="text-[10px] font-mono text-red-400 uppercase tracking-wider">Critical ({tiers.critical.length})</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {tiers.critical.map(s => {
-                      const arc = arcsByState.get(s.state_abbr);
-                      return arc ? (
-                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => setSelectedArcId(arc.id)} />
-                      ) : (
-                        <StateCard key={s.state_abbr} score={s} navigate={navigate} />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {tiers.elevated.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider">Elevated ({tiers.elevated.length})</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {tiers.elevated.map(s => {
-                      const arc = arcsByState.get(s.state_abbr);
-                      return arc ? (
-                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => setSelectedArcId(arc.id)} />
-                      ) : (
-                        <StateCard key={s.state_abbr} score={s} navigate={navigate} />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {tiers.normal.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                    <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">Normal ({tiers.normal.length})</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {tiers.normal.map(s => <StateCard key={s.state_abbr} score={s} navigate={navigate} />)}
-                  </div>
-                </div>
-              )}
-              {tiers.quiet.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="w-2 h-2 rounded-full bg-white/20" />
-                    <span className="text-[10px] font-mono text-white/30 uppercase tracking-wider">Quiet ({tiers.quiet.length})</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {tiers.quiet.map(s => <StateCard key={s.state_abbr} score={s} navigate={navigate} />)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
-
-        {/* ── Bottom two-column: Feed + Track Record ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-          {/* ── Live Intelligence Feed ── */}
-          <Card title="">
-            <div className="flex items-center gap-2 -mt-3 mb-3">
-              <Brain size={14} className="text-cyan-400" />
-              <h3 className="text-xs font-mono uppercase tracking-widest text-white/50">Live Intelligence</h3>
-            </div>
-            <div className="flex items-center gap-1 mb-3 flex-wrap">
-              {FEED_TABS.map(tab => (
-                <button
-                  key={tab.label}
-                  onClick={() => setFeedFilter(tab.value)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
-                    feedFilter === tab.value
-                      ? 'bg-cyan-400/20 text-cyan-400'
-                      : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
-                  }`}
-                >
-                  {tab.label}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {activeArcStates.map(a => (
+                <button key={a.id} onClick={() => setStateFilter(stateFilter === a.state_abbr ? null : a.state_abbr)}>
+                  <ArcBanner arc={a} />
                 </button>
               ))}
             </div>
-            <div className="max-h-[500px] overflow-y-auto -mx-4 -mb-4 space-y-0">
-              {feedLoading ? (
-                <>
-                  {[0, 1, 2].map(i => (
-                    <div key={i} className="px-4 py-3 border-b border-gray-800/30">
-                      <div className="h-3 bg-white/[0.06] rounded animate-pulse w-3/4 mb-2" />
-                      <div className="h-2 bg-white/[0.04] rounded animate-pulse w-1/2" />
-                    </div>
-                  ))}
-                </>
-              ) : intelItems.length === 0 ? (
-                <div className="flex items-center justify-center h-20 text-white/20 text-[10px] font-mono">
-                  No intelligence activity in the last 48 hours
+          </div>
+        )}
+
+        {/* ── State Filter Pills ── */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-1">
+          <Filter size={12} className="text-white/30 shrink-0" />
+          <button
+            onClick={() => setStateFilter(null)}
+            className={`px-2.5 py-1 rounded text-[10px] font-mono whitespace-nowrap transition-colors ${
+              !stateFilter ? 'bg-cyan-400/20 text-cyan-400' : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
+            }`}
+          >
+            All States
+          </button>
+          {topStates.map(abbr => (
+            <button
+              key={abbr}
+              onClick={() => setStateFilter(stateFilter === abbr ? null : abbr)}
+              className={`px-2.5 py-1 rounded text-[10px] font-mono whitespace-nowrap transition-colors ${
+                stateFilter === abbr ? 'bg-cyan-400/20 text-cyan-400' : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
+              }`}
+            >
+              {abbr}
+            </button>
+          ))}
+        </div>
+
+        {/* ── The Journal ── */}
+        {journalLoading ? (
+          <div className="space-y-3">
+            {[0, 1, 2, 3, 4].map(i => (
+              <div key={i} className="flex items-start gap-3 px-4 py-3">
+                <div className="w-2 h-2 rounded-full bg-white/[0.06] shrink-0 mt-1" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 bg-white/[0.06] rounded animate-pulse w-1/3" />
+                  <div className="h-3 bg-white/[0.04] rounded animate-pulse w-2/3" />
                 </div>
-              ) : (
-                intelItems.map((item: IntelItem) => (
-                  <div
-                    key={item.id}
-                    className={`px-4 py-2 border-b border-gray-800/30 border-l-4 ${
-                      INTEL_BORDER[item.content_type] || 'border-l-white/20'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs text-white/80 font-mono truncate flex-1">{item.title}</span>
-                      {item.state_abbr && (
-                        <span className="text-[9px] font-mono bg-cyan-400/15 text-cyan-400 px-1.5 py-0.5 rounded shrink-0">
-                          {item.state_abbr}
-                        </span>
-                      )}
-                      <span className="text-[10px] font-mono text-white/30 shrink-0">{timeAgo(item.created_at)}</span>
-                    </div>
-                    {item.content && (
-                      <p className="text-[10px] font-mono text-white/50 line-clamp-2">{item.content}</p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-
-          {/* ── Prediction Track Record ── */}
-          <Card title="">
-            <div className="flex items-center gap-2 -mt-3 mb-4">
-              <TrendingUp size={14} className="text-emerald-400" />
-              <h3 className="text-xs font-mono uppercase tracking-widest text-white/50">Prediction Track Record</h3>
-            </div>
-
-            {calLoading ? (
-              <div className="space-y-3">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="h-4 bg-white/[0.04] rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Brain size={32} className="text-white/10" />
+            <span className="text-[10px] font-mono text-white/20">
+              {stateFilter ? `No journal entries for ${STATE_NAMES[stateFilter] || stateFilter}` : 'No journal entries yet'}
+            </span>
+          </div>
+        ) : (
+          <div className="bg-gray-900/50 rounded-lg border border-gray-800/50 overflow-hidden">
+            {grouped.map(group => (
+              <div key={group.date}>
+                {/* Day separator */}
+                <div className="sticky top-[57px] z-10 bg-gray-900/95 backdrop-blur px-4 py-1.5 border-b border-gray-800/50">
+                  <span className="text-[10px] font-mono text-white/30 uppercase tracking-wider">{group.label}</span>
+                  <span className="text-[9px] font-mono text-white/15 ml-2">{group.entries.length} entries</span>
+                </div>
+                {/* Entries */}
+                {group.entries.map(entry => (
+                  <JournalRow
+                    key={entry.id}
+                    entry={entry}
+                    expanded={expandedId === entry.id}
+                    onToggle={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
+                  />
                 ))}
               </div>
-            ) : calibrations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 gap-3">
-                <div className="w-12 h-12 rounded-full bg-white/[0.04] flex items-center justify-center">
-                  <Minus size={20} className="text-white/20" />
-                </div>
-                <span className="text-[10px] font-mono text-white/30 uppercase tracking-wider">Learning...</span>
-                <p className="text-[10px] font-mono text-white/20 text-center max-w-xs leading-relaxed">
-                  The grading system is building its track record. Results will appear as alerts cross their outcome deadlines.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Overall accuracy */}
-                <div className="flex items-center gap-4">
-                  <div className="text-center">
-                    <div className={`text-4xl font-mono font-bold ${overallAccuracy >= 60 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {overallAccuracy}%
-                    </div>
-                    <div className="text-[9px] font-mono text-white/40 uppercase">Overall Accuracy</div>
-                  </div>
-                  <div className="flex-1 text-[10px] font-mono text-white/30 leading-relaxed">
-                    Weighted average across {bySource.reduce((s, r) => s + r.total_alerts, 0).toLocaleString()} graded alerts
-                    from {bySource.length} source{bySource.length !== 1 ? 's' : ''} and {byState.length} state{byState.length !== 1 ? 's' : ''}.
-                  </div>
-                </div>
-
-                {/* Per-source accuracy */}
-                <div>
-                  <h4 className="text-[10px] font-mono text-white/40 uppercase tracking-wider mb-2">By Source</h4>
-                  <div className="space-y-1.5">
-                    {bySource.map(s => (
-                      <AccuracyBar key={s.source} label={s.source} accuracy={s.accuracy} total={s.total_alerts} />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Per-state accuracy */}
-                {byState.length > 0 && (
-                  <div>
-                    <h4 className="text-[10px] font-mono text-white/40 uppercase tracking-wider mb-2">Top States (by volume)</h4>
-                    <div className="space-y-1.5">
-                      {byState.map(s => (
-                        <AccuracyBar key={s.state_abbr} label={s.state_abbr} accuracy={s.accuracy} total={s.total_alerts} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
