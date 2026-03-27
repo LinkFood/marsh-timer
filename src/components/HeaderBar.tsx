@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare, Activity, ChevronRight } from "lucide-react";
+import { Search, X, MapPin, Loader2, HelpCircle, Plus, Layers, MessageSquare, Activity, Brain, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Species } from "@/data/types";
 import { speciesConfig, SPECIES_ORDER } from "@/data/speciesConfig";
@@ -237,6 +237,13 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
               <MessageSquare className="w-4 h-4" />
             </button>
           )}
+          <Link
+            to="/intelligence"
+            className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Intelligence"
+          >
+            <Brain className="w-4 h-4" />
+          </Link>
           <Link
             to="/ops"
             className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
