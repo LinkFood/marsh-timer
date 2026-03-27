@@ -1986,8 +1986,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         .addTo(map);
     });
 
-    // State click — deferred to let eBird/DU handlers claim the click first
-    // 50ms delay ensures all layer handlers in this click event have fired and set clickHandled
+    // State click — deferred to let eBird/DU/weather handlers claim the click first.
+    // Other handlers set clickHandled=true for 100ms. We wait 150ms so the flag has reset,
+    // then check: if it was reset (no other handler claimed it), navigate to state.
     const handleStateClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       setTimeout(() => {
         if (clickHandled) return;
@@ -1997,7 +1998,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         popupRef.current?.remove();
         popupRef.current = null;
         onSelectStateRef.current(abbr);
-      }, 50);
+      }, 150);
     };
     map.on("click", "states-fill", handleStateClick);
     map.on("click", "states-pulse", handleStateClick);
