@@ -7,6 +7,7 @@ import { useIntelligenceFeed, type IntelItem } from '@/hooks/useIntelligenceFeed
 import { useAlertCalibration } from '@/hooks/useAlertCalibration';
 import { useStateArcs, type StateArc } from '@/hooks/useStateArcs';
 import StateArcCard from '@/components/intelligence/StateArcCard';
+import ArcDetailView from '@/components/intelligence/ArcDetailView';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -132,6 +133,7 @@ export default function IntelligencePage() {
   const navigate = useNavigate();
   const { data: opsData, loading: opsLoading } = useOpsData();
   const { scores, loading: scoresLoading } = useConvergenceScores();
+  const [selectedArcId, setSelectedArcId] = useState<string | null>(null);
   const [feedFilter, setFeedFilter] = useState<string | undefined>(undefined);
   const { items: intelItems, loading: feedLoading } = useIntelligenceFeed(feedFilter);
   const { bySource, byState, overallAccuracy, calibrations, loading: calLoading } = useAlertCalibration();
@@ -228,6 +230,16 @@ export default function IntelligencePage() {
             <span className="text-[9px] font-mono text-white/20 ml-auto">{sortedStates.length} states reporting</span>
           </div>
 
+          {selectedArcId && (() => {
+            const selectedArc = arcs.find(a => a.id === selectedArcId);
+            if (!selectedArc) return null;
+            return (
+              <div className="mb-4">
+                <ArcDetailView arc={selectedArc} onClose={() => setSelectedArcId(null)} />
+              </div>
+            );
+          })()}
+
           {scoresLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
               {Array.from({ length: 12 }).map((_, i) => (
@@ -250,7 +262,7 @@ export default function IntelligencePage() {
                     {tiers.critical.map(s => {
                       const arc = arcsByState.get(s.state_abbr);
                       return arc ? (
-                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => navigate(`/all/${s.state_abbr}`)} />
+                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => setSelectedArcId(arc.id)} />
                       ) : (
                         <StateCard key={s.state_abbr} score={s} navigate={navigate} />
                       );
@@ -268,7 +280,7 @@ export default function IntelligencePage() {
                     {tiers.elevated.map(s => {
                       const arc = arcsByState.get(s.state_abbr);
                       return arc ? (
-                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => navigate(`/all/${s.state_abbr}`)} />
+                        <StateArcCard key={s.state_abbr} arc={arc} score={s.score} stateName={STATE_NAMES[s.state_abbr] || ''} onClick={() => setSelectedArcId(arc.id)} />
                       ) : (
                         <StateCard key={s.state_abbr} score={s} navigate={navigate} />
                       );

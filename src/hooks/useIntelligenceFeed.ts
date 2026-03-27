@@ -48,7 +48,7 @@ export function useIntelligenceFeed(filterType?: string) {
     }
 
     fetchFeed();
-    intervalRef.current = setInterval(fetchFeed, 2 * 60 * 1000); // 2min refresh
+    intervalRef.current = setInterval(fetchFeed, 45_000); // 45s refresh
 
     return () => {
       controller.abort();

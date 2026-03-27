@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -25,25 +26,63 @@ export interface StateArc {
 export function useStateArcs() {
   const [arcs, setArcs] = useState<StateArc[]>([]);
   const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchArcs = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/hunt_state_arcs?current_act=neq.closed&order=updated_at.desc&select=*`,
+        { headers: { apikey: SUPABASE_KEY }, signal }
+      );
+      const data = await res.json();
+      if (Array.isArray(data)) setArcs(data);
+    } catch { /* abort */ }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    async function fetch_() {
-      try {
-        const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/hunt_state_arcs?current_act=neq.closed&order=updated_at.desc&select=*`,
-          { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
-        );
-        const data = await res.json();
-        if (Array.isArray(data)) setArcs(data);
-      } catch { /* abort */ }
-      finally { if (!controller.signal.aborted) setLoading(false); }
-    }
-    fetch_();
-    intervalRef.current = setInterval(fetch_, 30_000);
-    return () => { controller.abort(); if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, []);
+    fetchArcs(controller.signal);
+
+    // Realtime subscription (requires supabase client)
+    const channel = supabase
+      ? supabase
+          .channel('state-arcs-realtime')
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'hunt_state_arcs',
+          }, (payload) => {
+            const { eventType, new: newRow, old: oldRow } = payload;
+
+            if (eventType === 'INSERT') {
+              const row = newRow as StateArc;
+              if (row.current_act !== 'closed') {
+                setArcs(prev => [row, ...prev.filter(a => a.id !== row.id)]);
+              }
+            } else if (eventType === 'UPDATE') {
+              const row = newRow as StateArc;
+              if (row.current_act === 'closed') {
+                setArcs(prev => prev.filter(a => a.id !== row.id));
+              } else {
+                setArcs(prev => prev.map(a => a.id === row.id ? row : a));
+              }
+            } else if (eventType === 'DELETE') {
+              const row = oldRow as { id: string };
+              setArcs(prev => prev.filter(a => a.id !== row.id));
+            }
+          })
+          .subscribe()
+      : null;
+
+    // Safety fallback poll every 60s
+    const interval = setInterval(() => fetchArcs(), 60_000);
+
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      if (channel && supabase) supabase.removeChannel(channel);
+    };
+  }, [fetchArcs]);
 
   return { arcs, loading };
 }

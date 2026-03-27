@@ -20,3 +20,4 @@
 
 ## Brainstorm History
 - See `brainstorm_ux_visualization_2026_03_19.md` — 15 specific ideas for surfacing 213K data points. Core problem: data trapped in vectors, UI is 6 static cards. Top recommendations: sparklines everywhere, convergence decomposition chart, brain activity monitor.
+- See `brainstorm_synthesis_agent_2026_03_26.md` — 40+ ideas across 8 categories for the synthesis agent. Architecture, arc data model, narrative gen, visualization, v1 scope, embedding tricks, grading visibility, wild novelty. Top picks: Arc Reactor Lite, Dual-Loop, Heartbeat model, Arc Fingerprinting, Hindsight Machine.
