@@ -70,11 +70,18 @@ serve(async (req) => {
     let totalEmbedded = 0;
     let errors = 0;
 
+    const HARD_TIMEOUT_MS = 120_000; // Stop processing at 120s to leave room for logging
+
     for (const taxon of TAXA) {
+      if (Date.now() - startTime > HARD_TIMEOUT_MS) {
+        console.log(`[hunt-inaturalist] Hit ${HARD_TIMEOUT_MS}ms timeout, stopping early`);
+        break;
+      }
       console.log(`\n${taxon.name}:`);
       const entries: { text: string; meta: Record<string, unknown> }[] = [];
 
       for (const abbr of abbrs) {
+        if (Date.now() - startTime > HARD_TIMEOUT_MS) break;
         try {
           const url = `https://api.inaturalist.org/v1/observations?taxon_id=${taxon.taxonId}&place_id=${STATE_PLACES[abbr].placeId}&d1=${d1}&d2=${d2}&per_page=0&quality_grade=research`;
           const res = await fetch(url);
@@ -113,7 +120,7 @@ serve(async (req) => {
           }
 
           // Rate limit headroom
-          await new Promise(r => setTimeout(r, 700));
+          await new Promise(r => setTimeout(r, 400));
         } catch (err) {
           console.warn(`  ${abbr}: ${err}`);
           errors++;

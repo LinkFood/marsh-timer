@@ -219,12 +219,14 @@ serve(async (req) => {
     const today = new Date().toISOString().split('T')[0];
 
     let statesToProcess: string[];
+    const batchSize = Math.ceil(STATE_ABBRS.length / 5);
     if (batch !== null && batch >= 1 && batch <= 5) {
-      const batchSize = Math.ceil(STATE_ABBRS.length / 5);
       const start = (batch - 1) * batchSize;
       statesToProcess = STATE_ABBRS.slice(start, start + batchSize);
     } else {
-      statesToProcess = STATE_ABBRS;
+      // No batch specified — default to batch 1 (10 states) to stay within 150s timeout.
+      // pg_cron should call with batch=1 through batch=5 for full coverage.
+      statesToProcess = STATE_ABBRS.slice(0, batchSize);
     }
 
     console.log(`[hunt-birdcast] Processing ${statesToProcess.length} states: ${statesToProcess.join(',')}`);
