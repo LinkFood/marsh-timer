@@ -3,6 +3,7 @@ import { useAuth, AuthProvider } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import OpsPage from "./pages/OpsPage";
+import IntelligencePage from "./pages/IntelligencePage";
 import NotFound from "./pages/NotFound";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,7 @@ const App = () => (
           <Route path="/:first/:second" element={<Index />} />
           <Route path="/:first/:second/:third" element={<Index />} />
           <Route path="/ops" element={<OpsPage />} />
+          <Route path="/intelligence" element={<IntelligencePage />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
