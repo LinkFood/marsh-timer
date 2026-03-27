@@ -38,12 +38,13 @@ Every piece of intelligence follows this arc:
 
 Every piece of data that enters the system MUST be embedded via Voyage AI (voyage-3-lite, 512-dim) → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
 
-### Brain State (as of 2026-03-26)
+### Brain State (as of 2026-03-27)
 
-- **2,400,000+** entries in hunt_knowledge
-- **55** content types
+- **2,432,856+** entries in hunt_knowledge
+- **55** content types + arc-fingerprint, arc-grade-reasoning, state-brief
 - **50** states tracked
-- **Growing** via 20+ crons + event-driven convergence scans
+- **42 crons** (41-42 healthy), growing via crons + event-driven convergence scans
+- **48 active arcs** — synthesis agent live, narrator generating narratives
 - **Self-grading loop** active — first grades expected March 27-29, 2026
 
 Content types: storm-event, usgs-water, earthquake-event, photoperiod, noaa-tide, geomagnetic-kp, fire-activity, birdweather-daily, crop-data, drought-weekly, gbif-monthly, climate-index, historical-newspaper, weather-event, nws-alert, birdcast-daily, birdcast-historical, convergence-score, weather-forecast, migration-spike-*, migration-lull, migration-daily, bio-environmental-correlation, bio-absence-signal, alert-grade, alert-calibration, web-discovery, anomaly-alert, correlation-discovery, disaster-watch, hunting-knowledge, species-behavior, du_report, du_alert, compound-risk-alert
@@ -69,29 +70,27 @@ Each state gets a daily score from 0-135 across these weighted domains:
 
 ### Backend — Strong
 - 2.4M+ vector embeddings in one searchable brain
-- 52 Deno edge functions (28 brain writers, 5 intelligence layer, 5 self-graders, 5 brain readers, 9 utilities)
-- 20+ scheduled crons feeding data continuously
+- 56 Deno edge functions (28 brain writers, 5 intelligence layer, 5 self-graders, 5 brain readers, 9 utilities, hunt-state-brief, hunt-intelligence-feed, hunt-convergence-alerts-pm, hunt-arc-narrator)
+- 42 crons (41-42 healthy) feeding data continuously
 - Self-grading loop (alert-grader → alert-calibration → grade suppression)
+- **Synthesis agent** — hunt_state_arcs table + arc reactor hooks + hunt-arc-narrator (Sonnet narratives, Opus grade reasoning, arc fingerprinting)
 - scanBrainOnWrite pattern matching on every data ingest
-- Convergence engine scoring 50 states daily
+- Convergence engine scoring 50 states daily + triggering state briefs for top 20
 - AI chat pipeline: Haiku (intent routing) → Sonnet (streaming response) → Tavily (web search fallback)
 - Opus daily web curator reviewing staged discoveries
-- Ops dashboard at /ops with cron health, brain growth, alert performance
+- Ops dashboard at /ops ("Intelligence Control") with cron health, brain growth, alert performance, intelligence feed
 
-### Frontend — Intelligence Page Started
+### Frontend — Intelligence Command Center Built
 - React 18 + TypeScript + Vite + Tailwind
 - Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets
-- 25 lazy-loaded panels in 4 categories (Intelligence, Migration, Weather, Analytics)
-- 7 grid layout presets including Command Center (side-by-side)
-- Panel system: drag, minimize, fullscreen, share, close
+- **Intelligence Page (`/intelligence`)** — 3-column command center: left (50-state rankings with sparklines, migration, solunar, NWS), center (scout brief, FusionWeb SVG, brain recognition, patterns, outcome windows, live feed, METAR, brain activity), right (component bars, 30-day chart, weather, disaster watch, track record, data sources). Chat overlay.
+- **StateIntelView** — replaces panel dock when state selected, shows AI assessment + convergence + pattern links + alerts
+- 25 lazy-loaded panels in 4 categories (workbench mode)
+- Chat synthesis: answer-first, collapsible evidence, CrossDomainPatternCard
 - Streaming AI chat with dynamic prompts
-- Real-time event ticker
-- Brain heartbeat live status
-- Mobile responsive at 375px
+- Real-time event ticker, brain heartbeat
+- Supabase Realtime subscriptions on hunt_state_arcs
 - Google OAuth via Supabase Auth
-- `/intelligence` route (initial build — March 26)
-- StateIntelView component (state-level intelligence when state selected)
-- hunt-state-brief, hunt-intelligence-feed, hunt-convergence-alerts-pm edge functions
 
 ### What's Still Missing — The Full Product
 
