@@ -89,11 +89,13 @@ export default function SplitVerdict({ arc }: Props) {
       {/* Expected signals checklist */}
       <div className="space-y-0.5">
         {expectedSignals.map((sig, i) => {
+          const sigNorm = sig.toLowerCase().replace(/-/g, '_');
+          const sigParts = sig.toLowerCase().split('-');
           const found = foundSignals.some((f: any) => {
             const source = f.source?.toLowerCase() || '';
             const signal = f.signal?.toLowerCase() || '';
-            const matchType = f.match_type?.toLowerCase() || '';
-            return source.includes(sig) || signal.includes(sig.replace('-', '_')) || matchType.includes('confirm');
+            return source.includes(sigNorm) || signal.includes(sigNorm) ||
+              sigParts.some(part => part.length > 3 && (source.includes(part) || signal.includes(part)));
           });
           return (
             <div key={i} className="flex items-center gap-1.5">
