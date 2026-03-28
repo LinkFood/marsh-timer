@@ -21,7 +21,7 @@ import { useWeatherEvents } from "@/hooks/useWeatherEvents";
 import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
 import { useStateArcs } from "@/hooks/useStateArcs";
 import { useStateBrief } from "@/hooks/useStateBrief";
-import { useConvergenceHistoryAll } from "@/hooks/useConvergenceHistory";
+import { useConvergenceHistory, useConvergenceHistoryAll } from "@/hooks/useConvergenceHistory";
 import { useAlertCalibration } from "@/hooks/useAlertCalibration";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
@@ -100,6 +100,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const { arcs: stateArcs } = useStateArcs();
   const { brief: stateBrief, loading: briefLoading } = useStateBrief(selectedState);
   const { historyMap: convergenceHistoryMap } = useConvergenceHistoryAll(7);
+  const { history: stateConvergenceHistory } = useConvergenceHistory(selectedState, 3);
   const { byState: calibrationByState } = useAlertCalibration();
   const helpModal = useHelpModal();
 
@@ -245,6 +246,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
                     stateBrief={stateBrief}
                     briefLoading={briefLoading}
                     convergenceHistoryMap={convergenceHistoryMap}
+                    stateConvergenceHistory={stateConvergenceHistory}
                     calibrationByState={calibrationByState}
                     onSelectState={handleSelectState}
                   >

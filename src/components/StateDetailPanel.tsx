@@ -117,11 +117,11 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
           </div>
         )}
 
-        {/* AI Brief */}
-        {briefLoading && (
+        {/* AI Brief — only show if different from arc narrative */}
+        {briefLoading && !arc?.narrative && (
           <div className="text-[10px] font-mono text-white/20 animate-pulse">Loading brief...</div>
         )}
-        {brief?.content && (
+        {brief?.content && (!arc?.narrative || !brief.content.startsWith(arc.narrative.slice(0, 40))) && (
           <div>
             <button
               onClick={() => setBriefExpanded(e => !e)}

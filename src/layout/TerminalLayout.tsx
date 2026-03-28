@@ -12,6 +12,7 @@ import EventTicker from '@/components/EventTicker';
 import RegimeDetector from '@/components/RegimeDetector';
 import ConvergenceScoreboard from '@/components/ConvergenceScoreboard';
 import StateDetailPanel from '@/components/StateDetailPanel';
+import FusionPanel from '@/components/FusionPanel';
 import { useDeck } from '@/contexts/DeckContext';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
@@ -36,6 +37,7 @@ interface TerminalLayoutProps {
   stateBrief: StateBrief | null;
   briefLoading: boolean;
   convergenceHistoryMap: Map<string, number[]>;
+  stateConvergenceHistory: Array<{ date: string; score: number; weather_component: number; solunar_component: number; migration_component: number; pattern_component: number; birdcast_component: number; water_component: number; photoperiod_component: number; tide_component: number }>;
   calibrationByState: AggregatedState[];
   onSelectState: (abbr: string) => void;
   children: ReactNode;
@@ -52,6 +54,7 @@ export default function TerminalLayout({
   stateBrief,
   briefLoading,
   convergenceHistoryMap,
+  stateConvergenceHistory,
   calibrationByState,
   onSelectState,
   children,
@@ -116,7 +119,7 @@ export default function TerminalLayout({
           />
         </div>
 
-        {/* Center: Map */}
+        {/* Center: Map + Fusion Panel */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div className="flex-1 relative overflow-hidden min-h-0">
             <ErrorBoundary fallback={<div className="h-full bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map error</span></div>}>
@@ -125,6 +128,11 @@ export default function TerminalLayout({
               </div>
             </ErrorBoundary>
           </div>
+          {selectedState && stateConvergenceHistory.length > 0 && (
+            <div className="h-[180px] shrink-0">
+              <FusionPanel history={stateConvergenceHistory} state={selectedState} />
+            </div>
+          )}
         </div>
 
         {/* Right: State Detail */}
