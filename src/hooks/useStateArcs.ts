@@ -23,7 +23,7 @@ export interface StateArc {
   updated_at: string;
 }
 
-export function useStateArcs() {
+export function useStateArcs(enabled = true) {
   const [arcs, setArcs] = useState<StateArc[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,6 +40,7 @@ export function useStateArcs() {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     fetchArcs(controller.signal);
 
@@ -82,7 +83,7 @@ export function useStateArcs() {
       clearInterval(interval);
       if (channel && supabase) supabase.removeChannel(channel);
     };
-  }, [fetchArcs]);
+  }, [fetchArcs, enabled]);
 
   return { arcs, loading };
 }

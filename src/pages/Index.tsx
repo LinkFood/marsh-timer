@@ -92,16 +92,19 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
 
-  // Data hooks — panels/ticker
+  // Data hooks — critical path first
   const { alerts } = usePatternAlerts();
   const { scores: convergenceScores } = useConvergenceScores();
   const { alerts: convergenceAlerts } = useConvergenceAlerts();
   const { data: murmurationIndex } = useMurmurationIndex();
-  const { arcs: stateArcs } = useStateArcs();
+
+  // Secondary hooks — defer until scores load to avoid connection pool congestion
+  const scoresReady = convergenceScores.size > 0;
+  const { arcs: stateArcs } = useStateArcs(scoresReady);
   const { brief: stateBrief, loading: briefLoading } = useStateBrief(selectedState);
-  const { historyMap: convergenceHistoryMap } = useConvergenceHistoryAll(7);
+  const { historyMap: convergenceHistoryMap } = useConvergenceHistoryAll(scoresReady ? 7 : 0);
   const { history: stateConvergenceHistory } = useConvergenceHistory(selectedState, 3);
-  const { byState: calibrationByState } = useAlertCalibration();
+  const { byState: calibrationByState } = useAlertCalibration(scoresReady);
   const helpModal = useHelpModal();
 
   // Build convergence score map for MapView — full objects, not just numbers

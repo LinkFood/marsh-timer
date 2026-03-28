@@ -24,14 +24,14 @@ export interface AggregatedState {
   accuracy: number;
 }
 
-export function useAlertCalibration() {
+export function useAlertCalibration(enabled = true) {
   const [calibrations, setCalibrations] = useState<AlertCalibration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
+    if (!enabled || fetchedRef.current) return;
     fetchedRef.current = true;
 
     async function fetchCalibration() {
@@ -65,7 +65,7 @@ export function useAlertCalibration() {
     }
 
     fetchCalibration();
-  }, []);
+  }, [enabled]);
 
   // Aggregate by source: weighted average accuracy
   const bySource: AggregatedSource[] = (() => {
