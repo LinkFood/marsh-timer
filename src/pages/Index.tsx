@@ -21,6 +21,8 @@ import { useWeatherEvents } from "@/hooks/useWeatherEvents";
 import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
 import { useStateArcs } from "@/hooks/useStateArcs";
 import { useStateBrief } from "@/hooks/useStateBrief";
+import { useConvergenceHistoryAll } from "@/hooks/useConvergenceHistory";
+import { useAlertCalibration } from "@/hooks/useAlertCalibration";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
 import { DeckProvider, useDeck } from "@/contexts/DeckContext";
@@ -97,6 +99,8 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const { data: murmurationIndex } = useMurmurationIndex();
   const { arcs: stateArcs } = useStateArcs();
   const { brief: stateBrief, loading: briefLoading } = useStateBrief(selectedState);
+  const { historyMap: convergenceHistoryMap } = useConvergenceHistoryAll(7);
+  const { byState: calibrationByState } = useAlertCalibration();
   const helpModal = useHelpModal();
 
   // Build convergence score map for MapView — full objects, not just numbers
@@ -240,6 +244,8 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
                     stateArcs={stateArcs}
                     stateBrief={stateBrief}
                     briefLoading={briefLoading}
+                    convergenceHistoryMap={convergenceHistoryMap}
+                    calibrationByState={calibrationByState}
                     onSelectState={handleSelectState}
                   >
                     <MapWithLayers

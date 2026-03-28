@@ -4,6 +4,7 @@ import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
 import type { StateArc } from '@/hooks/useStateArcs';
 import type { StateBrief } from '@/hooks/useStateBrief';
+import type { AggregatedState } from '@/hooks/useAlertCalibration';
 import type { FeatureCollection } from 'geojson';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import BrainHeartbeat from '@/components/BrainHeartbeat';
@@ -34,6 +35,8 @@ interface TerminalLayoutProps {
   stateArcs: StateArc[];
   stateBrief: StateBrief | null;
   briefLoading: boolean;
+  convergenceHistoryMap: Map<string, number[]>;
+  calibrationByState: AggregatedState[];
   onSelectState: (abbr: string) => void;
   children: ReactNode;
 }
@@ -48,6 +51,8 @@ export default function TerminalLayout({
   stateArcs,
   stateBrief,
   briefLoading,
+  convergenceHistoryMap,
+  calibrationByState,
   onSelectState,
   children,
 }: TerminalLayoutProps) {
@@ -57,6 +62,18 @@ export default function TerminalLayout({
     if (!selectedState) return undefined;
     return stateArcs.find(a => a.state_abbr === selectedState);
   }, [stateArcs, selectedState]);
+
+  const arcMap = useMemo(() => {
+    const map = new Map<string, StateArc>();
+    for (const a of stateArcs) map.set(a.state_abbr, a);
+    return map;
+  }, [stateArcs]);
+
+  const calibrationMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of calibrationByState) map.set(s.state_abbr, s.accuracy);
+    return map;
+  }, [calibrationByState]);
 
   return (
     <div className="h-full w-full overflow-hidden bg-[#0a0f1a] flex flex-col">
@@ -93,6 +110,9 @@ export default function TerminalLayout({
             scores={convergenceScores}
             selectedState={selectedState}
             onSelectState={onSelectState}
+            historyMap={convergenceHistoryMap}
+            arcMap={arcMap}
+            calibrationMap={calibrationMap}
           />
         </div>
 

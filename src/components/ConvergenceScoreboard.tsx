@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
+import type { StateArc } from '@/hooks/useStateArcs';
 
 const DOMAINS = [
   { key: 'weather_component' as const, color: '#ef4444', label: 'Weather' },
@@ -14,13 +15,42 @@ const DOMAINS = [
 
 const MAX_SCORE = 135;
 
+function Spark({ data, w = 32, h = 10 }: { data: number[]; w?: number; h?: number }) {
+  if (!data || data.length < 2) return null;
+  const mx = Math.max(...data), mn = Math.min(...data), rg = mx - mn || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - mn) / rg) * h}`).join(' ');
+  const trending = data[data.length - 1] > data[0];
+  const color = trending ? '#5eead4' : '#f59e0b';
+  return (
+    <svg width={w} height={h} className="shrink-0">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
+    </svg>
+  );
+}
+
+function ConvictionDot({ arc, calibrationAccuracy }: { arc?: StateArc; calibrationAccuracy?: number }) {
+  const accuracy = arc?.precedent_accuracy ?? calibrationAccuracy;
+  if (accuracy == null) return <div className="w-[6px] h-[6px] rounded-full bg-white/[0.06] shrink-0" title="No history" />;
+  const color = accuracy >= 60 ? '#22c55e' : accuracy >= 30 ? '#f59e0b' : '#ef4444';
+  return (
+    <div
+      className="w-[6px] h-[6px] rounded-full shrink-0"
+      style={{ backgroundColor: color, opacity: 0.8 }}
+      title={`Conviction: ${Math.round(accuracy)}%`}
+    />
+  );
+}
+
 interface Props {
   scores: Map<string, ConvergenceScore>;
   selectedState: string | null;
   onSelectState: (abbr: string) => void;
+  historyMap?: Map<string, number[]>;
+  arcMap?: Map<string, StateArc>;
+  calibrationMap?: Map<string, number>;
 }
 
-export default function ConvergenceScoreboard({ scores, selectedState, onSelectState }: Props) {
+export default function ConvergenceScoreboard({ scores, selectedState, onSelectState, historyMap, arcMap, calibrationMap }: Props) {
   const sorted = useMemo(() => {
     return Array.from(scores.values()).sort((a, b) => b.score - a.score);
   }, [scores]);
@@ -61,21 +91,27 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
         {sorted.map((s, i) => {
           const isSelected = s.state_abbr === selectedState;
           const tier = s.score >= 80 ? 'critical' : s.score >= 50 ? 'elevated' : 'normal';
+          const sparkData = historyMap?.get(s.state_abbr);
+          const arc = arcMap?.get(s.state_abbr);
+          const calAccuracy = calibrationMap?.get(s.state_abbr);
 
           return (
             <button
               key={s.state_abbr}
               onClick={() => onSelectState(s.state_abbr)}
-              className={`w-full flex items-center gap-1.5 px-2 py-[5px] text-left transition-colors ${
+              className={`w-full flex items-center gap-1 px-2 py-[5px] text-left transition-colors ${
                 isSelected
                   ? 'bg-cyan-400/[0.08] border-l-2 border-l-cyan-400'
                   : 'hover:bg-white/[0.03] border-l-2 border-l-transparent'
               }`}
             >
               {/* Rank */}
-              <span className="text-[10px] font-mono text-white/25 w-5 text-right shrink-0">
+              <span className="text-[10px] font-mono text-white/25 w-4 text-right shrink-0">
                 {i + 1}
               </span>
+
+              {/* Conviction dot */}
+              <ConvictionDot arc={arc} calibrationAccuracy={calAccuracy} />
 
               {/* State abbreviation */}
               <span className={`text-[11px] font-mono font-semibold w-6 shrink-0 ${
@@ -104,6 +140,9 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
                   );
                 })}
               </div>
+
+              {/* Sparkline */}
+              <Spark data={sparkData || []} />
 
               {/* Score */}
               <span className={`text-[11px] font-mono font-bold w-7 text-right shrink-0 ${
