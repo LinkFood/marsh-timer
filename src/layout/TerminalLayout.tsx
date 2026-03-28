@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
@@ -13,6 +13,7 @@ import RegimeDetector from '@/components/RegimeDetector';
 import ConvergenceScoreboard from '@/components/ConvergenceScoreboard';
 import StateDetailPanel from '@/components/StateDetailPanel';
 import FusionPanel from '@/components/FusionPanel';
+import CollisionFeed from '@/components/CollisionFeed';
 import { useDeck } from '@/contexts/DeckContext';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
@@ -60,6 +61,8 @@ export default function TerminalLayout({
   children,
 }: TerminalLayoutProps) {
   const { selectedState } = useDeck();
+
+  const [centerTab, setCenterTab] = useState<'timeline' | 'collisions'>('collisions');
 
   const arcForState = useMemo(() => {
     if (!selectedState) return undefined;
@@ -128,11 +131,32 @@ export default function TerminalLayout({
               </div>
             </ErrorBoundary>
           </div>
-          {selectedState && stateConvergenceHistory.length > 0 && (
-            <div className="h-[180px] shrink-0">
-              <FusionPanel history={stateConvergenceHistory} state={selectedState} />
-            </div>
-          )}
+          {/* Bottom: Fusion/Collision toggle (state selected) or national feed (no state) */}
+          <div className="h-[200px] shrink-0 flex flex-col border-t border-white/[0.06]">
+            {selectedState ? (
+              <>
+                <div className="shrink-0 flex gap-0.5 px-2 py-1 border-b border-white/[0.04]">
+                  <button
+                    onClick={() => setCenterTab('timeline')}
+                    className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase tracking-wider ${centerTab === 'timeline' ? 'bg-white/[0.08] text-white/60' : 'text-white/20 hover:text-white/35'}`}
+                  >Timeline</button>
+                  <button
+                    onClick={() => setCenterTab('collisions')}
+                    className={`px-2 py-0.5 rounded text-[8px] font-mono uppercase tracking-wider ${centerTab === 'collisions' ? 'bg-white/[0.08] text-white/60' : 'text-white/20 hover:text-white/35'}`}
+                  >Collisions</button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  {centerTab === 'timeline' && stateConvergenceHistory.length > 0 ? (
+                    <FusionPanel history={stateConvergenceHistory} state={selectedState} />
+                  ) : (
+                    <CollisionFeed convergenceAlerts={convergenceAlerts} stateFilter={selectedState} />
+                  )}
+                </div>
+              </>
+            ) : (
+              <CollisionFeed convergenceAlerts={convergenceAlerts} />
+            )}
+          </div>
         </div>
 
         {/* Right: State Detail */}
@@ -144,11 +168,14 @@ export default function TerminalLayout({
               arc={arcForState}
               brief={stateBrief}
               briefLoading={briefLoading}
+              calibrationByState={calibrationByState}
             />
           ) : (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-[11px] font-mono text-white/20 tracking-wide">Select a state</p>
-            </div>
+            <EmptyStatePreview
+              scores={convergenceScores}
+              arcs={stateArcs}
+              onSelectState={onSelectState}
+            />
           )}
         </div>
       </div>
@@ -158,6 +185,71 @@ export default function TerminalLayout({
       <ErrorBoundary fallback={<div />}>
         <LayerPicker />
       </ErrorBoundary>
+    </div>
+  );
+}
+
+const DOMAIN_KEYS = [
+  { key: 'weather_component', label: 'Weather' },
+  { key: 'migration_component', label: 'Migration' },
+  { key: 'birdcast_component', label: 'BirdCast' },
+  { key: 'solunar_component', label: 'Solunar' },
+  { key: 'water_component', label: 'Water' },
+  { key: 'pattern_component', label: 'Pattern' },
+] as const;
+
+function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string, ConvergenceScore>; arcs: StateArc[]; onSelectState: (abbr: string) => void }) {
+  const top3 = useMemo(() => {
+    const sorted = Array.from(scores.values()).sort((a, b) => b.score - a.score);
+    return sorted.slice(0, 3).map(s => {
+      const arc = arcs.find(a => a.state_abbr === s.state_abbr);
+      let dominant = 'Weather';
+      let maxVal = 0;
+      for (const d of DOMAIN_KEYS) {
+        const val = (s as any)[d.key] || 0;
+        if (val > maxVal) { maxVal = val; dominant = d.label; }
+      }
+      return { ...s, arc, dominant };
+    });
+  }, [scores, arcs]);
+
+  if (top3.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-[11px] font-mono text-white/20 tracking-wide">Loading...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-3 py-2 border-b border-white/[0.06]">
+        <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {top3.map((s, i) => {
+          const tierColor = s.score >= 80 ? 'text-red-400' : s.score >= 50 ? 'text-amber-400' : 'text-white/50';
+          return (
+            <button
+              key={s.state_abbr}
+              onClick={() => onSelectState(s.state_abbr)}
+              className="w-full px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors border-b border-white/[0.03]"
+            >
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-sm font-mono font-bold text-white/80">{s.state_abbr}</span>
+                <span className={`text-sm font-mono font-bold ${tierColor}`}>{Math.round(s.score)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-mono text-white/25">
+                <span>Top: {s.dominant}</span>
+                {s.arc && <span className="text-cyan-400/40">{s.arc.current_act}</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div className="px-3 py-2 border-t border-white/[0.06]">
+        <p className="text-[9px] font-mono text-white/15 text-center">Select a state for details</p>
+      </div>
     </div>
   );
 }

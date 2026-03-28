@@ -4,6 +4,8 @@ import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
 import type { StateArc } from '@/hooks/useStateArcs';
 import type { StateBrief } from '@/hooks/useStateBrief';
+import type { AggregatedState } from '@/hooks/useAlertCalibration';
+import { usePatternLinks } from '@/hooks/usePatternLinks';
 import ArcTimeline from '@/components/intelligence/ArcTimeline';
 import CountdownClock from '@/components/intelligence/CountdownClock';
 import SplitVerdict from '@/components/SplitVerdict';
@@ -39,10 +41,22 @@ interface Props {
   arc: StateArc | undefined;
   brief: StateBrief | null;
   briefLoading: boolean;
+  calibrationByState?: AggregatedState[];
 }
 
-export default function StateDetailPanel({ state, score, arc, brief, briefLoading }: Props) {
+const CONTENT_TYPE_COLORS: Record<string, string> = {
+  'weather-event': '#ef4444', 'nws-alert': '#ef4444', 'weather-realtime': '#ef4444',
+  'migration-spike-extreme': '#3b82f6', 'migration-spike-significant': '#3b82f6', 'migration-daily': '#3b82f6',
+  'birdcast-daily': '#22c55e', 'birdweather-daily': '#22c55e',
+  'convergence-score': '#14b8a6', 'compound-risk-alert': '#f59e0b',
+  'solunar-precomputed': '#f59e0b', 'drought-weekly': '#06b6d4',
+  'usgs-water': '#06b6d4', 'climate-index': '#a855f7',
+};
+
+export default function StateDetailPanel({ state, score, arc, brief, briefLoading, calibrationByState }: Props) {
   const [briefExpanded, setBriefExpanded] = useState(false);
+  const [connectionsExpanded, setConnectionsExpanded] = useState(false);
+  const { links: patternLinks, loading: linksLoading } = usePatternLinks(state);
 
   const tier = score ? (score.score >= 80 ? 'CRITICAL' : score.score >= 50 ? 'ELEVATED' : 'NORMAL') : 'NORMAL';
   const tierColor = tier === 'CRITICAL' ? 'text-red-400' : tier === 'ELEVATED' ? 'text-amber-400' : 'text-white/50';
@@ -106,6 +120,56 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Cross-Domain Connections */}
+        <div>
+          <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1">Connections</div>
+          {linksLoading ? (
+            <div className="text-[9px] font-mono text-white/15 animate-pulse">Scanning...</div>
+          ) : patternLinks.length === 0 ? (
+            <div className="text-[9px] font-mono text-white/15">No connections found (72h)</div>
+          ) : (
+            <div className="space-y-0.5">
+              {(connectionsExpanded ? patternLinks : patternLinks.slice(0, 5)).map(link => (
+                <div key={link.id} className="flex items-center gap-1 text-[9px] font-mono text-white/35">
+                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: CONTENT_TYPE_COLORS[link.source_content_type] || '#6b7280' }} />
+                  <span className="truncate">{link.source_content_type.replace(/-/g, ' ')}</span>
+                  <span className="text-white/15 shrink-0">→</span>
+                  <span className="text-cyan-400/50 shrink-0">{Math.round(link.similarity * 100)}%</span>
+                  <span className="text-white/15 shrink-0">→</span>
+                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: CONTENT_TYPE_COLORS[link.matched_content_type] || '#6b7280' }} />
+                  <span className="truncate">{link.matched_content_type.replace(/-/g, ' ')}</span>
+                </div>
+              ))}
+              {patternLinks.length > 5 && (
+                <button
+                  onClick={() => setConnectionsExpanded(e => !e)}
+                  className="text-[8px] font-mono text-cyan-400/40 hover:text-cyan-400/60"
+                >
+                  {connectionsExpanded ? 'Show less' : `Show all ${patternLinks.length}`}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Historical Odds */}
+        {calibrationByState && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Track Record</span>
+            {(() => {
+              const cal = calibrationByState.find(s => s.state_abbr === state);
+              if (!cal || cal.total_alerts === 0) return <span className="text-[9px] font-mono text-white/15 italic">Learning... (0 graded)</span>;
+              const accColor = cal.accuracy >= 60 ? '#22c55e' : cal.accuracy >= 30 ? '#f59e0b' : '#ef4444';
+              return (
+                <span className="text-[9px] font-mono text-white/30">
+                  {cal.total_alerts} graded →{' '}
+                  <span style={{ color: accColor }}>{cal.accuracy}%</span> accuracy
+                </span>
+              );
+            })()}
           </div>
         )}
 
