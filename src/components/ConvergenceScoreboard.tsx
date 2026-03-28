@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { List, ChartScatter } from 'lucide-react';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
 import type { StateArc } from '@/hooks/useStateArcs';
+import PressureDifferential from '@/components/PressureDifferential';
 
 const DOMAINS = [
   { key: 'weather_component' as const, color: '#ef4444', label: 'Weather' },
@@ -51,6 +53,8 @@ interface Props {
 }
 
 export default function ConvergenceScoreboard({ scores, selectedState, onSelectState, historyMap, arcMap, calibrationMap }: Props) {
+  const [viewMode, setViewMode] = useState<'list' | 'scatter'>('list');
+
   const sorted = useMemo(() => {
     return Array.from(scores.values()).sort((a, b) => b.score - a.score);
   }, [scores]);
@@ -73,7 +77,22 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
       {/* Header */}
       <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
         <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Convergence</h2>
-        <span className="text-[10px] font-mono text-white/20">{sorted.length} states</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-0.5 rounded ${viewMode === 'list' ? 'text-white/50' : 'text-white/15 hover:text-white/30'}`}
+            title="List view"
+          >
+            <List className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setViewMode('scatter')}
+            className={`p-0.5 rounded ${viewMode === 'scatter' ? 'text-white/50' : 'text-white/15 hover:text-white/30'}`}
+            title="Scatter view"
+          >
+            <ChartScatter className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       {/* Domain legend */}
@@ -86,8 +105,21 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
         ))}
       </div>
 
+      {/* Scatter view */}
+      {viewMode === 'scatter' && historyMap && arcMap && (
+        <div className="flex-1 overflow-y-auto flex items-start justify-center pt-2">
+          <PressureDifferential
+            scores={scores}
+            historyMap={historyMap}
+            arcMap={arcMap}
+            selectedState={selectedState}
+            onSelectState={onSelectState}
+          />
+        </div>
+      )}
+
       {/* State list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={`flex-1 overflow-y-auto ${viewMode === 'scatter' ? 'hidden' : ''}`}>
         {sorted.map((s, i) => {
           const isSelected = s.state_abbr === selectedState;
           const tier = s.score >= 80 ? 'critical' : s.score >= 50 ? 'elevated' : 'normal';

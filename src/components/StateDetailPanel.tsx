@@ -6,6 +6,8 @@ import type { StateArc } from '@/hooks/useStateArcs';
 import type { StateBrief } from '@/hooks/useStateBrief';
 import ArcTimeline from '@/components/intelligence/ArcTimeline';
 import CountdownClock from '@/components/intelligence/CountdownClock';
+import SplitVerdict from '@/components/SplitVerdict';
+import AutopsyDrawer from '@/components/AutopsyDrawer';
 
 const DOMAINS = [
   { key: 'weather_component' as const, color: '#ef4444', label: 'Weather', max: 25 },
@@ -117,11 +119,11 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
           </div>
         )}
 
-        {/* AI Brief — only show if different from arc narrative */}
+        {/* AI Brief — only show if no arc narrative (arc is always more current) */}
         {briefLoading && !arc?.narrative && (
           <div className="text-[10px] font-mono text-white/20 animate-pulse">Loading brief...</div>
         )}
-        {brief?.content && (!arc?.narrative || !brief.content.startsWith(arc.narrative.slice(0, 40))) && (
+        {brief?.content && !arc?.narrative && (
           <div>
             <button
               onClick={() => setBriefExpanded(e => !e)}
@@ -154,6 +156,16 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               {Math.round(arc.precedent_accuracy)}%
             </span>
           </div>
+        )}
+
+        {/* Split Verdict — outcome phase states */}
+        {arc?.current_act === 'outcome' && (
+          <SplitVerdict arc={arc} />
+        )}
+
+        {/* Autopsy Drawer — graded arcs */}
+        {arc?.grade && (
+          <AutopsyDrawer arc={arc} />
         )}
 
         {/* Navigation */}
