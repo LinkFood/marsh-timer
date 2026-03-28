@@ -24,10 +24,15 @@ import { MapActionProvider } from "@/contexts/MapActionContext";
 import { DeckProvider, useDeck } from "@/contexts/DeckContext";
 import { LayerProvider, useLayerContext } from "@/contexts/LayerContext";
 import DeckLayout from "@/layout/DeckLayout";
+import TerminalLayout from "@/layout/TerminalLayout";
 import WidgetManager from "@/panels/WidgetManager";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
-const Index = () => {
+interface IndexProps {
+  legacyLayout?: boolean;
+}
+
+const Index = ({ legacyLayout }: IndexProps = {}) => {
   const { first, second, third } = useParams<{
     first?: string;
     second?: string;
@@ -192,34 +197,65 @@ const Index = () => {
                   <p className="text-xs font-body text-white/40">Layout failed to load. Refresh to try again.</p>
                 </div>
               }>
-                <DeckLayout
-                  convergenceAlerts={convergenceAlerts}
-                  weatherEventsGeoJSON={weatherEventsGeoJSON}
-                  nwsAlertsGeoJSON={nwsAlertsGeoJSON}
-                  huntAlerts={alerts}
-                  murmurationIndex={murmurationIndex}
-                >
-                  {/* Map content */}
-                  <MapWithLayers
-                    mapRef={mapRef}
-                    species={species}
-                    selectedState={selectedState}
-                    onSelectState={handleSelectState}
-                    onDrillUp={handleDrillUp}
-                    isMobile={isMobile}
-                    weatherTiles={weatherTiles}
-                    countyGeoJSON={countyGeoJSON}
-                    sightingsGeoJSON={sightingsGeoJSON}
-                    weatherCache={weatherCache}
-                    convergenceScores={convergenceScoreMap}
-                    perfectStormStates={perfectStormStates}
-                    nwsAlertsGeoJSON={nwsAlertsGeoJSON}
-                    migrationFrontLine={migrationFrontLine}
-                    duPinsGeoJSON={duPinsGeoJSON}
+                {legacyLayout ? (
+                  <DeckLayout
+                    convergenceAlerts={convergenceAlerts}
                     weatherEventsGeoJSON={weatherEventsGeoJSON}
-                    onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
-                  />
-                </DeckLayout>
+                    nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+                    huntAlerts={alerts}
+                    murmurationIndex={murmurationIndex}
+                  >
+                    <MapWithLayers
+                      mapRef={mapRef}
+                      species={species}
+                      selectedState={selectedState}
+                      onSelectState={handleSelectState}
+                      onDrillUp={handleDrillUp}
+                      isMobile={isMobile}
+                      weatherTiles={weatherTiles}
+                      countyGeoJSON={countyGeoJSON}
+                      sightingsGeoJSON={sightingsGeoJSON}
+                      weatherCache={weatherCache}
+                      convergenceScores={convergenceScoreMap}
+                      perfectStormStates={perfectStormStates}
+                      nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+                      migrationFrontLine={migrationFrontLine}
+                      duPinsGeoJSON={duPinsGeoJSON}
+                      weatherEventsGeoJSON={weatherEventsGeoJSON}
+                      onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+                    />
+                  </DeckLayout>
+                ) : (
+                  <TerminalLayout
+                    convergenceAlerts={convergenceAlerts}
+                    weatherEventsGeoJSON={weatherEventsGeoJSON}
+                    nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+                    huntAlerts={alerts}
+                    murmurationIndex={murmurationIndex}
+                    convergenceScores={convergenceScores}
+                    onSelectState={handleSelectState}
+                  >
+                    <MapWithLayers
+                      mapRef={mapRef}
+                      species={species}
+                      selectedState={selectedState}
+                      onSelectState={handleSelectState}
+                      onDrillUp={handleDrillUp}
+                      isMobile={isMobile}
+                      weatherTiles={weatherTiles}
+                      countyGeoJSON={countyGeoJSON}
+                      sightingsGeoJSON={sightingsGeoJSON}
+                      weatherCache={weatherCache}
+                      convergenceScores={convergenceScoreMap}
+                      perfectStormStates={perfectStormStates}
+                      nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+                      migrationFrontLine={migrationFrontLine}
+                      duPinsGeoJSON={duPinsGeoJSON}
+                      weatherEventsGeoJSON={weatherEventsGeoJSON}
+                      onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+                    />
+                  </TerminalLayout>
+                )}
               </ErrorBoundary>
             </div>
 

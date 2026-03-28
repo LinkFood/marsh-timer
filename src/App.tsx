@@ -30,6 +30,7 @@ const App = () => (
       <AuthGate>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/map" element={<Index legacyLayout />} />
           <Route path="/:first" element={<Index />} />
           <Route path="/:first/:second" element={<Index />} />
           <Route path="/:first/:second/:third" element={<Index />} />
