@@ -70,7 +70,10 @@ function parseSolunar(data: Record<string, unknown> | null): { phase: string; ma
 // ── Main Page ──
 
 export default function IntelligencePage() {
-  const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [selectedState, setSelectedState] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('state')?.toUpperCase() || null;
+  });
   const [chatOpen, setChatOpen] = useState(false);
 
   // Data hooks
