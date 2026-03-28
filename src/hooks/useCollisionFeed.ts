@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { JournalEntry } from '@/hooks/useBrainJournal';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 
-export type CollisionType = 'compound-risk' | 'correlation' | 'anomaly' | 'score-spike' | 'grade-reasoning';
+export type CollisionType = 'compound-risk' | 'correlation' | 'anomaly' | 'score-spike' | 'grade-reasoning' | 'convergence' | 'arc-fingerprint';
 
 export interface CollisionEntry {
   id: string;
@@ -21,9 +21,14 @@ const TYPE_MAP: Record<string, CollisionType> = {
   'correlation-discovery': 'correlation',
   'anomaly-alert': 'anomaly',
   'arc-grade-reasoning': 'grade-reasoning',
+  'convergence-score': 'convergence',
+  'arc-fingerprint': 'arc-fingerprint',
 };
 
+const EXCLUDED_TYPES = new Set(['state-brief']);
+
 function journalToCollision(entry: JournalEntry): CollisionEntry | null {
+  if (EXCLUDED_TYPES.has(entry.content_type)) return null;
   const type = TYPE_MAP[entry.content_type];
   if (!type) return null;
 
@@ -45,6 +50,14 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
       break;
     case 'grade-reasoning':
       title = `Grade post-mortem: ${entry.state_abbr || ''} ${entry.title}`;
+      severity = 'low';
+      break;
+    case 'convergence':
+      title = `${entry.state_abbr || '??'} convergence scored — ${entry.title}`;
+      severity = 'low';
+      break;
+    case 'arc-fingerprint':
+      title = `Arc fingerprint recorded: ${entry.title}`;
       severity = 'low';
       break;
   }
@@ -74,10 +87,10 @@ function alertToCollision(alert: ConvergenceAlert): CollisionEntry {
 }
 
 const FILTER_MAP: Record<CollisionFilter, CollisionType[]> = {
-  all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning'],
-  connections: ['compound-risk', 'correlation'],
+  all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning', 'convergence', 'arc-fingerprint'],
+  connections: ['compound-risk', 'correlation', 'convergence'],
   alerts: ['anomaly', 'score-spike'],
-  grades: ['grade-reasoning'],
+  grades: ['grade-reasoning', 'arc-fingerprint'],
 };
 
 export function useCollisionFeed(

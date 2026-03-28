@@ -3,10 +3,12 @@ import type { CollisionEntry, CollisionType } from '@/hooks/useCollisionFeed';
 
 const BORDER_COLORS: Record<CollisionType, string> = {
   'compound-risk': '#ef4444',
-  'correlation': '#14b8a6',
+  'correlation': '#a855f7',
   'anomaly': '#f59e0b',
   'score-spike': '#f59e0b',
-  'grade-reasoning': '#22c55e',
+  'grade-reasoning': '#5eead4',
+  'convergence': '#6b7280',
+  'arc-fingerprint': '#5eead4',
 };
 
 const TYPE_LABELS: Record<CollisionType, string> = {
@@ -15,6 +17,8 @@ const TYPE_LABELS: Record<CollisionType, string> = {
   'anomaly': 'ANOMALY',
   'score-spike': 'SPIKE',
   'grade-reasoning': 'GRADE',
+  'convergence': 'DATA',
+  'arc-fingerprint': 'GRADE',
 };
 
 function timeAgo(ts: string): string {

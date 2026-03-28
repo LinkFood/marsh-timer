@@ -6,6 +6,7 @@ import type { StateArc } from '@/hooks/useStateArcs';
 import type { StateBrief } from '@/hooks/useStateBrief';
 import type { AggregatedState } from '@/hooks/useAlertCalibration';
 import { usePatternLinks } from '@/hooks/usePatternLinks';
+import { useBrainJournal } from '@/hooks/useBrainJournal';
 import ArcTimeline from '@/components/intelligence/ArcTimeline';
 import CountdownClock from '@/components/intelligence/CountdownClock';
 import SplitVerdict from '@/components/SplitVerdict';
@@ -44,6 +45,20 @@ interface Props {
   calibrationByState?: AggregatedState[];
 }
 
+const DOMAIN_COLORS: Record<string, string> = {
+  weather: '#ef4444',
+  migration: '#3b82f6',
+  birds: '#3b82f6',
+  birdcast: '#22c55e',
+  solunar: '#f59e0b',
+  water: '#06b6d4',
+  climate: '#a855f7',
+  pattern: '#a855f7',
+  convergence: '#14b8a6',
+  photoperiod: '#6b7280',
+  tide: '#9ca3af',
+};
+
 const CONTENT_TYPE_COLORS: Record<string, string> = {
   'weather-event': '#ef4444', 'nws-alert': '#ef4444', 'weather-realtime': '#ef4444',
   'migration-spike-extreme': '#3b82f6', 'migration-spike-significant': '#3b82f6', 'migration-daily': '#3b82f6',
@@ -57,6 +72,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [connectionsExpanded, setConnectionsExpanded] = useState(false);
   const { links: patternLinks, loading: linksLoading } = usePatternLinks(state);
+  const { entries: alertEntries, loading: alertsLoading } = useBrainJournal(state, 'alerts', 5);
 
   const tier = score ? (score.score >= 80 ? 'CRITICAL' : score.score >= 50 ? 'ELEVATED' : 'NORMAL') : 'NORMAL';
   const tierColor = tier === 'CRITICAL' ? 'text-red-400' : tier === 'ELEVATED' ? 'text-amber-400' : 'text-white/50';
@@ -129,7 +145,54 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
           {linksLoading ? (
             <div className="text-[9px] font-mono text-white/15 animate-pulse">Scanning...</div>
           ) : patternLinks.length === 0 ? (
-            <div className="text-[9px] font-mono text-white/15">No connections found (72h)</div>
+            (() => {
+              const compoundEntries = alertEntries.filter(e => e.content_type === 'compound-risk-alert');
+              if (alertsLoading) {
+                return <div className="text-[9px] font-mono text-white/15 animate-pulse">Scanning brain...</div>;
+              }
+              if (compoundEntries.length === 0) {
+                return <div className="text-[9px] font-mono text-white/15">No connections found (48h)</div>;
+              }
+              const allDomains = new Set<string>();
+              let maxSeverity = '';
+              for (const entry of compoundEntries) {
+                const domainTypes = (entry.metadata as Record<string, unknown>)?.domain_types;
+                if (Array.isArray(domainTypes)) {
+                  for (const d of domainTypes) {
+                    if (typeof d === 'string') allDomains.add(d);
+                  }
+                }
+                const sev = (entry.metadata as Record<string, unknown>)?.severity;
+                if (typeof sev === 'string' && !maxSeverity) maxSeverity = sev;
+              }
+              const domains = Array.from(allDomains);
+              if (domains.length === 0) {
+                return <div className="text-[9px] font-mono text-white/15">No connections found (48h)</div>;
+              }
+              return (
+                <div className="space-y-1">
+                  <div className="text-[8px] font-mono text-white/20 uppercase tracking-wider">from brain discoveries</div>
+                  <div className="flex flex-wrap gap-1">
+                    {domains.map(d => (
+                      <span
+                        key={d}
+                        className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded"
+                        style={{
+                          color: DOMAIN_COLORS[d] || '#6b7280',
+                          backgroundColor: `${DOMAIN_COLORS[d] || '#6b7280'}15`,
+                        }}
+                      >
+                        <span className="w-1 h-1 rounded-full" style={{ backgroundColor: DOMAIN_COLORS[d] || '#6b7280' }} />
+                        {d.charAt(0).toUpperCase() + d.slice(1)}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="text-[9px] font-mono text-white/30 italic">
+                    {domains.length} domain{domains.length !== 1 ? 's' : ''} converging{maxSeverity ? ` — ${maxSeverity} severity` : ''}
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <div className="space-y-0.5">
               {(connectionsExpanded ? patternLinks : patternLinks.slice(0, 5)).map(link => (
