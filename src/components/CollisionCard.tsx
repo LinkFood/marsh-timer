@@ -101,6 +101,26 @@ export default function CollisionCard({ entry }: Props) {
             </div>
           )}
 
+          {/* Structured detail for LINK entries */}
+          {entry.type === 'correlation' && entry.similarity != null && (
+            <div className="flex items-center gap-2 text-[9px] font-mono">
+              <span className="text-white/25">{entry.seedType}</span>
+              <span className="text-purple-400/60">→ {Math.round(entry.similarity * 100)}% →</span>
+              <span className="text-white/25">{entry.matchType}</span>
+            </div>
+          )}
+
+          {/* Structured detail for ANOMALY entries */}
+          {entry.type === 'anomaly' && entry.zScore != null && (
+            <div className="flex items-center gap-3 text-[9px] font-mono">
+              <span className={entry.direction === 'above' ? 'text-red-400/50' : 'text-blue-400/50'}>
+                {Math.abs(entry.zScore).toFixed(1)}σ {entry.direction}
+              </span>
+              <span className="text-white/15">|</span>
+              <span className="text-white/20">statistical outlier detected</span>
+            </div>
+          )}
+
           {/* Brain narration */}
           {entry.detail && (
             <div className="px-2 py-1.5 rounded bg-white/[0.02] border-l border-cyan-400/20">

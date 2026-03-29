@@ -14,6 +14,11 @@ export interface CollisionEntry {
   severity: 'high' | 'medium' | 'low';
   domains?: string[];
   convergingCount?: number;
+  similarity?: number;
+  seedType?: string;
+  matchType?: string;
+  zScore?: number;
+  direction?: string;
 }
 
 export type CollisionFilter = 'all' | 'connections' | 'alerts' | 'grades';
@@ -89,6 +94,11 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
     severity,
     domains,
     convergingCount,
+    similarity: typeof meta?.similarity === 'number' ? meta.similarity as number : undefined,
+    seedType: typeof meta?.seed_type === 'string' ? (meta.seed_type as string).replace(/-/g, ' ') : undefined,
+    matchType: typeof meta?.match_type === 'string' ? (meta.match_type as string).replace(/-/g, ' ') : undefined,
+    zScore: typeof meta?.z_score === 'number' ? meta.z_score as number : undefined,
+    direction: typeof meta?.direction === 'string' ? meta.direction as string : undefined,
   };
 }
 
