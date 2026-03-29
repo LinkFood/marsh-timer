@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import type { Species } from "@/data/types";
 import { isValidSpecies } from "@/data/types";
 import { getStatesForSpecies, getSeasonsByState } from "@/data/seasons";
@@ -292,13 +292,15 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
 /** Wrapper that connects HeaderBar to DeckContext toggles + renders WidgetManager slide-out */
 function HeaderBarWithDeck(props: React.ComponentProps<typeof HeaderBar>) {
   const { toggleChat, toggleLayerPicker, togglePanelAdd } = useDeck();
+  const { pathname } = useLocation();
+  const isMapRoute = pathname.startsWith('/map');
   return (
     <>
       <HeaderBar
         {...props}
-        onToggleLayers={toggleLayerPicker}
+        onToggleLayers={isMapRoute ? toggleLayerPicker : undefined}
         onToggleChat={toggleChat}
-        onTogglePanelAdd={togglePanelAdd}
+        onTogglePanelAdd={isMapRoute ? togglePanelAdd : undefined}
       />
       <WidgetManager />
     </>

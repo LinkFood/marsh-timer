@@ -1,6 +1,4 @@
 import type { Species } from "@/data/types";
-import { getPrimarySeasonForState } from "@/data/seasons";
-import { getSeasonStatus } from "@/lib/seasonUtils";
 
 export interface PopupWeather {
   temp: number;
@@ -20,27 +18,6 @@ export interface PopupConvergence {
   reasoning?: string;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  open: "#10b981",
-  soon: "#f59e0b",
-  upcoming: "#3b82f6",
-  closed: "#64748b",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  open: "Season Open",
-  soon: "Opening Soon",
-  upcoming: "Upcoming",
-  closed: "Season Closed",
-};
-
-const SPECIES_LABELS: Record<string, string> = {
-  duck: "Duck",
-  goose: "Goose",
-  deer: "Deer",
-  turkey: "Turkey",
-  dove: "Dove",
-};
 
 function getScoreTierColor(score: number): string {
   if (score >= 81) return "#ef4444";
@@ -100,11 +77,6 @@ const S = {
   // Weather
   weatherRow: `display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,0.6);flex-wrap:wrap`,
   weatherValue: `font-weight:600;color:rgba(255,255,255,0.85)`,
-  // Season
-  seasonRow: `display:flex;align-items:center;gap:6px;font-size:10px`,
-  statusDot: (color: string) => `width:6px;height:6px;border-radius:50%;background:${color};flex-shrink:0`,
-  statusLabel: (color: string) => `color:${color};font-weight:600`,
-  dateText: `color:rgba(255,255,255,0.35);font-size:10px`,
 };
 
 export function getPopupHTML(
@@ -115,23 +87,6 @@ export function getPopupHTML(
   convergence?: PopupConvergence | null,
   convergenceRank?: number | null,
 ): string {
-  const season = getPrimarySeasonForState(species, abbr);
-  const now = new Date();
-  const status = season ? getSeasonStatus(season, now) : "closed";
-  const statusColor = STATUS_COLORS[status] || STATUS_COLORS.closed;
-  const statusLabel = STATUS_LABELS[status] || "Closed";
-  const speciesLabel = SPECIES_LABELS[species] || "Duck";
-
-  // Season dates
-  let dateStr = "";
-  if (season && season.dates.length > 0) {
-    const nextDate = season.dates.find(d => new Date(d.close) >= now);
-    if (nextDate) {
-      const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      dateStr = `${fmt(new Date(nextDate.open))} - ${fmt(new Date(nextDate.close))}`;
-    }
-  }
-
   const moon = getMoonPhase();
 
   // --- Header: STATE NAME — Signal: XX/100 ---
@@ -232,17 +187,5 @@ export function getPopupHTML(
     `;
   }
 
-  // --- Season row ---
-  const seasonSection = `
-    <div style="${S.divider}"></div>
-    <div style="${S.section}">
-      <div style="${S.seasonRow}">
-        <div style="${S.statusDot(statusColor)}"></div>
-        <span style="${S.statusLabel(statusColor)}">${speciesLabel}: ${statusLabel}</span>
-        ${dateStr ? `<span style="${S.dateText}">${dateStr}</span>` : ""}
-      </div>
-    </div>
-  `;
-
-  return `<div style="${S.card}">${headerSection}${compSection}${weatherSection}${seasonSection}</div>`;
+  return `<div style="${S.card}">${headerSection}${compSection}${weatherSection}</div>`;
 }

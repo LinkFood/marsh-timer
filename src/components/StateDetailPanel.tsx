@@ -241,7 +241,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
           <div>
             <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1">Arc Narrative</div>
             <p className="text-[11px] font-mono text-white/50 leading-relaxed line-clamp-3">
-              {arc.narrative}
+              {arc.narrative.replace(/\*\*/g, '')}
             </p>
           </div>
         )}
@@ -260,7 +260,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               {briefExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
             </button>
             <p className={`text-[11px] font-mono text-white/45 leading-relaxed ${briefExpanded ? '' : 'line-clamp-3'}`}>
-              {brief.content}
+              {brief.content.replace(/\*\*/g, '')}
             </p>
           </div>
         )}
