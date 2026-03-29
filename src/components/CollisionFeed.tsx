@@ -1,8 +1,11 @@
-import { useState } from 'react';
-import { useBrainJournal } from '@/hooks/useBrainJournal';
+import { useState, useEffect, useRef } from 'react';
+import { useBrainJournal, type JournalEntry } from '@/hooks/useBrainJournal';
 import { useCollisionFeed, type CollisionFilter } from '@/hooks/useCollisionFeed';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import CollisionCard from '@/components/CollisionCard';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const FILTERS: { key: CollisionFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -11,6 +14,42 @@ const FILTERS: { key: CollisionFilter; label: string }[] = [
   { key: 'grades', label: 'Grades' },
 ];
 
+// Fetch correlation + anomaly discoveries directly (they get buried by signal_weight sort in useBrainJournal)
+function useDiscoveries() {
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
+    fetchedRef.current = true;
+
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const types = '"correlation-discovery","anomaly-alert","arc-grade-reasoning","arc-fingerprint"';
+
+    fetch(
+      `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=in.(${types})&created_at=gte.${cutoff}&order=created_at.desc&limit=50&select=id,title,content,content_type,state_abbr,metadata,effective_date,signal_weight,created_at`,
+      { headers: { apikey: SUPABASE_KEY } }
+    )
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setEntries(data); })
+      .catch(() => {});
+
+    const interval = setInterval(() => {
+      fetch(
+        `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=in.(${types})&created_at=gte.${cutoff}&order=created_at.desc&limit=50&select=id,title,content,content_type,state_abbr,metadata,effective_date,signal_weight,created_at`,
+        { headers: { apikey: SUPABASE_KEY } }
+      )
+        .then(r => r.json())
+        .then(data => { if (Array.isArray(data)) setEntries(data); })
+        .catch(() => {});
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return entries;
+}
+
 interface Props {
   convergenceAlerts: ConvergenceAlert[];
   stateFilter?: string | null;
@@ -18,8 +57,20 @@ interface Props {
 
 export default function CollisionFeed({ convergenceAlerts, stateFilter = null }: Props) {
   const [activeFilter, setActiveFilter] = useState<CollisionFilter>('all');
-  const { entries: journalEntries, loading: journalLoading } = useBrainJournal(null, 'brain', 200);
-  const { entries, filterEntries } = useCollisionFeed(journalEntries, convergenceAlerts, stateFilter);
+  const { entries: journalEntries, loading: journalLoading } = useBrainJournal(null, 'brain', 100);
+  const discoveryEntries = useDiscoveries();
+
+  // Merge journal + discoveries, dedup by id
+  const mergedEntries = (() => {
+    const seen = new Set<string>();
+    const all: JournalEntry[] = [];
+    for (const e of [...discoveryEntries, ...journalEntries]) {
+      if (!seen.has(e.id)) { seen.add(e.id); all.push(e); }
+    }
+    return all;
+  })();
+
+  const { entries, filterEntries } = useCollisionFeed(mergedEntries, convergenceAlerts, stateFilter);
 
   const filtered = filterEntries(activeFilter);
   const displayed = filtered.slice(0, 50);
