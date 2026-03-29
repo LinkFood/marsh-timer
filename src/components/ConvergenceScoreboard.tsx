@@ -145,12 +145,19 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
               {/* Conviction dot */}
               <ConvictionDot arc={arc} calibrationAccuracy={calAccuracy} />
 
-              {/* State abbreviation */}
-              <span className={`text-[11px] font-mono font-semibold w-6 shrink-0 ${
+              {/* State abbreviation + arc phase dot */}
+              <span className={`text-[11px] font-mono font-semibold shrink-0 ${
                 tier === 'critical' ? 'text-red-400' :
                 tier === 'elevated' ? 'text-amber-400' : 'text-white/50'
               }`}>
                 {s.state_abbr}
+                {arc && (
+                  <span
+                    className="inline-block w-1 h-1 rounded-full ml-0.5 align-super"
+                    style={{ backgroundColor: arc.current_act === 'outcome' ? '#ef4444' : arc.current_act === 'recognition' ? '#f97316' : arc.current_act === 'buildup' ? '#f59e0b' : '#22c55e' }}
+                    title={arc.current_act}
+                  />
+                )}
               </span>
 
               {/* Mini-bars */}
