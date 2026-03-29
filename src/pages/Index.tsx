@@ -71,7 +71,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
 
     const upper = first.toUpperCase();
     if (upper.length === 2 && getStatesForSpecies("all").has(upper)) {
-      return { species: "all" as Species, stateAbbr: upper, zoneSlug: null, redirect: `/all/${upper}` };
+      return { species: "all" as Species, stateAbbr: upper, zoneSlug: null, redirect: null };
     }
 
     return { species: "all" as Species, stateAbbr: null, zoneSlug: null, redirect: "/" };
@@ -154,30 +154,35 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
 
   const handleSelectState = useCallback((abbr: string) => {
     setSelectedState(abbr);
-    navigate(`/${species}/${abbr}`, { replace: true });
+    navigate(legacyLayout ? `/${species}/${abbr}` : `/${abbr}`, { replace: true });
     mapRef.current?.flyTo(abbr);
-  }, [navigate, species]);
+  }, [navigate, species, legacyLayout]);
 
   const handleDrillUp = useCallback(() => {
     if (selectedState) {
       setSelectedState(null);
-      navigate(`/${species}`, { replace: true });
+      navigate(legacyLayout ? `/${species}` : '/', { replace: true });
     }
-  }, [navigate, species, selectedState]);
+  }, [navigate, species, selectedState, legacyLayout]);
 
   const handleSearchLocation = useCallback((lng: number, lat: number, stateAbbr: string | null) => {
     if (stateAbbr && getStatesForSpecies(species).has(stateAbbr)) {
       setSelectedState(stateAbbr);
-      navigate(`/${species}/${stateAbbr}`, { replace: true });
+      navigate(legacyLayout ? `/${species}/${stateAbbr}` : `/${stateAbbr}`, { replace: true });
     }
     mapRef.current?.flyToCoords(lng, lat);
   }, [navigate, species]);
 
   const setSelectedStateWrapped = useCallback((abbr: string | null) => {
     setSelectedState(abbr);
-    if (abbr) navigate(`/${species}/${abbr}`, { replace: true });
-    else navigate(`/${species}`, { replace: true });
-  }, [navigate, species]);
+    if (legacyLayout) {
+      if (abbr) navigate(`/${species}/${abbr}`, { replace: true });
+      else navigate(`/${species}`, { replace: true });
+    } else {
+      if (abbr) navigate(`/${abbr}`, { replace: true });
+      else navigate('/', { replace: true });
+    }
+  }, [navigate, species, legacyLayout]);
 
   return (
     <DeckProvider
