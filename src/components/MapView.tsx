@@ -2160,7 +2160,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             popupRef.current = new mapboxgl.Popup({
               closeButton: false,
               closeOnClick: false,
-              className: "signal-popup",
+              className: "signal-popup state-hover-popup",
               offset: 10,
             })
               .setLngLat(centroid)
