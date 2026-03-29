@@ -80,10 +80,9 @@ async function fetchSoilData(lat: number, lng: number): Promise<any> {
     start_date: START_DATE,
     end_date: END_DATE,
     daily: [
-      "soil_temperature_0cm_mean",
-      "soil_temperature_6cm_mean",
-      "soil_temperature_18cm_mean",
-      "soil_temperature_54cm_mean",
+      "soil_temperature_0_to_7cm_mean",
+      "soil_temperature_7_to_28cm_mean",
+      "soil_temperature_28_to_100cm_mean",
       "soil_moisture_0_to_7cm_mean",
       "soil_moisture_7_to_28cm_mean",
       "soil_moisture_28_to_100cm_mean",
@@ -93,20 +92,29 @@ async function fetchSoilData(lat: number, lng: number): Promise<any> {
   });
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
-    if (res.ok) return res.json();
-    if (res.status === 429 && attempt < 2) {
-      const wait = (attempt + 1) * 65000;
-      console.log(`    Rate limited, waiting ${Math.round(wait / 1000)}s...`);
-      await delay(wait);
-      continue;
+    try {
+      const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
+      if (res.ok) return res.json();
+      if (res.status === 429 && attempt < 2) {
+        const wait = (attempt + 1) * 65000;
+        console.log(`    Rate limited, waiting ${Math.round(wait / 1000)}s...`);
+        await delay(wait);
+        continue;
+      }
+      if (res.status >= 500 && attempt < 2) {
+        console.log(`    Server error ${res.status}, retry ${attempt + 1}/3...`);
+        await delay((attempt + 1) * 5000);
+        continue;
+      }
+      throw new Error(`Open-Meteo error: ${res.status} ${await res.text()}`);
+    } catch (err) {
+      if (attempt < 2) {
+        console.log(`    Fetch failed (${(err as Error).message}), retry ${attempt + 1}/3 in ${(attempt + 1) * 10}s...`);
+        await delay((attempt + 1) * 10000);
+        continue;
+      }
+      throw err;
     }
-    if (res.status >= 500 && attempt < 2) {
-      console.log(`    Server error ${res.status}, retry ${attempt + 1}/3...`);
-      await delay((attempt + 1) * 5000);
-      continue;
-    }
-    throw new Error(`Open-Meteo error: ${res.status} ${await res.text()}`);
   }
   throw new Error("Open-Meteo: exhausted retries");
 }
@@ -246,15 +254,15 @@ async function backfillState(stateAbbr: string, lat: number, lng: number): Promi
   // Build day entries with freeze/thaw
   const days: DayEntry[] = [];
   for (let i = 0; i < daily.time.length; i++) {
-    const surfaceTemp = daily.soil_temperature_0cm_mean?.[i] ?? null;
-    const prevSurfaceTemp = i > 0 ? (daily.soil_temperature_0cm_mean?.[i - 1] ?? null) : null;
+    const surfaceTemp = daily.soil_temperature_0_to_7cm_mean?.[i] ?? null;
+    const prevSurfaceTemp = i > 0 ? (daily.soil_temperature_0_to_7cm_mean?.[i - 1] ?? null) : null;
 
     days.push({
       date: daily.time[i],
       surfaceTemp,
-      temp6cm: daily.soil_temperature_6cm_mean?.[i] ?? null,
-      temp18cm: daily.soil_temperature_18cm_mean?.[i] ?? null,
-      temp54cm: daily.soil_temperature_54cm_mean?.[i] ?? null,
+      temp6cm: daily.soil_temperature_7_to_28cm_mean?.[i] ?? null,
+      temp18cm: daily.soil_temperature_28_to_100cm_mean?.[i] ?? null,
+      temp54cm: null,
       moisture0_7: daily.soil_moisture_0_to_7cm_mean?.[i] ?? null,
       moisture7_28: daily.soil_moisture_7_to_28cm_mean?.[i] ?? null,
       moisture28_100: daily.soil_moisture_28_to_100cm_mean?.[i] ?? null,
@@ -349,9 +357,9 @@ async function main() {
     } catch (err) {
       console.error(`  FAILED ${abbr}: ${err}`);
     }
-    // 1s between states
+    // 3s between states to avoid Open-Meteo rate limiting
     if (i < states.length - 1) {
-      await delay(1000);
+      await delay(3000);
     }
   }
 
