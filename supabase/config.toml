@@ -537,6 +537,9 @@ verify_jwt = false
 [functions.hunt-state-brief]
 verify_jwt = false
 
+[functions.hunt-river-discharge]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
