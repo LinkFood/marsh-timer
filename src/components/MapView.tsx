@@ -2617,10 +2617,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
 
     // --- BLOCK 2: State fill coloring (separate from visibility) ---
-    // When visibleMapboxLayers is provided, only show convergence colors if the heatmap layer is on
-    const showConvergenceFill = visibleMapboxLayers
-      ? visibleMapboxLayers.has('convergence-score-bg')
-      : mapMode === 'intel';
+    // Always show convergence colors when scores are available
+    const showConvergenceFill = true;
     if (showConvergenceFill && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
       for (const [abbr, data] of convergenceScores) {
