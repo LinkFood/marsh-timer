@@ -32,7 +32,7 @@ const supaHeaders = {
 
 const YEARS = [2021, 2022, 2023, 2024, 2025];
 const PAGE_SIZE = 200;
-const API_URL = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0/query";
+const API_URL = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0/query";
 
 // ---------- Helpers ----------
 
@@ -135,21 +135,23 @@ async function insertBatch(rows: Record<string, any>[]) {
 // ---------- Fetch one page ----------
 
 async function fetchPage(year: number, offset: number): Promise<any[]> {
-  const where = `attr_FireDiscoveryDateTime >= '${year}-01-01' AND attr_FireDiscoveryDateTime < '${year + 1}-01-01'`;
+  // ArcGIS requires TIMESTAMP keyword for date comparisons
+  const where = `attr_FireDiscoveryDateTime >= TIMESTAMP '${year}-01-01 00:00:00' AND attr_FireDiscoveryDateTime < TIMESTAMP '${year + 1}-01-01 00:00:00'`;
   const params = new URLSearchParams({
     where,
     outFields: "*",
     resultRecordCount: String(PAGE_SIZE),
     resultOffset: String(offset),
-    f: "geojson",
+    returnGeometry: "false",
+    f: "json",
   });
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(`${API_URL}?${params}`);
       if (res.ok) {
-        const geojson = await res.json();
-        return geojson.features || [];
+        const data = await res.json();
+        return (data.features || []).map((f: any) => ({ properties: f.attributes }));
       }
       if (res.status === 429 && attempt < 2) {
         console.log(`    Rate limited, waiting ${(attempt + 1) * 30}s...`);
@@ -194,7 +196,8 @@ async function backfillYear(year: number): Promise<number> {
       const name = p.poly_IncidentName || "Unknown";
       const acres = p.poly_Acres_AutoCalc ?? null;
       const pct = p.poly_PercentContained ?? 0;
-      const state = p.attr_POOState || "US";
+      const rawState = p.attr_POOState || "";
+      const state = rawState.replace("US-", "") || null; // "US-TX" → "TX"
       const irwinId = p.attr_IrwinID;
       const startDate = formatDate(p.attr_FireDiscoveryDateTime);
       const cause = p.attr_FireCause || "unknown";
