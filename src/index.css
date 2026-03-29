@@ -154,8 +154,9 @@
     50% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.8); }
   }
 
-  .state-hover-popup {
-    pointer-events: none;
+  .state-hover-popup,
+  .state-hover-popup * {
+    pointer-events: none !important;
   }
 
   .signal-popup .mapboxgl-popup-content {
