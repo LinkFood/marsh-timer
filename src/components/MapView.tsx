@@ -119,19 +119,35 @@ function tempToColor(tempF: number): string {
 }
 
 function convergenceToColor(score: number): string {
-  if (score >= 81) return 'rgba(239, 68, 68, 0.6)';    // red - fire
-  if (score >= 61) return 'rgba(251, 146, 60, 0.55)';   // orange - hot
-  if (score >= 41) return 'rgba(250, 204, 21, 0.5)';    // yellow - warming up
-  if (score >= 21) return 'rgba(59, 130, 246, 0.4)';    // blue - cool
-  return 'rgba(100, 100, 100, 0.3)';                     // gray - nothing
+  // Smooth gradient: gray → blue → teal → green → yellow → orange → red
+  // Tuned for the 50-80 range where most states cluster
+  if (score >= 90) return 'rgba(220, 38, 38, 0.7)';     // deep red
+  if (score >= 80) return 'rgba(239, 68, 68, 0.65)';    // red
+  if (score >= 75) return 'rgba(249, 115, 22, 0.6)';    // orange-red
+  if (score >= 70) return 'rgba(251, 146, 60, 0.58)';   // orange
+  if (score >= 65) return 'rgba(245, 158, 11, 0.55)';   // amber
+  if (score >= 60) return 'rgba(234, 179, 8, 0.5)';     // yellow
+  if (score >= 55) return 'rgba(132, 204, 22, 0.45)';   // lime
+  if (score >= 50) return 'rgba(34, 197, 94, 0.4)';     // green
+  if (score >= 40) return 'rgba(20, 184, 166, 0.35)';   // teal
+  if (score >= 30) return 'rgba(59, 130, 246, 0.3)';    // blue
+  if (score >= 20) return 'rgba(99, 102, 241, 0.25)';   // indigo
+  return 'rgba(100, 100, 100, 0.15)';                    // gray
 }
 
 function convergenceScoreColor(score: number): string {
-  if (score >= 81) return '#ef4444';
-  if (score >= 61) return '#fb923c';
-  if (score >= 41) return '#facc15';
-  if (score >= 21) return '#3b82f6';
-  return 'rgba(100,100,100,0.6)';
+  if (score >= 90) return '#dc2626';
+  if (score >= 80) return '#ef4444';
+  if (score >= 75) return '#f97316';
+  if (score >= 70) return '#fb923c';
+  if (score >= 65) return '#f59e0b';
+  if (score >= 60) return '#eab308';
+  if (score >= 55) return '#84cc16';
+  if (score >= 50) return '#22c55e';
+  if (score >= 40) return '#14b8a6';
+  if (score >= 30) return '#3b82f6';
+  if (score >= 20) return '#6366f1';
+  return '#6b7280';
 }
 
 export interface MapViewProps {
