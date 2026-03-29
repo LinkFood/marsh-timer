@@ -1,5 +1,3 @@
-import type { Species } from "@/data/types";
-
 export interface PopupWeather {
   temp: number;
   wind: number;
@@ -82,7 +80,7 @@ const S = {
 export function getPopupHTML(
   abbr: string,
   stateName: string,
-  species: Species,
+  _species?: unknown,
   weather?: PopupWeather | null,
   convergence?: PopupConvergence | null,
   convergenceRank?: number | null,

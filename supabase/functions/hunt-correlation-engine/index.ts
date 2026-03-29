@@ -167,13 +167,25 @@ serve(async (req) => {
       }
     }
 
-    // Embed and upsert correlations
+    // Embed and insert correlations (skip duplicates by title check)
     let totalEmbedded = 0;
     for (let i = 0; i < correlationEntries.length; i += 20) {
       const chunk = correlationEntries.slice(i, i + 20);
-      const texts = chunk.map(e => e.text);
+
+      // Skip entries that already exist
+      const titles = chunk.map(e => e.meta.title);
+      const { data: existing } = await supabase
+        .from("hunt_knowledge")
+        .select("title")
+        .in("title", titles);
+      const existingTitles = new Set((existing || []).map((r: any) => r.title));
+      const newChunk = chunk.filter(e => !existingTitles.has(e.meta.title));
+
+      if (newChunk.length === 0) continue;
+
+      const texts = newChunk.map(e => e.text);
       const embeddings = await batchEmbed(texts);
-      const rows = chunk.map((e, j) => ({
+      const rows = newChunk.map((e, j) => ({
         ...e.meta,
         embedding: embeddings[j],
       }));
