@@ -4,12 +4,13 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export const FILTER_PRESETS: Record<string, string[]> = {
-  all: ['compound-risk-alert', 'convergence-score', 'anomaly-alert', 'correlation-discovery', 'alert-grade', 'arc-grade-reasoning', 'arc-fingerprint', 'state-brief', 'disaster-watch', 'migration-spike-extreme', 'migration-spike-significant', 'nws-alert', 'weather-event', 'bio-absence-signal'],
+  all: ['compound-risk-alert', 'convergence-score', 'anomaly-alert', 'correlation-discovery', 'alert-grade', 'arc-grade-reasoning', 'arc-fingerprint', 'state-brief', 'disaster-watch', 'migration-spike-extreme', 'migration-spike-significant', 'nws-alert', 'weather-event', 'bio-absence-signal', 'wildfire-perimeter', 'ocean-buoy', 'air-quality', 'pollen-data', 'space-weather', 'soil-conditions', 'river-discharge'],
   brain: ['compound-risk-alert', 'convergence-score', 'anomaly-alert', 'correlation-discovery', 'state-brief', 'arc-grade-reasoning', 'arc-fingerprint'],
-  weather: ['weather-event', 'nws-alert'],
+  weather: ['weather-event', 'nws-alert', 'wildfire-perimeter', 'space-weather'],
   migration: ['migration-spike-extreme', 'migration-spike-significant', 'bio-absence-signal'],
   alerts: ['nws-alert', 'disaster-watch', 'compound-risk-alert'],
   grades: ['alert-grade', 'arc-grade-reasoning', 'arc-fingerprint'],
+  environmental: ['air-quality', 'pollen-data', 'soil-conditions', 'river-discharge', 'ocean-buoy', 'wildfire-perimeter', 'space-weather'],
 };
 
 export interface JournalEntry {

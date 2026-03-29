@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { JournalEntry } from '@/hooks/useBrainJournal';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 
-export type CollisionType = 'compound-risk' | 'correlation' | 'anomaly' | 'score-spike' | 'grade-reasoning' | 'convergence' | 'arc-fingerprint';
+export type CollisionType = 'compound-risk' | 'correlation' | 'anomaly' | 'score-spike' | 'grade-reasoning' | 'convergence' | 'arc-fingerprint' | 'environmental';
 
 export interface CollisionEntry {
   id: string;
@@ -33,6 +33,13 @@ const TYPE_MAP: Record<string, CollisionType> = {
   'arc-grade-reasoning': 'grade-reasoning',
   'convergence-score': 'convergence',
   'arc-fingerprint': 'arc-fingerprint',
+  'wildfire-perimeter': 'environmental',
+  'ocean-buoy': 'environmental',
+  'air-quality': 'environmental',
+  'pollen-data': 'environmental',
+  'space-weather': 'environmental',
+  'soil-conditions': 'environmental',
+  'river-discharge': 'environmental',
 };
 
 const EXCLUDED_TYPES = new Set(['state-brief', 'convergence-score']);
@@ -66,6 +73,10 @@ function generateBrainNarration(type: CollisionType, entry: JournalEntry, meta: 
       const current = typeof meta?.current_value === 'number' ? (meta.current_value as number) : null;
       if (!zScore) return null;
       return `Statistical outlier detected: ${state}'s convergence score is ${zScore} standard deviations ${dir} the historical mean${mean ? ` (${current} vs avg ${mean})` : ''}. This is unusual enough to warrant attention.`;
+    }
+    case 'environmental': {
+      const contentType = (entry.content_type || '').replace(/-/g, ' ');
+      return `New ${contentType} data for ${state}. ${entry.content?.slice(0, 200) || ''}`;
     }
     default:
       return null;
@@ -120,6 +131,12 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
       title = `${entry.state_abbr || ''} — Arc pattern recorded`;
       severity = 'low';
       break;
+    case 'environmental': {
+      const label = (entry.content_type || '').replace(/-/g, ' ');
+      title = `${entry.state_abbr || ''} — ${label}`;
+      severity = 'low';
+      break;
+    }
   }
 
   return {
@@ -157,7 +174,7 @@ function alertToCollision(alert: ConvergenceAlert): CollisionEntry {
 }
 
 const FILTER_MAP: Record<CollisionFilter, CollisionType[]> = {
-  all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning'],
+  all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning', 'environmental'],
   connections: ['compound-risk', 'correlation'],
   alerts: ['anomaly', 'score-spike'],
   grades: ['grade-reasoning', 'arc-fingerprint'],

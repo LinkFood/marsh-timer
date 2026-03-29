@@ -9,6 +9,7 @@ const BORDER_COLORS: Record<CollisionType, string> = {
   'grade-reasoning': '#5eead4',
   'convergence': '#6b7280',
   'arc-fingerprint': '#5eead4',
+  'environmental': '#22c55e',
 };
 
 const TYPE_LABELS: Record<CollisionType, string> = {
@@ -19,6 +20,7 @@ const TYPE_LABELS: Record<CollisionType, string> = {
   'grade-reasoning': 'GRADE',
   'convergence': 'DATA',
   'arc-fingerprint': 'GRADE',
+  'environmental': 'ENV',
 };
 
 const DOMAIN_COLORS: Record<string, string> = {
