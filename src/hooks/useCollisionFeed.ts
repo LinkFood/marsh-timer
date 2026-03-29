@@ -19,6 +19,9 @@ export interface CollisionEntry {
   matchType?: string;
   zScore?: number;
   direction?: string;
+  seedTitle?: string;
+  matchTitle?: string;
+  crossDomainMatches?: number;
 }
 
 export type CollisionFilter = 'all' | 'connections' | 'alerts' | 'grades';
@@ -99,6 +102,9 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
     matchType: typeof meta?.match_type === 'string' ? (meta.match_type as string).replace(/-/g, ' ') : undefined,
     zScore: typeof meta?.z_score === 'number' ? meta.z_score as number : undefined,
     direction: typeof meta?.direction === 'string' ? meta.direction as string : undefined,
+    seedTitle: typeof meta?.seed_title === 'string' ? meta.seed_title as string : undefined,
+    matchTitle: typeof meta?.match_title === 'string' ? meta.match_title as string : undefined,
+    crossDomainMatches: typeof meta?.cross_domain_matches === 'number' ? meta.cross_domain_matches as number : undefined,
   };
 }
 

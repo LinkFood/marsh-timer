@@ -103,10 +103,21 @@ export default function CollisionCard({ entry }: Props) {
 
           {/* Structured detail for LINK entries */}
           {entry.type === 'correlation' && entry.similarity != null && (
-            <div className="flex items-center gap-2 text-[9px] font-mono">
-              <span className="text-white/25">{entry.seedType}</span>
-              <span className="text-purple-400/60">→ {Math.round(entry.similarity * 100)}% →</span>
-              <span className="text-white/25">{entry.matchType}</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-[9px] font-mono">
+                <span className="text-white/25">{entry.seedType}</span>
+                <span className="text-purple-400/60">→ {Math.round(entry.similarity * 100)}% →</span>
+                <span className="text-white/25">{entry.matchType}</span>
+              </div>
+              {entry.seedTitle && (
+                <div className="text-[8px] font-mono text-white/20 truncate">Seed: {entry.seedTitle.replace(/\*\*/g, '')}</div>
+              )}
+              {entry.matchTitle && (
+                <div className="text-[8px] font-mono text-white/20 truncate">Match: {entry.matchTitle}</div>
+              )}
+              {entry.crossDomainMatches != null && entry.crossDomainMatches > 0 && (
+                <div className="text-[8px] font-mono text-purple-400/30">{entry.crossDomainMatches} cross-domain matches found</div>
+              )}
             </div>
           )}
 
