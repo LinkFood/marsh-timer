@@ -136,7 +136,7 @@ export default function CollisionCard({ entry }: Props) {
           {entry.detail && (
             <div className="px-2 py-1.5 rounded bg-white/[0.02] border-l border-cyan-400/20">
               <p className="text-[9px] font-mono text-white/30 leading-relaxed italic whitespace-pre-wrap line-clamp-6">
-                {entry.detail}
+                {entry.detail.replace(/\*\*/g, '').replace(/^##\s+/gm, '').replace(/\|/g, ' · ')}
               </p>
             </div>
           )}
