@@ -13,11 +13,19 @@ import { logCronRun } from '../_shared/cronLog.ts';
 // "This weather event in AR is 0.94 similar to a migration spike from 2024"
 // "This snow cover pattern in ND matches a BirdWeather acoustic surge"
 
-const INTERESTING_TYPES = [
-  "weather-realtime", "weather-event", "migration-spike", "convergence-score",
-  "birdweather-acoustic", "snow-cover-daily", "climate-index", "drought-weekly",
-  "nws-alert", "birdcast-daily", "gbif-monthly", "usgs-water", "noaa-tide",
-  "crop-progress", "photoperiod", "inaturalist-monthly", "power-outage",
+// Seed types: multi-domain entries produce the best cross-domain discoveries
+const SEED_TYPES = [
+  "compound-risk-alert", "convergence-score", "anomaly-alert",
+  "weather-event", "nws-alert", "migration-spike-extreme", "migration-spike-significant",
+  "birdcast-daily", "climate-index", "disaster-watch",
+];
+
+// Cross-domain search targets: what we match seeds AGAINST (different domain)
+const CROSS_DOMAIN_TYPES = [
+  "weather-realtime", "weather-event", "migration-spike-extreme", "migration-spike-significant",
+  "birdcast-daily", "birdweather-acoustic", "usgs-water", "climate-index",
+  "drought-weekly", "nws-alert", "convergence-score", "compound-risk-alert",
+  "noaa-tide", "crop-progress", "gbif-monthly", "snow-cover-daily",
 ];
 
 serve(async (req) => {
@@ -49,9 +57,9 @@ serve(async (req) => {
     const { data: seeds, error: seedError } = await supabase
       .from("hunt_knowledge")
       .select("id, title, content, content_type, state_abbr, species, effective_date, embedding")
-      .in("content_type", INTERESTING_TYPES)
+      .in("content_type", SEED_TYPES)
       .gte("created_at", sevenDaysAgo.toISOString())
-      .order("created_at", { ascending: false })
+      .order("signal_weight", { ascending: false })
       .limit(50);
 
     if (seedError || !seeds || seeds.length === 0) {
@@ -74,26 +82,35 @@ serve(async (req) => {
     for (const seed of shuffled) {
       if (!seed.embedding) continue;
 
+      // Parse embedding string to array if needed (Supabase returns vectors as strings)
+      const embedding = typeof seed.embedding === 'string'
+        ? JSON.parse(seed.embedding)
+        : seed.embedding;
+
       try {
         // Step 2: Vector search for similar entries in OTHER content types
+        // Explicitly filter to cross-domain types, excluding the seed's own type
+        const targetTypes = CROSS_DOMAIN_TYPES.filter(t => t !== seed.content_type);
+
         const { data: matches, error: matchError } = await supabase
           .rpc("search_hunt_knowledge_v3", {
-            query_embedding: seed.embedding,
-            match_threshold: 0.75,
+            query_embedding: embedding,
+            match_threshold: 0.45,
             match_count: 10,
-            filter_content_types: null,
+            filter_content_types: targetTypes,
             filter_state_abbr: null,
             filter_species: null,
             filter_date_from: null,
             filter_date_to: null,
-            recency_weight: 0.0,
-            exclude_du_report: false,
+            recency_weight: 0.15,
+            exclude_du_report: true,
           });
 
         if (matchError || !matches) continue;
 
+        // All matches are already cross-domain due to the type filter
         const crossDomain = matches.filter(
-          (m: any) => m.content_type !== seed.content_type && m.similarity >= 0.65
+          (m: any) => m.similarity >= 0.45
         );
 
         if (crossDomain.length === 0) continue;
@@ -161,12 +178,12 @@ serve(async (req) => {
         embedding: embeddings[j],
       }));
 
-      const { error: upsertError } = await supabase
+      const { error: insertError } = await supabase
         .from("hunt_knowledge")
-        .upsert(rows, { onConflict: "title" });
+        .insert(rows);
 
-      if (upsertError) {
-        console.error(`Upsert error: ${upsertError.message}`);
+      if (insertError) {
+        console.error(`Insert error: ${insertError.message}`);
         errors++;
       } else {
         totalEmbedded += rows.length;
