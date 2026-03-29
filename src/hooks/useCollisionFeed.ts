@@ -45,24 +45,36 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
       title = `${entry.state_abbr || '??'} — ${convergingCount || '?'} domains converging`;
       severity = 'high';
       break;
-    case 'correlation':
-      title = `Brain found connection: ${entry.title}`;
+    case 'correlation': {
+      const seedType = (meta?.seed_type as string || '').replace(/-/g, ' ');
+      const matchType = (meta?.match_type as string || '').replace(/-/g, ' ');
+      const sim = typeof meta?.similarity === 'number' ? `${Math.round((meta.similarity as number) * 100)}%` : '';
+      title = sim
+        ? `${entry.state_abbr || ''} — ${seedType} linked to ${matchType} (${sim} similar)`
+        : `${entry.state_abbr || ''} — cross-domain connection found`;
       severity = 'medium';
       break;
-    case 'anomaly':
-      title = `Anomaly in ${entry.state_abbr || '??'}: ${entry.title}`;
+    }
+    case 'anomaly': {
+      const zScore = typeof meta?.z_score === 'number' ? Math.abs(meta.z_score as number).toFixed(1) : null;
+      const dir = meta?.direction === 'above' ? 'above' : 'below';
+      const checkName = (meta?.check_name as string || 'Statistical outlier').replace(/-/g, ' ');
+      title = zScore
+        ? `${entry.state_abbr || '??'} — ${checkName}: ${zScore}σ ${dir} normal`
+        : `${entry.state_abbr || '??'} — ${checkName}`;
       severity = 'medium';
       break;
+    }
     case 'grade-reasoning':
-      title = `Grade post-mortem: ${entry.state_abbr || ''} ${entry.title}`;
+      title = `${entry.state_abbr || ''} — Grade post-mortem`;
       severity = 'low';
       break;
     case 'convergence':
-      title = `${entry.state_abbr || '??'} convergence scored — ${entry.title}`;
+      title = `${entry.state_abbr || '??'} scored ${typeof meta?.score === 'number' ? meta.score : '?'}/100`;
       severity = 'low';
       break;
     case 'arc-fingerprint':
-      title = `Arc fingerprint recorded: ${entry.title}`;
+      title = `${entry.state_abbr || ''} — Arc pattern recorded`;
       severity = 'low';
       break;
   }
