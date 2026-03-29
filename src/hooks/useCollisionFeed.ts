@@ -12,6 +12,8 @@ export interface CollisionEntry {
   title: string;
   detail: string | null;
   severity: 'high' | 'medium' | 'low';
+  domains?: string[];
+  convergingCount?: number;
 }
 
 export type CollisionFilter = 'all' | 'connections' | 'alerts' | 'grades';
@@ -34,10 +36,13 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
 
   let title = '';
   let severity: 'high' | 'medium' | 'low' = 'medium';
+  const meta = entry.metadata as Record<string, unknown> | null;
+  const domains = Array.isArray(meta?.domain_types) ? (meta.domain_types as string[]) : undefined;
+  const convergingCount = typeof meta?.converging_domains === 'number' ? meta.converging_domains as number : domains?.length;
 
   switch (type) {
     case 'compound-risk':
-      title = `${entry.state_abbr || '??'} — Compound risk: ${entry.title}`;
+      title = `${entry.state_abbr || '??'} — ${convergingCount || '?'} domains converging`;
       severity = 'high';
       break;
     case 'correlation':
@@ -70,6 +75,8 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
     title,
     detail: entry.content?.slice(0, 400) || null,
     severity,
+    domains,
+    convergingCount,
   };
 }
 

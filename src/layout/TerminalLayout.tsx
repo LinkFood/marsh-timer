@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { GripHorizontal } from 'lucide-react';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
@@ -63,6 +64,41 @@ export default function TerminalLayout({
   const { selectedState } = useDeck();
 
   const [centerTab, setCenterTab] = useState<'timeline' | 'collisions'>('collisions');
+  const [feedHeight, setFeedHeight] = useState<number>(() => {
+    try { const v = localStorage.getItem('dc-feed-height'); if (v) { const n = Number(v); if (n >= 120 && n <= 600) return n; } } catch {}
+    return 280;
+  });
+  const dragging = useRef(false);
+  const startY = useRef(0);
+  const startH = useRef(0);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    startY.current = e.clientY;
+    startH.current = feedHeight;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, [feedHeight]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = startY.current - e.clientY;
+      const next = Math.max(120, Math.min(600, startH.current + delta));
+      setFeedHeight(next);
+    };
+    const onUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem('dc-feed-height', String(feedHeight)); } catch {}
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [feedHeight]);
 
   const arcForState = useMemo(() => {
     if (!selectedState) return undefined;
@@ -131,8 +167,18 @@ export default function TerminalLayout({
               </div>
             </ErrorBoundary>
           </div>
-          {/* Bottom: Fusion/Collision toggle (state selected) or national feed (no state) */}
-          <div className="h-[200px] shrink-0 flex flex-col border-t border-white/[0.06]">
+          {/* Drag divider */}
+          <div
+            className="shrink-0 h-2 flex items-center justify-center cursor-row-resize z-20 group border-t border-white/[0.06]"
+            onMouseDown={onDragStart}
+          >
+            <div className="w-8 h-3 flex items-center justify-center rounded-sm bg-white/[0.03] group-hover:bg-cyan-400/10 transition-colors">
+              <GripHorizontal className="w-3 h-3 text-white/15 group-hover:text-cyan-400/40" />
+            </div>
+          </div>
+
+          {/* Bottom: Fusion/Collision panel (resizable) */}
+          <div className="shrink-0 flex flex-col overflow-hidden" style={{ height: feedHeight }}>
             {selectedState ? (
               <>
                 <div className="shrink-0 flex gap-0.5 px-2 py-1 border-b border-white/[0.04]">
@@ -189,31 +235,34 @@ export default function TerminalLayout({
   );
 }
 
-const DOMAIN_KEYS = [
-  { key: 'weather_component', label: 'Weather' },
-  { key: 'migration_component', label: 'Migration' },
-  { key: 'birdcast_component', label: 'BirdCast' },
-  { key: 'solunar_component', label: 'Solunar' },
-  { key: 'water_component', label: 'Water' },
-  { key: 'pattern_component', label: 'Pattern' },
+const MINI_BAR_DOMAINS = [
+  { key: 'weather_component', color: '#ef4444', label: 'Weather', max: 25 },
+  { key: 'migration_component', color: '#3b82f6', label: 'Migration', max: 25 },
+  { key: 'birdcast_component', color: '#22c55e', label: 'BirdCast', max: 20 },
+  { key: 'solunar_component', color: '#f59e0b', label: 'Solunar', max: 15 },
+  { key: 'water_component', color: '#06b6d4', label: 'Water', max: 15 },
+  { key: 'pattern_component', color: '#a855f7', label: 'Pattern', max: 15 },
 ] as const;
 
+const ACT_COLORS: Record<string, string> = {
+  buildup: '#f59e0b',
+  recognition: '#f97316',
+  outcome: '#ef4444',
+  grade: '#22c55e',
+};
+
 function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string, ConvergenceScore>; arcs: StateArc[]; onSelectState: (abbr: string) => void }) {
-  const top3 = useMemo(() => {
+  const top5 = useMemo(() => {
     const sorted = Array.from(scores.values()).sort((a, b) => b.score - a.score);
-    return sorted.slice(0, 3).map(s => {
+    return sorted.slice(0, 5).map(s => {
       const arc = arcs.find(a => a.state_abbr === s.state_abbr);
-      let dominant = 'Weather';
-      let maxVal = 0;
-      for (const d of DOMAIN_KEYS) {
-        const val = (s as any)[d.key] || 0;
-        if (val > maxVal) { maxVal = val; dominant = d.label; }
-      }
-      return { ...s, arc, dominant };
+      const outcomeCount = arc?.outcome_signals ? (arc.outcome_signals as unknown[]).length : 0;
+      const expectedCount = arc?.recognition_claim ? ((arc.recognition_claim as any).expected_signals?.length || 3) : 0;
+      return { ...s, arc, outcomeCount, expectedCount };
     });
   }, [scores, arcs]);
 
-  if (top3.length === 0) {
+  if (top5.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
         <p className="text-[11px] font-mono text-white/20 tracking-wide">Loading...</p>
@@ -227,22 +276,54 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
         <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {top3.map((s, i) => {
+        {top5.map(s => {
           const tierColor = s.score >= 80 ? 'text-red-400' : s.score >= 50 ? 'text-amber-400' : 'text-white/50';
+          const actColor = s.arc ? ACT_COLORS[s.arc.current_act] || '#6b7280' : undefined;
           return (
             <button
               key={s.state_abbr}
               onClick={() => onSelectState(s.state_abbr)}
-              className="w-full px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors border-b border-white/[0.03]"
+              className="w-full px-3 py-2 text-left hover:bg-white/[0.03] transition-colors border-b border-white/[0.03]"
             >
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-sm font-mono font-bold text-white/80">{s.state_abbr}</span>
-                <span className={`text-sm font-mono font-bold ${tierColor}`}>{Math.round(s.score)}</span>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono font-bold text-white/80">{s.state_abbr}</span>
+                  {s.arc && (
+                    <span
+                      className="text-[7px] font-mono uppercase tracking-wider px-1 py-px rounded"
+                      style={{ color: actColor, backgroundColor: `${actColor}20` }}
+                    >
+                      {s.arc.current_act}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {s.arc?.current_act === 'outcome' && (
+                    <span className="text-[8px] font-mono text-emerald-400/50">{s.outcomeCount}/{s.expectedCount}</span>
+                  )}
+                  <span className={`text-sm font-mono font-bold ${tierColor}`}>{Math.round(s.score)}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-[9px] font-mono text-white/25">
-                <span>Top: {s.dominant}</span>
-                {s.arc && <span className="text-cyan-400/40">{s.arc.current_act}</span>}
+              {/* Mini-bars */}
+              <div className="h-2.5 flex gap-px rounded-sm overflow-hidden bg-white/[0.03]">
+                {MINI_BAR_DOMAINS.map(d => {
+                  const val = (s as any)[d.key] || 0;
+                  if (val <= 0) return null;
+                  return (
+                    <div
+                      key={d.key}
+                      className="h-full"
+                      style={{ width: `${(val / 135) * 100}%`, backgroundColor: d.color, opacity: 0.6 }}
+                    />
+                  );
+                })}
               </div>
+              {/* Narrative snippet */}
+              {s.arc?.narrative && (
+                <p className="text-[8px] font-mono text-white/20 mt-1 line-clamp-1">
+                  {s.arc.narrative.replace(/\*\*/g, '').slice(0, 80)}...
+                </p>
+              )}
             </button>
           );
         })}
