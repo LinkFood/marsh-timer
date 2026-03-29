@@ -112,8 +112,24 @@ serve(async (req) => {
 
       if (allEntries.length === 0) continue;
 
+      // Skip entries that already exist in the brain
+      const candidateTitles = allEntries.map(({ abbr, week }) => {
+        const dateStr = week.mapDate.slice(0, 10);
+        return `${abbr} drought ${dateStr}`;
+      });
+      const { data: existing } = await supabase
+        .from("hunt_knowledge")
+        .select("title")
+        .in("title", candidateTitles);
+      const existingTitles = new Set((existing || []).map((r: any) => r.title));
+      const filteredEntries = allEntries.filter(({ abbr, week }) => {
+        const dateStr = week.mapDate.slice(0, 10);
+        return !existingTitles.has(`${abbr} drought ${dateStr}`);
+      });
+      if (filteredEntries.length === 0) continue;
+
       // Build embed texts
-      const texts = allEntries.map(({ abbr, week, prevWeek }) => {
+      const texts = filteredEntries.map(({ abbr, week, prevWeek }) => {
         const dateStr = week.mapDate.slice(0, 10);
         const classification = classifyDrought(week.d0, week.d1, week.d2, week.d3, week.d4);
         const impact = droughtImpact(week.none, week.d0, week.d2, week.d3, week.d4);
@@ -133,7 +149,7 @@ serve(async (req) => {
       const embeddings = await batchEmbed(texts);
 
       // Build rows
-      const rows = allEntries.map(({ abbr, week, prevWeek }, i) => {
+      const rows = filteredEntries.map(({ abbr, week, prevWeek }, i) => {
         const dateStr = week.mapDate.slice(0, 10);
         const classification = classifyDrought(week.d0, week.d1, week.d2, week.d3, week.d4);
 
@@ -167,13 +183,13 @@ serve(async (req) => {
         };
       });
 
-      // Upsert
-      const { error: upsertError } = await supabase
+      // Insert
+      const { error: insertError } = await supabase
         .from("hunt_knowledge")
-        .upsert(rows, { onConflict: "title" });
+        .insert(rows);
 
-      if (upsertError) {
-        console.error(`Upsert error for batch starting ${stateChunk[0]}: ${upsertError.message}`);
+      if (insertError) {
+        console.error(`Insert error for batch starting ${stateChunk[0]}: ${insertError.message}`);
         errors++;
       } else {
         totalEmbedded += rows.length;
@@ -184,7 +200,7 @@ serve(async (req) => {
         try {
           await scanBrainOnWrite(embeddings[0], {
             contentType: "drought-weekly",
-            stateAbbr: allEntries[0].abbr,
+            stateAbbr: filteredEntries[0].abbr,
             excludeContentTypes: ["drought-weekly"],
             limit: 5,
           });

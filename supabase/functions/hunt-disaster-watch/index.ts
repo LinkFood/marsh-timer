@@ -296,20 +296,31 @@ serve(async (req) => {
         };
       });
 
-      const texts = entries.map(e => e.text);
+      // Skip entries that already exist in the brain
+      const titles = entries.map(e => e.meta.title);
+      const { data: existing } = await supabase
+        .from("hunt_knowledge")
+        .select("title")
+        .in("title", titles);
+      const existingTitles = new Set((existing || []).map((r: any) => r.title));
+      const newEntries = entries.filter(e => !existingTitles.has(e.meta.title));
+      if (newEntries.length === 0) {
+        console.log("All disaster-watch entries already exist, skipping embed");
+      } else {
+      const texts = newEntries.map(e => e.text);
       try {
         const embeddings = await batchEmbed(texts);
-        const rows = entries.map((e, i) => ({
+        const rows = newEntries.map((e, i) => ({
           ...e.meta,
           embedding: JSON.stringify(embeddings[i]),
         }));
 
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from("hunt_knowledge")
-          .upsert(rows, { onConflict: "title" });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error(`Upsert error: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded = rows.length;
@@ -338,6 +349,7 @@ serve(async (req) => {
       } catch (err) {
         console.error(`Embed error: ${err}`);
         errors++;
+      }
       }
     }
 

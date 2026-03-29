@@ -151,6 +151,19 @@ serve(async (req) => {
         const impact = index.impact[phase];
         const dateStr = `${latest.year}-${String(latest.month).padStart(2, "0")}-01`;
 
+        const entryTitle = `climate-index ${index.id} ${dateStr}`;
+
+        // Skip if this entry already exists in the brain
+        const { data: existing } = await supabase
+          .from("hunt_knowledge")
+          .select("title")
+          .eq("title", entryTitle)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          console.log(`  ${index.name}: ${entryTitle} already exists, skipping`);
+          continue;
+        }
+
         const entryText = [
           `climate-index | ${index.id.toUpperCase()} | ${index.name}`,
           `period:${MONTH_NAMES[latest.month - 1]} ${latest.year} | value:${latest.value.toFixed(2)}`,
@@ -162,10 +175,10 @@ serve(async (req) => {
 
         const embeddings = await batchEmbed([entryText]);
 
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from("hunt_knowledge")
-          .upsert({
-            title: `climate-index ${index.id} ${dateStr}`,
+          .insert({
+            title: entryTitle,
             content: entryText,
             content_type: "climate-index",
             tags: [index.id, "climate", "oscillation", "macro-weather", "migration-predictor"],
@@ -185,10 +198,10 @@ serve(async (req) => {
               recent_12mo: recent.map(r => ({ period: `${r.year}-${String(r.month).padStart(2, "0")}`, value: r.value })),
             },
             embedding: JSON.stringify(embeddings[0]),
-          }, { onConflict: "title" });
+          });
 
-        if (upsertError) {
-          console.error(`  ${index.name} upsert: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`  ${index.name} insert: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded++;
