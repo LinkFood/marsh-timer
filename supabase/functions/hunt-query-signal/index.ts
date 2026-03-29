@@ -145,7 +145,7 @@ serve(async (req) => {
 
     const { error: upsertError } = await supabase
       .from("hunt_knowledge")
-      .upsert({
+      .insert({
         title: `query-signal ${today}`,
         content: signalText,
         content_type: "query-signal",
@@ -161,7 +161,7 @@ serve(async (req) => {
           top_weather: Object.fromEntries(topWeather),
         },
         embedding: JSON.stringify(embeddings[0]),
-      }, { onConflict: "title" });
+      });
 
     let totalEmbedded = 0;
     if (upsertError) {
