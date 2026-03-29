@@ -1,7 +1,6 @@
 import { useState, useMemo, type ReactNode, type ReactElement } from 'react';
 import type { ChatMessage as ChatMessageType, ChatCard } from '@/hooks/useChat';
 import WeatherCard from './cards/WeatherCard';
-import SeasonCard from './cards/SeasonCard';
 import SolunarCard from './cards/SolunarCard';
 import AlertCard from './cards/AlertCard';
 import ConvergenceCard from './cards/ConvergenceCard';
@@ -88,9 +87,7 @@ function renderCard(card: ChatCard, index: number) {
   switch (card.type) {
     case 'weather':
       return <WeatherCard key={index} data={card.data} />;
-    case 'season':
-      return <SeasonCard key={index} data={card.data} />;
-    case 'solunar':
+case 'solunar':
       return <SolunarCard key={index} data={card.data} />;
     case 'alert':
       return <AlertCard key={index} data={card.data} />;

@@ -1,9 +1,8 @@
-import type { Species, SeasonType } from "./types";
+import type { Species } from "./types";
 
 export interface SpeciesConfig {
   label: string;
   emoji: string;
-  seasonTypes: SeasonType[];
   colors: {
     open: string;
     soon: string;
@@ -17,7 +16,6 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   all: {
     label: "All Signals",
     emoji: "\uD83C\uDF10",
-    seasonTypes: [],
     colors: {
       open: "#22d3ee",
       soon: "#06b6d4",
@@ -29,7 +27,6 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   duck: {
     label: "Duck",
     emoji: "\uD83E\uDD86",
-    seasonTypes: ["regular", "early-teal", "youth"],
     colors: {
       open: "#22c55e",
       soon: "#f59e0b",
@@ -41,7 +38,6 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   goose: {
     label: "Goose",
     emoji: "\uD83E\uDEB9",
-    seasonTypes: ["regular", "light-goose-conservation"],
     colors: {
       open: "#22c55e",
       soon: "#f59e0b",
@@ -53,7 +49,6 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   deer: {
     label: "Deer",
     emoji: "\uD83E\uDD8C",
-    seasonTypes: ["archery", "rifle", "muzzleloader", "crossbow"],
     colors: {
       open: "#22c55e",
       soon: "#f59e0b",
@@ -65,7 +60,6 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   turkey: {
     label: "Turkey",
     emoji: "\uD83E\uDD83",
-    seasonTypes: ["spring", "fall"],
     colors: {
       open: "#22c55e",
       soon: "#f59e0b",
@@ -77,7 +71,6 @@ export const speciesConfig: Record<Species, SpeciesConfig> = {
   dove: {
     label: "Dove",
     emoji: "\uD83D\uDD4A\uFE0F",
-    seasonTypes: ["regular", "special-white-wing"],
     colors: {
       open: "#22c55e",
       soon: "#f59e0b",
