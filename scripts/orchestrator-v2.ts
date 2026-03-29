@@ -396,7 +396,78 @@ const PIPES: PipeConfig[] = [
     },
   },
 
-  // Tier 5 — Cleanup (run last)
+  // Tier 5 — New data pipelines (Open-Meteo + NOAA expansions)
+  {
+    name: "soil-conditions",
+    script: "backfill-soil-conditions.ts",
+    description: "Open-Meteo soil moisture + temp 2021-2026, 50 states (~90K entries)",
+    tier: 5,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const m = line.match(/^\s+([A-Z]{2}):\s+(\d+)\s+days inserted/);
+      if (m) {
+        const next = nextState(m[1]);
+        if (next) return { START_STATE: next };
+      }
+      return null;
+    },
+  },
+  {
+    name: "air-quality",
+    script: "backfill-air-quality.ts",
+    description: "Open-Meteo AQI + pollen 2022-2026, 50 states (~150K entries)",
+    tier: 5,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const m = line.match(/^\s+([A-Z]{2}):\s+\d+\s+air-quality/);
+      if (m) {
+        const next = nextState(m[1]);
+        if (next) return { START_STATE: next };
+      }
+      return null;
+    },
+  },
+  {
+    name: "river-discharge",
+    script: "backfill-river-discharge.ts",
+    description: "Open-Meteo Flood API discharge 2021-2026, 50 states (~90K entries)",
+    tier: 5,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const m = line.match(/^\s+([A-Z]{2}):\s+(\d+)\s+days inserted/);
+      if (m) {
+        const next = nextState(m[1]);
+        if (next) return { START_STATE: next };
+      }
+      return null;
+    },
+  },
+  {
+    name: "space-weather",
+    script: "backfill-space-weather.ts",
+    description: "NOAA SWPC solar wind + Kp 7-day rolling (~7 entries per run)",
+    tier: 5,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const m = line.match(/^\s+(\d{4}-\d{2}-\d{2}):\s+inserted/);
+      if (m) return {};
+      return null;
+    },
+  },
+  {
+    name: "ocean-buoy",
+    script: "backfill-ocean-buoy.ts",
+    description: "NDBC historical buoy data 2021-2025, 27 stations (~50K entries)",
+    tier: 5,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const m = line.match(/^\s+(\d+)\s+(\d{4}):\s+(\d+)\s+days inserted/);
+      if (m) return { START_STATION: m[1], START_YEAR: m[2] };
+      return null;
+    },
+  },
+
+  // Tier 6 — Cleanup (run last)
   {
     name: "dedup-storm-events",
     script: "dedup-storm-events.ts",
