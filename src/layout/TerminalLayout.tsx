@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { GripHorizontal } from 'lucide-react';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { PatternAlert } from '@/hooks/usePatternAlerts';
@@ -15,6 +16,8 @@ import ConvergenceScoreboard from '@/components/ConvergenceScoreboard';
 import StateDetailPanel from '@/components/StateDetailPanel';
 import FusionPanel from '@/components/FusionPanel';
 import CollisionFeed from '@/components/CollisionFeed';
+import { useOpsData } from '@/hooks/useOpsData';
+import { useDataSourceHealth } from '@/hooks/useDataSourceHealth';
 import { useDeck } from '@/contexts/DeckContext';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
@@ -328,9 +331,66 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
           );
         })}
       </div>
-      <div className="px-3 py-2 border-t border-white/[0.06]">
-        <p className="text-[9px] font-mono text-white/15 text-center">Select a state for details</p>
+
+      {/* Brain Vitals + Data Freshness */}
+      <BrainVitals />
+
+      <div className="px-3 py-2 border-t border-white/[0.06] flex items-center justify-between">
+        <p className="text-[9px] font-mono text-white/15">Select a state for details</p>
+        <Link to="/ops" className="text-[8px] font-mono text-cyan-400/30 hover:text-cyan-400/60 transition-colors">
+          System health →
+        </Link>
       </div>
+    </div>
+  );
+}
+
+function BrainVitals() {
+  const { data: opsData } = useOpsData();
+  const { sources } = useDataSourceHealth();
+
+  const brain = opsData?.brain;
+  const crons = opsData?.crons;
+  const staleSources = sources.filter(s => s.status === 'stale' || s.status === 'error');
+  const onlineCount = sources.filter(s => s.status === 'online').length;
+
+  if (!brain?.total) return null;
+
+  const cronColor = (crons?.healthy_count || 0) > 35 ? '#22c55e' : (crons?.healthy_count || 0) > 30 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="shrink-0 border-t border-white/[0.06]">
+      {/* Brain stats */}
+      <div className="px-3 py-2 space-y-1">
+        <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Brain</div>
+        <div className="text-[9px] font-mono text-white/35">
+          {brain.total.toLocaleString()} entries · <span className="text-emerald-400/50">+{brain.growth_today.toLocaleString()}</span> today · {brain.content_types?.length || '?'} types
+        </div>
+        <div className="text-[9px] font-mono text-white/25">
+          <span style={{ color: cronColor }}>CRONS {crons?.healthy_count || 0}/{(crons?.healthy_count || 0) + (crons?.error_count || 0) + (crons?.late_count || 0)}</span>
+          {crons?.error_count ? <span className="text-red-400/50 ml-2">{crons.error_count} errors</span> : null}
+        </div>
+      </div>
+
+      {/* Data freshness */}
+      {(staleSources.length > 0 || onlineCount > 0) && (
+        <div className="px-3 pb-2 space-y-0.5">
+          <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Data Freshness</div>
+          {staleSources.map(s => (
+            <div key={s.name} className="flex items-center gap-1.5 text-[8px] font-mono">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+              <span className="text-red-400/50">{s.name}</span>
+              <span className="text-white/15">{s.status.toUpperCase()}</span>
+            </div>
+          ))}
+          {onlineCount > 0 && (
+            <div className="flex items-center gap-1.5 text-[8px] font-mono">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span className="text-emerald-400/30">{onlineCount} sources online</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
