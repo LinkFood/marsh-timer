@@ -543,6 +543,12 @@ verify_jwt = false
 [functions.hunt-soil-monitor]
 verify_jwt = false
 
+[functions.hunt-air-quality]
+verify_jwt = false
+
+[functions.hunt-space-weather]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
