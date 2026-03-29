@@ -18,7 +18,7 @@ interface Props {
 
 export default function CollisionFeed({ convergenceAlerts, stateFilter = null }: Props) {
   const [activeFilter, setActiveFilter] = useState<CollisionFilter>('all');
-  const { entries: journalEntries, loading: journalLoading } = useBrainJournal(null, 'brain', 80);
+  const { entries: journalEntries, loading: journalLoading } = useBrainJournal(null, 'brain', 200);
   const { entries, filterEntries } = useCollisionFeed(journalEntries, convergenceAlerts, stateFilter);
 
   const filtered = filterEntries(activeFilter);
