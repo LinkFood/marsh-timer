@@ -354,7 +354,13 @@ function BrainVitals() {
   const staleSources = sources.filter(s => s.status === 'stale' || s.status === 'error');
   const onlineCount = sources.filter(s => s.status === 'online').length;
 
-  if (!brain?.total) return null;
+  if (!brain?.total) {
+    return (
+      <div className="shrink-0 border-t border-white/[0.06] px-3 py-2">
+        <div className="text-[9px] font-mono text-white/15 animate-pulse">Loading brain vitals...</div>
+      </div>
+    );
+  }
 
   const cronColor = (crons?.healthy_count || 0) > 35 ? '#22c55e' : (crons?.healthy_count || 0) > 30 ? '#f59e0b' : '#ef4444';
 
