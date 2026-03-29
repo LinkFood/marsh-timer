@@ -269,7 +269,7 @@ serve(async (req) => {
       try {
         const { error: upsertError } = await supabase
           .from("hunt_knowledge")
-          .upsert(rows, { onConflict: "title" });
+          .insert(rows);
 
         if (upsertError) {
           console.error(`  Upsert error: ${upsertError.message}`);

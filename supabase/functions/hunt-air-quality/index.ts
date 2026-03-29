@@ -176,7 +176,7 @@ serve(async (req) => {
           avg_so2: entry.avgSo2,
           severity: entry.severity,
         },
-        embedding: JSON.stringify(aqEmbeddings[i]),
+        embedding: aqEmbeddings[i],
       }));
 
       // Build pollen rows
@@ -198,31 +198,31 @@ serve(async (req) => {
           olive_pollen: entry.olive,
           season_note: entry.seasonNote,
         },
-        embedding: JSON.stringify(pollenEmbeddings[i]),
+        embedding: pollenEmbeddings[i],
       }));
 
-      // Upsert air quality
+      // Insert air quality
       if (aqRows.length > 0) {
         const { error: aqErr } = await supabase
           .from("hunt_knowledge")
-          .upsert(aqRows, { onConflict: "title" });
+          .insert(aqRows);
 
         if (aqErr) {
-          console.error(`AQ upsert error batch ${batch[0]}: ${aqErr.message}`);
+          console.error(`AQ insert error batch ${batch[0]}: ${aqErr.message}`);
           errors++;
         } else {
           totalAirQuality += aqRows.length;
         }
       }
 
-      // Upsert pollen
+      // Insert pollen
       if (pollenRows.length > 0) {
         const { error: pollenErr } = await supabase
           .from("hunt_knowledge")
-          .upsert(pollenRows, { onConflict: "title" });
+          .insert(pollenRows);
 
         if (pollenErr) {
-          console.error(`Pollen upsert error batch ${batch[0]}: ${pollenErr.message}`);
+          console.error(`Pollen insert error batch ${batch[0]}: ${pollenErr.message}`);
           errors++;
         } else {
           totalPollen += pollenRows.length;

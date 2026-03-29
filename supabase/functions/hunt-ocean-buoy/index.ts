@@ -274,16 +274,16 @@ serve(async (req) => {
               gust_ms: e.obs.gst,
               event_flags: flags,
             },
-            embedding: JSON.stringify(embeddings[j]),
+            embedding: embeddings[j],
           };
         });
 
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from("hunt_knowledge")
-          .upsert(rows, { onConflict: "title" });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error(`  Upsert error: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`  Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded += rows.length;

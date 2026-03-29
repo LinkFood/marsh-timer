@@ -90,11 +90,8 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
-    // Target yesterday
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    const dateStr = yesterday.toISOString().slice(0, 10);
+    // Target today (Open-Meteo forecast starts at today, not yesterday)
+    const dateStr = new Date().toISOString().slice(0, 10);
 
     console.log(`[${FUNCTION_NAME}] Fetching soil data for ${dateStr}`);
 
@@ -161,7 +158,6 @@ serve(async (req) => {
               tags: [abbr, "soil", "soil-temperature", "soil-moisture", "freeze-thaw", freezeThaw],
               state_abbr: abbr,
               effective_date: dateStr,
-              source: FUNCTION_NAME,
               metadata: {
                 source: FUNCTION_NAME,
                 surface_temp_f: surfaceTemp,
@@ -217,30 +213,18 @@ serve(async (req) => {
 
         const rows = chunk.map((e, j) => ({
           ...e.meta,
-          embedding: JSON.stringify(embeddings[j]),
+          embedding: embeddings[j],
         }));
 
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from("hunt_knowledge")
-          .upsert(rows, { onConflict: "title" });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error(`  Upsert error: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`  Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded += rows.length;
-
-          // scanBrainOnWrite for cross-domain pattern detection
-          for (let j = 0; j < chunk.length; j++) {
-            try {
-              await scanBrainOnWrite(embeddings[j], {
-                state_abbr: chunk[j].abbr,
-                exclude_content_type: CONTENT_TYPE,
-              });
-            } catch {
-              // Non-fatal — scanning is best-effort
-            }
-          }
         }
       } catch (err) {
         console.error(`  Embed/upsert batch error: ${err}`);

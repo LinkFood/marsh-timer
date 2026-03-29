@@ -262,8 +262,8 @@ serve(async (req) => {
           xray_class: summary.xrayClass,
           flags: summary.flags,
         },
-        embedding: JSON.stringify(embedding),
-      }, { onConflict: "title" });
+        embedding,
+      });
 
     if (insertError) {
       throw new Error(`hunt_knowledge upsert failed: ${insertError.message}`);
