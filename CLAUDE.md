@@ -38,16 +38,14 @@ Every piece of intelligence follows this arc:
 
 Every piece of data that enters the system MUST be embedded via Voyage AI (voyage-3-lite, 512-dim) → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
 
-### Brain State (as of 2026-03-27)
+### Brain State (as of 2026-03-29)
 
-- **2,432,856+** entries in hunt_knowledge
-- **55** content types + arc-fingerprint, arc-grade-reasoning, state-brief
+- **3,200,000+** entries in hunt_knowledge
+- **60+** content types
 - **50** states tracked
-- **42 crons** (41-42 healthy), growing via crons + event-driven convergence scans
-- **48 active arcs** — synthesis agent live, narrator generating narratives
-- **Self-grading loop** active — first grades expected March 27-29, 2026
-
-Content types: storm-event, usgs-water, earthquake-event, photoperiod, noaa-tide, geomagnetic-kp, fire-activity, birdweather-daily, crop-data, drought-weekly, gbif-monthly, climate-index, historical-newspaper, weather-event, nws-alert, birdcast-daily, birdcast-historical, convergence-score, weather-forecast, migration-spike-*, migration-lull, migration-daily, bio-environmental-correlation, bio-absence-signal, alert-grade, alert-calibration, web-discovery, anomaly-alert, correlation-discovery, disaster-watch, hunting-knowledge, species-behavior, du_report, du_alert, compound-risk-alert
+- **82 crons** (80 healthy), growing via crons + event-driven convergence scans
+- **66 arcs** — synthesis agent live, narrator generating narratives, grading loop producing real results
+- **Self-grading loop** active — confirmed grades with full post-mortem reasoning being generated
 
 ### 8-Component Convergence Scoring
 
@@ -69,9 +67,9 @@ Each state gets a daily score from 0-135 across these weighted domains:
 ## What Exists Today
 
 ### Backend — Strong
-- 2.4M+ vector embeddings in one searchable brain
-- 56 Deno edge functions (28 brain writers, 5 intelligence layer, 5 self-graders, 5 brain readers, 9 utilities, hunt-state-brief, hunt-intelligence-feed, hunt-convergence-alerts-pm, hunt-arc-narrator)
-- 42 crons (41-42 healthy) feeding data continuously
+- 3.2M+ vector embeddings in one searchable brain
+- 66 Deno edge functions
+- 82 crons (80 healthy) feeding data continuously
 - Self-grading loop (alert-grader → alert-calibration → grade suppression)
 - **Synthesis agent** — hunt_state_arcs table + arc reactor hooks + hunt-arc-narrator (Sonnet narratives, Opus grade reasoning, arc fingerprinting)
 - scanBrainOnWrite pattern matching on every data ingest
@@ -80,10 +78,11 @@ Each state gets a daily score from 0-135 across these weighted domains:
 - Opus daily web curator reviewing staged discoveries
 - Ops dashboard at /ops ("Intelligence Control") with cron health, brain growth, alert performance, intelligence feed
 
-### Frontend — Intelligence Command Center Built
+### Frontend — Terminal Landing + Intelligence Command Center
 - React 18 + TypeScript + Vite + Tailwind
 - Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets
-- **Intelligence Page (`/intelligence`)** — 3-column command center: left (50-state rankings with sparklines, migration, solunar, NWS), center (scout brief, FusionWeb SVG, brain recognition, patterns, outcome windows, live feed, METAR, brain activity), right (component bars, 30-day chart, weather, disaster watch, track record, data sources). Chat overlay.
+- **Terminal Landing (`/`)** — 3-zoom-level progressive disclosure: ConvergenceScoreboard (mini-bars, sparklines, conviction dots), RegimeDetector (QUIET/ACTIVE/SURGE), PressureDifferential scatter plot, FusionPanel (72h collision timeline), StateDetailPanel (arc, components, brief, conviction), SplitVerdict + AutopsyDrawer for graded arcs, enriched collision feed with brain narration
+- **Intelligence Page (`/intelligence`)** — deep-dive command center with FusionWeb SVG, rankings, brain recognition, outcome windows, live feed, METAR, chat overlay
 - **StateIntelView** — replaces panel dock when state selected, shows AI assessment + convergence + pattern links + alerts
 - 25 lazy-loaded panels in 4 categories (workbench mode)
 - Chat synthesis: answer-first, collapsible evidence, CrossDomainPatternCard
@@ -91,58 +90,6 @@ Each state gets a daily score from 0-135 across these weighted domains:
 - Real-time event ticker, brain heartbeat
 - Supabase Realtime subscriptions on hunt_state_arcs
 - Google OAuth via Supabase Auth
-
-### What's Still Missing — The Full Product
-
-The Intelligence Page route exists and the backend functions to support it are deployed. But the synthesis agent — the layer that stitches discrete pipeline steps into coherent narrative arcs per state — is not built yet. The page can show data, but it can't yet show the brain *thinking through a story*: the buildup, the recognition, the outcome, the grade, the reasoning about why it was right or wrong. That synthesis layer is what turns this from a dashboard into a product.
-
----
-
-## The Intelligence Page (TO BUILD)
-
-### The Vision
-
-A new route at `/intelligence` that becomes the primary experience. Not a dashboard. Not a feed. A window into a system that reasons about environmental patterns in real time and shows its work.
-
-### The Arc Model
-
-Every state that has something happening is a **story** with a narrative arc:
-
-**Act 1 — Buildup:** Signals converge across domains. The brain sees weather shifting, migration patterns deviating, water levels moving. It shows what it's seeing: "4 domains converging in Texas. Pressure dropping 12mb while migration density spiking 340% above baseline."
-
-**Act 2 — Recognition:** The brain searches its history. "The last 14 times I saw this combination in March in Gulf states, 8 resulted in significant weather events within 72 hours. My track record on this pattern type is 62%." It makes a claim — not a prediction, a recognition.
-
-**Act 3 — Outcome:** Reality unfolds. NWS alerts fire or they don't. Storm events get logged or they don't. The brain is watching for confirmation signals in real time.
-
-**Act 4 — Grade:** The grading loop fires. Confirmed, partial, missed, false alarm. And critically — the brain reasons about the grade. Which component was the strong signal? Which was noise? The grade feeds back into future confidence weighting.
-
-### What It Shows (Real-Time, Updates as Crons Fire)
-
-**State Board:** All 50 states, ranked by activity. States with active arcs rise to the top. Each state shows: convergence score, converging domains, which act of the arc it's in, confidence level from historical accuracy. Grouped by severity: Critical, Elevated, Normal, Quiet.
-
-**Live Intelligence Feed:** The brain's activity stream, filtered to what matters. Compound-risk alerts, pattern matches, anomaly detections, correlation discoveries, grading results. Each entry shows the reasoning — why the brain flagged it, what historical patterns it matched, what it expects.
-
-**Pattern Track Record:** The self-grading loop made visible. Per-state accuracy, per-source accuracy, how confidence is shifting over time. "Texas compound-risk calls: 67% confirmed over 12 alerts." This section is sparse until grading data accumulates — show a "Learning..." state.
-
-### The Synthesis Agent (TO BUILD)
-
-The Intelligence Page needs a backend layer that doesn't exist yet — a synthesis agent that stitches discrete pipeline steps into coherent narrative arcs per state. Today, the convergence engine scores, the alert system fires, the grader grades, but nothing synthesizes. Nothing says "Texas has been building for 3 days, here's the full story." This agent:
-
-- Runs continuously (or on every significant data ingest)
-- Maintains arc state per state: which act, what signals are active, what claims are open
-- Produces the narrative that the frontend renders
-- Reasons about grades — which component was right, which was noise
-- Uses the vector space to find connections that no rules-based system would catch
-- Is NOT purely rules-based — rules provide structure (the arc), but the embeddings provide discovery
-
-### Technical Requirements
-
-- Supabase Realtime subscriptions for live updates (postgres_changes on hunt_knowledge, hunt_convergence_scores, hunt_alert_outcomes)
-- New route: `/intelligence` in App.tsx
-- May require `REPLICA IDENTITY FULL` on key tables for filtered Realtime subscriptions
-- Dark theme matching existing site (bg-gray-950, cyan/teal accents)
-- Mobile-first — state board becomes vertical list on mobile
-- The map is NOT on this page — it stays accessible from header as a drill-down tool
 
 ---
 
@@ -156,7 +103,7 @@ The Intelligence Page needs a backend layer that doesn't exist yet — a synthes
 | Styling | Tailwind CSS |
 | Map | Mapbox GL JS (satellite-streets-v12, globe projection, 3D terrain, fog/atmosphere) |
 | Panel Layout | CSS Grid 12-col |
-| Routing | React Router 6 (`/`, `/:species`, `/:species/:stateAbbr`, `/auth`, `/ops`, `/intelligence`) — `/intelligence` is the primary product page |
+| Routing | React Router 6 (`/`, `/:stateAbbr`, `/intelligence`, `/map`, `/auth`, `/ops`) — `/` is the terminal landing, `/intelligence` is the deep-dive command center |
 | Icons | Lucide React |
 | Fonts | Playfair Display (headings), Lora (body) |
 | Auth | Supabase Auth (Google OAuth) |
@@ -167,17 +114,9 @@ The Intelligence Page needs a backend layer that doesn't exist yet — a synthes
 | Edge Functions | Deno (Supabase Edge Functions) |
 | Hosting | Vercel (frontend, auto-deploy on push) + Supabase (backend) |
 
-### Edge Functions (55 total)
+### Edge Functions (66 total)
 
-**Brain Writers (28):** hunt-weather-watchdog, hunt-weather-realtime, hunt-migration-monitor, hunt-birdcast, hunt-nasa-power, hunt-nws-monitor, hunt-solunar-precompute, hunt-convergence-engine, hunt-du-map, hunt-du-alerts, hunt-drought-monitor, hunt-inaturalist, hunt-birdweather, hunt-climate-indices, hunt-log, hunt-power-outage, hunt-usfws-survey, hunt-extract-patterns, hunt-historical-news, hunt-gbif, hunt-snow-cover, hunt-snotel, hunt-phenology, hunt-crop-progress, hunt-multi-species, hunt-movebank, hunt-search-trends, hunt-query-signal
-
-**Intelligence Layer (5):** hunt-anomaly-detector, hunt-correlation-engine, hunt-disaster-watch, hunt-absence-detector, hunt-web-curator
-
-**Self-Graders (5):** hunt-forecast-tracker, hunt-migration-report-card, hunt-convergence-report-card, hunt-alert-grader, hunt-alert-calibration
-
-**Brain Readers (8):** hunt-dispatcher, hunt-search, hunt-alerts, hunt-suggested-prompts, hunt-ops-summary, hunt-state-brief, hunt-intelligence-feed, hunt-convergence-alerts-pm
-
-**Utilities (9):** hunt-generate-embedding, hunt-weather, hunt-solunar, hunt-scout-report, hunt-convergence-alerts, hunt-check-user-alerts, hunt-cron-health, hunt-feedback, hunt-recall
+Run `ls supabase/functions/ | grep -v _shared` for current list. Key additions since last inventory: hunt-air-quality, hunt-arc-narrator, hunt-brain-synthesizer, hunt-convergence-scan, hunt-murmuration-index, hunt-ocean-buoy, hunt-ops-dashboard, hunt-river-discharge, hunt-soil-monitor, hunt-space-weather, hunt-synthesis-reviewer, hunt-wildfire-perimeters
 
 All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
 
@@ -230,12 +169,13 @@ All cron functions MUST call `logCronRun` on EVERY exit path.
 **Core Brain:**
 | Table | Purpose |
 |-------|---------|
-| hunt_knowledge | THE BRAIN — 2.4M+ vector embeddings (512-dim IVFFlat) |
+| hunt_knowledge | THE BRAIN — 3.2M+ vector embeddings (512-dim IVFFlat) |
 | hunt_pattern_links | Cross-domain pattern correlations from scanBrainOnWrite |
 | hunt_convergence_scores | 50-state daily convergence scores (8 components) |
 | hunt_convergence_alerts | Score spike alerts |
 | hunt_alert_outcomes | Universal alert outcome tracker (claims + deadlines + grades) |
 | hunt_alert_calibration | Rolling accuracy stats per source/state |
+| hunt_state_arcs | Narrative arc state machine per state (buildup→recognition→outcome→grade→closed) |
 | hunt_cron_log | Cron execution log |
 
 **Data:**
@@ -321,25 +261,6 @@ npx tsx scripts/orchestrator-v2.ts --status                     # Show pipe stat
 npx tsx scripts/orchestrator-v2.ts --reset                      # Reset checkpoint
 npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe solo
 ```
-
----
-
-## Recent Fixes (March 26, 2026)
-
-All previously known issues have been resolved and deployed:
-
-| Issue | Resolution |
-|-------|-----------|
-| Alert grading at 0% — RPC queried wrong table | DB fixed — RPC now queries hunt_alert_outcomes |
-| 12K duplicate compound-risk outcomes | DB fixed — 11,825 dupes deleted |
-| hunt-alert-grader MAX_PER_RUN too low (20) | Deployed — bumped to 200 |
-| hunt-convergence-scan missing dedup | Deployed — dedup check added |
-| Convergence-scan searched entire 2.4M brain | Deployed — state filter added to vector search |
-| 5 functions used exact count on 2.4M rows | Deployed — changed to estimated count |
-| 15 crons showed "never_run" on ops | Deployed — naming mismatch fixed in EXPECTED_CRONS |
-| weather-realtime fired convergence-scan 2400x/day | Deployed — 3hr throttle added |
-| Map state click not navigating | Fixed March 24 |
-| ALL SIGNALS button broken | Fixed March 24 |
 
 ---
 
