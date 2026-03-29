@@ -297,7 +297,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 shrink-0">
                   {s.arc?.current_act === 'outcome' && (
                     <span className="text-[8px] font-mono text-emerald-400/50">{s.outcomeCount}/{s.expectedCount}</span>
                   )}
