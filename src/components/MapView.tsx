@@ -2002,6 +2002,14 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         .addTo(map);
     });
 
+    // Close hover popup on mousedown so it doesn't block the subsequent click
+    map.getCanvas().addEventListener('mousedown', () => {
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
+      }
+    });
+
     // State click — deferred to let eBird/DU/weather handlers claim the click first.
     // Other handlers set clickHandled=true for 100ms. We wait 150ms so the flag has reset,
     // then check: if it was reset (no other handler claimed it), navigate to state.
