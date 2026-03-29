@@ -24,7 +24,7 @@ function useDiscoveries() {
     fetchedRef.current = true;
 
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const types = '"correlation-discovery","anomaly-alert","arc-grade-reasoning","arc-fingerprint"';
+    const types = '"correlation-discovery","anomaly-alert","arc-grade-reasoning","arc-fingerprint","wildfire-perimeter","ocean-buoy","air-quality","pollen-data","space-weather","soil-conditions","river-discharge"';
 
     fetch(
       `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=in.(${types})&created_at=gte.${cutoff}&order=created_at.desc&limit=50&select=id,title,content,content_type,state_abbr,metadata,effective_date,signal_weight,created_at`,
