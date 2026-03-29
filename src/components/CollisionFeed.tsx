@@ -101,6 +101,22 @@ export default function CollisionFeed({ convergenceAlerts, stateFilter = null }:
         })}
       </div>
 
+      {/* Summary line */}
+      {!stateFilter && displayed.length > 0 && (
+        <div className="shrink-0 px-2 py-0.5 border-b border-white/[0.04] text-[8px] font-mono text-white/15">
+          {(() => {
+            const risks = filterEntries('connections').filter(e => e.type === 'compound-risk').length;
+            const links = filterEntries('connections').filter(e => e.type === 'correlation').length;
+            const anomalies = filterEntries('alerts').filter(e => e.type === 'anomaly').length;
+            const parts: string[] = [];
+            if (risks) parts.push(`${risks} risk alerts`);
+            if (links) parts.push(`${links} cross-domain links`);
+            if (anomalies) parts.push(`${anomalies} anomalies`);
+            return parts.join(' · ') || 'Brain activity';
+          })()}
+        </div>
+      )}
+
       {/* Feed entries */}
       <div className="flex-1 overflow-y-auto">
         {journalLoading && displayed.length === 0 ? (
