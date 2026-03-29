@@ -54,13 +54,15 @@ serve(async (req) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+    // Fetch seeds from diverse content types — random order so each run
+    // picks different seeds, producing varied cross-domain discoveries
     const { data: seeds, error: seedError } = await supabase
       .from("hunt_knowledge")
       .select("id, title, content, content_type, state_abbr, species, effective_date, embedding")
       .in("content_type", SEED_TYPES)
       .gte("created_at", sevenDaysAgo.toISOString())
-      .order("signal_weight", { ascending: false })
-      .limit(50);
+      .order("created_at", { ascending: false })
+      .limit(100);
 
     if (seedError || !seeds || seeds.length === 0) {
       await logCronRun({
@@ -72,8 +74,14 @@ serve(async (req) => {
       return successResponse(req, { correlations: 0, reason: "no recent data" });
     }
 
-    // Pick 3 random seeds (reduced from 10 to stay within 150s timeout)
-    const shuffled = seeds.sort(() => Math.random() - 0.5).slice(0, 3);
+    // Pick diverse seeds — one per content type to maximize cross-domain variety
+    const byType = new Map<string, typeof seeds[0]>();
+    const shuffledAll = seeds.sort(() => Math.random() - 0.5);
+    for (const s of shuffledAll) {
+      if (!byType.has(s.content_type)) byType.set(s.content_type, s);
+      if (byType.size >= 5) break;
+    }
+    const shuffled = Array.from(byType.values());
 
     let totalCorrelations = 0;
     let errors = 0;
