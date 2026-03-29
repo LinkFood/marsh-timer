@@ -66,7 +66,7 @@ export default function TerminalLayout({
   const [centerTab, setCenterTab] = useState<'timeline' | 'collisions'>('collisions');
   const [feedHeight, setFeedHeight] = useState<number>(() => {
     try { const v = localStorage.getItem('dc-feed-height'); if (v) { const n = Number(v); if (n >= 120 && n <= 600) return n; } } catch {}
-    return 280;
+    return 340;
   });
   const dragging = useRef(false);
   const startY = useRef(0);
