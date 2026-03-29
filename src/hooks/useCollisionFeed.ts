@@ -37,6 +37,37 @@ const TYPE_MAP: Record<string, CollisionType> = {
 
 const EXCLUDED_TYPES = new Set(['state-brief', 'convergence-score']);
 
+function generateBrainNarration(type: CollisionType, entry: JournalEntry, meta: Record<string, unknown> | null): string | null {
+  const state = entry.state_abbr || 'unknown';
+  switch (type) {
+    case 'compound-risk': {
+      const domains = Array.isArray(meta?.domain_types) ? (meta.domain_types as string[]) : [];
+      const trigger = meta?.trigger_event as string || '';
+      const confidence = meta?.confidence as string || '';
+      if (domains.length === 0) return null;
+      return `${state} shows ${domains.length} environmental domains converging simultaneously: ${domains.join(', ')}. ${trigger ? `Triggered by: ${trigger}.` : ''} ${confidence ? `Confidence: ${confidence}.` : ''} The brain is watching for confirmation signals.`;
+    }
+    case 'correlation': {
+      const seedTitle = (meta?.seed_title as string || '').replace(/\*\*/g, '');
+      const matchTitle = meta?.match_title as string || '';
+      const sim = typeof meta?.similarity === 'number' ? Math.round((meta.similarity as number) * 100) : 0;
+      const crossMatches = meta?.cross_domain_matches as number || 0;
+      if (!seedTitle || !matchTitle) return null;
+      return `The brain found that "${seedTitle}" is ${sim}% similar to "${matchTitle}" in the 512-dimensional embedding space. ${crossMatches > 0 ? `${crossMatches} other cross-domain matches were found for this pattern.` : ''} These signals from different domains may be driven by the same underlying environmental conditions.`;
+    }
+    case 'anomaly': {
+      const zScore = typeof meta?.z_score === 'number' ? Math.abs(meta.z_score as number).toFixed(1) : null;
+      const dir = meta?.direction as string || '';
+      const mean = typeof meta?.historical_mean === 'number' ? (meta.historical_mean as number).toFixed(1) : null;
+      const current = typeof meta?.current_value === 'number' ? (meta.current_value as number) : null;
+      if (!zScore) return null;
+      return `Statistical outlier detected: ${state}'s convergence score is ${zScore} standard deviations ${dir} the historical mean${mean ? ` (${current} vs avg ${mean})` : ''}. This is unusual enough to warrant attention.`;
+    }
+    default:
+      return null;
+  }
+}
+
 function journalToCollision(entry: JournalEntry): CollisionEntry | null {
   if (EXCLUDED_TYPES.has(entry.content_type)) return null;
   const type = TYPE_MAP[entry.content_type];
@@ -93,7 +124,7 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
     stateAbbr: entry.state_abbr,
     timestamp: entry.created_at,
     title,
-    detail: entry.content?.slice(0, 400) || null,
+    detail: generateBrainNarration(type, entry, meta) || entry.content?.slice(0, 300) || null,
     severity,
     domains,
     convergingCount,
