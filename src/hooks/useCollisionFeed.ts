@@ -106,10 +106,10 @@ function alertToCollision(alert: ConvergenceAlert): CollisionEntry {
 }
 
 const FILTER_MAP: Record<CollisionFilter, CollisionType[]> = {
-  all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning', 'convergence', 'arc-fingerprint'],
-  connections: ['compound-risk', 'correlation', 'convergence'],
+  all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning'],
+  connections: ['compound-risk', 'correlation'],
   alerts: ['anomaly', 'score-spike'],
-  grades: ['grade-reasoning', 'arc-fingerprint'],
+  grades: ['grade-reasoning', 'arc-fingerprint', 'convergence'],
 };
 
 export function useCollisionFeed(
@@ -129,13 +129,20 @@ export function useCollisionFeed(
       collisions.push(alertToCollision(alert));
     }
 
-    let sorted = collisions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Sort chronologically, dedup by title (anomaly detector can produce duplicate entries)
+    const sorted = collisions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const seen = new Set<string>();
+    let deduped = sorted.filter(e => {
+      if (seen.has(e.title)) return false;
+      seen.add(e.title);
+      return true;
+    });
 
     if (stateFilter) {
-      sorted = sorted.filter(e => e.stateAbbr === stateFilter);
+      deduped = deduped.filter(e => e.stateAbbr === stateFilter);
     }
 
-    return sorted;
+    return deduped;
   }, [journalEntries, convergenceAlerts, stateFilter]);
 
   const filterEntries = useMemo(() => {
