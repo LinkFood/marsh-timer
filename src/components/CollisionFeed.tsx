@@ -126,10 +126,15 @@ export default function CollisionFeed({ convergenceAlerts, stateFilter = null }:
             ))}
           </div>
         ) : displayed.length === 0 ? (
-          <div className="p-3 flex items-center justify-center h-full">
+          <div className="p-3 flex flex-col items-center justify-center h-full gap-1">
             <span className="text-[10px] font-mono text-white/15">
-              {stateFilter ? `No collisions for ${stateFilter}` : 'Brain is quiet — waiting for data'}
+              {stateFilter ? `No collisions for ${stateFilter} yet` : 'Brain is quiet — waiting for data'}
             </span>
+            {stateFilter && (
+              <span className="text-[8px] font-mono text-white/10">
+                Check national feed for cross-domain discoveries
+              </span>
+            )}
           </div>
         ) : (
           displayed.map(entry => (
