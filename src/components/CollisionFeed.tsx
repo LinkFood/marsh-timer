@@ -14,7 +14,12 @@ const FILTERS: { key: CollisionFilter; label: string }[] = [
   { key: 'grades', label: 'Grades' },
 ];
 
-// Fetch correlation + anomaly discoveries directly (they get buried by signal_weight sort in useBrainJournal)
+// Fetch discoveries + environmental data directly (they get buried by signal_weight sort in useBrainJournal)
+// Split into two parallel fetches: intelligence types (small volume, fast) and environmental types (per-type to avoid IN timeout)
+const DISCOVERY_TYPES = '"correlation-discovery","anomaly-alert","arc-grade-reasoning","arc-fingerprint"';
+const ENV_TYPES = ['soil-conditions', 'river-discharge', 'air-quality', 'ocean-buoy', 'space-weather', 'pollen-data', 'wildfire-perimeter'];
+const SELECT = 'id,title,content,content_type,state_abbr,metadata,effective_date,signal_weight,created_at';
+
 function useDiscoveries() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const fetchedRef = useRef(false);
@@ -23,27 +28,32 @@ function useDiscoveries() {
     if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
     fetchedRef.current = true;
 
+    const headers = { apikey: SUPABASE_KEY };
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const types = '"correlation-discovery","anomaly-alert","arc-grade-reasoning","arc-fingerprint","wildfire-perimeter","ocean-buoy","air-quality","pollen-data","space-weather","soil-conditions","river-discharge"';
 
-    fetch(
-      `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=in.(${types})&created_at=gte.${cutoff}&order=created_at.desc&limit=50&select=id,title,content,content_type,state_abbr,metadata,effective_date,signal_weight,created_at`,
-      { headers: { apikey: SUPABASE_KEY } }
-    )
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setEntries(data); })
-      .catch(() => {});
+    async function fetchAll() {
+      const discoveryUrl = `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=in.(${DISCOVERY_TYPES})&created_at=gte.${cutoff}&order=created_at.desc&limit=50&select=${SELECT}`;
+      const envUrls = ENV_TYPES.map(t =>
+        `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=eq.${t}&created_at=gte.${cutoff}&order=created_at.desc&limit=5&select=${SELECT}`
+      );
 
-    const interval = setInterval(() => {
-      fetch(
-        `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=in.(${types})&created_at=gte.${cutoff}&order=created_at.desc&limit=50&select=id,title,content,content_type,state_abbr,metadata,effective_date,signal_weight,created_at`,
-        { headers: { apikey: SUPABASE_KEY } }
-      )
-        .then(r => r.json())
-        .then(data => { if (Array.isArray(data)) setEntries(data); })
-        .catch(() => {});
-    }, 60_000);
+      const results = await Promise.allSettled([
+        fetch(discoveryUrl, { headers }).then(r => r.json()),
+        ...envUrls.map(url => fetch(url, { headers }).then(r => r.json())),
+      ]);
 
+      const all: JournalEntry[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          all.push(...r.value);
+        }
+      }
+      all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setEntries(all);
+    }
+
+    fetchAll();
+    const interval = setInterval(fetchAll, 60_000);
     return () => clearInterval(interval);
   }, []);
 
