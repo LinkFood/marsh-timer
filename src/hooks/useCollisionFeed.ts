@@ -45,7 +45,11 @@ function generateBrainNarration(type: CollisionType, entry: JournalEntry, meta: 
       const trigger = meta?.trigger_event as string || '';
       const confidence = meta?.confidence as string || '';
       if (domains.length === 0) return null;
-      return `${state} shows ${domains.length} environmental domains converging simultaneously: ${domains.join(', ')}. ${trigger ? `Triggered by: ${trigger}.` : ''} ${confidence ? `Confidence: ${confidence}.` : ''} The brain is watching for confirmation signals.`;
+      // Extract the reasoning from content which has the specific signal details
+      const content = entry.content || '';
+      // Look for the AI-generated narrative (after any markdown headers)
+      const narrative = content.replace(/^##?\s+.*/gm, '').replace(/\*\*/g, '').trim().slice(0, 300);
+      return `${domains.length} domains converging in ${state}: ${domains.join(', ')}.\n\n${narrative || `Triggered by: ${trigger}. Confidence: ${confidence}.`}`;
     }
     case 'correlation': {
       const seedTitle = (meta?.seed_title as string || '').replace(/\*\*/g, '');

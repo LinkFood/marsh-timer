@@ -79,10 +79,12 @@ export default function CollisionCard({ entry }: Props) {
       {/* Expanded detail */}
       {expanded && (
         <div className="mt-1.5 ml-6 space-y-1.5">
-          {/* Domain pills for compound-risk entries */}
+          {/* Domain pills + convergence count for compound-risk entries */}
           {entry.domains && entry.domains.length > 0 && (
             <div>
-              <div className="text-[8px] font-mono text-white/20 uppercase tracking-wider mb-0.5">Converging domains</div>
+              <div className="text-[8px] font-mono text-white/20 uppercase tracking-wider mb-0.5">
+                What connected ({entry.convergingCount || entry.domains.length} domains)
+              </div>
               <div className="flex flex-wrap gap-1">
                 {entry.domains.map(d => {
                   const color = DOMAIN_COLORS[d] || '#6b7280';
