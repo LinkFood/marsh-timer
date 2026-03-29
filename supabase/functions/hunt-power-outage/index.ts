@@ -212,28 +212,36 @@ serve(async (req) => {
       },
     });
 
-    // Step 5: Embed and upsert in batches of 20
+    // Step 5: Embed and insert in batches of 20
     let totalEmbedded = 0;
     let errors = 0;
 
     for (let i = 0; i < entries.length; i += 20) {
       const chunk = entries.slice(i, i + 20);
-      const texts = chunk.map(e => e.text);
 
       try {
+        // Dedup: skip entries whose titles already exist in the brain
+        const titles = chunk.map(e => e.meta?.title).filter(Boolean);
+        const { data: existing } = await supabase.from("hunt_knowledge").select("title").in("title", titles);
+        const existingTitles = new Set((existing || []).map((r: any) => r.title));
+        const newChunk = chunk.filter(e => !existingTitles.has(e.meta?.title));
+
+        if (newChunk.length === 0) continue;
+
+        const texts = newChunk.map(e => e.text);
         const embeddings = await batchEmbed(texts);
 
-        const rows = chunk.map((e, j) => ({
+        const rows = newChunk.map((e, j) => ({
           ...e.meta,
           embedding: JSON.stringify(embeddings[j]),
         }));
 
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from("hunt_knowledge")
-          .upsert(rows, { onConflict: "title" });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error(`Upsert error: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded += rows.length;
@@ -242,7 +250,7 @@ serve(async (req) => {
         // Brain scan on first entry of each batch (best-effort cross-domain pattern matching)
         if (embeddings.length > 0) {
           try {
-            const firstAbbr = chunk[0].meta.state_abbr as string | null;
+            const firstAbbr = newChunk[0].meta.state_abbr as string | null;
             await scanBrainOnWrite(embeddings[0], {
               state_abbr: firstAbbr || undefined,
               exclude_content_type: "power-outage",
@@ -251,7 +259,7 @@ serve(async (req) => {
           } catch (_) { /* scanning is best-effort */ }
         }
       } catch (err) {
-        console.error(`Batch embed/upsert error: ${err}`);
+        console.error(`Batch embed/insert error: ${err}`);
         errors++;
       }
     }

@@ -353,32 +353,40 @@ serve(async (req) => {
       return cronResponse({ date, embedded: 0, errors, durationMs });
     }
 
-    // Embed and upsert in batches of 20
+    // Embed and insert in batches of 20
     let totalEmbedded = 0;
     for (let i = 0; i < allEntries.length; i += 20) {
       const chunk = allEntries.slice(i, i + 20);
-      const texts = chunk.map(e => e.text);
 
       try {
+        // Dedup: skip entries whose titles already exist in the brain
+        const titles = chunk.map(e => e.meta?.title).filter(Boolean);
+        const { data: existing } = await supabase.from("hunt_knowledge").select("title").in("title", titles);
+        const existingTitles = new Set((existing || []).map((r: any) => r.title));
+        const newChunk = chunk.filter(e => !existingTitles.has(e.meta?.title));
+
+        if (newChunk.length === 0) continue;
+
+        const texts = newChunk.map(e => e.text);
         const embeddings = await batchEmbed(texts);
 
-        const rows = chunk.map((e, j) => ({
+        const rows = newChunk.map((e, j) => ({
           ...e.meta,
           embedding: JSON.stringify(embeddings[j]),
         }));
 
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from("hunt_knowledge")
-          .upsert(rows, { onConflict: "title" });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error(`  Upsert error: ${upsertError.message}`);
+        if (insertError) {
+          console.error(`  Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded += rows.length;
         }
       } catch (err) {
-        console.error(`  Embed/upsert batch error: ${err}`);
+        console.error(`  Embed/insert batch error: ${err}`);
         errors++;
       }
     }
