@@ -27,7 +27,7 @@ const TYPE_MAP: Record<string, CollisionType> = {
   'arc-fingerprint': 'arc-fingerprint',
 };
 
-const EXCLUDED_TYPES = new Set(['state-brief']);
+const EXCLUDED_TYPES = new Set(['state-brief', 'convergence-score']);
 
 function journalToCollision(entry: JournalEntry): CollisionEntry | null {
   if (EXCLUDED_TYPES.has(entry.content_type)) return null;
@@ -109,7 +109,7 @@ const FILTER_MAP: Record<CollisionFilter, CollisionType[]> = {
   all: ['compound-risk', 'correlation', 'anomaly', 'score-spike', 'grade-reasoning'],
   connections: ['compound-risk', 'correlation'],
   alerts: ['anomaly', 'score-spike'],
-  grades: ['grade-reasoning', 'arc-fingerprint', 'convergence'],
+  grades: ['grade-reasoning', 'arc-fingerprint'],
 };
 
 export function useCollisionFeed(
