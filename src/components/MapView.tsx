@@ -63,9 +63,9 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   // Weather
   'radar-overlay': new Set(['weather']),
   'temp-tiles-overlay': new Set(),
-  'wind-flow': new Set(['default', 'weather', 'intel']),
-  'wind-speed-labels': new Set(['default', 'weather', 'intel']),
-  'wind-arrow-heads': new Set(['default', 'weather', 'intel']),
+  'wind-flow': new Set(['weather']),
+  'wind-speed-labels': new Set(['weather']),
+  'wind-arrow-heads': new Set(['weather']),
   'isobar-lines': new Set(['weather']),
   'pressure-center-labels': new Set(['weather']),
   'nws-alert-fill': new Set(['weather', 'intel']),
@@ -76,13 +76,13 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'convergence-score-label': new Set(['intel']),
   'convergence-forming-label': new Set(['intel']),
   'convergence-pulse': new Set(['intel']),
-  'migration-front-glow': new Set(['intel']),
-  'migration-front-line': new Set(['intel']),
-  'migration-front-label': new Set(['intel']),
+  'migration-front-glow': new Set(),
+  'migration-front-line': new Set(),
+  'migration-front-label': new Set(),
   // Flyways
-  'flyway-corridor-fill': new Set(['default', 'scout', 'intel']),
-  'flyway-flow-lines': new Set(['default', 'intel']),
-  'flyway-corridor-labels': new Set(['default', 'intel']),
+  'flyway-corridor-fill': new Set(['scout']),
+  'flyway-flow-lines': new Set(['scout']),
+  'flyway-corridor-labels': new Set(['scout']),
   // eBird
   'ebird-heatmap': new Set(['default', 'intel']),
   'ebird-dots': new Set(['scout']),
@@ -90,7 +90,7 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'ebird-clusters': new Set(['scout']),
   'ebird-cluster-count': new Set(['scout']),
   // Pressure trends
-  'pressure-trend-arrows': new Set(['default', 'weather', 'intel']),
+  'pressure-trend-arrows': new Set(['weather']),
   // Perfect Storm (all modes — the point is to interrupt any view)
   'perfect-storm-glow': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
   'perfect-storm-ring': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
@@ -119,20 +119,19 @@ function tempToColor(tempF: number): string {
 }
 
 function convergenceToColor(score: number): string {
-  // Smooth gradient: gray → blue → teal → green → yellow → orange → red
-  // Tuned for the 50-80 range where most states cluster
-  if (score >= 90) return 'rgba(220, 38, 38, 0.7)';     // deep red
-  if (score >= 80) return 'rgba(239, 68, 68, 0.65)';    // red
-  if (score >= 75) return 'rgba(249, 115, 22, 0.6)';    // orange-red
-  if (score >= 70) return 'rgba(251, 146, 60, 0.58)';   // orange
-  if (score >= 65) return 'rgba(245, 158, 11, 0.55)';   // amber
-  if (score >= 60) return 'rgba(234, 179, 8, 0.5)';     // yellow
-  if (score >= 55) return 'rgba(132, 204, 22, 0.45)';   // lime
-  if (score >= 50) return 'rgba(34, 197, 94, 0.4)';     // green
-  if (score >= 40) return 'rgba(20, 184, 166, 0.35)';   // teal
-  if (score >= 30) return 'rgba(59, 130, 246, 0.3)';    // blue
-  if (score >= 20) return 'rgba(99, 102, 241, 0.25)';   // indigo
-  return 'rgba(100, 100, 100, 0.15)';                    // gray
+  // Subtle tint — let the map breathe. Only high scores pop.
+  if (score >= 90) return 'rgba(220, 38, 38, 0.35)';     // deep red
+  if (score >= 80) return 'rgba(239, 68, 68, 0.30)';     // red
+  if (score >= 75) return 'rgba(249, 115, 22, 0.25)';    // orange-red
+  if (score >= 70) return 'rgba(251, 146, 60, 0.22)';    // orange
+  if (score >= 65) return 'rgba(245, 158, 11, 0.18)';    // amber
+  if (score >= 60) return 'rgba(234, 179, 8, 0.15)';     // yellow
+  if (score >= 55) return 'rgba(132, 204, 22, 0.12)';    // lime
+  if (score >= 50) return 'rgba(34, 197, 94, 0.10)';     // green
+  if (score >= 40) return 'rgba(20, 184, 166, 0.08)';    // teal
+  if (score >= 30) return 'rgba(59, 130, 246, 0.06)';    // blue
+  if (score >= 20) return 'rgba(99, 102, 241, 0.04)';    // indigo
+  return 'rgba(100, 100, 100, 0.02)';                     // nearly invisible
 }
 
 function convergenceScoreColor(score: number): string {
