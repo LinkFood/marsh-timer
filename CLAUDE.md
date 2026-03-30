@@ -38,14 +38,15 @@ Every piece of intelligence follows this arc:
 
 Every piece of data that enters the system MUST be embedded via Voyage AI (voyage-3-lite, 512-dim) → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
 
-### Brain State (as of 2026-03-29)
+### Brain State (as of 2026-03-30)
 
 - **3,200,000+** entries in hunt_knowledge
-- **60+** content types
+- **60+** content types (including air-quality, soil-conditions, river-discharge, ocean-buoy, space-weather, wildfire-perimeter)
 - **50** states tracked
-- **82 crons** (80 healthy), growing via crons + event-driven convergence scans
+- **88 crons** (45/48 healthy), growing via crons + event-driven convergence scans
 - **66 arcs** — synthesis agent live, narrator generating narratives, grading loop producing real results
 - **Self-grading loop** active — confirmed grades with full post-mortem reasoning being generated
+- **Compound index** on (content_type, created_at DESC) — content_type queries <3s on 3.2M rows
 
 ### 8-Component Convergence Scoring
 
