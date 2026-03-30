@@ -53,18 +53,33 @@ serve(async (req) => {
     // Step 1: Get state-level aggregates from ODIN
     const aggUrl = `${ODIN_BASE}?select=state,count(*)%20as%20outage_count,sum(metersaffected)%20as%20total_meters&group_by=state&order_by=total_meters%20desc&limit=60`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-
-    const aggRes = await fetch(aggUrl, { signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (!aggRes.ok) {
-      const body = await aggRes.text();
-      throw new Error(`ODIN API error ${aggRes.status}: ${body}`);
+    let aggData: { results?: unknown[] };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const aggRes = await fetch(aggUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!aggRes.ok) {
+          if (aggRes.status >= 500 && attempt === 0) {
+            console.warn(`ODIN API ${aggRes.status}, retrying...`);
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+          throw new Error(`ODIN API error ${aggRes.status}`);
+        }
+        aggData = await aggRes.json();
+        break;
+      } catch (err) {
+        if (attempt === 0) {
+          console.warn(`ODIN fetch failed (${err}), retrying...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        throw err;
+      }
     }
-
-    const aggData = await aggRes.json();
+    aggData = aggData!;
     const stateResults: Array<{ state: string; outage_count: number; total_meters: number }> = aggData.results || [];
 
     if (stateResults.length === 0) {
