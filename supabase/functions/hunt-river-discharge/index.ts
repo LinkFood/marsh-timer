@@ -9,7 +9,7 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
 const FUNCTION_NAME = "hunt-river-discharge";
 const CONTENT_TYPE = "river-discharge";
-const STATE_BATCH_SIZE = 5;
+const STATE_BATCH_SIZE = 10;
 
 interface DailyDischarge {
   time: string[];
@@ -83,7 +83,7 @@ serve(async (req) => {
       for (const abbr of stateChunk) {
         try {
           const { name, lat, lng } = STATE_CENTROIDS[abbr];
-          const url = `https://flood-api.open-meteo.com/v1/flood?latitude=${lat}&longitude=${lng}&daily=river_discharge,river_discharge_mean,river_discharge_median,river_discharge_max,river_discharge_min&forecast_days=7`;
+          const url = `https://flood-api.open-meteo.com/v1/flood?latitude=${lat}&longitude=${lng}&daily=river_discharge,river_discharge_mean,river_discharge_median,river_discharge_max,river_discharge_min&forecast_days=1`;
 
           const res = await fetch(url);
 

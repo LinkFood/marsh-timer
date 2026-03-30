@@ -11,8 +11,7 @@ const FUNCTION_NAME = "hunt-air-quality";
 
 const HOURLY_PARAMS = [
   "pm10", "pm2_5", "carbon_monoxide", "nitrogen_dioxide", "sulphur_dioxide",
-  "ozone", "us_aqi", "alder_pollen", "birch_pollen", "grass_pollen",
-  "mugwort_pollen", "olive_pollen", "ragweed_pollen",
+  "ozone", "us_aqi",
 ].join(",");
 
 interface HourlyData {
@@ -115,13 +114,11 @@ serve(async (req) => {
     let totalPollen = 0;
     let errors = 0;
 
-    // Process states in batches of 10
+    // Process states in batches of 10 — AQ only (no pollen, saves 50% of embeds)
     for (let s = 0; s < abbrs.length; s += 10) {
       const batch = abbrs.slice(s, s + 10);
       const aqTexts: string[] = [];
-      const pollenTexts: string[] = [];
       const aqEntries: { abbr: string; stateName: string; maxAqi: number; avgPm25: number; avgOzone: number; avgCo: number; avgNo2: number; avgSo2: number; severity: string }[] = [];
-      const pollenEntries: { abbr: string; stateName: string; birch: number; grass: number; ragweed: number; alder: number; mugwort: number; olive: number; seasonNote: string }[] = [];
 
       for (const abbr of batch) {
         try {
@@ -131,53 +128,42 @@ serve(async (req) => {
           const res = await fetch(url);
 
           if (!res.ok) {
-            // Only retry 5xx
             if (res.status >= 500) {
-              console.warn(`${abbr}: API 5xx (${res.status}), retrying once...`);
-              await new Promise(r => setTimeout(r, 1000));
-              const retry = await fetch(url);
-              if (!retry.ok) {
-                console.warn(`${abbr}: retry failed (${retry.status})`);
-                errors++;
-                continue;
-              }
-              const retryData = await retry.json();
-              processState(abbr, name, retryData.hourly, aqTexts, pollenTexts, aqEntries, pollenEntries, today);
-              continue;
+              errors++;
+            } else {
+              console.warn(`${abbr}: API error ${res.status}`);
+              errors++;
             }
-            console.warn(`${abbr}: API error ${res.status} (4xx, not retrying)`);
-            errors++;
             continue;
           }
 
           const data = await res.json();
-          if (!data.hourly) {
-            console.warn(`${abbr}: no hourly data`);
-            errors++;
-            continue;
-          }
+          if (!data.hourly) { errors++; continue; }
 
-          processState(abbr, name, data.hourly, aqTexts, pollenTexts, aqEntries, pollenEntries, today);
+          const hourly = data.hourly as HourlyData;
+          const maxAqi = max(hourly.us_aqi);
+          const avgPm25 = avg(hourly.pm2_5);
+          const avgOzone = avg(hourly.ozone);
+          const avgCo = avg(hourly.carbon_monoxide);
+          const avgNo2 = avg(hourly.nitrogen_dioxide);
+          const avgSo2 = avg(hourly.sulphur_dioxide);
+          const severity = aqiSeverity(maxAqi);
+
+          aqTexts.push(`Air quality for ${name} (${abbr}) on ${today}: AQI ${maxAqi} (PM2.5: ${avgPm25}\u03BCg/m\u00B3, ozone: ${avgOzone}ppb, CO: ${avgCo}, NO2: ${avgNo2}, SO2: ${avgSo2}). ${severity}`);
+          aqEntries.push({ abbr, stateName: name, maxAqi, avgPm25, avgOzone, avgCo, avgNo2, avgSo2, severity });
         } catch (err) {
           console.warn(`${abbr}: ${err}`);
           errors++;
         }
 
-        // Rate limit between calls
         await new Promise(r => setTimeout(r, 100));
       }
 
-      if (aqTexts.length === 0 && pollenTexts.length === 0) continue;
+      if (aqTexts.length === 0) continue;
 
-      // Batch embed all texts together (AQ + pollen), max 20
-      const allTexts = [...aqTexts, ...pollenTexts];
-      const allEmbeddings = await batchEmbed(allTexts);
+      const embeddings = await batchEmbed(aqTexts);
 
-      const aqEmbeddings = allEmbeddings.slice(0, aqTexts.length);
-      const pollenEmbeddings = allEmbeddings.slice(aqTexts.length);
-
-      // Build air quality rows
-      const aqRows = aqEntries.map((entry, i) => ({
+      const rows = aqEntries.map((entry, i) => ({
         title: `${entry.abbr} air-quality ${today}`,
         content: aqTexts[i],
         content_type: "air-quality",
@@ -195,68 +181,26 @@ serve(async (req) => {
           avg_so2: entry.avgSo2,
           severity: entry.severity,
         },
-        embedding: aqEmbeddings[i],
+        embedding: embeddings[i],
       }));
 
-      // Build pollen rows
-      const pollenRows = pollenEntries.map((entry, i) => ({
-        title: `${entry.abbr} pollen-data ${today}`,
-        content: pollenTexts[i],
-        content_type: "pollen-data",
-        tags: [entry.abbr, "pollen", "allergen", "seasonal", "phenology"],
-        state_abbr: entry.abbr,
-        species: null,
-        effective_date: today,
-        metadata: {
-          source: "open-meteo-air-quality",
-          birch_pollen: entry.birch,
-          grass_pollen: entry.grass,
-          ragweed_pollen: entry.ragweed,
-          alder_pollen: entry.alder,
-          mugwort_pollen: entry.mugwort,
-          olive_pollen: entry.olive,
-          season_note: entry.seasonNote,
-        },
-        embedding: pollenEmbeddings[i],
-      }));
-
-      // Insert air quality
-      if (aqRows.length > 0) {
-        const { error: aqErr } = await supabase
-          .from("hunt_knowledge")
-          .insert(aqRows);
-
-        if (aqErr) {
-          console.error(`AQ insert error batch ${batch[0]}: ${aqErr.message}`);
-          errors++;
-        } else {
-          totalAirQuality += aqRows.length;
-        }
+      const { error: insertErr } = await supabase.from("hunt_knowledge").insert(rows);
+      if (insertErr) {
+        console.error(`Insert error batch ${batch[0]}: ${insertErr.message}`);
+        errors++;
+      } else {
+        totalAirQuality += rows.length;
       }
 
-      // Insert pollen
-      if (pollenRows.length > 0) {
-        const { error: pollenErr } = await supabase
-          .from("hunt_knowledge")
-          .insert(pollenRows);
-
-        if (pollenErr) {
-          console.error(`Pollen insert error batch ${batch[0]}: ${pollenErr.message}`);
-          errors++;
-        } else {
-          totalPollen += pollenRows.length;
-        }
-      }
-
-      // Brain scan on first entry of first batch only (best-effort)
-      if (s === 0 && aqEmbeddings.length > 0) {
+      // Brain scan on first batch only
+      if (s === 0 && embeddings.length > 0) {
         try {
-          await scanBrainOnWrite(aqEmbeddings[0], {
+          await scanBrainOnWrite(embeddings[0], {
             state_abbr: aqEntries[0].abbr,
             exclude_content_type: "air-quality",
             limit: 5,
           });
-        } catch (_) { /* scanning is best-effort */ }
+        } catch (_) { /* best-effort */ }
       }
     }
 
@@ -264,13 +208,12 @@ serve(async (req) => {
     await logCronRun({
       functionName: FUNCTION_NAME,
       status: errors > 0 ? "partial" : "success",
-      summary: { air_quality_embedded: totalAirQuality, pollen_embedded: totalPollen, errors },
+      summary: { air_quality_embedded: totalAirQuality, errors },
       durationMs,
     });
 
     return cronResponse({
       air_quality_embedded: totalAirQuality,
-      pollen_embedded: totalPollen,
       errors,
       durationMs,
     });
