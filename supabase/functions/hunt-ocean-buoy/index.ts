@@ -184,17 +184,34 @@ serve(async (req) => {
     let errors = 0;
     let skipped = 0;
 
-    // Process stations in batches of 10
-    for (let i = 0; i < STATIONS.length; i += 10) {
-      const batch = STATIONS.slice(i, i + 10);
-      const entries: BuoyEntry[] = [];
+    // Dedup: check if today's data already exists
+    const today = new Date().toISOString().slice(0, 10);
+    const { count: existingCount } = await supabase
+      .from("hunt_knowledge")
+      .select("id", { count: "estimated", head: true })
+      .eq("content_type", "ocean-buoy")
+      .eq("effective_date", today);
 
-      // Fetch all stations in this batch
-      for (const station of batch) {
+    if ((existingCount ?? 0) > 20) {
+      const durationMs = Date.now() - startTime;
+      console.log(`Already have ${existingCount} ocean-buoy entries for ${today} — skipping`);
+      await logCronRun({
+        functionName: FUNCTION_NAME,
+        status: "success",
+        summary: { already_exists: true, existing_count: existingCount, date: today },
+        durationMs,
+      });
+      return cronResponse({ already_exists: true, existing_count: existingCount, durationMs });
+    }
+
+    // Process all stations in a single pass
+    const entries: BuoyEntry[] = [];
+
+    for (const station of STATIONS) {
         try {
           const url = `https://www.ndbc.noaa.gov/data/realtime2/${station.id}.txt`;
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000);
+          const timeout = setTimeout(() => controller.abort(), 8000);
           const res = await fetch(url, { signal: controller.signal });
           clearTimeout(timeout);
 
@@ -230,12 +247,11 @@ serve(async (req) => {
         }
 
         // Small delay between station fetches
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 50));
       }
 
-      if (entries.length === 0) continue;
-
-      // Batch embed all entries in this batch
+    if (entries.length > 0) {
+      // Embed all entries
       try {
         const texts = entries.map(e => e.text);
         const embeddings = await batchEmbed(texts);
