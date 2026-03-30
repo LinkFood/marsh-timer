@@ -90,7 +90,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const migrationFrontLine = useMigrationFront();
   const { geojson: duPinsGeoJSON } = useDUMapReports();
   const { eventsGeoJSON: weatherEventsGeoJSON } = useWeatherEvents();
-  const oceanBuoyData = null; // useOceanBuoys() disabled — Vite minification bug
+  // useOceanBuoys() disabled — Vite tree-shakes the variable
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
 
@@ -407,7 +407,7 @@ function MapWithLayers({
         showDUPins={isLayerOn('du-pins')}
         duPinsGeoJSON={duPinsGeoJSON}
         weatherEventsGeoJSON={weatherEventsGeoJSON}
-        buoyGeoJSON={oceanBuoyData}
+        buoyGeoJSON={null}
         visibleMapboxLayers={visibleMapboxLayers}
       />
       {/* Elevation HUD */}
