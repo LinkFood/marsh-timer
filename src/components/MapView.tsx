@@ -101,9 +101,9 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'du-pins-clusters': new Set(),
   'du-pins-cluster-count': new Set(),
   // Weather events from METAR pipeline
-  'weather-event-circles': new Set(['weather', 'intel']),
-  'weather-event-pulse': new Set(['weather', 'intel']),
-  'weather-event-labels': new Set(['weather', 'intel']),
+  'weather-event-circles': new Set(['default', 'weather', 'intel']),
+  'weather-event-pulse': new Set(['default', 'weather', 'intel']),
+  'weather-event-labels': new Set(['default', 'weather', 'intel']),
 };
 
 function tempToColor(tempF: number): string {
