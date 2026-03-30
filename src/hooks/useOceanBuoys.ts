@@ -37,7 +37,7 @@ const BUOY_COORDS: Record<string, [number, number]> = {
   '44025': [-73.164, 40.251],
 };
 
-export function useOceanBuoys(): FeatureCollection | null {
+export function useOceanBuoys(): { geoJSON: FeatureCollection | null } {
   const [geoJSON, setGeoJSON] = useState<FeatureCollection | null>(null);
   const fetchedRef = useRef(false);
 
@@ -93,5 +93,5 @@ export function useOceanBuoys(): FeatureCollection | null {
     return () => clearInterval(interval);
   }, []);
 
-  return geoJSON;
+  return { geoJSON };
 }
