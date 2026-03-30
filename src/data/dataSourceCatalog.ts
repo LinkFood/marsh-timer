@@ -32,6 +32,12 @@ export const DATA_SOURCE_CATALOG: DataSourceDef[] = [
   { id: 'noaa-tides', name: 'NOAA Tides', provider: 'NOAA', category: 'environment', refreshInterval: 'on-demand', description: 'Coastal tide readings' },
   { id: 'climate-normals', name: 'Climate Normals', provider: 'NOAA ACIS', category: 'environment', refreshInterval: 'static', description: 'Historical climate baselines' },
   { id: 'crop-progress', name: 'USDA Crop Progress', provider: 'USDA', category: 'environment', refreshInterval: 'static', description: 'Crop progress affecting habitat' },
+  { id: 'air-quality', name: 'Air Quality Index', provider: 'Open-Meteo', category: 'environment', cronFunction: 'hunt-air-quality', refreshInterval: 'daily', description: 'AQI, PM2.5, ozone for 50 states' },
+  { id: 'soil-conditions', name: 'Soil Monitor', provider: 'Open-Meteo', category: 'environment', cronFunction: 'hunt-soil-monitor', refreshInterval: 'daily', description: 'Soil temperature and moisture for 50 states' },
+  { id: 'river-discharge', name: 'River Discharge', provider: 'Open-Meteo', category: 'environment', cronFunction: 'hunt-river-discharge', refreshInterval: 'daily', description: 'River flow vs median + flood status' },
+  { id: 'ocean-buoy', name: 'Ocean Buoys', provider: 'NOAA NDBC', category: 'environment', cronFunction: 'hunt-ocean-buoy', refreshInterval: 'daily', description: 'SST, waves, pressure from 27 coastal buoys' },
+  { id: 'space-weather', name: 'Space Weather', provider: 'NOAA SWPC', category: 'environment', cronFunction: 'hunt-space-weather', refreshInterval: 'daily', description: 'Solar wind, Kp index, X-ray flux' },
+  { id: 'wildfire-perimeters', name: 'Wildfire Perimeters', provider: 'NIFC', category: 'environment', cronFunction: 'hunt-wildfire-perimeters', refreshInterval: 'daily', description: 'Active fire perimeters and containment' },
 
   // Intelligence
   { id: 'solunar', name: 'Solunar Calendar', provider: 'Calculated', category: 'intelligence', cronFunction: 'hunt-solunar-precompute', refreshInterval: 'weekly', description: '365-day precomputed solunar data' },

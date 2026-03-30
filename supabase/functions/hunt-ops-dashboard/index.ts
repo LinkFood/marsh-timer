@@ -46,6 +46,14 @@ const EXPECTED_CRONS = [
   { name: 'hunt-usfws-survey', schedule: 'monthly 1st 6am', critical: false },
   { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
   { name: 'hunt-inaturalist', schedule: 'weekly Wed 11am', critical: false },
+  { name: 'hunt-river-discharge', schedule: 'daily 5am', critical: false },
+  { name: 'hunt-soil-monitor', schedule: 'daily 5:30am', critical: false },
+  { name: 'hunt-air-quality', schedule: 'daily 6:15am', critical: false },
+  { name: 'hunt-wildfire-perimeters', schedule: 'daily 8:30am', critical: false },
+  { name: 'hunt-ocean-buoy', schedule: 'every 6hr', critical: false },
+  { name: 'hunt-space-weather', schedule: 'every 6hr', critical: false },
+  { name: 'hunt-arc-narrator', schedule: 'daily 9am', critical: false },
+  { name: 'hunt-murmuration-index', schedule: 'daily', critical: false },
 ];
 
 const CRON_NAMES = EXPECTED_CRONS.map(c => c.name);
