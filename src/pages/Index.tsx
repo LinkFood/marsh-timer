@@ -18,7 +18,7 @@ import { useNWSAlerts } from "@/hooks/useNWSAlerts";
 import { useMigrationFront } from "@/hooks/useMigrationFront";
 import { useDUMapReports } from "@/hooks/useDUMapReports";
 import { useWeatherEvents } from "@/hooks/useWeatherEvents";
-import { useOceanBuoys } from "@/hooks/useOceanBuoys";
+// Ocean buoy data loaded directly in MapView (Vite tree-shaking breaks prop passing)
 import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
 import { useStateArcs } from "@/hooks/useStateArcs";
 import { useStateBrief } from "@/hooks/useStateBrief";
@@ -90,7 +90,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const migrationFrontLine = useMigrationFront();
   const { geojson: duPinsGeoJSON } = useDUMapReports();
   const { eventsGeoJSON: weatherEventsGeoJSON } = useWeatherEvents();
-  const { geoJSON: buoyData } = useOceanBuoys();
+  // buoy data loaded directly in MapView
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
 
@@ -407,7 +407,6 @@ function MapWithLayers({
         showDUPins={isLayerOn('du-pins')}
         duPinsGeoJSON={duPinsGeoJSON}
         weatherEventsGeoJSON={weatherEventsGeoJSON}
-        buoyGeoJSON={buoyData}
         visibleMapboxLayers={visibleMapboxLayers}
       />
       {/* Elevation HUD */}

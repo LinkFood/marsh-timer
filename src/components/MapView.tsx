@@ -8,6 +8,7 @@ import {
   useImperativeHandle,
 } from "react";
 import mapboxgl from "mapbox-gl";
+import { useOceanBuoys } from "@/hooks/useOceanBuoys";
 import * as topojson from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Species } from "@/data/types";
@@ -178,7 +179,6 @@ export interface MapViewProps {
   showDUPins?: boolean;
   duPinsGeoJSON?: FeatureCollection | null;
   weatherEventsGeoJSON?: FeatureCollection | null;
-  buoyGeoJSON?: FeatureCollection | null;
   /** Set of Mapbox layer IDs that should be visible — when provided, overrides LAYER_MODES */
   visibleMapboxLayers?: Set<string>;
 }
@@ -415,13 +415,15 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     showDUPins = false,
     duPinsGeoJSON = null,
     weatherEventsGeoJSON = null,
-    buoyGeoJSON = null,
     visibleMapboxLayers,
   },
   ref,
 ) {
   // When species is 'all', use 'duck' for visual rendering (colors, fills, pulses)
   const visualSpecies = species === 'all' ? 'duck' as Species : species;
+
+  // Ocean buoy data — loaded directly in MapView to avoid Vite tree-shaking
+  const { geoJSON: buoyGeoJSON } = useOceanBuoys();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
