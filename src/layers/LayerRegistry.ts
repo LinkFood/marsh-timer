@@ -27,6 +27,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'pressure-trends', label: 'Pressure Trends', category: 'weather', mapboxLayers: ['pressure-trend-arrows'], defaultOn: true },
   { id: 'nws-alerts', label: 'NWS Alerts', category: 'weather', mapboxLayers: ['nws-alert-fill', 'nws-alert-outline', 'nws-alert-labels'] },
   { id: 'weather-events', label: 'Weather Events', category: 'weather', mapboxLayers: ['weather-event-circles', 'weather-event-pulse', 'weather-event-labels'], defaultOn: true },
+  { id: 'ocean-buoys', label: 'Ocean Buoys', category: 'weather', description: 'NOAA NDBC buoy observations', mapboxLayers: ['buoy-circles', 'buoy-labels'], defaultOn: true },
   { id: 'temperature', label: 'Temperature', category: 'weather', mapboxLayers: ['temp-tiles-overlay'] },
 
   // === Intelligence ===
@@ -50,13 +51,13 @@ export const LAYER_PRESETS: LayerPreset[] = [
     id: 'weather',
     label: 'Weather',
     description: 'Full weather picture: radar, wind, isobars, NWS alerts, events',
-    layers: ['radar', 'wind-flow', 'isobars', 'pressure-trends', 'nws-alerts', 'weather-events'],
+    layers: ['radar', 'wind-flow', 'isobars', 'pressure-trends', 'nws-alerts', 'weather-events', 'ocean-buoys'],
   },
   {
     id: 'intel',
     label: 'Intelligence',
     description: 'Convergence heatmap, pulse, migration front, perfect storm',
-    layers: ['convergence-heatmap', 'convergence-pulse', 'perfect-storm', 'migration-front', 'nws-alerts', 'weather-events', 'wind-flow', 'ebird-heatmap'],
+    layers: ['convergence-heatmap', 'convergence-pulse', 'perfect-storm', 'migration-front', 'nws-alerts', 'weather-events', 'ocean-buoys', 'wind-flow', 'ebird-heatmap'],
   },
   {
     id: 'terrain',

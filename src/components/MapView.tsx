@@ -104,6 +104,9 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'weather-event-circles': new Set(['default', 'weather', 'intel']),
   'weather-event-pulse': new Set(['default', 'weather', 'intel']),
   'weather-event-labels': new Set(['default', 'weather', 'intel']),
+  // Ocean buoy stations
+  'buoy-circles': new Set(['default', 'weather', 'intel']),
+  'buoy-labels': new Set(['default', 'weather', 'intel']),
 };
 
 function tempToColor(tempF: number): string {
@@ -175,6 +178,7 @@ export interface MapViewProps {
   showDUPins?: boolean;
   duPinsGeoJSON?: FeatureCollection | null;
   weatherEventsGeoJSON?: FeatureCollection | null;
+  buoyGeoJSON?: FeatureCollection | null;
   /** Set of Mapbox layer IDs that should be visible — when provided, overrides LAYER_MODES */
   visibleMapboxLayers?: Set<string>;
 }
@@ -411,6 +415,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     showDUPins = false,
     duPinsGeoJSON = null,
     weatherEventsGeoJSON = null,
+    buoyGeoJSON = null,
     visibleMapboxLayers,
   },
   ref,
@@ -1691,6 +1696,66 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Ocean buoy stations (NOAA NDBC)
+      const buoyEmpty: FeatureCollection = { type: "FeatureCollection", features: [] };
+      if (!map.getSource("ocean-buoys")) {
+        map.addSource("ocean-buoys", { type: "geojson", data: buoyGeoJSON || buoyEmpty });
+      }
+      if (!map.getLayer("buoy-circles")) {
+        map.addLayer({
+          id: "buoy-circles",
+          type: "circle",
+          source: "ocean-buoys",
+          paint: {
+            "circle-radius": [
+              "interpolate", ["linear"],
+              ["coalesce", ["get", "waveHeightFt"], 3],
+              0, 5,
+              5, 8,
+              10, 12,
+              20, 16,
+            ],
+            "circle-color": [
+              "interpolate", ["linear"],
+              ["coalesce", ["get", "sstF"], 55],
+              32, "#3b82f6",
+              45, "#06b6d4",
+              55, "#22c55e",
+              65, "#eab308",
+              75, "#f97316",
+              85, "#ef4444",
+            ],
+            "circle-stroke-color": "rgba(255,255,255,0.6)",
+            "circle-stroke-width": 1.5,
+            "circle-opacity": 0.9,
+          },
+          layout: {
+            visibility: (mapMode === 'default' || mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("buoy-labels")) {
+        map.addLayer({
+          id: "buoy-labels",
+          type: "symbol",
+          source: "ocean-buoys",
+          layout: {
+            "text-field": ["concat", ["get", "stationId"], "\n", ["to-string", ["round", ["coalesce", ["get", "sstF"], 0]]], "\u00B0F"],
+            "text-size": 9,
+            "text-offset": [0, 1.8],
+            "text-anchor": "top",
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-allow-overlap": false,
+            visibility: (mapMode === 'default' || mapMode === 'weather' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": "rgba(255,255,255,0.8)",
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1,
+          },
+        });
+      }
+
       // Migration front line (animated dashed cyan line — Intel mode only)
       if (!map.getSource("migration-front")) {
         const frontData: FeatureCollection = migrationFrontLine
@@ -2144,6 +2209,32 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     map.on("mouseenter", "weather-event-circles", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "weather-event-circles", () => { map.getCanvas().style.cursor = ""; });
 
+    // Ocean buoy click — show popup with observation details
+    map.on("click", "buoy-circles", (e) => {
+      clickHandled = true;
+      setTimeout(() => { clickHandled = false; }, 100);
+      if (!e.features || e.features.length === 0) return;
+      const props = e.features[0].properties || {};
+      const coords = (e.features[0].geometry as GeoJSON.Point).coordinates.slice() as [number, number];
+      const html = `
+        <div style="font-family:monospace;font-size:11px;color:#e2e8f0;background:#1e293b;padding:8px;border-radius:4px;max-width:260px;">
+          <div style="font-weight:bold;color:#22d3ee;margin-bottom:4px;">Buoy ${props.stationId} &mdash; ${props.region || ''}</div>
+          <div>SST: ${props.sstF != null ? props.sstF + '\u00B0F' : 'N/A'}</div>
+          <div>Waves: ${props.waveHeightFt != null ? props.waveHeightFt + ' ft' : 'N/A'} (${props.wavePeriod != null ? props.wavePeriod + 's' : 'N/A'})</div>
+          <div>Pressure: ${props.pressureMb != null ? props.pressureMb + ' mb' : 'N/A'}</div>
+          <div>Wind: ${props.windSpeedMph != null ? props.windSpeedMph + ' mph' : 'N/A'} ${props.windDir != null ? props.windDir + '\u00B0' : ''}</div>
+          <div>Air: ${props.airTempF != null ? props.airTempF + '\u00B0F' : 'N/A'}</div>
+          <div style="color:#94a3b8;margin-top:4px;font-size:9px;">${props.obsTime || ''}</div>
+        </div>
+      `;
+      new mapboxgl.Popup({ closeButton: true, closeOnClick: true, className: "signal-popup", offset: 10, maxWidth: '280px' })
+        .setLngLat(coords)
+        .setHTML(html)
+        .addTo(map);
+    });
+    map.on("mouseenter", "buoy-circles", () => { map.getCanvas().style.cursor = "pointer"; });
+    map.on("mouseleave", "buoy-circles", () => { map.getCanvas().style.cursor = ""; });
+
     // Cursor + popup (listen on both states-fill and states-pulse)
     const handleStateHover = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       // Feature-state hover management
@@ -2475,6 +2566,16 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       source.setData(weatherEventsGeoJSON || { type: 'FeatureCollection', features: [] });
     }
   }, [weatherEventsGeoJSON]);
+
+  // Update ocean buoy data
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const source = map.getSource("ocean-buoys") as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(buoyGeoJSON || { type: 'FeatureCollection', features: [] });
+    }
+  }, [buoyGeoJSON]);
 
   // Update migration front line when data changes
   useEffect(() => {
