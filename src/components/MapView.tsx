@@ -1699,7 +1699,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       // Ocean buoy stations (NOAA NDBC)
       const buoyEmpty: FeatureCollection = { type: "FeatureCollection", features: [] };
       if (!map.getSource("ocean-buoys")) {
-        map.addSource("ocean-buoys", { type: "geojson", data: buoyGeoJSON || buoyEmpty });
+        map.addSource("ocean-buoys", { type: "geojson", data: buoyEmpty });
       }
       if (!map.getLayer("buoy-circles")) {
         map.addLayer({
