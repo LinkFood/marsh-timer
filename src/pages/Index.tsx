@@ -18,7 +18,7 @@ import { useNWSAlerts } from "@/hooks/useNWSAlerts";
 import { useMigrationFront } from "@/hooks/useMigrationFront";
 import { useDUMapReports } from "@/hooks/useDUMapReports";
 import { useWeatherEvents } from "@/hooks/useWeatherEvents";
-import { useOceanBuoys } from "@/hooks/useOceanBuoys";
+// import { useOceanBuoys } from "@/hooks/useOceanBuoys";
 import { useMurmurationIndex } from "@/hooks/useMurmurationIndex";
 import { useStateArcs } from "@/hooks/useStateArcs";
 import { useStateBrief } from "@/hooks/useStateBrief";
@@ -90,7 +90,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const migrationFrontLine = useMigrationFront();
   const { geojson: duPinsGeoJSON } = useDUMapReports();
   const { eventsGeoJSON: weatherEventsGeoJSON } = useWeatherEvents();
-  const oceanBuoyData = useOceanBuoys();
+  const oceanBuoyData = null; // useOceanBuoys() disabled — Vite minification bug
   const sightingsGeoJSON = useEBirdMapSightings(species, mapCenter, mapZoom);
   const weatherCache = useNationalWeather();
 
