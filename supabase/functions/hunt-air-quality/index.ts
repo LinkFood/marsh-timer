@@ -92,13 +92,32 @@ serve(async (req) => {
     const abbrs = Object.keys(STATE_CENTROIDS).sort();
     const today = new Date().toISOString().slice(0, 10);
 
+    // Dedup: skip if today's data already exists
+    const { data: existing } = await supabase
+      .from("hunt_knowledge")
+      .select("id")
+      .eq("content_type", "air-quality")
+      .eq("effective_date", today)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      const durationMs = Date.now() - startTime;
+      await logCronRun({
+        functionName: FUNCTION_NAME,
+        status: "success",
+        summary: { already_exists: true, effective_date: today },
+        durationMs,
+      });
+      return cronResponse({ already_exists: true, effective_date: today, durationMs });
+    }
+
     let totalAirQuality = 0;
     let totalPollen = 0;
     let errors = 0;
 
-    // Process states in batches of 5
-    for (let s = 0; s < abbrs.length; s += 5) {
-      const batch = abbrs.slice(s, s + 5);
+    // Process states in batches of 10
+    for (let s = 0; s < abbrs.length; s += 10) {
+      const batch = abbrs.slice(s, s + 10);
       const aqTexts: string[] = [];
       const pollenTexts: string[] = [];
       const aqEntries: { abbr: string; stateName: string; maxAqi: number; avgPm25: number; avgOzone: number; avgCo: number; avgNo2: number; avgSo2: number; severity: string }[] = [];
@@ -145,7 +164,7 @@ serve(async (req) => {
         }
 
         // Rate limit between calls
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 100));
       }
 
       if (aqTexts.length === 0 && pollenTexts.length === 0) continue;
@@ -229,21 +248,12 @@ serve(async (req) => {
         }
       }
 
-      // Brain scan on first entry of each batch (best-effort)
-      if (aqEmbeddings.length > 0) {
+      // Brain scan on first entry of first batch only (best-effort)
+      if (s === 0 && aqEmbeddings.length > 0) {
         try {
           await scanBrainOnWrite(aqEmbeddings[0], {
             state_abbr: aqEntries[0].abbr,
             exclude_content_type: "air-quality",
-            limit: 5,
-          });
-        } catch (_) { /* scanning is best-effort */ }
-      }
-      if (pollenEmbeddings.length > 0) {
-        try {
-          await scanBrainOnWrite(pollenEmbeddings[0], {
-            state_abbr: pollenEntries[0].abbr,
-            exclude_content_type: "pollen-data",
             limit: 5,
           });
         } catch (_) { /* scanning is best-effort */ }

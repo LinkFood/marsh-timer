@@ -44,6 +44,27 @@ serve(async (req) => {
 
   try {
     const supabase = createSupabaseClient();
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Dedup: skip if today's data already exists
+    const { data: existing } = await supabase
+      .from("hunt_knowledge")
+      .select("id")
+      .eq("content_type", CONTENT_TYPE)
+      .eq("effective_date", today)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      const durationMs = Date.now() - startTime;
+      await logCronRun({
+        functionName: FUNCTION_NAME,
+        status: "success",
+        summary: { already_exists: true, date: today },
+        durationMs,
+      });
+      return cronResponse({ already_exists: true, date: today, durationMs });
+    }
+
     const abbrs = Object.keys(STATE_CENTROIDS).sort();
 
     let totalEmbedded = 0;
@@ -87,18 +108,16 @@ serve(async (req) => {
 
           const daily = data.daily;
 
-          // Use today (first entry) as the current reading
-          for (let d = 0; d < daily.time.length; d++) {
-            const date = daily.time[d];
-            const discharge = daily.river_discharge?.[d];
-            const mean = daily.river_discharge_mean?.[d];
-            const median = daily.river_discharge_median?.[d];
-            const max = daily.river_discharge_max?.[d];
-            const min = daily.river_discharge_min?.[d];
+          // Only embed today's data (day 0) — 50 entries instead of 350
+          const d = 0;
+          const date = daily.time[d];
+          const discharge = daily.river_discharge?.[d];
+          const mean = daily.river_discharge_mean?.[d];
+          const median = daily.river_discharge_median?.[d];
+          const max = daily.river_discharge_max?.[d];
+          const min = daily.river_discharge_min?.[d];
 
-            // Skip if no discharge data
-            if (discharge == null) continue;
-
+          if (discharge != null) {
             const floodStatus = (median != null && median > 0)
               ? classifyFloodStatus(discharge, median)
               : "insufficient baseline data";
@@ -119,7 +138,7 @@ serve(async (req) => {
                 max_m3s: max,
                 min_m3s: min,
                 flood_status: floodStatus,
-                forecast_day: d,
+                forecast_day: 0,
               },
             });
           }
@@ -129,7 +148,7 @@ serve(async (req) => {
         }
 
         // Small delay between API calls
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 100));
       }
 
       if (entries.length === 0) continue;
