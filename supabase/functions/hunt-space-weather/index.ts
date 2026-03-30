@@ -48,7 +48,7 @@ function classifyStormLevel(kp: number): string {
 
 async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
   const res = await fetch(url, { signal: controller.signal });
   clearTimeout(timeout);
 
@@ -130,11 +130,12 @@ serve(async (req) => {
     const supabase = createSupabaseClient();
     const today = todayUTC();
 
-    // Dedup: check if today's summary already exists
+    // Dedup: check if today's summary already exists (uses compound index on content_type + created_at)
     const { data: existing } = await supabase
       .from("hunt_knowledge")
       .select("id")
-      .eq("title", `space-weather ${today}`)
+      .eq("content_type", "space-weather")
+      .eq("effective_date", today)
       .limit(1);
 
     if (existing && existing.length > 0) {
@@ -158,13 +159,14 @@ serve(async (req) => {
       fetchJson(ENDPOINTS.xray),
     ]);
 
-    // Parse plasma: array of arrays, first row is headers
+    // Parse plasma: array of arrays, first row is headers — only today's data
     const plasmaByDate = new Map<string, Array<{ speed: number; density: number }>>();
     const plasmaArr = plasmaRaw as string[][];
     for (let i = 1; i < plasmaArr.length; i++) {
       const row = plasmaArr[i];
       if (!row || row.length < 3) continue;
       const dateKey = getDateKey(row[0]);
+      if (dateKey !== today) continue;
       const density = parseFloat(row[1]);
       const speed = parseFloat(row[2]);
       if (isNaN(density) && isNaN(speed)) continue;
@@ -172,39 +174,42 @@ serve(async (req) => {
       plasmaByDate.get(dateKey)!.push({ speed: speed || 0, density: density || 0 });
     }
 
-    // Parse mag: array of arrays, first row is headers
+    // Parse mag: array of arrays, first row is headers — only today's data
     const magByDate = new Map<string, Array<{ bz: number }>>();
     const magArr = magRaw as string[][];
     for (let i = 1; i < magArr.length; i++) {
       const row = magArr[i];
       if (!row || row.length < 4) continue;
       const dateKey = getDateKey(row[0]);
+      if (dateKey !== today) continue;
       const bz = parseFloat(row[3]); // bz_gsm is column index 3
       if (isNaN(bz)) continue;
       if (!magByDate.has(dateKey)) magByDate.set(dateKey, []);
       magByDate.get(dateKey)!.push({ bz });
     }
 
-    // Parse Kp: array of arrays, first row is headers
+    // Parse Kp: array of arrays, first row is headers — only today's data
     const kpByDate = new Map<string, number[]>();
     const kpArr = kpRaw as string[][];
     for (let i = 1; i < kpArr.length; i++) {
       const row = kpArr[i];
       if (!row || row.length < 2) continue;
       const dateKey = getDateKey(row[0]);
+      if (dateKey !== today) continue;
       const kp = parseFloat(row[1]);
       if (isNaN(kp)) continue;
       if (!kpByDate.has(dateKey)) kpByDate.set(dateKey, []);
       kpByDate.get(dateKey)!.push(kp);
     }
 
-    // Parse X-ray: array of objects with time_tag and flux
+    // Parse X-ray: array of objects with time_tag and flux — only today's data
     const xrayByDate = new Map<string, number[]>();
     const xrayArr = xrayRaw as Array<{ time_tag: string; flux?: number; [k: string]: unknown }>;
     if (Array.isArray(xrayArr)) {
       for (const entry of xrayArr) {
         if (!entry.time_tag) continue;
         const dateKey = getDateKey(entry.time_tag);
+        if (dateKey !== today) continue;
         const flux = typeof entry.flux === "number" ? entry.flux : parseFloat(String(entry.flux || "0"));
         if (isNaN(flux) || flux <= 0) continue;
         if (!xrayByDate.has(dateKey)) xrayByDate.set(dateKey, []);
@@ -237,10 +242,10 @@ serve(async (req) => {
     const embeddings = await batchEmbed([embeddingText]);
     const embedding = embeddings[0];
 
-    // Insert into hunt_knowledge
+    // Insert into hunt_knowledge (dedup check above prevents duplicates)
     const { error: insertError } = await supabase
       .from("hunt_knowledge")
-      .upsert({
+      .insert({
         title: `space-weather ${summary.date}`,
         content: embeddingText,
         content_type: "space-weather",
@@ -266,7 +271,7 @@ serve(async (req) => {
       });
 
     if (insertError) {
-      throw new Error(`hunt_knowledge upsert failed: ${insertError.message}`);
+      throw new Error(`hunt_knowledge insert failed: ${insertError.message}`);
     }
 
     console.log(`Stored space weather for ${today}`);
