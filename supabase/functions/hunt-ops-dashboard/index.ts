@@ -53,7 +53,6 @@ const EXPECTED_CRONS = [
   { name: 'hunt-ocean-buoy', schedule: 'every 6hr', critical: false },
   { name: 'hunt-space-weather', schedule: 'every 6hr', critical: false },
   { name: 'hunt-arc-narrator', schedule: 'daily 9am', critical: false },
-  { name: 'hunt-murmuration-index', schedule: 'daily', critical: false },
 ];
 
 const CRON_NAMES = EXPECTED_CRONS.map(c => c.name);
