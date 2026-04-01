@@ -32,13 +32,16 @@ export function useConvergenceAlerts() {
     if (fetchedRef.current) return;
 
     async function fetchAlerts() {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
       try {
         // Try today first, fall back to yesterday (convergence alerts generated at 8:15am UTC)
         let date = todayISO();
         let res = await fetch(
           `${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?date=eq.${date}&select=*&order=created_at.desc`,
-          { headers: { apikey: SUPABASE_KEY } }
+          { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
         );
+        clearTimeout(timeout);
         if (!res.ok) return;
         let data: any[] = await res.json();
 
@@ -46,7 +49,7 @@ export function useConvergenceAlerts() {
           date = yesterdayISO();
           res = await fetch(
             `${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?date=eq.${date}&select=*&order=created_at.desc`,
-            { headers: { apikey: SUPABASE_KEY } }
+            { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
           );
           if (!res.ok) return;
           data = await res.json();
@@ -63,9 +66,12 @@ export function useConvergenceAlerts() {
           }))
         );
         fetchedRef.current = true;
-      } catch {
-        // silent fail
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.warn('[useConvergenceAlerts] Request timed out');
+        }
       } finally {
+        clearTimeout(timeout);
         setLoading(false);
       }
     }

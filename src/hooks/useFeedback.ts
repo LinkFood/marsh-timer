@@ -27,6 +27,8 @@ export function useFeedback() {
     const key = feedbackKey(feedbackType, targetDate, stateAbbr);
     setLoading(prev => ({ ...prev, [key]: true }));
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/hunt-feedback`, {
         method: 'POST',
@@ -36,13 +38,20 @@ export function useFeedback() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ feedback_type: feedbackType, target_date: targetDate, state_abbr: stateAbbr, rating, comment }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (res.ok) {
         setFeedback(prev => ({ ...prev, [key]: rating }));
       }
     } catch (err) {
-      console.error('Feedback error:', err);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.warn('[useFeedback] Request timed out');
+      } else {
+        console.error('Feedback error:', err);
+      }
     } finally {
+      clearTimeout(timeout);
       setLoading(prev => ({ ...prev, [key]: false }));
     }
   }, [session]);

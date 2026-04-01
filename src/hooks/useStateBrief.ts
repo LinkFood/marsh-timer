@@ -26,6 +26,7 @@ export function useStateBrief(stateAbbr: string | null) {
     if (fetchedRef.current === stateAbbr) return;
 
     const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
     async function fetchBrief() {
       setLoading(true);
@@ -82,8 +83,8 @@ export function useStateBrief(stateAbbr: string | null) {
       }
     }
 
-    fetchBrief();
-    return () => controller.abort();
+    fetchBrief().finally(() => clearTimeout(timeout));
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, [stateAbbr]);
 
   return { brief, loading, error };

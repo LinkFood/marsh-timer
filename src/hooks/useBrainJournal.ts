@@ -66,12 +66,14 @@ export function useBrainJournal(stateFilter: string | null, typeFilter: string =
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchJournal(controller.signal);
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    fetchJournal(controller.signal).finally(() => clearTimeout(timeout));
 
     // Refresh every 45s
     intervalRef.current = setInterval(() => fetchJournal(), 45_000);
 
     return () => {
+      clearTimeout(timeout);
       controller.abort();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

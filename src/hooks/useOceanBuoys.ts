@@ -46,12 +46,14 @@ export function useOceanBuoys(): { geoJSON: FeatureCollection | null } {
     fetchedRef.current = true;
 
     const today = new Date().toISOString().slice(0, 10);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     fetch(
       `${SUPABASE_URL}/rest/v1/hunt_knowledge?content_type=eq.ocean-buoy&effective_date=eq.${today}&select=title,content,metadata,state_abbr&limit=30`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, signal: controller.signal }
     )
-      .then(r => r.json())
+      .then(r => { clearTimeout(timeout); return r.json(); })
       .then(data => {
         if (!Array.isArray(data)) return;
 
@@ -86,7 +88,12 @@ export function useOceanBuoys(): { geoJSON: FeatureCollection | null } {
 
         setGeoJSON({ type: 'FeatureCollection', features });
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          console.warn('[useOceanBuoys] Request timed out');
+        }
+        clearTimeout(timeout);
+      });
 
     // Refresh every 10 minutes
     const interval = setInterval(() => { fetchedRef.current = false; }, 10 * 60 * 1000);

@@ -20,19 +20,22 @@ export function useSignalFeed() {
   const fetchFeed = useCallback(async () => {
     if (!SUPABASE_URL || !SUPABASE_KEY) { setLoading(false); return; }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
       const headers = { 'Authorization': `Bearer ${SUPABASE_KEY}`, 'apikey': SUPABASE_KEY };
 
       const [convRes, weatherRes, nwsRes, riskRes, disasterRes, realtimeRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?select=id,state_abbr,score,previous_score,alert_type,reasoning,created_at&created_at=gte.${since48h}&order=created_at.desc&limit=15`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_weather_events?select=id,event_type,states,severity,title,created_at&created_at=gte.${since48h}&order=created_at.desc&limit=15`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_nws_alerts?select=id,event,headline,states,severity,created_at&created_at=gte.${since24h}&order=created_at.desc&limit=10`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since48h}&order=created_at.desc&limit=10`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,effective_date,created_at,metadata&content_type=eq.disaster-watch&created_at=gte.${since48h}&order=created_at.desc&limit=10`, { headers }),
-        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.weather-realtime&created_at=gte.${since24h}&order=created_at.desc&limit=15`, { headers }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_convergence_alerts?select=id,state_abbr,score,previous_score,alert_type,reasoning,created_at&created_at=gte.${since48h}&order=created_at.desc&limit=15`, { headers, signal: controller.signal }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_weather_events?select=id,event_type,states,severity,title,created_at&created_at=gte.${since48h}&order=created_at.desc&limit=15`, { headers, signal: controller.signal }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_nws_alerts?select=id,event,headline,states,severity,created_at&created_at=gte.${since24h}&order=created_at.desc&limit=10`, { headers, signal: controller.signal }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.compound-risk-alert&created_at=gte.${since48h}&order=created_at.desc&limit=10`, { headers, signal: controller.signal }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,effective_date,created_at,metadata&content_type=eq.disaster-watch&created_at=gte.${since48h}&order=created_at.desc&limit=10`, { headers, signal: controller.signal }),
+        fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge?select=id,title,content,state_abbr,created_at&content_type=eq.weather-realtime&created_at=gte.${since24h}&order=created_at.desc&limit=15`, { headers, signal: controller.signal }),
       ]);
+      clearTimeout(timeout);
 
       const convData = convRes.ok ? await convRes.json() : [];
       const weatherData = weatherRes.ok ? await weatherRes.json() : [];
@@ -130,8 +133,13 @@ export function useSignalFeed() {
       merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setItems(merged.slice(0, 30));
     } catch (err) {
-      console.error('[SignalFeed] Error:', err);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.warn('[useSignalFeed] Request timed out');
+      } else {
+        console.error('[SignalFeed] Error:', err);
+      }
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, []);

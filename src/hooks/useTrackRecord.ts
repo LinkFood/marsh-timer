@@ -51,6 +51,7 @@ export function useTrackRecord() {
     fetchedRef.current = true;
 
     const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
     async function fetchData() {
       try {
@@ -134,8 +135,8 @@ export function useTrackRecord() {
       }
     }
 
-    fetchData();
-    return () => controller.abort();
+    fetchData().finally(() => clearTimeout(timeout));
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, []);
 
   return { totalGraded, bySource, byState, recentGrades, loading };
