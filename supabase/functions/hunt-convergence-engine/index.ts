@@ -399,7 +399,9 @@ async function scoreState(
 ): Promise<ScoreResult> {
   const stateName = STATE_NAMES[stateAbbr] || stateAbbr;
 
-  // Run weather, solunar, migration, birdcast in parallel (pattern depends on their results)
+  // Run weather, solunar, migration, birdcast in parallel
+  // Pattern search skipped — too slow on 3.2M brain (embedding + vector search per state)
+  // Worth only 15/135 points, not worth the 150s timeout risk
   const [weatherResult, solunarResult, migrationResult, birdcastResult] = await Promise.all([
     scoreWeather(supabase, stateAbbr, today, endDate),
     scoreSolunar(supabase, today, endDate),
@@ -407,15 +409,7 @@ async function scoreState(
     getBirdCastScore(supabase, stateAbbr, today),
   ]);
 
-  // Pattern depends on the other components' details
-  const patternResult = await scorePattern(
-    supabase,
-    stateAbbr,
-    stateName,
-    weatherResult.details,
-    solunarResult.moonPhase,
-    migrationResult.details,
-  );
+  const patternResult = { score: 0, summary: 'skipped (performance)', signals: {} };
 
   // New components from batch data (no async, already fetched)
   const waterScore = scoreWater(batchData, stateAbbr);
@@ -536,7 +530,7 @@ serve(async (req) => {
     // 1. Score states in parallel batches of 10
     // -----------------------------------------------------------------------
     const allResults: ScoreResult[] = [];
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = 3; // Reduced from 10 — 3.2M brain makes concurrent vector searches too slow
 
     for (let i = 0; i < statesToScore.length; i += BATCH_SIZE) {
       const batch = statesToScore.slice(i, i + BATCH_SIZE);
