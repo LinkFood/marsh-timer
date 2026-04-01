@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -28,27 +28,55 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
     const today = new Date().toISOString().split("T")[0];
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const sinceStr = weekAgo.toISOString();
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const sinceStr = threeDaysAgo.toISOString();
 
-    // Get recent species-tagged entries per state
-    const { data: entries, error: fetchError } = await supabase
-      .from("hunt_knowledge")
-      .select("state_abbr, species, content_type, metadata")
-      .not("state_abbr", "is", null)
-      .not("species", "is", null)
-      .gte("created_at", sinceStr)
-      .limit(2000);
+    // Content types that carry species data — query per-type to hit the
+    // compound index (content_type, created_at DESC) and avoid statement_timeout
+    const SPECIES_CONTENT_TYPES = [
+      "migration-spike-extreme", "migration-spike-significant",
+      "birdcast-daily", "birdweather-acoustic",
+      "convergence-score", "compound-risk-alert",
+      "multi-species-convergence",
+    ];
 
-    if (fetchError || !entries) {
+    // Parallel per-type queries — each hits the compound index fast
+    const queryPromises = SPECIES_CONTENT_TYPES.map(ct =>
+      supabase
+        .from("hunt_knowledge")
+        .select("state_abbr, species, content_type")
+        .eq("content_type", ct)
+        .not("state_abbr", "is", null)
+        .not("species", "is", null)
+        .gte("created_at", sinceStr)
+        .limit(200)
+    );
+
+    const results = await Promise.all(queryPromises);
+    const entries: Array<{ state_abbr: string; species: string; content_type: string }> = [];
+    let fetchErrorMsg: string | null = null;
+
+    for (const result of results) {
+      if (result.error) {
+        console.warn(`[hunt-multi-species] Query error: ${result.error.message}`);
+        fetchErrorMsg = result.error.message;
+        continue;
+      }
+      if (result.data) entries.push(...result.data);
+    }
+
+    if (entries.length === 0) {
       await logCronRun({
         functionName: "hunt-multi-species",
-        status: "error",
-        errorMessage: fetchError?.message || "No data",
+        status: fetchErrorMsg ? "error" : "success",
+        errorMessage: fetchErrorMsg || undefined,
+        summary: { reason: "no species data in 3-day window" },
         durationMs: Date.now() - startTime,
       });
-      return errorResponse(req, fetchError?.message || "No data", 500);
+      return fetchErrorMsg
+        ? cronErrorResponse(fetchErrorMsg, 500)
+        : cronResponse({ states_with_convergence: 0, reason: "no species data" });
     }
 
     // Build state → species → activity map
@@ -157,7 +185,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse(req, {
+    return cronResponse({
       states_with_convergence: convergences.length,
       embedded: totalEmbedded,
       top_states: convergences.slice(0, 5).map(c => ({
@@ -177,6 +205,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(req, String(err), 500);
+    return cronErrorResponse(String(err), 500);
   }
 });

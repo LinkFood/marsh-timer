@@ -4,7 +4,6 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { enrichWithPatternScan } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
@@ -237,8 +236,14 @@ serve(async (req) => {
     let fetchErrors = 0;
     let parseErrors = 0;
 
-    // Process states with 1s delay between requests
+    // Process states with 500ms delay between requests (reduced from 1s)
     for (const abbr of statesToProcess) {
+      // Time guard: bail if we've used 100s already — leave room for embed+upsert
+      if (Date.now() - startTime > 100_000) {
+        console.warn(`[hunt-birdcast] Time guard: ${Math.round((Date.now() - startTime) / 1000)}s elapsed, stopping fetch loop`);
+        break;
+      }
+
       const url = `https://dashboard.birdcast.org/region/US-${abbr}`;
 
       try {
@@ -287,8 +292,8 @@ serve(async (req) => {
         fetchErrors++;
       }
 
-      // Rate limit: 1 request per second
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Rate limit: 500ms between requests (reduced from 1s to save ~5s per batch)
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     // -----------------------------------------------------------------------
@@ -340,23 +345,9 @@ serve(async (req) => {
             } else {
               embeddingsCreated += batchRows.length;
 
-              // Brain scan high-intensity states for cross-domain pattern matches
-              if (insertResult.data) {
-                for (let k = 0; k < insertResult.data.length; k++) {
-                  const globalIdx = i + k;
-                  const row = rows[globalIdx];
-                  const isHigh = row.is_high || (row.cumulative_birds ?? 0) > 500000;
-                  if (isHigh && insertResult.data[k]?.id) {
-                    try {
-                      await enrichWithPatternScan(insertResult.data[k].id, embeddings[globalIdx], {
-                        state_abbr: row.state_abbr,
-                        exclude_content_type: 'birdcast-daily',
-                      });
-                      console.log(`[hunt-birdcast] Pattern scan: ${row.state_abbr} — high intensity`);
-                    } catch { /* best-effort */ }
-                  }
-                }
-              }
+              // Skip enrichWithPatternScan — at 3.2M brain entries, each vector
+              // search takes 5-10s and was pushing this function past the 150s limit.
+              // Cross-domain patterns are discovered by hunt-correlation-engine instead.
             }
           }
         } else {

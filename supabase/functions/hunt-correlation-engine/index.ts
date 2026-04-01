@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -54,15 +54,15 @@ serve(async (req) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Fetch seeds from diverse content types — random order so each run
-    // picks different seeds, producing varied cross-domain discoveries
+    // Fetch seeds — reduced to 30 and exclude embedding column to keep
+    // payload small. We'll fetch embeddings individually for the 3 seeds we pick.
     const { data: seeds, error: seedError } = await supabase
       .from("hunt_knowledge")
-      .select("id, title, content, content_type, state_abbr, species, effective_date, embedding")
+      .select("id, title, content, content_type, state_abbr, species, effective_date")
       .in("content_type", SEED_TYPES)
       .gte("created_at", sevenDaysAgo.toISOString())
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(30);
 
     if (seedError || !seeds || seeds.length === 0) {
       await logCronRun({
@@ -71,15 +71,15 @@ serve(async (req) => {
         summary: { seeds: 0, correlations: 0, reason: "no recent data" },
         durationMs: Date.now() - startTime,
       });
-      return successResponse(req, { correlations: 0, reason: "no recent data" });
+      return cronResponse({ correlations: 0, reason: "no recent data" });
     }
 
-    // Pick diverse seeds — one per content type to maximize cross-domain variety
+    // Pick diverse seeds — one per content type, reduced to 3 to stay under 150s
     const byType = new Map<string, typeof seeds[0]>();
     const shuffledAll = seeds.sort(() => Math.random() - 0.5);
     for (const s of shuffledAll) {
       if (!byType.has(s.content_type)) byType.set(s.content_type, s);
-      if (byType.size >= 5) break;
+      if (byType.size >= 3) break;
     }
     const shuffled = Array.from(byType.values());
 
@@ -88,25 +88,37 @@ serve(async (req) => {
     const correlationEntries: Array<{ text: string; meta: Record<string, any> }> = [];
 
     for (const seed of shuffled) {
-      if (!seed.embedding) continue;
+      // Time guard: stop if we've used 110s — leave room for embed+insert
+      if (Date.now() - startTime > 110_000) {
+        console.log(`[hunt-correlation-engine] Time guard at ${Math.round((Date.now() - startTime) / 1000)}s, stopping`);
+        break;
+      }
 
-      // Parse embedding string to array if needed (Supabase returns vectors as strings)
-      const embedding = typeof seed.embedding === 'string'
-        ? JSON.parse(seed.embedding)
-        : seed.embedding;
+      // Fetch embedding for this seed individually (not bulk — keeps initial query fast)
+      const { data: seedEmbed } = await supabase
+        .from("hunt_knowledge")
+        .select("embedding")
+        .eq("id", seed.id)
+        .single();
+
+      if (!seedEmbed?.embedding) continue;
+
+      const embedding = typeof seedEmbed.embedding === 'string'
+        ? JSON.parse(seedEmbed.embedding)
+        : seedEmbed.embedding;
 
       try {
         // Step 2: Vector search for similar entries in OTHER content types
-        // Explicitly filter to cross-domain types, excluding the seed's own type
+        // Pass state filter when seed has a state — dramatically faster at 3.2M rows
         const targetTypes = CROSS_DOMAIN_TYPES.filter(t => t !== seed.content_type);
 
         const { data: matches, error: matchError } = await supabase
           .rpc("search_hunt_knowledge_v3", {
             query_embedding: embedding,
             match_threshold: 0.45,
-            match_count: 10,
+            match_count: 5,
             filter_content_types: targetTypes,
-            filter_state_abbr: null,
+            filter_state_abbr: seed.state_abbr || null,
             filter_species: null,
             filter_date_from: null,
             filter_date_to: null,
@@ -218,7 +230,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse(req, { seeds: shuffled.length, correlations: totalCorrelations, embedded: totalEmbedded, errors, durationMs });
+    return cronResponse({ seeds: shuffled.length, correlations: totalCorrelations, embedded: totalEmbedded, errors, durationMs });
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
@@ -230,13 +242,6 @@ serve(async (req) => {
       errorMessage: errMsg,
       durationMs,
     }).catch(() => {});
-    try {
-      return errorResponse(req, errMsg, 500);
-    } catch {
-      return new Response(JSON.stringify({ error: errMsg }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    return cronErrorResponse(errMsg, 500);
   }
 });

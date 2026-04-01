@@ -16,13 +16,13 @@ const SNOTEL_STATES = [
 ];
 
 // States with SCAN stations that report soil temperature
-// Broader coverage across the US.
+// Reduced to key flyway/hunting states to stay under 150s edge function limit.
+// Full 50-state coverage was causing 180s+ runs.
 const SCAN_STATES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+  "AL", "AR", "CA", "CO", "GA", "ID", "IL", "IN", "IA",
+  "KS", "KY", "LA", "MI", "MN", "MS", "MO", "MT", "NE",
+  "NC", "ND", "OH", "OK", "OR", "SD", "TN", "TX", "UT",
+  "WA", "WI", "WY",
 ];
 
 interface StationMeta {
@@ -277,6 +277,11 @@ serve(async (req) => {
     // --- Phase 1: SNOTEL SWE by state ---
     console.log("\n=== Phase 1: SNOTEL SWE ===");
     for (const state of SNOTEL_STATES) {
+      // Time guard: leave 40s for embedding + insert
+      if (Date.now() - startTime > 90_000) {
+        console.warn(`[hunt-snotel] Time guard at ${Math.round((Date.now() - startTime) / 1000)}s, stopping SNOTEL phase`);
+        break;
+      }
       try {
         const stations = await fetchStations(state, "SNTL");
         if (stations.length === 0) {
@@ -291,27 +296,25 @@ serve(async (req) => {
           const batch = triplets.slice(i, i + 50);
           const results = await fetchData(batch, "WTEQ", date);
           sweData.push(...results);
-          // Small delay between batches to be polite
-          if (i + 50 < triplets.length) {
-            await new Promise(r => setTimeout(r, 500));
-          }
         }
 
         const entries = buildSweEntries(state, stations, sweData, date);
         allEntries.push(...entries);
         console.log(`  ${state}: ${stations.length} stations, ${entries.length} entries`);
-
-        // Rate limit headroom between states
-        await new Promise(r => setTimeout(r, 300));
       } catch (err) {
         console.warn(`  ${state} SWE error: ${err}`);
         errors++;
       }
     }
 
-    // --- Phase 2: SCAN soil temperature by state ---
+    // --- Phase 2: SCAN soil temperature by state (reduced to 30 key states) ---
     console.log("\n=== Phase 2: SCAN Soil Temp ===");
     for (const state of SCAN_STATES) {
+      // Time guard: leave 30s for embedding + insert
+      if (Date.now() - startTime > 100_000) {
+        console.warn(`[hunt-snotel] Time guard at ${Math.round((Date.now() - startTime) / 1000)}s, stopping SCAN phase`);
+        break;
+      }
       try {
         const stations = await fetchStations(state, "SCAN");
         if (stations.length === 0) continue;
@@ -322,9 +325,6 @@ serve(async (req) => {
           const batch = triplets.slice(i, i + 50);
           const results = await fetchData(batch, "STO", date);
           stoData.push(...results);
-          if (i + 50 < triplets.length) {
-            await new Promise(r => setTimeout(r, 500));
-          }
         }
 
         const entries = buildSoilTempEntries(state, stations, stoData, date);
@@ -332,8 +332,6 @@ serve(async (req) => {
         if (entries.length > 0) {
           console.log(`  ${state}: ${stations.length} stations, ${entries.length} entries`);
         }
-
-        await new Promise(r => setTimeout(r, 300));
       } catch (err) {
         console.warn(`  ${state} STO error: ${err}`);
         errors++;
