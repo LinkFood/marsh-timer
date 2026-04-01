@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export interface UserAlert {
@@ -50,7 +50,10 @@ export function useUserAlerts() {
     setUnreadCount((data || []).filter((h: any) => !h.read).length);
   }, []);
 
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     Promise.all([fetchAlerts(), fetchHistory()]).finally(() => setLoading(false));
     const interval = setInterval(fetchHistory, 60 * 1000);
     return () => clearInterval(interval);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<HuntProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileFetchedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchProfile(session.user.id);
       } else {
         setProfile(null);
+        profileFetchedForRef.current = null;
       }
     });
 
@@ -60,6 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     if (!supabase) return;
+    if (profileFetchedForRef.current === userId) return;
+    profileFetchedForRef.current = userId;
     const { data } = await supabase
       .from('hunt_profiles')
       .select('*')
