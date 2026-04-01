@@ -54,6 +54,11 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
 
     const lower = first.toLowerCase();
     if (isValidSpecies(lower)) {
+      // Only 'all' and 'duck' have data — redirect others to 'all'
+      if (lower !== 'all' && lower !== 'duck') {
+        return { species: "all" as Species, stateAbbr: null, zoneSlug: null, redirect: "/" };
+      }
+
       const abbr = second?.toUpperCase() || null;
       const validAbbr =
         abbr && getStatesForSpecies(lower as Species).has(abbr) ? abbr : null;
