@@ -185,7 +185,25 @@ serve(async (req: Request) => {
       return successResponse(req, { state: state_abbr, domains: convergingCount, historical: historicalMatches.length, alert: false });
     }
 
-    // 6. Call Sonnet to synthesize compound risk alert
+    // 5b. Dedup: skip if we already have a compound-risk-alert for this state today
+    const { data: existingAlert } = await supabase
+      .from('hunt_knowledge')
+      .select('id')
+      .eq('content_type', 'compound-risk-alert')
+      .eq('state_abbr', state_abbr)
+      .eq('effective_date', today)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingAlert) {
+      console.log(`[${FUNCTION_NAME}] Alert already exists for ${state_abbr} on ${today}, skipping Claude call`);
+      await logCronRun({ functionName: FUNCTION_NAME, status: 'success', summary: { state: state_abbr, domains: convergingCount, alert: false, reason: 'dedup' }, durationMs: Date.now() - startTime });
+      return successResponse(req, { state: state_abbr, domains: convergingCount, alert: false, reason: 'Already alerted today' });
+    }
+
+    // 6. Call Claude to synthesize compound risk alert
+    // Tiered: Haiku for 3-4 domains (routine), Sonnet for 5+ (high-signal)
+    const alertModel = convergingCount >= 5 ? CLAUDE_MODELS.sonnet : CLAUDE_MODELS.haiku;
     const contextLines = [
       `State: ${state_abbr}`,
       `Trigger: ${trigger_event} (${trigger_severity})`,
@@ -197,7 +215,7 @@ serve(async (req: Request) => {
     ];
 
     const synthesisResponse = await callClaude({
-      model: CLAUDE_MODELS.sonnet,
+      model: alertModel,
       system: `You are a compound risk analyst. You receive real-time environmental data from multiple domains converging in one state. Write a 3-4 sentence alert that:
 1. Names the state and the trigger event
 2. Lists which domains are converging and why that matters
