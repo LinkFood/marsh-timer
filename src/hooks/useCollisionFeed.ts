@@ -129,7 +129,7 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
     }
     case 'grade-reasoning':
       title = `${entry.state_abbr || ''} — Grade post-mortem`;
-      severity = 'low';
+      severity = 'medium';
       break;
     case 'convergence':
       title = `${entry.state_abbr || '??'} scored ${typeof meta?.score === 'number' ? meta.score : '?'}/100`;
@@ -205,8 +205,13 @@ export function useCollisionFeed(
       collisions.push(alertToCollision(alert));
     }
 
-    // Sort chronologically, dedup by title (anomaly detector can produce duplicate entries)
-    const sorted = collisions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Sort by severity then chronologically — high-signal entries float up
+    const severityWeight = (s: string) => s === 'high' ? 2 : s === 'medium' ? 1 : 0;
+    const sorted = collisions.sort((a, b) => {
+      const sw = severityWeight(b.severity) - severityWeight(a.severity);
+      if (sw !== 0) return sw;
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
     const seen = new Set<string>();
     let deduped = sorted.filter(e => {
       if (seen.has(e.title)) return false;
