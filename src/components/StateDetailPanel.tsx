@@ -71,6 +71,7 @@ const CONTENT_TYPE_COLORS: Record<string, string> = {
 export default function StateDetailPanel({ state, score, arc, brief, briefLoading, calibrationByState }: Props) {
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [connectionsExpanded, setConnectionsExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { links: patternLinks, loading: linksLoading } = usePatternLinks(state);
   const { entries: alertEntries, loading: alertsLoading } = useBrainJournal(state, 'alerts', 5);
 
@@ -91,6 +92,17 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               {score ? Math.round(score.score) : '—'}
             </div>
             <div className={`text-[8px] font-mono tracking-widest ${tierColor}`}>{tier}</div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="text-[9px] font-mono text-white/20 hover:text-cyan-400/60 transition-colors mt-0.5"
+              title="Copy link to this state"
+            >
+              {copied ? 'Copied!' : 'Share'}
+            </button>
             {arc?.current_act === 'outcome' && arc.outcome_deadline && (() => {
               const diff = new Date(arc.outcome_deadline).getTime() - Date.now();
               if (diff <= 0) return <div className="text-[9px] font-mono text-red-400/60 mt-0.5">GRADING DUE</div>;
