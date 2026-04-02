@@ -116,13 +116,17 @@ export default function CollisionFeed({ convergenceAlerts, stateFilter = null, o
       {!stateFilter && displayed.length > 0 && (
         <div className="shrink-0 px-2 py-0.5 border-b border-white/[0.04] text-[8px] font-mono text-white/15">
           {(() => {
-            const risks = filterEntries('connections').filter(e => e.type === 'compound-risk').length;
-            const links = filterEntries('connections').filter(e => e.type === 'correlation').length;
-            const anomalies = filterEntries('alerts').filter(e => e.type === 'anomaly').length;
+            const all = filterEntries('all');
+            const risks = all.filter(e => e.type === 'compound-risk').length;
+            const grades = all.filter(e => e.type === 'grade-reasoning' || e.type === 'arc-fingerprint').length;
+            const links = all.filter(e => e.type === 'correlation').length;
+            const anomalies = all.filter(e => e.type === 'anomaly').length;
+            const statesActive = new Set(all.filter(e => e.stateAbbr).map(e => e.stateAbbr)).size;
             const parts: string[] = [];
             if (risks) parts.push(`${risks} risk alerts`);
-            if (links) parts.push(`${links} cross-domain links`);
+            if (grades) parts.push(`${grades} grades`);
             if (anomalies) parts.push(`${anomalies} anomalies`);
+            if (statesActive) parts.push(`${statesActive} states active`);
             return parts.join(' · ') || 'Brain activity';
           })()}
         </div>
