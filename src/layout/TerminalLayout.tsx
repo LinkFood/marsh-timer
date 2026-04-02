@@ -74,6 +74,9 @@ export default function TerminalLayout({
   const { selectedState } = useDeck();
   const isMobile = useIsMobile();
 
+  const [scoreboardCollapsed, setScoreboardCollapsed] = useState(() => {
+    try { return localStorage.getItem('dc-sb-collapsed') === '1'; } catch { return false; }
+  });
   const [centerTab, setCenterTab] = useState<'timeline' | 'collisions'>('collisions');
   const [mobileTab, setMobileTab] = useState<'map' | 'scores' | 'detail'>('map');
   const [feedHeight, setFeedHeight] = useState<number>(() => {
@@ -259,16 +262,31 @@ export default function TerminalLayout({
       {/* Row 4: Three-column terminal */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left: Convergence Scoreboard */}
-        <div className="w-[280px] shrink-0 overflow-hidden">
-          <ConvergenceScoreboard
-            scores={convergenceScores}
-            selectedState={selectedState}
-            onSelectState={onSelectState}
-            historyMap={convergenceHistoryMap}
-            arcMap={arcMap}
-            calibrationMap={calibrationMap}
-          />
-        </div>
+        {!scoreboardCollapsed && (
+          <div className="w-[280px] shrink-0 overflow-hidden">
+            <ConvergenceScoreboard
+              scores={convergenceScores}
+              selectedState={selectedState}
+              onSelectState={onSelectState}
+              historyMap={convergenceHistoryMap}
+              arcMap={arcMap}
+              calibrationMap={calibrationMap}
+            />
+          </div>
+        )}
+        <button
+          onClick={() => {
+            setScoreboardCollapsed(c => {
+              const next = !c;
+              try { localStorage.setItem('dc-sb-collapsed', next ? '1' : '0'); } catch {}
+              return next;
+            });
+          }}
+          className="w-5 shrink-0 flex items-center justify-center border-r border-white/[0.06] hover:bg-white/[0.03] cursor-pointer"
+          title={scoreboardCollapsed ? 'Show scores' : 'Hide scores'}
+        >
+          <span className="text-[10px] text-white/20">{scoreboardCollapsed ? '\u203A' : '\u2039'}</span>
+        </button>
 
         {/* Center: Map + Fusion Panel */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
