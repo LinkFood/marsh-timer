@@ -114,6 +114,8 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'arc-phase-outline': new Set(['default', 'intel']),
   // BirdCast migration intensity (toggle-only)
   'birdcast-fill': new Set(),
+  // 24h Change delta chevrons (toggle-only)
+  'convergence-delta-labels': new Set(),
 };
 
 function tempToColor(tempF: number): string {
@@ -142,6 +144,16 @@ function convergenceToColor(score: number): string {
   if (score >= 30) return 'rgba(59, 130, 246, 0.06)';    // blue
   if (score >= 20) return 'rgba(99, 102, 241, 0.03)';    // indigo
   return 'rgba(100, 100, 100, 0.01)';                     // nearly invisible
+}
+
+function convergenceDeltaToColor(delta: number): string {
+  if (delta >= 20) return 'rgba(34, 197, 94, 0.45)';   // strong surge — bright green
+  if (delta >= 10) return 'rgba(34, 197, 94, 0.30)';   // moderate surge — green
+  if (delta >= 5)  return 'rgba(34, 197, 94, 0.15)';   // mild surge — light green
+  if (delta <= -20) return 'rgba(239, 68, 68, 0.45)';  // strong drop — bright red
+  if (delta <= -10) return 'rgba(239, 68, 68, 0.30)';  // moderate drop — red
+  if (delta <= -5)  return 'rgba(239, 68, 68, 0.15)';  // mild drop — light red
+  return 'rgba(100, 100, 100, 0.03)';                   // flat — nearly invisible
 }
 
 function convergenceScoreColor(score: number): string {
@@ -1540,6 +1552,38 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // 24h Change delta chevrons (surge/drop indicators)
+      if (!map.getLayer("convergence-delta-labels")) {
+        map.addLayer({
+          id: "convergence-delta-labels",
+          type: "symbol",
+          source: "convergence-labels",
+          minzoom: 3,
+          maxzoom: 7,
+          layout: {
+            visibility: 'none',
+            "text-field": ["case",
+              [">=", ["get", "change"], 5], "▲",
+              ["<=", ["get", "change"], -5], "▼",
+              "",
+            ],
+            "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+            "text-size": 14,
+            "text-offset": [0, -1.5],
+            "text-allow-overlap": true,
+          },
+          paint: {
+            "text-color": ["case",
+              [">=", ["get", "change"], 5], "#22c55e",
+              ["<=", ["get", "change"], -5], "#ef4444",
+              "#6b7280",
+            ],
+            "text-halo-color": "rgba(0,0,0,0.8)",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
       // State abbreviation labels — always visible, clean map default
       if (!map.getLayer("state-abbr-labels")) {
         map.addLayer({
@@ -2798,12 +2842,25 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     }
 
     // --- BLOCK 2: State fill coloring (separate from visibility) ---
+    // Detect delta mode: convergence-delta-labels layer is toggled on
+    const showDeltaMode = visibleMapboxLayers ? visibleMapboxLayers.has('convergence-delta-labels') : false;
+
     // Always show convergence colors when scores are available
     const showConvergenceFill = true;
     if (showConvergenceFill && convergenceScores && convergenceScores.size > 0 && map.getLayer("states-fill")) {
       const entries: string[] = [];
-      for (const [abbr, data] of convergenceScores) {
-        entries.push(abbr, convergenceToColor(data.score));
+      if (showDeltaMode && yesterdayScores) {
+        // Delta mode — color by 24h change, not absolute score
+        for (const [abbr, data] of convergenceScores) {
+          const prevScore = yesterdayScores.get(abbr) ?? data.score;
+          const delta = data.score - prevScore;
+          entries.push(abbr, convergenceDeltaToColor(delta));
+        }
+      } else {
+        // Absolute mode (default)
+        for (const [abbr, data] of convergenceScores) {
+          entries.push(abbr, convergenceToColor(data.score));
+        }
       }
       if (entries.length > 0) {
         map.setPaintProperty("states-fill", "fill-color", [
@@ -2813,13 +2870,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         ] as mapboxgl.Expression);
         map.setPaintProperty("states-fill", "fill-opacity", 0.7);
       }
-      // 3D extrusion — height proportional to score
+      // 3D extrusion — height proportional to score (use delta in delta mode)
       if (map.getLayer("states-extrusion")) {
         const extHeightEntries: (string | number)[] = [];
         const extColorEntries: string[] = [];
-        for (const [abbr, data] of convergenceScores) {
-          extHeightEntries.push(abbr, data.score * 800); // 0-80,000 meters (visible at globe zoom)
-          extColorEntries.push(abbr, convergenceToColor(data.score));
+        if (showDeltaMode && yesterdayScores) {
+          for (const [abbr, data] of convergenceScores) {
+            const prevScore = yesterdayScores.get(abbr) ?? data.score;
+            const delta = data.score - prevScore;
+            extHeightEntries.push(abbr, Math.abs(delta) * 2000); // extrude by magnitude of change
+            extColorEntries.push(abbr, convergenceDeltaToColor(delta));
+          }
+        } else {
+          for (const [abbr, data] of convergenceScores) {
+            extHeightEntries.push(abbr, data.score * 800);
+            extColorEntries.push(abbr, convergenceToColor(data.score));
+          }
         }
         if (extHeightEntries.length > 0) {
           map.setPaintProperty("states-extrusion", "fill-extrusion-height", [
@@ -2988,7 +3054,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (map.getLayer("perfect-storm-ring")) {
       map.setFilter("perfect-storm-ring", stormFilter);
     }
-  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar, showDUPins, visibleMapboxLayers]);
+  }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar, showDUPins, visibleMapboxLayers, yesterdayScores]);
 
   // Arc phase outlines — colored state borders for recognition/outcome/grade arcs
   useEffect(() => {

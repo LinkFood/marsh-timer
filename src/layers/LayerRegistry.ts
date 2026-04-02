@@ -37,6 +37,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'state-abbr-labels', label: 'State Labels', category: 'intelligence', mapboxLayers: ['state-abbr-labels'], defaultOn: true },
   { id: 'convergence-pulse', label: 'Convergence Pulse', category: 'intelligence', mapboxLayers: ['convergence-pulse'], defaultOn: true },
   { id: 'perfect-storm', label: 'Perfect Storm', category: 'intelligence', mapboxLayers: ['perfect-storm-glow', 'perfect-storm-ring'], defaultOn: true },
+  { id: 'convergence-delta', label: '24h Change', category: 'intelligence', mapboxLayers: ['convergence-delta-labels'], defaultOn: false },
   { id: 'arc-phase', label: 'Arc Phase', category: 'intelligence', description: 'State outlines colored by active arc phase', mapboxLayers: ['arc-phase-outline'], defaultOn: true },
 
   // === Terrain ===
