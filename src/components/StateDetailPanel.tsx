@@ -331,7 +331,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               );
             })()
           ) : (
-            {(() => {
+            (() => {
               // Deduplicate links by source+matched content type pair
               const seen = new Set<string>();
               const uniqueLinks = patternLinks.filter(link => {
@@ -364,7 +364,8 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               )}
             </div>
               );
-            })()}
+            })()
+          )}
         </div>
 
         {/* Historical Odds */}
