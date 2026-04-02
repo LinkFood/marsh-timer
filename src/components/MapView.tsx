@@ -79,7 +79,7 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'convergence-score-label': new Set([]),
   'convergence-forming-label': new Set([]),
   'state-abbr-labels': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
-  'convergence-pulse': new Set(['intel']),
+  'convergence-pulse': new Set([]),
   'migration-front-glow': new Set(),
   'migration-front-line': new Set(),
   'migration-front-label': new Set(),
@@ -88,38 +88,38 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'flyway-flow-lines': new Set(['scout']),
   'flyway-corridor-labels': new Set(['scout']),
   // eBird
-  'ebird-heatmap': new Set(['default', 'intel']),
+  'ebird-heatmap': new Set(['intel']),
   'ebird-dots': new Set(['scout']),
   'ebird-cluster-glow': new Set(['scout']),
   'ebird-clusters': new Set(['scout']),
   'ebird-cluster-count': new Set(['scout']),
   // Pressure trends
   'pressure-trend-arrows': new Set(['weather']),
-  // Perfect Storm (all modes — the point is to interrupt any view)
-  'perfect-storm-glow': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
-  'perfect-storm-ring': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
+  // Perfect Storm (intel + weather only — not default)
+  'perfect-storm-glow': new Set(['weather', 'intel']),
+  'perfect-storm-ring': new Set(['weather', 'intel']),
   // County boundaries
   'county-fill': new Set(['scout', 'intel']),
   // DU migration map pins (toggle-controlled, not mode-controlled)
   'du-pins-dots': new Set(),
   'du-pins-clusters': new Set(),
   'du-pins-cluster-count': new Set(),
-  // Weather events from METAR pipeline
-  'weather-event-circles': new Set(['default', 'weather', 'intel']),
-  'weather-event-pulse': new Set(['default', 'weather', 'intel']),
-  'weather-event-labels': new Set(['default', 'weather', 'intel']),
-  // Ocean buoy stations
-  'buoy-circles': new Set(['default', 'weather', 'intel']),
-  'buoy-labels': new Set(['default', 'weather', 'intel']),
-  // Arc phase state outlines
-  'arc-phase-outline': new Set(['default', 'intel']),
+  // Weather events from METAR pipeline (weather + intel only)
+  'weather-event-circles': new Set(['weather', 'intel']),
+  'weather-event-pulse': new Set(['weather', 'intel']),
+  'weather-event-labels': new Set(['weather', 'intel']),
+  // Ocean buoy stations (weather + intel only)
+  'buoy-circles': new Set(['weather']),
+  'buoy-labels': new Set(['weather']),
+  // Arc phase state outlines (intel only)
+  'arc-phase-outline': new Set(['intel']),
   // BirdCast migration intensity (toggle-only)
   'birdcast-fill': new Set(),
   // 24h Change delta chevrons (toggle-only)
   'convergence-delta-labels': new Set(),
   // Brain activity indicators (pattern link hotspots)
-  'brain-activity-glow': new Set(['default', 'intel']),
-  'brain-activity-count': new Set(['default', 'intel']),
+  'brain-activity-glow': new Set(['intel']),
+  'brain-activity-count': new Set(['intel']),
 };
 
 function tempToColor(tempF: number): string {
