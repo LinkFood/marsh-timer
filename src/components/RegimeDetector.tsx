@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
 import type { StateArc } from '@/hooks/useStateArcs';
+import { useTrackRecord } from '@/hooks/useTrackRecord';
 
 interface Props {
   scores: Map<string, ConvergenceScore>;
@@ -16,6 +17,27 @@ const REGIME_COLORS: Record<Regime, string> = {
 };
 
 export default function RegimeDetector({ scores, arcs }: Props) {
+  const [firstVisit] = useState(() => {
+    try {
+      const seen = localStorage.getItem('dc-regime-seen');
+      if (!seen) { localStorage.setItem('dc-regime-seen', '1'); return true; }
+      return false;
+    } catch { return false; }
+  });
+
+  const { bySource, loading: trackLoading } = useTrackRecord();
+
+  const accuracy = useMemo(() => {
+    if (trackLoading || bySource.length === 0) return null;
+    let totalAlerts = 0;
+    let weightedAcc = 0;
+    for (const s of bySource) {
+      totalAlerts += s.total;
+      weightedAcc += s.accuracy * s.total;
+    }
+    return totalAlerts > 0 ? Math.round(weightedAcc / totalAlerts) : null;
+  }, [bySource, trackLoading]);
+
   const { regime, elevatedCount, recognitions, outcomes, grades } = useMemo(() => {
     let elevatedCount = 0;
     for (const s of scores.values()) {
@@ -45,6 +67,7 @@ export default function RegimeDetector({ scores, arcs }: Props) {
   if (scores.size === 0) return null;
 
   const color = REGIME_COLORS[regime];
+  const newPatterns = recognitions + outcomes;
 
   return (
     <div className="shrink-0 h-6 flex items-center px-3 gap-3 border-b border-white/[0.04] bg-[#0a0f1a]">
@@ -59,30 +82,53 @@ export default function RegimeDetector({ scores, arcs }: Props) {
         </span>
       </div>
 
-      {/* Counts */}
+      {/* Stats — plain English for first visit, dense format for returning */}
       <div className="flex items-center gap-3 text-[9px] font-mono text-white/30">
-        <span>
-          <span className="text-white/50 font-semibold">{elevatedCount}</span> elevated
-        </span>
-        <span>
-          <span className="text-white/50 font-semibold">{recognitions}</span> recognition{recognitions !== 1 ? 's' : ''}
-        </span>
-        <span>
-          <span className="text-white/50 font-semibold">{outcomes}</span> outcome{outcomes !== 1 ? 's' : ''}
-        </span>
-        {grades > 0 && (
-          <span>
-            <span className="text-emerald-400/70 font-semibold">{grades}</span> graded
+        {firstVisit ? (
+          <>
+            <span>
+              Watching <span className="text-white/50 font-semibold">{elevatedCount}</span> state{elevatedCount !== 1 ? 's' : ''} where environmental signals are aligning
+            </span>
+            {newPatterns > 0 && (
+              <span>
+                · <span className="text-white/50 font-semibold">{newPatterns}</span> new pattern{newPatterns !== 1 ? 's' : ''} detected
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span>
+              <span className="text-white/50 font-semibold">{elevatedCount}</span> elevated
+            </span>
+            <span>
+              <span className="text-white/50 font-semibold">{recognitions}</span> recognition{recognitions !== 1 ? 's' : ''}
+            </span>
+            <span>
+              <span className="text-white/50 font-semibold">{outcomes}</span> outcome{outcomes !== 1 ? 's' : ''}
+            </span>
+            {grades > 0 && (
+              <span>
+                <span className="text-emerald-400/70 font-semibold">{grades}</span> graded
+              </span>
+            )}
+            <span>
+              <span className="text-white/50 font-semibold">{arcs.length}</span> arcs
+            </span>
+          </>
+        )}
+        {accuracy !== null && (
+          <span className="text-emerald-400/70 font-semibold">
+            · {accuracy}% accuracy
           </span>
         )}
-        <span>
-          <span className="text-white/50 font-semibold">{arcs.length}</span> arcs
-        </span>
       </div>
 
       {/* 50-state LED strip */}
       <div className="flex-1" />
-      <div className="flex items-center gap-px">
+      <div
+        className="flex items-center gap-px"
+        title="50 states — each dot shows convergence intensity"
+      >
         {sorted.map(s => {
           const tier = s.score >= 60 ? '#ef4444' : s.score >= 50 ? '#f59e0b' : s.score >= 40 ? '#22c55e' : '#ffffff08';
           return (
