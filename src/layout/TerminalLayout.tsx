@@ -19,6 +19,7 @@ import CollisionFeed from '@/components/CollisionFeed';
 import { useOpsData } from '@/hooks/useOpsData';
 import { useDataSourceHealth } from '@/hooks/useDataSourceHealth';
 import { useDeck } from '@/contexts/DeckContext';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
 import { useTrackRecord } from '@/hooks/useTrackRecord';
@@ -70,8 +71,10 @@ export default function TerminalLayout({
   children,
 }: TerminalLayoutProps) {
   const { selectedState } = useDeck();
+  const isMobile = useIsMobile();
 
   const [centerTab, setCenterTab] = useState<'timeline' | 'collisions'>('collisions');
+  const [mobileTab, setMobileTab] = useState<'map' | 'scores' | 'detail'>('map');
   const [feedHeight, setFeedHeight] = useState<number>(() => {
     try { const v = localStorage.getItem('dc-feed-height'); if (v) { const n = Number(v); if (n >= 120 && n <= 600) return n; } } catch {}
     return 340;
@@ -125,6 +128,104 @@ export default function TerminalLayout({
     return map;
   }, [calibrationByState]);
 
+  // --- MOBILE LAYOUT ---
+  if (isMobile) {
+    return (
+      <div className="h-full w-full overflow-hidden bg-[#0a0f1a] flex flex-col">
+        {/* Heartbeat */}
+        <div className="shrink-0 overflow-hidden">
+          <ErrorBoundary fallback={<div className="h-7 bg-red-900/20 flex items-center px-3"><span className="text-[10px] text-red-400">Heartbeat error</span></div>}>
+            <BrainHeartbeat
+              convergenceAlerts={convergenceAlerts}
+              weatherEventsGeoJSON={weatherEventsGeoJSON}
+              nwsAlertsGeoJSON={nwsAlertsGeoJSON}
+              huntAlerts={huntAlerts}
+              murmurationIndex={murmurationIndex}
+            />
+          </ErrorBoundary>
+        </div>
+
+        {/* Regime Detector */}
+        <RegimeDetector scores={convergenceScores} arcs={stateArcs} />
+
+        {/* Tab bar */}
+        <div className="shrink-0 flex border-b border-white/[0.06] bg-[#0a0f1a]">
+          {(['map', 'scores', 'detail'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setMobileTab(tab)}
+              className={`flex-1 py-1.5 text-[9px] font-mono uppercase tracking-wider transition-colors ${
+                mobileTab === tab
+                  ? 'text-cyan-400/80 border-b border-cyan-400/40'
+                  : 'text-white/25 hover:text-white/40'
+              }`}
+            >
+              {tab === 'map' ? 'Map' : tab === 'scores' ? 'Scores' : selectedState || 'Intel'}
+            </button>
+          ))}
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-hidden min-h-0">
+          {mobileTab === 'map' && (
+            <div className="h-full flex flex-col">
+              <div className="flex-1 relative overflow-hidden min-h-0">
+                <ErrorBoundary fallback={<div className="h-full bg-red-900/10 flex items-center justify-center"><span className="text-[10px] text-red-400">Map error</span></div>}>
+                  <div className="absolute inset-0">{children}</div>
+                </ErrorBoundary>
+              </div>
+              {/* Collision feed below map */}
+              <div className="shrink-0 h-[200px] overflow-hidden border-t border-white/[0.06]">
+                <CollisionFeed convergenceAlerts={convergenceAlerts} stateFilter={selectedState || undefined} onSelectState={onSelectState} />
+              </div>
+            </div>
+          )}
+
+          {mobileTab === 'scores' && (
+            <div className="h-full overflow-y-auto">
+              <ConvergenceScoreboard
+                scores={convergenceScores}
+                selectedState={selectedState}
+                onSelectState={(abbr) => { onSelectState(abbr); setMobileTab('detail'); }}
+                historyMap={convergenceHistoryMap}
+                arcMap={arcMap}
+                calibrationMap={calibrationMap}
+              />
+            </div>
+          )}
+
+          {mobileTab === 'detail' && (
+            <div className="h-full overflow-y-auto">
+              {selectedState ? (
+                <StateDetailPanel
+                  state={selectedState}
+                  score={convergenceScores.get(selectedState)}
+                  arc={arcForState}
+                  brief={stateBrief}
+                  briefLoading={briefLoading}
+                  calibrationByState={calibrationByState}
+                />
+              ) : (
+                <EmptyStatePreview
+                  scores={convergenceScores}
+                  arcs={stateArcs}
+                  onSelectState={onSelectState}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Overlays */}
+        <ChatPanel />
+        <ErrorBoundary fallback={<div />}>
+          <LayerPicker />
+        </ErrorBoundary>
+      </div>
+    );
+  }
+
+  // --- DESKTOP LAYOUT ---
   return (
     <div className="h-full w-full overflow-hidden bg-[#0a0f1a] flex flex-col">
       {/* Row 1: BrainHeartbeat */}
