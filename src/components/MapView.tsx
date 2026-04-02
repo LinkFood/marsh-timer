@@ -17,7 +17,7 @@ import { speciesConfig } from "@/data/speciesConfig";
 import { fipsToAbbr } from "@/data/fips";
 import { getPrimarySeasonForState, getStatesForSpecies } from "@/data/seasons";
 import { getSeasonStatus } from "@/lib/seasonUtils";
-import { getPopupHTML } from "@/components/MapPopup";
+import { getPopupHTML, type PopupArcInfo } from "@/components/MapPopup";
 import { getSightingPopupHTML } from "@/components/SightingPopup";
 import { stateFlyways, FLYWAY_COLORS, isFlywaySpecies } from "@/data/flyways";
 import { FLYWAY_CORRIDORS, FLYWAY_FLOW_LINES } from "@/data/flywayPaths";
@@ -446,6 +446,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const prevStyleRef = useRef<string>("dark");
   const weatherCacheRef = useRef(weatherCache);
   const convergenceRef = useRef(convergenceScores);
+  const stateArcsRef = useRef(stateArcs);
   const mapModeRef = useRef(mapMode);
   const hoveredStateIdRef = useRef<number | null>(null);
   const [yesterdayScores, setYesterdayScores] = useState<Map<string, number> | null>(null);
@@ -453,6 +454,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   selectedStateRef.current = selectedState;
   weatherCacheRef.current = weatherCache;
   convergenceRef.current = convergenceScores;
+  stateArcsRef.current = stateArcs;
   mapModeRef.current = mapMode;
   onSelectStateRef.current = onSelectState;
 
@@ -2277,6 +2279,23 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           // Show popup at centroid
           const centroid = centroidsRef.current.get(abbr);
           if (centroid && !isMobile) {
+            // Find active arc for this state
+            let arcInfo: PopupArcInfo | null = null;
+            const arcs = stateArcsRef.current;
+            if (arcs && arcs.length > 0) {
+              const phaseRank: Record<string, number> = { buildup: 0, recognition: 1, outcome: 2, grade: 3 };
+              let bestArc: typeof arcs[0] | null = null;
+              for (const arc of arcs) {
+                if (arc.state_abbr !== abbr) continue;
+                if (!bestArc || (phaseRank[arc.current_act] ?? 0) > (phaseRank[bestArc.current_act] ?? 0)) {
+                  bestArc = arc;
+                }
+              }
+              if (bestArc) {
+                arcInfo = { phase: bestArc.current_act, grade: bestArc.grade };
+              }
+            }
+
             popupRef.current?.remove();
             popupRef.current = new mapboxgl.Popup({
               closeButton: false,
@@ -2285,7 +2304,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               offset: 10,
             })
               .setLngLat(centroid)
-              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr) ?? null, getConvergenceRank(abbr, convergenceRef.current)))
+              .setHTML(getPopupHTML(abbr, STATE_NAMES[abbr] || abbr, species, weatherCacheRef.current?.get(abbr), convergenceRef.current?.get(abbr) ?? null, getConvergenceRank(abbr, convergenceRef.current), arcInfo))
               .addTo(map);
           }
         }

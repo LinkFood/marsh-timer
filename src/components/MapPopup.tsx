@@ -77,6 +77,25 @@ const S = {
   weatherValue: `font-weight:600;color:rgba(255,255,255,0.85)`,
 };
 
+export interface PopupArcInfo {
+  phase: 'buildup' | 'recognition' | 'outcome' | 'grade';
+  grade?: string | null;
+}
+
+const ARC_BADGE_STYLES: Record<string, { bg: string; border: string; label: string }> = {
+  buildup:     { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.6)', label: 'BUILDUP' },
+  recognition: { bg: 'rgba(251,146,60,0.15)', border: 'rgba(251,146,60,0.6)', label: 'RECOGNITION' },
+  outcome:     { bg: 'rgba(239,68,68,0.15)',  border: 'rgba(239,68,68,0.6)',  label: 'OUTCOME' },
+  grade:       { bg: 'rgba(34,197,94,0.15)',  border: 'rgba(34,197,94,0.6)',  label: 'GRADED' },
+};
+
+const GRADE_COLORS: Record<string, string> = {
+  confirmed:            '#22c55e',
+  partially_confirmed:  '#facc15',
+  missed:               '#f97316',
+  false_alarm:          '#ef4444',
+};
+
 export function getPopupHTML(
   abbr: string,
   stateName: string,
@@ -84,6 +103,7 @@ export function getPopupHTML(
   weather?: PopupWeather | null,
   convergence?: PopupConvergence | null,
   convergenceRank?: number | null,
+  arcInfo?: PopupArcInfo | null,
 ): string {
   const moon = getMoonPhase();
 
@@ -97,19 +117,40 @@ export function getPopupHTML(
     ? `<div style="font-size:9px;color:rgba(255,255,255,0.4);margin-top:2px">#${convergenceRank} of 50 states</div>`
     : '';
 
-  // --- Top signal: highest scoring component ---
+  // --- Top 2-3 strongest components ---
   let topSignalStr = '';
   if (convergence && score != null) {
-    const components: [string, number][] = [
-      ['Weather', convergence.weather_component],
-      ['Migration', convergence.migration_component],
-      ['BirdCast', convergence.birdcast_component],
-      ['Solunar', convergence.solunar_component],
-      ['Pattern', convergence.pattern_component],
+    const components: [string, number, number][] = [
+      ['Wx', convergence.weather_component, 25],
+      ['Mig', convergence.migration_component, 25],
+      ['BC', convergence.birdcast_component, 20],
+      ['Sol', convergence.solunar_component, 15],
+      ['Pat', convergence.pattern_component, 15],
     ];
-    const top = components.reduce((a, b) => b[1] > a[1] ? b : a);
-    if (top[1] > 0) {
-      topSignalStr = `<div style="font-size:9px;color:rgba(255,255,255,0.45);margin-top:1px">Top signal: ${top[0]}</div>`;
+    const sorted = components.filter(c => c[1] > 0).sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, 3);
+    if (top.length > 0) {
+      const parts = top.map(([name, val, max]) => {
+        const pct = max > 0 ? val / max : 0;
+        const color = pct >= 0.8 ? 'rgba(16,185,129,0.9)' : pct >= 0.5 ? 'rgba(250,204,21,0.9)' : 'rgba(255,255,255,0.5)';
+        return `<span style="color:${color}">${name} ${val}/${max}</span>`;
+      });
+      topSignalStr = `<div style="font-size:9px;color:rgba(255,255,255,0.45);margin-top:2px;font-family:'SF Mono',SFMono-Regular,Menlo,monospace">${parts.join(' · ')}</div>`;
+    }
+  }
+
+  // --- Arc phase badge ---
+  let arcBadgeStr = '';
+  if (arcInfo) {
+    const badge = ARC_BADGE_STYLES[arcInfo.phase];
+    if (badge) {
+      let gradeStr = '';
+      if (arcInfo.phase === 'grade' && arcInfo.grade) {
+        const gradeLabel = arcInfo.grade.replace(/_/g, ' ').toUpperCase();
+        const gradeColor = GRADE_COLORS[arcInfo.grade] || '#64748b';
+        gradeStr = ` <span style="color:${gradeColor};font-weight:700;margin-left:4px">${gradeLabel}</span>`;
+      }
+      arcBadgeStr = `<div style="margin-top:3px"><span style="display:inline-block;font-size:9px;font-family:'SF Mono',SFMono-Regular,Menlo,monospace;font-weight:600;padding:1px 5px;border-radius:3px;background:${badge.bg};border:1px solid ${badge.border};color:${badge.border};letter-spacing:0.5px">${badge.label}</span>${gradeStr}</div>`;
     }
   }
 
@@ -120,6 +161,7 @@ export function getPopupHTML(
         ${signalStr}
       </div>
       ${rankStr}
+      ${arcBadgeStr}
       ${topSignalStr}
     </div>
   `;
