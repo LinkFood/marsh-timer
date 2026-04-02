@@ -42,7 +42,7 @@ interface SignalFound {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 200;
+const MAX_PER_RUN = 5; // Each alert needs embedding + vector search — keep under 150s
 
 const DIRECT_QUERY_CONTENT_TYPES = [
   'migration-spike-extreme',
