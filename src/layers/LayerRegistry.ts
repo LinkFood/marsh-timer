@@ -39,6 +39,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'perfect-storm', label: 'Perfect Storm', category: 'intelligence', mapboxLayers: ['perfect-storm-glow', 'perfect-storm-ring'], defaultOn: true },
   { id: 'convergence-delta', label: '24h Change', category: 'intelligence', mapboxLayers: ['convergence-delta-labels'], defaultOn: false },
   { id: 'arc-phase', label: 'Arc Phase', category: 'intelligence', description: 'State outlines colored by active arc phase', mapboxLayers: ['arc-phase-outline'], defaultOn: true },
+  { id: 'brain-connections', label: 'Brain Activity', category: 'intelligence', description: 'Cross-domain pattern link hotspots', mapboxLayers: ['brain-activity-glow', 'brain-activity-count'], defaultOn: true },
 
   // === Terrain ===
   { id: 'satellite', label: 'Satellite', category: 'terrain', mapboxLayers: [], defaultOn: true },
@@ -62,7 +63,7 @@ export const LAYER_PRESETS: LayerPreset[] = [
     id: 'intel',
     label: 'Intelligence',
     description: 'Convergence heatmap, pulse, migration front, perfect storm',
-    layers: ['convergence-heatmap', 'convergence-pulse', 'perfect-storm', 'arc-phase', 'migration-front', 'nws-alerts', 'weather-events', 'ocean-buoys', 'wind-flow', 'ebird-heatmap'],
+    layers: ['convergence-heatmap', 'convergence-pulse', 'perfect-storm', 'arc-phase', 'brain-connections', 'migration-front', 'nws-alerts', 'weather-events', 'ocean-buoys', 'wind-flow', 'ebird-heatmap'],
   },
   {
     id: 'terrain',

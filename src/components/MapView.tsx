@@ -9,6 +9,7 @@ import {
 } from "react";
 import mapboxgl from "mapbox-gl";
 import { useOceanBuoys } from "@/hooks/useOceanBuoys";
+import { useNationalPatternLinks } from "@/hooks/useNationalPatternLinks";
 import * as topojson from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Species } from "@/data/types";
@@ -116,6 +117,9 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'birdcast-fill': new Set(),
   // 24h Change delta chevrons (toggle-only)
   'convergence-delta-labels': new Set(),
+  // Brain activity indicators (pattern link hotspots)
+  'brain-activity-glow': new Set(['default', 'intel']),
+  'brain-activity-count': new Set(['default', 'intel']),
 };
 
 function tempToColor(tempF: number): string {
@@ -445,6 +449,9 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
 
   // Ocean buoy data — loaded directly in MapView to avoid Vite tree-shaking
   const { geoJSON: buoyGeoJSON } = useOceanBuoys();
+
+  // National pattern links — brain activity indicators
+  const { byState: brainActivityByState } = useNationalPatternLinks();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -1982,9 +1989,81 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Brain activity indicators — pattern link hotspots
+      if (!map.getSource("brain-activity")) {
+        const brainFeatures: Feature[] = [];
+        if (brainActivityByState.size > 0) {
+          for (const [abbr, activity] of brainActivityByState) {
+            const centroid = centroidsRef.current.get(abbr);
+            if (centroid && activity.count >= 2) {
+              brainFeatures.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: centroid },
+                properties: {
+                  abbr,
+                  count: activity.count,
+                  domains: activity.domains.size,
+                  topSimilarity: activity.topSimilarity,
+                  tier: activity.count >= 10 ? 'intense' : activity.count >= 5 ? 'active' : 'forming',
+                },
+              });
+            }
+          }
+        }
+        map.addSource("brain-activity", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: brainFeatures },
+        });
+      }
+      if (!map.getLayer("brain-activity-glow")) {
+        map.addLayer({
+          id: "brain-activity-glow",
+          type: "symbol",
+          source: "brain-activity",
+          layout: {
+            "icon-image": "brain-dot",
+            "icon-size": [
+              "interpolate", ["linear"], ["get", "count"],
+              2, 0.6,
+              5, 0.85,
+              10, 1.1,
+              20, 1.4,
+            ],
+            "icon-allow-overlap": true,
+            "icon-offset": [18, -18],
+            visibility: (mapMode === 'default' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+        });
+      }
+      if (!map.getLayer("brain-activity-count")) {
+        map.addLayer({
+          id: "brain-activity-count",
+          type: "symbol",
+          source: "brain-activity",
+          layout: {
+            "text-field": ["concat", ["to-string", ["get", "count"]], " ", ["match", ["get", "tier"], "intense", "\u26A1", "active", "\u26A1", "\u2022"]],
+            "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+            "text-size": 10,
+            "text-offset": [1.4, -1.4],
+            "text-allow-overlap": true,
+            visibility: (mapMode === 'default' || mapMode === 'intel') ? 'visible' : 'none',
+          },
+          paint: {
+            "text-color": [
+              "match", ["get", "tier"],
+              "intense", "#a855f7",
+              "active", "#22d3ee",
+              "rgba(20, 184, 166, 0.8)",
+            ],
+            "text-halo-color": "rgba(0,0,0,0.9)",
+            "text-halo-width": 1.5,
+          },
+        });
+      }
+
       loadedRef.current = true;
     },
-    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates, duPinsGeoJSON, weatherEventsGeoJSON],
+    [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates, duPinsGeoJSON, weatherEventsGeoJSON, brainActivityByState],
   );
 
   const initMap = useCallback(() => {
@@ -2091,6 +2170,89 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         map.addImage('pulsing-dot-hot', createPulsingDot([251, 146, 60]) as any, { pixelRatio: 2 });
       } catch (err) {
         console.warn('[MapView] Failed to create pulsing-dot images:', err);
+      }
+
+      // Brain activity pulsing dot — cyan/purple neural glow
+      const createBrainDot = () => {
+        const dotSize = 100;
+        const brainDot: mapboxgl.StyleImageInterface & { context: CanvasRenderingContext2D | null; t: number } = {
+          width: dotSize,
+          height: dotSize,
+          context: null,
+          t: 0,
+          data: new Uint8Array(dotSize * dotSize * 4),
+          onAdd() {
+            const cv = document.createElement('canvas');
+            cv.width = dotSize;
+            cv.height = dotSize;
+            this.context = cv.getContext('2d');
+          },
+          render() {
+            this.t = (this.t + 1) % 180;
+            const cx = dotSize / 2;
+            const cy = dotSize / 2;
+            const cv = this.context;
+            if (!cv) return false;
+            cv.clearRect(0, 0, dotSize, dotSize);
+
+            // Ring 1: expanding cyan
+            const p1 = this.t / 180;
+            const r1 = 8 + p1 * 30;
+            const a1 = 1 - p1;
+            cv.beginPath();
+            cv.arc(cx, cy, r1, 0, Math.PI * 2);
+            cv.strokeStyle = `rgba(34, 211, 238, ${a1 * 0.5})`;
+            cv.lineWidth = 2.5;
+            cv.stroke();
+
+            // Ring 2: offset phase purple
+            const p2 = ((this.t + 60) % 180) / 180;
+            const r2 = 8 + p2 * 30;
+            const a2 = 1 - p2;
+            cv.beginPath();
+            cv.arc(cx, cy, r2, 0, Math.PI * 2);
+            cv.strokeStyle = `rgba(168, 85, 247, ${a2 * 0.4})`;
+            cv.lineWidth = 2;
+            cv.stroke();
+
+            // Ring 3: third phase teal
+            const p3 = ((this.t + 120) % 180) / 180;
+            const r3 = 8 + p3 * 30;
+            const a3 = 1 - p3;
+            cv.beginPath();
+            cv.arc(cx, cy, r3, 0, Math.PI * 2);
+            cv.strokeStyle = `rgba(20, 184, 166, ${a3 * 0.3})`;
+            cv.lineWidth = 1.5;
+            cv.stroke();
+
+            // Center glow
+            const grad = cv.createRadialGradient(cx, cy, 0, cx, cy, 8);
+            grad.addColorStop(0, 'rgba(34, 211, 238, 0.9)');
+            grad.addColorStop(0.5, 'rgba(168, 85, 247, 0.5)');
+            grad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+            cv.beginPath();
+            cv.arc(cx, cy, 8, 0, Math.PI * 2);
+            cv.fillStyle = grad;
+            cv.fill();
+
+            // Center dot
+            cv.beginPath();
+            cv.arc(cx, cy, 3, 0, Math.PI * 2);
+            cv.fillStyle = 'rgba(34, 211, 238, 1)';
+            cv.fill();
+
+            this.data = cv.getImageData(0, 0, dotSize, dotSize).data as any;
+            map.triggerRepaint();
+            return true;
+          },
+        };
+        return brainDot;
+      };
+
+      try {
+        map.addImage('brain-dot', createBrainDot() as any, { pixelRatio: 2 });
+      } catch (err) {
+        console.warn('[MapView] Failed to create brain-dot image:', err);
       }
 
       const response = await fetch(TOPO_URL);
@@ -2670,6 +2832,35 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       source.setData(duPinsGeoJSON);
     }
   }, [duPinsGeoJSON]);
+
+  // Update brain activity indicators when pattern links load
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || brainActivityByState.size === 0) return;
+
+    const source = map.getSource("brain-activity") as mapboxgl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    const features: Feature[] = [];
+    for (const [abbr, activity] of brainActivityByState) {
+      if (activity.count < 2) continue;
+      const centroid = centroidsRef.current.get(abbr);
+      if (centroid) {
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: centroid },
+          properties: {
+            abbr,
+            count: activity.count,
+            domains: activity.domains.size,
+            topSimilarity: activity.topSimilarity,
+            tier: activity.count >= 10 ? 'intense' : activity.count >= 5 ? 'active' : 'forming',
+          },
+        });
+      }
+    }
+    source.setData({ type: "FeatureCollection", features });
+  }, [brainActivityByState]);
 
   // Update NWS alerts data
   useEffect(() => {
