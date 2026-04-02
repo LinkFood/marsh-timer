@@ -95,10 +95,18 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
   const convergingCount = typeof meta?.converging_domains === 'number' ? meta.converging_domains as number : domains?.length;
 
   switch (type) {
-    case 'compound-risk':
-      title = `${entry.state_abbr || '??'} — ${convergingCount || '?'} domains converging`;
+    case 'compound-risk': {
+      const confidence = meta?.confidence as string | undefined;
+      const avgSim = typeof meta?.avg_similarity === 'number' ? Math.round((meta.avg_similarity as number) * 100) : null;
+      const scoreTag = avgSim !== null
+        ? ` · ${avgSim}% match`
+        : confidence
+          ? ` · ${confidence}`
+          : '';
+      title = `${entry.state_abbr || '??'} — ${convergingCount || '?'} domains${scoreTag}`;
       severity = 'high';
       break;
+    }
     case 'correlation': {
       const seedType = (meta?.seed_type as string || '').replace(/-/g, ' ');
       const matchType = (meta?.match_type as string || '').replace(/-/g, ' ');
