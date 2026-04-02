@@ -41,6 +41,44 @@ function timeAgo(ts: string): string {
   return `${days}d`;
 }
 
+function RiskStoryCard({ detail, domains, stateAbbr }: { detail: string; domains?: string[]; stateAbbr: string | null }) {
+  // Split the narration into the convergence summary and the AI analysis
+  const parts = detail.split('\n\n').filter(Boolean);
+  const summary = parts[0] || '';
+  const analysis = parts.slice(1).join(' ').replace(/\*\*/g, '').replace(/^##?\s+.*/gm, '').trim();
+
+  return (
+    <div className="rounded bg-white/[0.02] border border-red-400/10 overflow-hidden">
+      {/* Header: state + confidence */}
+      <div className="px-2.5 py-1.5 border-b border-white/[0.04] bg-red-400/[0.03]">
+        <div className="flex items-center gap-2">
+          {stateAbbr && (
+            <span className="text-[10px] font-mono font-bold text-red-400/70">{stateAbbr}</span>
+          )}
+          <span className="text-[7px] font-mono text-red-400/40 uppercase tracking-wider">compound risk</span>
+          {domains && (
+            <span className="text-[7px] font-mono text-white/20">{domains.length} domains</span>
+          )}
+        </div>
+        {summary && (
+          <p className="text-[9px] font-mono text-white/35 leading-relaxed mt-0.5">
+            {summary.replace(/\*\*/g, '').slice(0, 150)}
+          </p>
+        )}
+      </div>
+      {/* AI analysis */}
+      {analysis && (
+        <div className="px-2.5 py-1.5">
+          <div className="text-[7px] font-mono text-cyan-400/30 uppercase tracking-wider mb-0.5">Brain Analysis</div>
+          <p className="text-[9px] font-mono text-white/25 leading-relaxed italic line-clamp-4">
+            {analysis.slice(0, 350)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GradeStoryCard({ detail }: { detail: string }) {
   const clean = detail.replace(/\*\*/g, '').replace(/---/g, '').trim();
 
@@ -270,9 +308,11 @@ export default function CollisionCard({ entry }: Props) {
             </div>
           )}
 
-          {/* Brain narration — structured for GRADE entries, raw for others */}
+          {/* Brain narration — structured cards by type */}
           {entry.detail && (entry.type === 'grade-reasoning' ? (
             <GradeStoryCard detail={entry.detail} />
+          ) : entry.type === 'compound-risk' ? (
+            <RiskStoryCard detail={entry.detail} domains={entry.domains} stateAbbr={entry.stateAbbr} />
           ) : (
             <div className="px-2 py-1.5 rounded bg-white/[0.02] border-l border-cyan-400/20">
               <p className="text-[9px] font-mono text-white/30 leading-relaxed italic whitespace-pre-wrap line-clamp-6">
