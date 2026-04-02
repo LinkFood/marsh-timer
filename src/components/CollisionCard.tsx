@@ -41,6 +41,106 @@ function timeAgo(ts: string): string {
   return `${days}d`;
 }
 
+function GradeStoryCard({ detail }: { detail: string }) {
+  const clean = detail.replace(/\*\*/g, '').replace(/---/g, '').trim();
+
+  // Parse sections from the post-mortem markdown
+  const sections: { heading: string; body: string }[] = [];
+  const lines = clean.split('\n');
+  let currentHeading = '';
+  let currentBody: string[] = [];
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^#{1,3}\s+(.+)/);
+    if (headingMatch) {
+      if (currentHeading || currentBody.length > 0) {
+        sections.push({ heading: currentHeading, body: currentBody.join('\n').trim() });
+      }
+      currentHeading = headingMatch[1];
+      currentBody = [];
+    } else {
+      currentBody.push(line);
+    }
+  }
+  if (currentHeading || currentBody.length > 0) {
+    sections.push({ heading: currentHeading, body: currentBody.join('\n').trim() });
+  }
+
+  // Extract key facts from the summary section
+  const summarySection = sections.find(s => s.heading.toLowerCase().includes('summary'));
+  const claimLine = summarySection?.body.match(/Claim[:\s]+(.+)/i)?.[1];
+  const gradeLine = summarySection?.body.match(/Grade[:\s]+(\w+)/i)?.[1];
+  const scoreLine = summarySection?.body.match(/Score[:\s]+(\d+\/\d+)/i)?.[1];
+
+  // Find the most interesting analysis sections
+  const signalSection = sections.find(s =>
+    s.heading.toLowerCase().includes('signal') || s.heading.toLowerCase().includes('strongest')
+  );
+  const adjustSection = sections.find(s =>
+    s.heading.toLowerCase().includes('adjust') || s.heading.toLowerCase().includes('recommend')
+  );
+
+  return (
+    <div className="rounded bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+      {/* Header bar */}
+      {(claimLine || gradeLine) && (
+        <div className="px-2.5 py-1.5 border-b border-white/[0.06] bg-white/[0.01]">
+          {claimLine && (
+            <p className="text-[9px] font-mono text-white/40 leading-relaxed">{claimLine}</p>
+          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            {gradeLine && (
+              <span className="text-[8px] font-mono px-1.5 py-px rounded"
+                style={{
+                  color: gradeLine.toLowerCase() === 'confirmed' ? '#22c55e' : '#f59e0b',
+                  backgroundColor: gradeLine.toLowerCase() === 'confirmed' ? '#22c55e15' : '#f59e0b15',
+                }}>
+                {gradeLine.toUpperCase()}
+              </span>
+            )}
+            {scoreLine && (
+              <span className="text-[8px] font-mono text-white/25">Score: {scoreLine}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Signal analysis */}
+      {signalSection && (
+        <div className="px-2.5 py-1.5 border-b border-white/[0.04]">
+          <div className="text-[7px] font-mono text-cyan-400/40 uppercase tracking-wider mb-0.5">
+            {signalSection.heading}
+          </div>
+          <p className="text-[9px] font-mono text-white/30 leading-relaxed line-clamp-4">
+            {signalSection.body.replace(/\|/g, ' ').replace(/\n+/g, ' ').trim().slice(0, 300)}
+          </p>
+        </div>
+      )}
+
+      {/* Adjustments / lessons */}
+      {adjustSection && (
+        <div className="px-2.5 py-1.5">
+          <div className="text-[7px] font-mono text-amber-400/40 uppercase tracking-wider mb-0.5">
+            {adjustSection.heading}
+          </div>
+          <p className="text-[9px] font-mono text-white/25 leading-relaxed line-clamp-3">
+            {adjustSection.body.replace(/\|/g, ' ').replace(/\n+/g, ' ').trim().slice(0, 250)}
+          </p>
+        </div>
+      )}
+
+      {/* Fallback if no sections parsed */}
+      {!signalSection && !adjustSection && !summarySection && (
+        <div className="px-2.5 py-1.5">
+          <p className="text-[9px] font-mono text-white/30 leading-relaxed italic line-clamp-6">
+            {clean.replace(/\|/g, ' · ').slice(0, 400)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   entry: CollisionEntry;
 }
@@ -170,14 +270,16 @@ export default function CollisionCard({ entry }: Props) {
             </div>
           )}
 
-          {/* Brain narration */}
-          {entry.detail && (
+          {/* Brain narration — structured for GRADE entries, raw for others */}
+          {entry.detail && (entry.type === 'grade-reasoning' ? (
+            <GradeStoryCard detail={entry.detail} />
+          ) : (
             <div className="px-2 py-1.5 rounded bg-white/[0.02] border-l border-cyan-400/20">
               <p className="text-[9px] font-mono text-white/30 leading-relaxed italic whitespace-pre-wrap line-clamp-6">
                 {entry.detail.replace(/\*\*/g, '').replace(/^##\s+/gm, '').replace(/\|/g, ' · ')}
               </p>
             </div>
-          )}
+          ))}
         </div>
       )}
     </button>
