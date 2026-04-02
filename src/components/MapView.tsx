@@ -679,7 +679,20 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           id: "states-line",
           type: "line",
           source: "states",
-          paint: { "line-color": "rgba(255,255,255,0.15)", "line-width": 0.8 },
+          paint: {
+            "line-color": [
+              "case",
+              ["boolean", ["feature-state", "hover"], false],
+              "rgba(255,255,255,0.55)",
+              "rgba(255,255,255,0.15)",
+            ],
+            "line-width": [
+              "case",
+              ["boolean", ["feature-state", "hover"], false],
+              1.8,
+              0.8,
+            ],
+          },
         });
       }
 
@@ -3220,8 +3233,20 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     if (map.getLayer("states-line")) {
       const isDataMode = mapMode === 'intel' || mapMode === 'weather';
       const isDefault = mapMode === 'default';
-      map.setPaintProperty("states-line", "line-width", isDataMode ? 1.2 : isDefault ? 1.2 : 1.0);
-      map.setPaintProperty("states-line", "line-color", isDataMode ? "rgba(255,255,255,0.3)" : isDefault ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.2)");
+      const baseWidth = isDataMode ? 1.2 : isDefault ? 1.2 : 1.0;
+      map.setPaintProperty("states-line", "line-width", [
+        "case",
+        ["boolean", ["feature-state", "hover"], false],
+        1.8,
+        baseWidth,
+      ]);
+      const baseColor = isDataMode ? "rgba(255,255,255,0.3)" : isDefault ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.2)";
+      map.setPaintProperty("states-line", "line-color", [
+        "case",
+        ["boolean", ["feature-state", "hover"], false],
+        "rgba(255,255,255,0.55)",
+        baseColor,
+      ]);
     }
 
     // Selected state outline
