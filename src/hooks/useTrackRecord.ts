@@ -61,15 +61,16 @@ export function useTrackRecord() {
             { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
           ),
           fetch(
-            `${SUPABASE_URL}/rest/v1/hunt_alert_outcomes?outcome_checked=eq.true&order=graded_at.desc&limit=20&select=state_abbr,alert_source,outcome_grade,graded_at`,
+            `${SUPABASE_URL}/rest/v1/hunt_alert_outcomes?outcome_grade=neq.null&order=graded_at.desc&limit=20&select=state_abbr,alert_source,outcome_grade,graded_at`,
             { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
           ),
         ]);
 
         // Process calibration data
+        let totalFromCal = 0;
         if (calRes.ok) {
           const calData: AlertCalibrationRow[] = await calRes.json();
-          if (Array.isArray(calData)) {
+          if (Array.isArray(calData) && calData.length > 0) {
             // Aggregate by source
             const sourceMap = new Map<string, { total: number; confirmed: number; weighted: number }>();
             let total = 0;
@@ -83,6 +84,7 @@ export function useTrackRecord() {
               sourceMap.set(row.alert_source, existing);
             }
 
+            totalFromCal = total;
             setTotalGraded(total);
             setBySource(
               Array.from(sourceMap.entries())
@@ -126,6 +128,28 @@ export function useTrackRecord() {
                 graded_at: r.graded_at,
               }))
             );
+
+            // Derive totals from outcomes when calibration table is empty
+            if (totalFromCal === 0 && outData.length > 0) {
+              setTotalGraded(outData.length);
+              const sourceAgg = new Map<string, { total: number; confirmed: number }>();
+              for (const r of outData) {
+                const existing = sourceAgg.get(r.alert_source) || { total: 0, confirmed: 0 };
+                existing.total += 1;
+                if (r.outcome_grade === 'confirmed') existing.confirmed += 1;
+                sourceAgg.set(r.alert_source, existing);
+              }
+              setBySource(
+                Array.from(sourceAgg.entries())
+                  .map(([source, v]) => ({
+                    source,
+                    total: v.total,
+                    confirmed: v.confirmed,
+                    accuracy: v.total > 0 ? Math.round((v.confirmed / v.total) * 100) : 0,
+                  }))
+                  .sort((a, b) => b.total - a.total)
+              );
+            }
           }
         }
       } catch (err) {
