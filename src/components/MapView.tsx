@@ -471,6 +471,8 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
   const stateArcsRef = useRef(stateArcs);
   const mapModeRef = useRef(mapMode);
   const hoveredStateIdRef = useRef<number | null>(null);
+  const spotlightedRef = useRef(false);
+  const userInteractedRef = useRef(false);
   const [yesterdayScores, setYesterdayScores] = useState<Map<string, number> | null>(null);
 
   selectedStateRef.current = selectedState;
@@ -2583,6 +2585,12 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       const zoom = map.getZoom();
       onMoveEnd?.([center.lng, center.lat], zoom);
     });
+
+    // Track user interaction so we skip the initial spotlight fly-to if they've already moved
+    const markInteracted = () => { userInteractedRef.current = true; };
+    map.on("dragstart", markInteracted);
+    map.on("wheel", markInteracted);
+    map.on("touchstart", markInteracted);
   }, [isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pulse animation loop
@@ -2974,6 +2982,65 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         }
       }
       hotspotSource.setData({ type: "FeatureCollection", features: hotspotFeatures });
+    }
+
+    // Auto-spotlight: fly to the hottest state on first load
+    if (!spotlightedRef.current && !userInteractedRef.current && convergenceScores.size > 0) {
+      spotlightedRef.current = true;
+
+      // Find top state
+      let topAbbr = '';
+      let topScore = -1;
+      for (const [abbr, data] of convergenceScores) {
+        if (data.score > topScore) {
+          topScore = data.score;
+          topAbbr = abbr;
+        }
+      }
+
+      const centroid = centroidsRef.current.get(topAbbr);
+      if (centroid && topScore > 0) {
+        flyingRef.current = true;
+        map.once('moveend', () => { flyingRef.current = false; });
+        map.flyTo({ center: centroid, zoom: 5.5, pitch: 0, bearing: 0, duration: 2000 });
+
+        // Brief spotlight pulse — add a temporary bright overlay on the top state, then fade out
+        const spotlightLayerId = '__spotlight-pulse';
+        if (map.getSource('states') && !map.getLayer(spotlightLayerId)) {
+          const scoreColor = convergenceScoreColor(topScore);
+          map.addLayer({
+            id: spotlightLayerId,
+            type: 'fill',
+            source: 'states',
+            filter: ['==', ['get', 'abbr'], topAbbr],
+            paint: {
+              'fill-color': scoreColor,
+              'fill-opacity': 0.5,
+            },
+          });
+
+          // Fade out over 3 seconds
+          let startTime: number | null = null;
+          const fadeDuration = 3000;
+          const fadeOut = (timestamp: number) => {
+            if (!startTime) startTime = timestamp;
+            const elapsed = timestamp - startTime;
+            const progress = Math.min(elapsed / fadeDuration, 1);
+            const opacity = 0.5 * (1 - progress);
+            const m = mapRef.current;
+            if (m && m.getLayer(spotlightLayerId)) {
+              m.setPaintProperty(spotlightLayerId, 'fill-opacity', opacity);
+              if (progress < 1) {
+                requestAnimationFrame(fadeOut);
+              } else {
+                m.removeLayer(spotlightLayerId);
+              }
+            }
+          };
+          // Start fade after a brief hold
+          setTimeout(() => requestAnimationFrame(fadeOut), 500);
+        }
+      }
     }
   }, [convergenceScores, yesterdayScores]);
 
