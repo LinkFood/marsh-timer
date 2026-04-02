@@ -553,8 +553,37 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
 
   if (top5.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-[11px] font-mono text-white/20 tracking-wide">Loading...</p>
+      <div className="h-full flex flex-col px-3 py-2 space-y-3">
+        {/* Daily brief skeleton */}
+        <div className="space-y-1">
+          <div className="h-2 w-20 bg-white/[0.04] rounded animate-pulse" />
+          <div className="h-3 w-full bg-white/[0.03] rounded animate-pulse" />
+          <div className="h-3 w-3/4 bg-white/[0.03] rounded animate-pulse" />
+        </div>
+        {/* Featured arc skeleton */}
+        <div className="border-l-2 border-white/[0.06] pl-2 space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-8 bg-white/[0.05] rounded animate-pulse" />
+            <div className="h-3 w-16 bg-white/[0.04] rounded animate-pulse" />
+          </div>
+          <div className="h-2.5 w-40 bg-white/[0.03] rounded animate-pulse" />
+        </div>
+        {/* Hottest states skeleton */}
+        <div className="space-y-1">
+          <div className="h-2 w-24 bg-white/[0.04] rounded animate-pulse" />
+          {[1,2,3].map(i => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="h-3 w-6 bg-white/[0.05] rounded animate-pulse" />
+              <div className="flex-1 h-2.5 bg-white/[0.03] rounded animate-pulse" />
+              <div className="h-3 w-6 bg-white/[0.04] rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+        {/* Track record skeleton */}
+        <div className="space-y-1">
+          <div className="h-2 w-20 bg-white/[0.04] rounded animate-pulse" />
+          <div className="h-6 w-16 bg-white/[0.05] rounded animate-pulse" />
+        </div>
       </div>
     );
   }
