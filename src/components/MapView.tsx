@@ -135,19 +135,18 @@ function tempToColor(tempF: number): string {
 }
 
 function convergenceToColor(score: number): string {
-  // Boosted fill — state color IS the data. Score details on hover.
-  if (score >= 90) return 'rgba(220, 38, 38, 0.55)';     // deep red
-  if (score >= 80) return 'rgba(239, 68, 68, 0.45)';     // red
-  if (score >= 75) return 'rgba(249, 115, 22, 0.38)';    // orange-red
-  if (score >= 70) return 'rgba(251, 146, 60, 0.32)';    // orange
-  if (score >= 65) return 'rgba(245, 158, 11, 0.26)';    // amber
-  if (score >= 60) return 'rgba(234, 179, 8, 0.22)';     // yellow
-  if (score >= 55) return 'rgba(132, 204, 22, 0.18)';    // lime
-  if (score >= 50) return 'rgba(34, 197, 94, 0.14)';     // green
-  if (score >= 40) return 'rgba(20, 184, 166, 0.10)';    // teal
-  if (score >= 30) return 'rgba(59, 130, 246, 0.06)';    // blue
-  if (score >= 20) return 'rgba(99, 102, 241, 0.03)';    // indigo
-  return 'rgba(100, 100, 100, 0.01)';                     // nearly invisible
+  // Calibrated for actual score range (30-65 typical, max ~80)
+  // Must be dramatically visible — the fill IS the data
+  if (score >= 70) return 'rgba(220, 38, 38, 0.60)';     // deep red — extreme
+  if (score >= 60) return 'rgba(239, 68, 68, 0.50)';     // red — very hot
+  if (score >= 55) return 'rgba(249, 115, 22, 0.42)';    // orange — hot
+  if (score >= 50) return 'rgba(251, 146, 60, 0.35)';    // amber — elevated
+  if (score >= 45) return 'rgba(245, 158, 11, 0.28)';    // yellow-amber — warm
+  if (score >= 40) return 'rgba(234, 179, 8, 0.22)';     // yellow — moderate
+  if (score >= 35) return 'rgba(132, 204, 22, 0.15)';    // lime — mild
+  if (score >= 30) return 'rgba(34, 197, 94, 0.10)';     // green — low
+  if (score >= 20) return 'rgba(20, 184, 166, 0.05)';    // teal — very low
+  return 'rgba(100, 100, 100, 0.02)';                     // nearly invisible
 }
 
 function convergenceDeltaToColor(delta: number): string {
