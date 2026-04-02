@@ -28,6 +28,7 @@ import BrainReportCard from '@/components/BrainReportCard';
 import RecentGradesFeed from '@/components/RecentGradesFeed';
 import LatestPostMortem from '@/components/LatestPostMortem';
 import DailyBrief from '@/components/DailyBrief';
+import { useMapAction } from '@/contexts/MapActionContext';
 
 interface MurmurationData {
   index: number;
@@ -72,7 +73,15 @@ export default function TerminalLayout({
   children,
 }: TerminalLayoutProps) {
   const { selectedState } = useDeck();
+  const { flyToMap } = useMapAction();
   const isMobile = useIsMobile();
+
+  // Wrap onSelectState to also fly the map — ensures map always flies
+  // regardless of how the parent wires the callback
+  const handleScoreboardSelect = useCallback((abbr: string) => {
+    onSelectState(abbr);
+    flyToMap(abbr);
+  }, [onSelectState, flyToMap]);
 
   const [scoreboardCollapsed, setScoreboardCollapsed] = useState(() => {
     try { return localStorage.getItem('dc-sb-collapsed') === '1'; } catch { return false; }
@@ -192,7 +201,7 @@ export default function TerminalLayout({
               <ConvergenceScoreboard
                 scores={convergenceScores}
                 selectedState={selectedState}
-                onSelectState={(abbr) => { onSelectState(abbr); setMobileTab('detail'); }}
+                onSelectState={(abbr) => { handleScoreboardSelect(abbr); setMobileTab('detail'); }}
                 historyMap={convergenceHistoryMap}
                 arcMap={arcMap}
                 calibrationMap={calibrationMap}
@@ -267,7 +276,7 @@ export default function TerminalLayout({
             <ConvergenceScoreboard
               scores={convergenceScores}
               selectedState={selectedState}
-              onSelectState={onSelectState}
+              onSelectState={handleScoreboardSelect}
               historyMap={convergenceHistoryMap}
               arcMap={arcMap}
               calibrationMap={calibrationMap}

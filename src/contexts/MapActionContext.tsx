@@ -4,6 +4,8 @@ type MapMode = 'default' | 'scout' | 'weather' | 'terrain' | 'intel';
 
 interface MapActionContextValue {
   flyTo: (abbr: string) => void;
+  /** Pure map-only flyTo — moves the camera without selecting state or navigating */
+  flyToMap: (abbr: string) => void;
   flyToCoords: (lng: number, lat: number, zoom?: number) => void;
   setMapMode: (mode: MapMode) => void;
 }
@@ -19,13 +21,14 @@ export function useMapAction() {
 interface MapActionProviderProps {
   children: ReactNode;
   flyTo: (abbr: string) => void;
+  flyToMap: (abbr: string) => void;
   flyToCoords: (lng: number, lat: number, zoom?: number) => void;
   setMapMode: (mode: MapMode) => void;
 }
 
-export function MapActionProvider({ children, flyTo, flyToCoords, setMapMode }: MapActionProviderProps) {
+export function MapActionProvider({ children, flyTo, flyToMap, flyToCoords, setMapMode }: MapActionProviderProps) {
   return (
-    <MapActionContext.Provider value={{ flyTo, flyToCoords, setMapMode }}>
+    <MapActionContext.Provider value={{ flyTo, flyToMap, flyToCoords, setMapMode }}>
       {children}
     </MapActionContext.Provider>
   );

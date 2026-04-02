@@ -162,11 +162,15 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
     navigate(`/${s}`, { replace: true });
   }, [navigate]);
 
+  const flyToState = useCallback((abbr: string) => {
+    mapRef.current?.flyTo(abbr);
+  }, []);
+
   const handleSelectState = useCallback((abbr: string) => {
     setSelectedState(abbr);
     navigate(legacyLayout ? `/${species}/${abbr}` : `/${abbr}`, { replace: true });
-    mapRef.current?.flyTo(abbr);
-  }, [navigate, species, legacyLayout]);
+    flyToState(abbr);
+  }, [navigate, species, legacyLayout, flyToState]);
 
   const handleDrillUp = useCallback(() => {
     if (selectedState) {
@@ -204,6 +208,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
       <LayerProvider>
         <MapActionProvider
           flyTo={handleSelectState}
+          flyToMap={flyToState}
           flyToCoords={(lng, lat, zoom) => mapRef.current?.flyToCoords(lng, lat, zoom)}
           setMapMode={() => {}}
         >
