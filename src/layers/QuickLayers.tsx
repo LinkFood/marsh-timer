@@ -5,6 +5,9 @@ import { LAYER_PRESETS } from '@/layers/LayerRegistry';
  * Quick-toggle layer pills rendered below the map.
  * Each button either toggles a single layer or applies a preset.
  * Provides one-click discoverability without opening the full LayerPicker.
+ *
+ * FUSION button overlays weather + birdcast simultaneously —
+ * the overlap IS the pattern (where weather pushes birds).
  */
 
 interface QuickButton {
@@ -22,17 +25,27 @@ const QUICK_BUTTONS: QuickButton[] = [
   { label: 'Scores', layerId: 'convergence-scores' },
 ];
 
+/** All layers that FUSION activates: full weather preset + birdcast */
+const WEATHER_PRESET = LAYER_PRESETS.find(p => p.id === 'weather');
+const FUSION_LAYERS = [...(WEATHER_PRESET?.layers ?? []), 'birdcast'];
+
 export default function QuickLayers() {
-  const { isLayerOn, toggleLayer, applyPreset, activeLayers } = useLayerContext();
+  const { isLayerOn, toggleLayer, setLayer, applyPreset, activeLayers } = useLayerContext();
+
+  /** Whether every fusion layer is currently active */
+  const fusionActive = FUSION_LAYERS.every(id => activeLayers.has(id));
+
+  /** Whether both weather preset AND birdcast are on (regardless of how they got there) */
+  const isFusionMode = WEATHER_PRESET
+    ? WEATHER_PRESET.layers.every(id => activeLayers.has(id)) && activeLayers.has('birdcast')
+    : false;
 
   function handleClick(btn: QuickButton) {
     if (btn.presetId) {
       const preset = LAYER_PRESETS.find(p => p.id === btn.presetId);
       if (preset) {
-        // If all preset layers are already on, reset to defaults by toggling them off
         const allOn = preset.layers.every(id => activeLayers.has(id));
         if (allOn) {
-          // Turn off the preset-specific layers (leave others alone)
           for (const id of preset.layers) {
             if (activeLayers.has(id)) toggleLayer(id);
           }
@@ -44,6 +57,20 @@ export default function QuickLayers() {
     }
     if (btn.layerId) {
       toggleLayer(btn.layerId);
+    }
+  }
+
+  function handleFusionClick() {
+    if (fusionActive) {
+      // Turn everything off
+      for (const id of FUSION_LAYERS) {
+        setLayer(id, false);
+      }
+    } else {
+      // Turn everything on (additive — keeps other layers intact)
+      for (const id of FUSION_LAYERS) {
+        setLayer(id, true);
+      }
     }
   }
 
@@ -75,6 +102,25 @@ export default function QuickLayers() {
           </button>
         );
       })}
+
+      {/* Fusion toggle — weather + birdcast overlaid */}
+      <button
+        onClick={handleFusionClick}
+        className={`px-2 py-0.5 rounded-full text-[8px] font-mono uppercase tracking-wider transition-all ${
+          fusionActive
+            ? 'bg-gradient-to-r from-purple-500/25 to-amber-500/25 text-amber-300 border border-amber-400/40 shadow-[0_0_6px_rgba(251,191,36,0.15)]'
+            : 'bg-white/[0.04] text-white/35 border border-purple-400/20 hover:bg-purple-500/10 hover:text-purple-300/70 hover:border-purple-400/30'
+        }`}
+      >
+        Fusion
+      </button>
+
+      {/* Fusion mode indicator — visible when both weather + birdcast are on */}
+      {isFusionMode && (
+        <span className="ml-auto text-[7px] font-mono uppercase tracking-widest text-amber-400/60 animate-pulse select-none">
+          Fusion Mode
+        </span>
+      )}
     </div>
   );
 }
