@@ -360,6 +360,102 @@ const ACT_COLORS: Record<string, string> = {
   grade: '#22c55e',
 };
 
+function HeroArc({ arcs, scores, onSelectState }: { arcs: StateArc[]; scores: Map<string, ConvergenceScore>; onSelectState: (abbr: string) => void }) {
+  const hero = useMemo(() => {
+    const outcomes = arcs.filter(a => a.current_act === 'outcome' && a.outcome_deadline);
+    if (outcomes.length > 0) {
+      return outcomes.sort((a, b) =>
+        new Date(a.outcome_deadline!).getTime() - new Date(b.outcome_deadline!).getTime()
+      )[0];
+    }
+    const recognitions = arcs.filter(a => a.current_act === 'recognition');
+    if (recognitions.length > 0) {
+      return recognitions.sort((a, b) => {
+        const sa = scores.get(a.state_abbr)?.score || 0;
+        const sb = scores.get(b.state_abbr)?.score || 0;
+        return sb - sa;
+      })[0];
+    }
+    return null;
+  }, [arcs, scores]);
+
+  if (!hero) return null;
+
+  const actColor = ACT_COLORS[hero.current_act] || '#6b7280';
+  const claim = (hero.recognition_claim as any)?.claim as string | undefined;
+  const expectedSignals = (hero.recognition_claim as any)?.expected_signals as string[] | undefined;
+  const domains = (hero.buildup_signals as any)?.domains as string[] | undefined;
+  const outcomeSignals = Array.isArray(hero.outcome_signals) ? hero.outcome_signals : [];
+  const expectedCount = expectedSignals?.length || 3;
+  const foundCount = outcomeSignals.length;
+
+  let countdown: string | null = null;
+  if (hero.current_act === 'outcome' && hero.outcome_deadline) {
+    const diff = new Date(hero.outcome_deadline).getTime() - Date.now();
+    if (diff <= 0) {
+      countdown = 'OVERDUE';
+    } else {
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      countdown = days > 0 ? `${days}d ${hours}h remaining` : `${hours}h remaining`;
+    }
+  }
+
+  return (
+    <button
+      onClick={() => onSelectState(hero.state_abbr)}
+      className="shrink-0 w-full text-left px-3 py-2 border-b border-white/[0.06] hover:bg-white/[0.03] transition-colors"
+      style={{ borderLeft: `3px solid ${actColor}` }}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Featured Arc</span>
+      </div>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm font-mono font-bold text-white/80">{hero.state_abbr}</span>
+        <span
+          className="text-[7px] font-mono uppercase tracking-wider px-1 py-px rounded"
+          style={{ color: actColor, backgroundColor: `${actColor}20` }}
+        >
+          {hero.current_act}
+        </span>
+        {countdown && (
+          <span className={`text-[8px] font-mono ml-auto ${countdown === 'OVERDUE' ? 'text-red-400' : 'text-amber-400/70'}`}>
+            {countdown}
+          </span>
+        )}
+      </div>
+
+      {claim && (
+        <p className="text-[9px] font-mono text-white/40 leading-relaxed mb-1 line-clamp-2">
+          {claim}
+        </p>
+      )}
+
+      {!claim && domains && domains.length > 0 && (
+        <p className="text-[9px] font-mono text-white/40 leading-relaxed mb-1">
+          {domains.length} domains converging in {hero.state_abbr}.
+          {expectedSignals && ` Expected: ${expectedSignals.join(', ')}`}
+        </p>
+      )}
+
+      {hero.current_act === 'outcome' && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[8px] font-mono text-white/25">{foundCount}/{expectedCount} signals</span>
+          <div className="flex gap-0.5">
+            {Array.from({ length: expectedCount }).map((_, i) => (
+              <div
+                key={i}
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: i < foundCount ? '#22c55e' : '#ffffff15' }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </button>
+  );
+}
+
 function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string, ConvergenceScore>; arcs: StateArc[]; onSelectState: (abbr: string) => void }) {
   const top5 = useMemo(() => {
     const sorted = Array.from(scores.values()).sort((a, b) => b.score - a.score);
@@ -382,6 +478,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
   return (
     <div className="h-full flex flex-col">
       <DailyBrief scores={scores} arcs={arcs} />
+      <HeroArc arcs={arcs} scores={scores} onSelectState={onSelectState} />
       <div className="px-3 py-2 border-b border-white/[0.06]">
         <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
       </div>
