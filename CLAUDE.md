@@ -38,14 +38,16 @@ Every piece of intelligence follows this arc:
 
 Every piece of data that enters the system MUST be embedded via Voyage AI (voyage-3-lite, 512-dim) → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
 
-### Brain State (as of 2026-03-30)
+### Brain State (as of 2026-04-02)
 
 - **3,200,000+** entries in hunt_knowledge
-- **60+** content types (including air-quality, soil-conditions, river-discharge, ocean-buoy, space-weather, wildfire-perimeter)
-- **50** states tracked
-- **88 crons** (45/48 healthy), growing via crons + event-driven convergence scans
-- **66 arcs** — synthesis agent live, narrator generating narratives, grading loop producing real results
-- **Self-grading loop** active — confirmed grades with full post-mortem reasoning being generated
+- **60+** content types, **43** types active
+- **50** states tracked, **50/50** convergence scoring daily
+- **88 crons** (39/41 healthy — weather-realtime and brain-synthesizer intermittent)
+- **44 arcs** — 8 recognitions, 33 outcomes, 3 graded
+- **Self-grading loop** active — **29 graded, 100% confirmed accuracy** with Opus post-mortem reasoning
+- **API cost** ~$2-3/day (~$60-90/month) after convergence-scan throttle (Haiku for 3-4 domains, dedup)
+- **No auth wall** — terminal visible without sign-in
 - **Compound index** on (content_type, created_at DESC) — content_type queries <3s on 3.2M rows
 
 ### 8-Component Convergence Scoring
