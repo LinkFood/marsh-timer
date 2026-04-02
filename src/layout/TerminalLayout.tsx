@@ -25,6 +25,7 @@ import { useTrackRecord } from '@/hooks/useTrackRecord';
 import BrainReportCard from '@/components/BrainReportCard';
 import RecentGradesFeed from '@/components/RecentGradesFeed';
 import LatestPostMortem from '@/components/LatestPostMortem';
+import DailyBrief from '@/components/DailyBrief';
 
 interface MurmurationData {
   index: number;
@@ -279,6 +280,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
 
   return (
     <div className="h-full flex flex-col">
+      <DailyBrief scores={scores} arcs={arcs} />
       <div className="px-3 py-2 border-b border-white/[0.06]">
         <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
       </div>
