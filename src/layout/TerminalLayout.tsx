@@ -21,6 +21,10 @@ import { useDataSourceHealth } from '@/hooks/useDataSourceHealth';
 import { useDeck } from '@/contexts/DeckContext';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
+import { useTrackRecord } from '@/hooks/useTrackRecord';
+import BrainReportCard from '@/components/BrainReportCard';
+import RecentGradesFeed from '@/components/RecentGradesFeed';
+import LatestPostMortem from '@/components/LatestPostMortem';
 
 interface MurmurationData {
   index: number;
@@ -278,7 +282,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
       <div className="px-3 py-2 border-b border-white/[0.06]">
         <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {top5.map(s => {
           const tierColor = s.score >= 80 ? 'text-red-400' : s.score >= 50 ? 'text-amber-400' : 'text-white/50';
           const actColor = s.arc ? ACT_COLORS[s.arc.current_act] || '#6b7280' : undefined;
@@ -332,6 +336,11 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
         })}
       </div>
 
+      {/* Brain intelligence sections */}
+      <BrainReportCard />
+      <LatestPostMortem arcs={arcs} />
+      <RecentGradesFeed />
+
       {/* Brain Vitals + Data Freshness */}
       <BrainVitals />
 
@@ -348,6 +357,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
 function BrainVitals() {
   const { data: opsData } = useOpsData();
   const { sources } = useDataSourceHealth();
+  const { totalGraded, bySource } = useTrackRecord();
 
   const brain = opsData?.brain;
   const crons = opsData?.crons;
@@ -372,6 +382,14 @@ function BrainVitals() {
         <div className="text-[9px] font-mono text-white/35">
           {brain.total.toLocaleString()} entries · <span className="text-emerald-400/50">+{brain.growth_today.toLocaleString()}</span> today · {brain.content_types?.length || '?'} types
         </div>
+        {totalGraded > 0 && (() => {
+          const acc = bySource.length > 0 ? Math.round(bySource.reduce((s, src) => s + src.accuracy * src.total, 0) / bySource.reduce((s, src) => s + src.total, 0)) : 0;
+          return (
+            <div className="text-[9px] font-mono text-white/25">
+              ACCURACY <span style={{ color: acc >= 60 ? '#22c55e' : '#f59e0b' }}>{acc}%</span> · {totalGraded} graded
+            </div>
+          );
+        })()}
         <div className="text-[9px] font-mono text-white/25">
           <span style={{ color: cronColor }}>CRONS {crons?.healthy_count || 0}/{(crons?.healthy_count || 0) + (crons?.error_count || 0) + (crons?.late_count || 0)}</span>
           {crons?.error_count ? <span className="text-red-400/50 ml-2">{crons.error_count} errors</span> : null}

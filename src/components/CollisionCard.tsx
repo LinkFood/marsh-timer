@@ -54,8 +54,8 @@ export default function CollisionCard({ entry }: Props) {
   return (
     <button
       onClick={() => hasDetail && setExpanded(e => !e)}
-      className="w-full text-left px-2 py-1.5 transition-colors hover:bg-white/[0.02]"
-      style={{ borderLeft: `2px solid ${borderColor}` }}
+      className={`w-full text-left px-2 py-1.5 transition-colors ${entry.severity === 'high' ? 'hover:bg-white/[0.04] bg-white/[0.01]' : 'hover:bg-white/[0.02]'}`}
+      style={{ borderLeft: `${entry.severity === 'high' ? 3 : entry.severity === 'low' ? 1 : 2}px solid ${borderColor}` }}
     >
       {/* Compact row */}
       <div className="flex items-center gap-1.5 min-w-0">
@@ -73,9 +73,43 @@ export default function CollisionCard({ entry }: Props) {
             {entry.stateAbbr}
           </span>
         )}
-        <span className="text-[10px] font-mono text-white/45 truncate min-w-0">
+        {/* Inline grade badge for GRADE entries */}
+        {(entry.type === 'grade-reasoning' || entry.type === 'arc-fingerprint') && entry.detail && (() => {
+          const d = entry.detail.toLowerCase();
+          const g = d.includes('confirmed') ? { label: 'CONFIRMED', color: '#22c55e' }
+            : d.includes('missed') ? { label: 'MISSED', color: '#ef4444' }
+            : d.includes('false') ? { label: 'FALSE ALARM', color: '#ef4444' }
+            : d.includes('partial') ? { label: 'PARTIAL', color: '#f59e0b' }
+            : null;
+          return g ? (
+            <span className="text-[7px] font-mono px-1 py-px rounded shrink-0" style={{ color: g.color, backgroundColor: `${g.color}15` }}>
+              {g.label}
+            </span>
+          ) : null;
+        })()}
+        <span className={`text-[10px] font-mono truncate min-w-0 ${entry.severity === 'high' ? 'text-white/55' : 'text-white/45'}`}>
           {entry.title}
         </span>
+        {/* Inline domain dots for compound-risk */}
+        {entry.type === 'compound-risk' && entry.domains && entry.domains.length > 0 && (
+          <div className="flex items-center gap-px shrink-0 ml-0.5">
+            {entry.domains.slice(0, 5).map(d => (
+              <div key={d} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: DOMAIN_COLORS[d] || '#6b7280' }} title={d} />
+            ))}
+          </div>
+        )}
+        {/* Similarity badge for correlations */}
+        {entry.type === 'correlation' && entry.similarity != null && (
+          <span className="text-[7px] font-mono text-purple-400/60 shrink-0 ml-0.5">
+            {Math.round(entry.similarity * 100)}%
+          </span>
+        )}
+        {/* Z-score badge for anomalies */}
+        {entry.type === 'anomaly' && entry.zScore != null && (
+          <span className={`text-[7px] font-mono shrink-0 ml-0.5 ${Math.abs(entry.zScore) >= 3 ? 'text-red-400/60' : 'text-amber-400/40'}`}>
+            {Math.abs(entry.zScore).toFixed(1)}σ
+          </span>
+        )}
       </div>
 
       {/* Expanded detail */}
