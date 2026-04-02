@@ -97,7 +97,7 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
     return (
       <div className="h-full flex flex-col bg-[#0a0f1a] border-r border-white/[0.06]">
         <div className="px-3 py-2 border-b border-white/[0.06]">
-          <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Convergence</h2>
+          <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40" title="How many environmental signals are aligning in each state right now">Convergence</h2>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-[10px] font-mono text-white/20 animate-pulse">Loading scores...</div>
@@ -110,7 +110,7 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
     <div className="h-full flex flex-col bg-[#0a0f1a] border-r border-white/[0.06]">
       {/* Header */}
       <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
-        <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+        <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40" title="How many environmental signals are aligning in each state right now">
           {timelapseActive && availableDates[timelapseIndex]
             ? <>Convergence <span className="text-cyan-400/60">{new Date(availableDates[timelapseIndex] + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></>
             : 'Convergence'}

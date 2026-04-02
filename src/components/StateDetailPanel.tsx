@@ -177,16 +177,23 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
             return parts.join(' -- ');
           };
 
-          const phaseData: { key: typeof acts[number]; label: string; summary: string | null; date: string }[] = [
-            { key: 'buildup', label: 'BUILDUP', summary: buildSummary(), date: formatDate(arc.opened_at) },
-            { key: 'recognition', label: 'RECOGNITION', summary: recogSummary(), date: actIndex >= 1 ? formatDate(arc.act_started_at) : '' },
-            { key: 'outcome', label: 'OUTCOME', summary: outcomeSummary(), date: actIndex >= 2 ? formatDate(arc.act_started_at) : '' },
-            { key: 'grade', label: 'GRADE', summary: gradeSummary(), date: actIndex >= 3 ? formatDate(arc.act_started_at) : '' },
+          const phaseTooltips: Record<string, string> = {
+            BUILDUP: 'Signals are accumulating across domains',
+            RECOGNITION: 'Brain identified a pattern and made a claim',
+            OUTCOME: 'Watching for predicted signals before deadline',
+            GRADE: 'Brain scored its own prediction accuracy',
+          };
+
+          const phaseData: { key: typeof acts[number]; label: string; summary: string | null; date: string; tooltip: string }[] = [
+            { key: 'buildup', label: 'BUILDUP', summary: buildSummary(), date: formatDate(arc.opened_at), tooltip: phaseTooltips.BUILDUP },
+            { key: 'recognition', label: 'RECOGNITION', summary: recogSummary(), date: actIndex >= 1 ? formatDate(arc.act_started_at) : '', tooltip: phaseTooltips.RECOGNITION },
+            { key: 'outcome', label: 'OUTCOME', summary: outcomeSummary(), date: actIndex >= 2 ? formatDate(arc.act_started_at) : '', tooltip: phaseTooltips.OUTCOME },
+            { key: 'grade', label: 'GRADE', summary: gradeSummary(), date: actIndex >= 3 ? formatDate(arc.act_started_at) : '', tooltip: phaseTooltips.GRADE },
           ];
 
           return (
             <div>
-              <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5">Arc Journey</div>
+              <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5" title="The story of how the brain investigated this state">Arc Journey</div>
               <div className="space-y-0">
                 {phaseData.map((phase, i) => {
                   const isCurrent = arc.current_act === phase.key;
@@ -217,6 +224,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
                           <span
                             className="text-[9px] font-mono font-bold tracking-wider"
                             style={{ color: isFuture ? 'rgba(255,255,255,0.15)' : isCurrent ? color : 'rgba(255,255,255,0.3)' }}
+                            title={phase.tooltip}
                           >
                             {phase.label}
                           </span>
@@ -248,7 +256,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
         {/* 8-Component Grid */}
         {score && (
           <div>
-            <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5">Components</div>
+            <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5" title="The 8 environmental domains being tracked">Components</div>
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
               {DOMAINS.map(d => {
                 const val = score[d.key] || 0;
@@ -371,7 +379,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
         {/* Historical Odds */}
         {calibrationByState && (
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Track Record</span>
+            <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest" title="How accurate the brain's predictions have been">Track Record</span>
             {(() => {
               const cal = calibrationByState.find(s => s.state_abbr === state);
               if (!cal || cal.total_alerts === 0) return <span className="text-[9px] font-mono text-white/15 italic">Learning... (0 graded)</span>;

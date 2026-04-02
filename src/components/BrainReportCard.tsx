@@ -13,7 +13,7 @@ export default function BrainReportCard() {
 
   return (
     <div className="shrink-0 border-t border-white/[0.06] px-3 py-2">
-      <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5">Track Record</div>
+      <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5" title="How accurate the brain's predictions have been">Track Record</div>
       <div className="flex items-center gap-3 mb-2">
         <span className="text-2xl font-mono font-bold" style={{ color: accColor }}>
           {overallAccuracy}%

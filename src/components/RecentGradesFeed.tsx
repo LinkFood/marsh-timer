@@ -24,7 +24,7 @@ export default function RecentGradesFeed() {
 
   return (
     <div className="shrink-0 border-t border-white/[0.06] px-3 py-2">
-      <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5">Recent Grades</div>
+      <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5" title="The brain grades its own predictions after they play out">Recent Grades</div>
       <div className="space-y-0.5">
         {recentGrades.slice(0, 6).map((g, i) => {
           const icon = GRADE_ICONS[g.outcome_grade] || GRADE_ICONS.missed;

@@ -7,11 +7,11 @@ import CollisionCard from '@/components/CollisionCard';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-const FILTERS: { key: CollisionFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'connections', label: 'Connections' },
-  { key: 'alerts', label: 'Alerts' },
-  { key: 'grades', label: 'Grades' },
+const FILTERS: { key: CollisionFilter; label: string; tooltip: string }[] = [
+  { key: 'all', label: 'All', tooltip: 'Everything the brain detected' },
+  { key: 'connections', label: 'Connections', tooltip: 'Cross-domain pattern correlations' },
+  { key: 'alerts', label: 'Alerts', tooltip: 'Anomalies and score spikes' },
+  { key: 'grades', label: 'Grades', tooltip: 'Prediction results and post-mortems' },
 ];
 
 // Fetch discoveries + environmental data directly (they get buried by signal_weight sort in useBrainJournal)
@@ -97,6 +97,7 @@ export default function CollisionFeed({ convergenceAlerts, stateFilter = null, o
             <button
               key={f.key}
               onClick={() => setActiveFilter(f.key)}
+              title={f.tooltip}
               className={`px-1.5 py-0.5 rounded text-[8px] font-mono uppercase tracking-wider transition-colors ${
                 isActive
                   ? 'bg-white/[0.08] text-white/60'

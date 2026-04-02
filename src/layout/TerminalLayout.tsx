@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { GripHorizontal } from 'lucide-react';
+import { GripHorizontal, Keyboard } from 'lucide-react';
 import type { ConvergenceAlert } from '@/hooks/useConvergenceAlerts';
 import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
@@ -19,16 +19,19 @@ import CollisionFeed from '@/components/CollisionFeed';
 import { useOpsData } from '@/hooks/useOpsData';
 import { useDataSourceHealth } from '@/hooks/useDataSourceHealth';
 import { useDeck } from '@/contexts/DeckContext';
+import { useLayerContext } from '@/contexts/LayerContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
-import QuickLayers from '@/layers/QuickLayers';
+import QuickLayers, { useFusionToggle } from '@/layers/QuickLayers';
 import { useTrackRecord } from '@/hooks/useTrackRecord';
 import BrainReportCard from '@/components/BrainReportCard';
 import RecentGradesFeed from '@/components/RecentGradesFeed';
 import LatestPostMortem from '@/components/LatestPostMortem';
 import DailyBrief from '@/components/DailyBrief';
 import { useMapAction } from '@/contexts/MapActionContext';
+import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+import { LAYER_PRESETS } from '@/layers/LayerRegistry';
 
 interface MurmurationData {
   index: number;
@@ -441,7 +444,7 @@ function HeroArc({ arcs, scores, onSelectState }: { arcs: StateArc[]; scores: Ma
       style={{ borderLeft: `3px solid ${actColor}` }}
     >
       <div className="flex items-center gap-2 mb-1">
-        <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Featured Arc</span>
+        <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest" title="The brain's most active investigation right now">Featured Arc</span>
       </div>
       <div className="flex items-center gap-2 mb-1">
         <span className="text-sm font-mono font-bold text-white/80">{hero.state_abbr}</span>
@@ -513,7 +516,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
       <DailyBrief scores={scores} arcs={arcs} />
       <HeroArc arcs={arcs} scores={scores} onSelectState={onSelectState} />
       <div className="px-3 py-2 border-b border-white/[0.06]">
-        <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
+        <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest" title="States with the most environmental convergence activity">Hottest States</span>
       </div>
       <div>
         {top5.map(s => {
