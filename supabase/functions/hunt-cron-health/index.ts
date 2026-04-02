@@ -22,7 +22,6 @@ serve(async (req) => {
       'hunt-alert-grader', 'hunt-alert-calibration', 'hunt-solunar-precompute',
       'hunt-absence-detector', 'hunt-disaster-watch',
       'hunt-convergence-scan', 'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
-      'hunt-convergence-alerts-pm',
       'hunt-birdweather', 'hunt-snow-cover', 'hunt-snotel',
       'hunt-gbif', 'hunt-multi-species', 'hunt-search-trends',
       'hunt-query-signal', 'hunt-power-outage',
@@ -102,7 +101,7 @@ serve(async (req) => {
       { name: 'hunt-usfws-survey', schedule: 'monthly 1st 6am', critical: false },
       { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
       { name: 'hunt-inaturalist', schedule: 'weekly Wed 11am', critical: false },
-      { name: 'hunt-convergence-alerts-pm', schedule: 'daily 4pm', critical: false },
+      // hunt-convergence-alerts-pm removed — logs as 'hunt-convergence-alerts' (same function, AM+PM runs)
     ];
 
     const health = expected.map(cron => {
