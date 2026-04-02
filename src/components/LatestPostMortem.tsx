@@ -30,6 +30,7 @@ interface PostMortemArc {
 
 export default function LatestPostMortem() {
   const [latest, setLatest] = useState<PostMortemArc | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -56,16 +57,22 @@ export default function LatestPostMortem() {
   if (!latest) return null;
 
   const gradeConfig = GRADE_CONFIG[latest.grade] || GRADE_CONFIG.missed;
-  const reasoning = latest.grade_reasoning
+  const reasoningFull = latest.grade_reasoning
     .replace(/^#.*$/gm, '')
     .replace(/\*\*/g, '')
     .replace(/\|/g, ' ')
     .replace(/---/g, '')
-    .trim()
-    .slice(0, 250);
+    .trim();
+  const reasoning = expanded ? reasoningFull : reasoningFull.slice(0, 250);
 
   return (
-    <div className="shrink-0 border-t border-white/[0.06] px-3 py-2">
+    <div
+      className="shrink-0 border-t border-white/[0.06] px-3 py-2 cursor-pointer hover:bg-white/[0.02] transition-colors"
+      onClick={() => setExpanded(e => !e)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
+    >
       <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5">Latest Post-Mortem</div>
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
@@ -79,7 +86,7 @@ export default function LatestPostMortem() {
         </div>
         <span className="text-[8px] font-mono text-white/15">{timeAgo(latest.updated_at)}</span>
       </div>
-      <p className="text-[9px] font-mono text-white/25 leading-relaxed italic line-clamp-3">
+      <p className={`text-[9px] font-mono text-white/25 leading-relaxed italic${expanded ? '' : ' line-clamp-3'}`}>
         {reasoning}
       </p>
       {latest.precedent_accuracy != null && (
@@ -93,6 +100,9 @@ export default function LatestPostMortem() {
           </span>
         </div>
       )}
+      <div className="text-[8px] font-mono text-white/20 text-center mt-1.5 select-none">
+        {expanded ? 'show less \u25B4' : 'show more \u25BE'}
+      </div>
     </div>
   );
 }
