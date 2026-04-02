@@ -74,9 +74,10 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'nws-alert-outline': new Set(['weather', 'intel']),
   'nws-alert-labels': new Set(['weather', 'intel']),
   // Intel — convergence + migration
-  'convergence-score-bg': new Set(['intel']),
-  'convergence-score-label': new Set(['intel']),
-  'convergence-forming-label': new Set(['intel']),
+  'convergence-score-bg': new Set([]),
+  'convergence-score-label': new Set([]),
+  'convergence-forming-label': new Set([]),
+  'state-abbr-labels': new Set(['default', 'scout', 'weather', 'terrain', 'intel']),
   'convergence-pulse': new Set(['intel']),
   'migration-front-glow': new Set(),
   'migration-front-line': new Set(),
@@ -111,6 +112,8 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'buoy-labels': new Set(['default', 'weather', 'intel']),
   // Arc phase state outlines
   'arc-phase-outline': new Set(['default', 'intel']),
+  // BirdCast migration intensity (toggle-only)
+  'birdcast-fill': new Set(),
 };
 
 function tempToColor(tempF: number): string {
@@ -126,19 +129,19 @@ function tempToColor(tempF: number): string {
 }
 
 function convergenceToColor(score: number): string {
-  // Subtle tint — let the map breathe. Only high scores pop.
-  if (score >= 90) return 'rgba(220, 38, 38, 0.35)';     // deep red
-  if (score >= 80) return 'rgba(239, 68, 68, 0.30)';     // red
-  if (score >= 75) return 'rgba(249, 115, 22, 0.25)';    // orange-red
-  if (score >= 70) return 'rgba(251, 146, 60, 0.22)';    // orange
-  if (score >= 65) return 'rgba(245, 158, 11, 0.18)';    // amber
-  if (score >= 60) return 'rgba(234, 179, 8, 0.15)';     // yellow
-  if (score >= 55) return 'rgba(132, 204, 22, 0.12)';    // lime
-  if (score >= 50) return 'rgba(34, 197, 94, 0.10)';     // green
-  if (score >= 40) return 'rgba(20, 184, 166, 0.08)';    // teal
+  // Boosted fill — state color IS the data. Score details on hover.
+  if (score >= 90) return 'rgba(220, 38, 38, 0.55)';     // deep red
+  if (score >= 80) return 'rgba(239, 68, 68, 0.45)';     // red
+  if (score >= 75) return 'rgba(249, 115, 22, 0.38)';    // orange-red
+  if (score >= 70) return 'rgba(251, 146, 60, 0.32)';    // orange
+  if (score >= 65) return 'rgba(245, 158, 11, 0.26)';    // amber
+  if (score >= 60) return 'rgba(234, 179, 8, 0.22)';     // yellow
+  if (score >= 55) return 'rgba(132, 204, 22, 0.18)';    // lime
+  if (score >= 50) return 'rgba(34, 197, 94, 0.14)';     // green
+  if (score >= 40) return 'rgba(20, 184, 166, 0.10)';    // teal
   if (score >= 30) return 'rgba(59, 130, 246, 0.06)';    // blue
-  if (score >= 20) return 'rgba(99, 102, 241, 0.04)';    // indigo
-  return 'rgba(100, 100, 100, 0.02)';                     // nearly invisible
+  if (score >= 20) return 'rgba(99, 102, 241, 0.03)';    // indigo
+  return 'rgba(100, 100, 100, 0.01)';                     // nearly invisible
 }
 
 function convergenceScoreColor(score: number): string {
@@ -555,6 +558,20 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "fill-opacity": 0.5,
           },
         });
+      }
+
+      // BirdCast migration intensity fill (blue overlay, toggle-only)
+      if (!map.getLayer("birdcast-fill")) {
+        map.addLayer({
+          id: "birdcast-fill",
+          type: "fill",
+          source: "states",
+          layout: { visibility: 'none' },
+          paint: {
+            "fill-color": "rgba(59, 130, 246, 0.2)",
+            "fill-opacity": 0.7,
+          },
+        }, "states-fill");
       }
 
       // States 3D extrusion (convergence scores rise off the map)
@@ -1450,7 +1467,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "icon-image": "score-pill",
             "icon-allow-overlap": true,
             "icon-offset": [0, -18],
-            visibility: mapMode === 'intel' ? 'visible' : 'none',
+            visibility: 'none',
           },
         });
       }
@@ -1481,7 +1498,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             ],
             "text-allow-overlap": true,
             "text-offset": [0, -1.5],
-            visibility: mapMode === 'intel' ? 'visible' : 'none',
+            visibility: 'none',
           },
           paint: {
             "text-color": [
@@ -2833,6 +2850,25 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     } else if (map.getLayer("states-fill")) {
       map.setPaintProperty("states-fill", "fill-color", buildSatelliteFillExpression(visualSpecies, selectedState));
       map.setPaintProperty("states-fill", "fill-opacity", 0.85);
+    }
+
+    // BirdCast migration intensity fill — blue per-state based on birdcast_component
+    if (map.getLayer('birdcast-fill') && convergenceScores && convergenceScores.size > 0) {
+      const bcEntries: string[] = [];
+      for (const [abbr, data] of convergenceScores) {
+        const bc = data.birdcast_component || 0;
+        const maxBc = 20;
+        const intensity = bc / maxBc;
+        const alpha = intensity > 0.5 ? 0.35 : intensity > 0.2 ? 0.2 : intensity > 0 ? 0.08 : 0;
+        bcEntries.push(abbr, `rgba(59, 130, 246, ${alpha})`);
+      }
+      if (bcEntries.length > 0) {
+        map.setPaintProperty('birdcast-fill', 'fill-color', [
+          'match', ['get', 'abbr'],
+          ...bcEntries,
+          'rgba(59, 130, 246, 0)',
+        ] as mapboxgl.Expression);
+      }
     }
 
     // State outlines — stronger in data modes, visible in default

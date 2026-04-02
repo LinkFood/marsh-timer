@@ -19,6 +19,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'flyway-flow', label: 'Flyway Flow', category: 'migration', mapboxLayers: ['flyway-flow-lines'] },
   { id: 'migration-front', label: 'Migration Front', category: 'migration', mapboxLayers: ['migration-front-line', 'migration-front-label', 'migration-front-glow'] },
   { id: 'du-pins', label: 'DU Pins', category: 'migration', mapboxLayers: ['du-pins-dots', 'du-pins-clusters', 'du-pins-cluster-count'] },
+  { id: 'birdcast', label: 'BirdCast', category: 'migration', description: 'Radar migration intensity by state', mapboxLayers: ['birdcast-fill'] },
 
   // === Weather ===
   { id: 'radar', label: 'Radar', category: 'weather', mapboxLayers: ['radar-overlay'] },
@@ -31,7 +32,9 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'temperature', label: 'Temperature', category: 'weather', mapboxLayers: ['temp-tiles-overlay'] },
 
   // === Intelligence ===
-  { id: 'convergence-heatmap', label: 'Convergence Heatmap', category: 'intelligence', mapboxLayers: ['convergence-score-bg', 'convergence-score-label', 'convergence-forming-label', 'states-extrusion'], defaultOn: true },
+  { id: 'convergence-heatmap', label: 'Convergence Heatmap', category: 'intelligence', mapboxLayers: ['states-extrusion'], defaultOn: true },
+  { id: 'convergence-scores', label: 'Score Labels', category: 'intelligence', mapboxLayers: ['convergence-score-bg', 'convergence-score-label', 'convergence-forming-label'] },
+  { id: 'state-abbr-labels', label: 'State Labels', category: 'intelligence', mapboxLayers: ['state-abbr-labels'], defaultOn: true },
   { id: 'convergence-pulse', label: 'Convergence Pulse', category: 'intelligence', mapboxLayers: ['convergence-pulse'], defaultOn: true },
   { id: 'perfect-storm', label: 'Perfect Storm', category: 'intelligence', mapboxLayers: ['perfect-storm-glow', 'perfect-storm-ring'], defaultOn: true },
   { id: 'arc-phase', label: 'Arc Phase', category: 'intelligence', description: 'State outlines colored by active arc phase', mapboxLayers: ['arc-phase-outline'], defaultOn: true },
