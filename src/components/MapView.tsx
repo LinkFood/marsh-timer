@@ -3001,7 +3001,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       if (centroid && topScore > 0) {
         flyingRef.current = true;
         map.once('moveend', () => { flyingRef.current = false; });
-        map.flyTo({ center: centroid, zoom: 5.5, pitch: 0, bearing: 0, duration: 2000 });
+        map.flyTo({ center: centroid, zoom: 4.5, pitch: 0, bearing: 0, duration: 2000 });
 
         // Brief spotlight pulse — add a temporary bright overlay on the top state, then fade out
         const spotlightLayerId = '__spotlight-pulse';
