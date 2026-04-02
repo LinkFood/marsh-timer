@@ -412,6 +412,14 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
                     <span className="text-[8px] font-mono text-emerald-400/50">{s.outcomeCount}/{s.expectedCount}</span>
                   )}
                   <span className={`text-sm font-mono font-bold ${tierColor}`}>{Math.round(s.score)}</span>
+                  {s.arc?.current_act === 'outcome' && s.arc.outcome_deadline && (() => {
+                    const diff = new Date(s.arc.outcome_deadline).getTime() - Date.now();
+                    if (diff <= 0) return <span className="text-[7px] font-mono text-red-400/50 ml-1">due</span>;
+                    const days = Math.floor(diff / 86400000);
+                    const hours = Math.floor((diff % 86400000) / 3600000);
+                    const label = days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+                    return <span className="text-[7px] font-mono text-white/20 ml-1">{label}</span>;
+                  })()}
                 </div>
               </div>
               {/* Mini-bars */}

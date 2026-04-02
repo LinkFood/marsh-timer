@@ -91,6 +91,14 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               {score ? Math.round(score.score) : '—'}
             </div>
             <div className={`text-[8px] font-mono tracking-widest ${tierColor}`}>{tier}</div>
+            {arc?.current_act === 'outcome' && arc.outcome_deadline && (() => {
+              const diff = new Date(arc.outcome_deadline).getTime() - Date.now();
+              if (diff <= 0) return <div className="text-[9px] font-mono text-red-400/60 mt-0.5">GRADING DUE</div>;
+              const days = Math.floor(diff / 86400000);
+              const hours = Math.floor((diff % 86400000) / 3600000);
+              const label = days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+              return <div className="text-[9px] font-mono text-amber-400/50 mt-0.5">{label} to grade</div>;
+            })()}
           </div>
         </div>
 
