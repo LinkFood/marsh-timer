@@ -97,11 +97,11 @@ function journalToCollision(entry: JournalEntry): CollisionEntry | null {
   switch (type) {
     case 'compound-risk': {
       const confidence = meta?.confidence as string | undefined;
-      const avgSim = typeof meta?.avg_similarity === 'number' ? Math.round((meta.avg_similarity as number) * 100) : null;
-      const scoreTag = avgSim !== null
-        ? ` · ${avgSim}% match`
-        : confidence
-          ? ` · ${confidence}`
+      const avgSim = typeof meta?.avg_similarity === 'number' ? Math.round((meta.avg_similarity as number) * 100) : 0;
+      const scoreTag = confidence
+        ? ` · ${confidence}`
+        : avgSim > 0
+          ? ` · ${avgSim}% match`
           : '';
       title = `${entry.state_abbr || '??'} — ${convergingCount || '?'} domains${scoreTag}`;
       severity = 'high';
