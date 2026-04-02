@@ -16,24 +16,26 @@ const REGIME_COLORS: Record<Regime, string> = {
 };
 
 export default function RegimeDetector({ scores, arcs }: Props) {
-  const { regime, hotCount, recognitions, outcomes } = useMemo(() => {
-    let hotCount = 0;
+  const { regime, elevatedCount, recognitions, outcomes, grades } = useMemo(() => {
+    let elevatedCount = 0;
     for (const s of scores.values()) {
-      if (s.score >= 70) hotCount++;
+      if (s.score >= 50) elevatedCount++;
     }
 
     let recognitions = 0;
     let outcomes = 0;
+    let grades = 0;
     for (const a of arcs) {
       if (a.current_act === 'recognition') recognitions++;
       if (a.current_act === 'outcome') outcomes++;
+      if (a.current_act === 'grade') grades++;
     }
 
     let regime: Regime = 'QUIET';
-    if (hotCount >= 8 || recognitions >= 4) regime = 'SURGE';
-    else if (hotCount >= 3 || recognitions >= 1) regime = 'ACTIVE';
+    if (arcs.length >= 20 || recognitions >= 4 || elevatedCount >= 15) regime = 'SURGE';
+    else if (arcs.length >= 5 || recognitions >= 1 || elevatedCount >= 5) regime = 'ACTIVE';
 
-    return { regime, hotCount, recognitions, outcomes };
+    return { regime, elevatedCount, recognitions, outcomes, grades };
   }, [scores, arcs]);
 
   const sorted = useMemo(() => {
@@ -60,7 +62,7 @@ export default function RegimeDetector({ scores, arcs }: Props) {
       {/* Counts */}
       <div className="flex items-center gap-3 text-[9px] font-mono text-white/30">
         <span>
-          <span className="text-white/50 font-semibold">{hotCount}</span> hot
+          <span className="text-white/50 font-semibold">{elevatedCount}</span> elevated
         </span>
         <span>
           <span className="text-white/50 font-semibold">{recognitions}</span> recognition{recognitions !== 1 ? 's' : ''}
@@ -68,6 +70,11 @@ export default function RegimeDetector({ scores, arcs }: Props) {
         <span>
           <span className="text-white/50 font-semibold">{outcomes}</span> outcome{outcomes !== 1 ? 's' : ''}
         </span>
+        {grades > 0 && (
+          <span>
+            <span className="text-emerald-400/70 font-semibold">{grades}</span> graded
+          </span>
+        )}
         <span>
           <span className="text-white/50 font-semibold">{arcs.length}</span> arcs
         </span>
@@ -77,7 +84,7 @@ export default function RegimeDetector({ scores, arcs }: Props) {
       <div className="flex-1" />
       <div className="flex items-center gap-px">
         {sorted.map(s => {
-          const tier = s.score >= 80 ? '#ef4444' : s.score >= 65 ? '#f59e0b' : s.score >= 50 ? '#22c55e' : '#ffffff08';
+          const tier = s.score >= 60 ? '#ef4444' : s.score >= 50 ? '#f59e0b' : s.score >= 40 ? '#22c55e' : '#ffffff08';
           return (
             <div
               key={s.state_abbr}
