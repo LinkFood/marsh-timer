@@ -5,6 +5,7 @@ import type { PatternAlert } from '@/hooks/usePatternAlerts';
 import type { FeatureCollection } from 'geojson';
 import { useBrainActivity } from '@/hooks/useBrainActivity';
 import { useDataSourceHealth, type DataSourceStatus } from '@/hooks/useDataSourceHealth';
+import { useOpsData } from '@/hooks/useOpsData';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -301,6 +302,52 @@ function PulseSparkline({ data, w = 24, h = 10 }: { data: number[]; w?: number; 
   );
 }
 
+function useCountUp(target: number, durationMs = 2000): number {
+  const [display, setDisplay] = useState(() => {
+    try {
+      return localStorage.getItem('dc-brain-seen') ? target : 0;
+    } catch {
+      return target;
+    }
+  });
+  const animating = useRef(false);
+
+  useEffect(() => {
+    if (target <= 0 || animating.current) return;
+
+    let seen = false;
+    try { seen = !!localStorage.getItem('dc-brain-seen'); } catch {}
+
+    if (seen) {
+      setDisplay(target);
+      return;
+    }
+
+    animating.current = true;
+    const start = performance.now();
+
+    function tick(now: number) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / durationMs, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(eased * target));
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        setDisplay(target);
+        animating.current = false;
+        try { localStorage.setItem('dc-brain-seen', '1'); } catch {}
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }, [target, durationMs]);
+
+  return display;
+}
+
 const BrainHeartbeat = ({
   convergenceAlerts: _ca,
   weatherEventsGeoJSON: _wx,
@@ -310,8 +357,10 @@ const BrainHeartbeat = ({
 }: BrainHeartbeatProps) => {
   const { activity, loading } = useBrainActivity();
   const { sources, summary, loading: healthLoading } = useDataSourceHealth();
+  const { data: opsData } = useOpsData();
   const cronHealth = useCronHealth();
   const [healthOpen, setHealthOpen] = useState(false);
+  const brainTotal = useCountUp(opsData.brain.total);
 
   const cronDots = useMemo(() => {
     return activity.recentCrons.map((cron, i) => {
@@ -373,6 +422,11 @@ const BrainHeartbeat = ({
         onClick={() => setHealthOpen(prev => !prev)}
         className="hidden sm:flex items-center gap-3 px-3 shrink-0 border-l border-white/[0.06] h-full hover:bg-white/[0.04] transition-colors cursor-pointer"
       >
+        {opsData.brain.total > 0 && (
+          <span className="text-[10px] font-mono text-cyan-400 tabular-nums">
+            BRAIN: {brainTotal.toLocaleString()}
+          </span>
+        )}
         <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
           EMB: {activity.totalEmbeddingsToday}
           <PulseSparkline data={embSparkData} />
