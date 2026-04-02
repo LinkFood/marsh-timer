@@ -290,6 +290,17 @@ function HealthDropdown({
   );
 }
 
+function PulseSparkline({ data, w = 24, h = 10 }: { data: number[]; w?: number; h?: number }) {
+  if (!data || data.length < 2) return null;
+  const mx = Math.max(...data), mn = Math.min(...data), rg = mx - mn || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - mn) / rg) * h}`).join(' ');
+  return (
+    <svg width={w} height={h} className="shrink-0">
+      <polyline points={pts} fill="none" stroke="#5eead4" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.7" />
+    </svg>
+  );
+}
+
 const BrainHeartbeat = ({
   convergenceAlerts: _ca,
   weatherEventsGeoJSON: _wx,
@@ -308,6 +319,20 @@ const BrainHeartbeat = ({
       const label = `${cron.function_name}\n${cronTimeAgo(cron.created_at)}${embeds ? `\n${embeds} embeddings` : ''}${cron.duration_ms ? `\n${cron.duration_ms}ms` : ''}`;
       return { key: `${cron.function_name}-${i}`, status: cron.status, label };
     });
+  }, [activity.recentCrons]);
+
+  const embSparkData = useMemo(() => {
+    const now = Date.now();
+    const buckets = new Array(12).fill(0);
+    for (const cron of activity.recentCrons) {
+      const age = now - new Date(cron.created_at).getTime();
+      const hoursAgo = Math.floor(age / 3600000);
+      if (hoursAgo >= 0 && hoursAgo < 12) {
+        const embeds = cron.summary?.embeddings_created ?? cron.summary?.embedded ?? 0;
+        buckets[11 - hoursAgo] += embeds;
+      }
+    }
+    return buckets;
   }, [activity.recentCrons]);
 
   const cronPct = cronHealth.total > 0 ? cronHealth.healthy / cronHealth.total : 0;
@@ -348,8 +373,9 @@ const BrainHeartbeat = ({
         onClick={() => setHealthOpen(prev => !prev)}
         className="hidden sm:flex items-center gap-3 px-3 shrink-0 border-l border-white/[0.06] h-full hover:bg-white/[0.04] transition-colors cursor-pointer"
       >
-        <span className="text-[10px] font-mono text-cyan-400">
+        <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
           EMB: {activity.totalEmbeddingsToday}
+          <PulseSparkline data={embSparkData} />
         </span>
         <span className="relative">
           <span className={`text-[10px] font-mono ${cronColor}`}>
