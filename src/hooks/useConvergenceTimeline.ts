@@ -121,5 +121,17 @@ export function useConvergenceTimeline(days = 30) {
     };
   }, [raw, dailyAverages]);
 
-  return { dailyAverages, getTopMovers, loading };
+  // Group raw scores by date for instant lookup (timelapse scrubbing)
+  const availableDates = useMemo(() => dailyAverages.map(d => d.date), [dailyAverages]);
+
+  const getScoresForDate = useMemo(() => {
+    const byDate = new Map<string, Map<string, number>>();
+    for (const r of raw) {
+      if (!byDate.has(r.date)) byDate.set(r.date, new Map());
+      byDate.get(r.date)!.set(r.state_abbr, r.score);
+    }
+    return (date: string): Map<string, number> => byDate.get(date) || new Map();
+  }, [raw]);
+
+  return { dailyAverages, getTopMovers, availableDates, getScoresForDate, loading };
 }

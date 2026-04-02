@@ -23,6 +23,11 @@ interface DeckContextValue {
   /** History replay date — when set, map shows historical convergence scores */
   historyDate: string | null;
   setHistoryDate: (date: string | null) => void;
+  /** Timelapse scrubber state */
+  timelapseActive: boolean;
+  setTimelapseActive: (active: boolean) => void;
+  timelapseIndex: number;
+  setTimelapseIndex: (index: number) => void;
   gridPreset: GridPreset;
   setGridPreset: (preset: GridPreset) => void;
   panelsCollapsed: boolean;
@@ -55,6 +60,8 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
   const [panelAddOpen, setPanelAddOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [historyDate, setHistoryDate] = useState<string | null>(null);
+  const [timelapseActive, setTimelapseActive] = useState(false);
+  const [timelapseIndex, setTimelapseIndex] = useState(0);
   const [gridPreset, setGridPresetState] = useState<GridPreset>(() => {
     try { return (localStorage.getItem('dc-grid-preset') as GridPreset) || 'default'; } catch { return 'default'; }
   });
@@ -100,11 +107,13 @@ export function DeckProvider({ children, species, setSpecies, selectedState, set
     panelAddOpen, setPanelAddOpen, togglePanelAdd,
     activeCategory, setActiveCategory,
     historyDate, setHistoryDate,
+    timelapseActive, setTimelapseActive,
+    timelapseIndex, setTimelapseIndex,
     gridPreset, setGridPreset,
     panelsCollapsed, togglePanelsCollapsed,
     allMinimized, toggleAllMinimized,
     mapHeight, setMapHeight,
-  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed, allMinimized, toggleAllMinimized, mapHeight, setMapHeight]);
+  }), [species, setSpecies, selectedState, setSelectedState, chatOpen, toggleChat, layerPickerOpen, toggleLayerPicker, panelAddOpen, togglePanelAdd, activeCategory, historyDate, gridPreset, setGridPreset, panelsCollapsed, togglePanelsCollapsed, allMinimized, toggleAllMinimized, mapHeight, setMapHeight, timelapseActive, timelapseIndex]);
 
   return <DeckContext.Provider value={value}>{children}</DeckContext.Provider>;
 }

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { List, ChartScatter } from 'lucide-react';
+import { List, ChartScatter, Play } from 'lucide-react';
 import type { ConvergenceScore } from '@/hooks/useConvergenceScores';
 import type { StateArc } from '@/hooks/useStateArcs';
+import { useDeck } from '@/contexts/DeckContext';
+import { useConvergenceTimeline } from '@/hooks/useConvergenceTimeline';
 import PressureDifferential from '@/components/PressureDifferential';
 
 const DOMAINS = [
@@ -54,10 +56,42 @@ interface Props {
 
 export default function ConvergenceScoreboard({ scores, selectedState, onSelectState, historyMap, arcMap, calibrationMap }: Props) {
   const [viewMode, setViewMode] = useState<'list' | 'scatter'>('list');
+  const { timelapseActive, timelapseIndex, setTimelapseActive, setTimelapseIndex } = useDeck();
+  const { availableDates, getScoresForDate } = useConvergenceTimeline(30);
+
+  // When timelapse is active, build override scores from timeline data
+  const effectiveScores = useMemo(() => {
+    if (!timelapseActive || !availableDates.length || !getScoresForDate) return scores;
+    const date = availableDates[timelapseIndex];
+    if (!date) return scores;
+    const stateScores = getScoresForDate(date);
+    if (stateScores.size === 0) return scores;
+    const map = new Map<string, ConvergenceScore>();
+    let rank = 0;
+    const entries = Array.from(stateScores.entries()).sort((a, b) => b[1] - a[1]);
+    for (const [abbr, score] of entries) {
+      rank++;
+      map.set(abbr, {
+        state_abbr: abbr,
+        score,
+        weather_component: 0,
+        solunar_component: 0,
+        migration_component: 0,
+        pattern_component: 0,
+        birdcast_component: 0,
+        water_component: 0,
+        photoperiod_component: 0,
+        tide_component: 0,
+        reasoning: '',
+        national_rank: rank,
+      });
+    }
+    return map;
+  }, [timelapseActive, timelapseIndex, availableDates, getScoresForDate, scores]);
 
   const sorted = useMemo(() => {
-    return Array.from(scores.values()).sort((a, b) => b.score - a.score);
-  }, [scores]);
+    return Array.from(effectiveScores.values()).sort((a, b) => b.score - a.score);
+  }, [effectiveScores]);
 
   if (sorted.length === 0) {
     return (
@@ -76,7 +110,11 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
     <div className="h-full flex flex-col bg-[#0a0f1a] border-r border-white/[0.06]">
       {/* Header */}
       <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
-        <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40">Convergence</h2>
+        <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40">
+          {timelapseActive && availableDates[timelapseIndex]
+            ? <>Convergence <span className="text-cyan-400/60">{new Date(availableDates[timelapseIndex] + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></>
+            : 'Convergence'}
+        </h2>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setViewMode('list')}
@@ -91,6 +129,21 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
             title="Scatter view"
           >
             <ChartScatter className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => {
+              if (timelapseActive) {
+                setTimelapseActive(false);
+                setTimelapseIndex(0);
+              } else {
+                setTimelapseActive(true);
+                setTimelapseIndex(0);
+              }
+            }}
+            className={`p-0.5 rounded ${timelapseActive ? 'text-cyan-400/80' : 'text-white/15 hover:text-white/30'}`}
+            title="Timelapse scrubber"
+          >
+            <Play className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -109,7 +162,7 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
       {viewMode === 'scatter' && historyMap && arcMap && (
         <div className="flex-1 overflow-y-auto flex items-start justify-center pt-2">
           <PressureDifferential
-            scores={scores}
+            scores={effectiveScores}
             historyMap={historyMap}
             arcMap={arcMap}
             selectedState={selectedState}

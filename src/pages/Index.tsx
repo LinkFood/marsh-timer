@@ -24,6 +24,8 @@ import { useStateArcs } from "@/hooks/useStateArcs";
 import { useStateBrief } from "@/hooks/useStateBrief";
 import { useConvergenceHistory, useConvergenceHistoryAll } from "@/hooks/useConvergenceHistory";
 import { useAlertCalibration } from "@/hooks/useAlertCalibration";
+import { useConvergenceTimeline } from "@/hooks/useConvergenceTimeline";
+import TimelapseControls from "@/components/TimelapseControls";
 import HelpModal, { useHelpModal } from "@/components/HelpModal";
 import { MapActionProvider } from "@/contexts/MapActionContext";
 import { DeckProvider, useDeck } from "@/contexts/DeckContext";
@@ -112,6 +114,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   const { historyMap: convergenceHistoryMap } = useConvergenceHistoryAll(scoresReady ? 7 : 0);
   const { history: stateConvergenceHistory } = useConvergenceHistory(selectedState, 3);
   const { byState: calibrationByState } = useAlertCalibration(scoresReady);
+  const { dailyAverages: timelineDailyAverages, availableDates: timelineDates, getScoresForDate: timelineGetScores } = useConvergenceTimeline(30);
   const helpModal = useHelpModal();
 
   // Build convergence score map for MapView — full objects, not just numbers
@@ -248,6 +251,9 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
                       weatherEventsGeoJSON={weatherEventsGeoJSON}
                       onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
                       stateArcs={stateArcs}
+                      timelineDates={timelineDates}
+                      timelineDailyAverages={timelineDailyAverages}
+                      timelineGetScores={timelineGetScores}
                     />
                   </DeckLayout>
                 ) : (
@@ -285,6 +291,9 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
                       weatherEventsGeoJSON={weatherEventsGeoJSON}
                       onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
                       stateArcs={stateArcs}
+                      timelineDates={timelineDates}
+                      timelineDailyAverages={timelineDailyAverages}
+                      timelineGetScores={timelineGetScores}
                     />
                   </TerminalLayout>
                 )}
@@ -341,15 +350,18 @@ function MapWithLayers({
   weatherEventsGeoJSON,
   onMoveEnd,
   stateArcs,
+  timelineDates,
+  timelineDailyAverages,
+  timelineGetScores,
 }: any) {
   const { isSatellite, is3D, isLayerOn, visibleMapboxLayers } = useLayerContext();
-  const { historyDate } = useDeck();
+  const { historyDate, timelapseActive, timelapseIndex, setTimelapseActive, setTimelapseIndex } = useDeck();
   const [elevation, setElevation] = useState<number | null>(null);
   const [historyScores, setHistoryScores] = useState<Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }> | null>(null);
 
-  // Fetch historical convergence scores when historyDate changes
+  // Fetch historical convergence scores when historyDate changes (non-timelapse replay)
   useEffect(() => {
-    if (!historyDate) {
+    if (!historyDate || timelapseActive) {
       setHistoryScores(null);
       return;
     }
@@ -379,10 +391,48 @@ function MapWithLayers({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [historyDate]);
+  }, [historyDate, timelapseActive]);
 
-  // Use history scores when replaying, otherwise live
-  const activeScores = historyScores ?? convergenceScores;
+  // Build timelapse scores from pre-fetched timeline data (no API calls)
+  const timelapseScores = useMemo(() => {
+    if (!timelapseActive || !timelineDates?.length || !timelineGetScores) return null;
+    const date = timelineDates[timelapseIndex];
+    if (!date) return null;
+    const stateScores: Map<string, number> = timelineGetScores(date);
+    // Convert to the shape MapView expects
+    const map = new Map<string, { score: number; weather_component: number; migration_component: number; birdcast_component: number; solunar_component: number; pattern_component: number; reasoning?: string }>();
+    for (const [abbr, score] of stateScores) {
+      map.set(abbr, {
+        score,
+        weather_component: 0,
+        migration_component: 0,
+        birdcast_component: 0,
+        solunar_component: 0,
+        pattern_component: 0,
+      });
+    }
+    return map;
+  }, [timelapseActive, timelapseIndex, timelineDates, timelineGetScores]);
+
+  // Priority: timelapse > history replay > live
+  const activeScores = timelapseScores ?? historyScores ?? convergenceScores;
+
+  // Timelapse: set index directly (controls handle advance logic)
+  const handleTimelapseIndexChange = useCallback((index: number) => {
+    setTimelapseIndex(index);
+  }, [setTimelapseIndex]);
+
+  const handleTimelapseClose = useCallback(() => {
+    setTimelapseActive(false);
+    setTimelapseIndex(0);
+  }, [setTimelapseActive, setTimelapseIndex]);
+
+  // Build avg lookup for timelapse controls
+  const getAvgForDate = useCallback((date: string) => {
+    if (!timelineDailyAverages) return 0;
+    const entry = timelineDailyAverages.find((d: { date: string; avg: number }) => d.date === date);
+    return entry?.avg ?? 0;
+  }, [timelineDailyAverages]);
 
   return (
     <ErrorBoundary fallback={
@@ -424,6 +474,16 @@ function MapWithLayers({
           <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1.5">Elev</span>
           <span className="text-xs text-white/80 font-body font-medium">{elevation.toLocaleString()}ft</span>
         </div>
+      )}
+      {/* Timelapse controls overlay */}
+      {timelapseActive && timelineDates?.length > 0 && (
+        <TimelapseControls
+          dates={timelineDates}
+          getAvgForDate={getAvgForDate}
+          currentIndex={timelapseIndex}
+          onIndexChange={handleTimelapseIndexChange}
+          onClose={handleTimelapseClose}
+        />
       )}
     </ErrorBoundary>
   );
