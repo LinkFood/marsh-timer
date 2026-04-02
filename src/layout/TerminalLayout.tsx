@@ -75,9 +75,11 @@ export default function TerminalLayout({
   onSelectState,
   children,
 }: TerminalLayoutProps) {
-  const { selectedState } = useDeck();
+  const { selectedState, setSelectedState } = useDeck();
+  const { toggleLayer, activeLayers, applyPreset } = useLayerContext();
   const { flyToMap } = useMapAction();
   const isMobile = useIsMobile();
+  const toggleFusion = useFusionToggle();
 
   // Wrap onSelectState to also fly the map — ensures map always flies
   // regardless of how the parent wires the callback
@@ -89,6 +91,51 @@ export default function TerminalLayout({
   const [scoreboardCollapsed, setScoreboardCollapsed] = useState(() => {
     try { return localStorage.getItem('dc-sb-collapsed') === '1'; } catch { return false; }
   });
+
+  // Toggle weather preset (mirrors QuickLayers behavior)
+  const toggleWeather = useCallback(() => {
+    const preset = LAYER_PRESETS.find(p => p.id === 'weather');
+    if (!preset) return;
+    const allOn = preset.layers.every(id => activeLayers.has(id));
+    if (allOn) {
+      for (const id of preset.layers) {
+        if (activeLayers.has(id)) toggleLayer(id);
+      }
+    } else {
+      applyPreset(preset);
+    }
+  }, [activeLayers, toggleLayer, applyPreset]);
+
+  // Ranked state list for 1-5 shortcuts
+  const rankedStates = useMemo(() => {
+    return Array.from(convergenceScores.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  }, [convergenceScores]);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts(useMemo(() => ({
+    toggleWeather,
+    toggleBirdcast: () => toggleLayer('birdcast'),
+    toggleDelta: () => toggleLayer('convergence-delta'),
+    toggleFusion,
+    toggleScores: () => toggleLayer('convergence-scores'),
+    toggleScoreboard: () => {
+      setScoreboardCollapsed(c => {
+        const next = !c;
+        try { localStorage.setItem('dc-sb-collapsed', next ? '1' : '0'); } catch {}
+        return next;
+      });
+    },
+    deselectState: () => {
+      setSelectedState(null);
+      onSelectState('');
+    },
+    selectByRank: (rank: number) => {
+      const state = rankedStates[rank - 1];
+      if (state) handleScoreboardSelect(state.state_abbr);
+    },
+  }), [toggleWeather, toggleLayer, toggleFusion, setSelectedState, onSelectState, rankedStates, handleScoreboardSelect]));
   const [centerTab, setCenterTab] = useState<'timeline' | 'collisions'>('collisions');
   const [mobileTab, setMobileTab] = useState<'map' | 'scores' | 'detail'>('map');
   const [feedHeight, setFeedHeight] = useState<number>(() => {
@@ -376,6 +423,7 @@ export default function TerminalLayout({
       <ErrorBoundary fallback={<div />}>
         <LayerPicker />
       </ErrorBoundary>
+      {!isMobile && <ShortcutHint />}
     </div>
   );
 }
@@ -678,6 +726,35 @@ function BrainVitals() {
               <span className="text-emerald-400/30">{onlineCount} sources online</span>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShortcutHint() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="fixed bottom-3 right-3 z-50">
+      <button
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={() => setOpen(o => !o)}
+        className="w-6 h-6 rounded bg-white/[0.06] border border-white/[0.08] flex items-center justify-center hover:bg-white/[0.1] transition-colors"
+        title="Keyboard shortcuts"
+      >
+        <Keyboard className="w-3.5 h-3.5 text-white/30" />
+      </button>
+      {open && (
+        <div className="absolute bottom-8 right-0 w-48 bg-[#0d1320] border border-white/[0.1] rounded-lg shadow-xl p-2.5">
+          <div className="text-[8px] font-mono text-white/30 uppercase tracking-widest mb-2">Shortcuts</div>
+          {KEYBOARD_SHORTCUTS.map(s => (
+            <div key={s.key} className="flex items-center justify-between py-0.5">
+              <span className="text-[9px] font-mono text-white/50">{s.description}</span>
+              <kbd className="text-[8px] font-mono text-cyan-400/60 bg-white/[0.05] px-1 py-px rounded">{s.key}</kbd>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useLayerContext } from '@/contexts/LayerContext';
 import { LAYER_PRESETS } from '@/layers/LayerRegistry';
 
@@ -28,6 +29,22 @@ const QUICK_BUTTONS: QuickButton[] = [
 /** All layers that FUSION activates: full weather preset + birdcast */
 const WEATHER_PRESET = LAYER_PRESETS.find(p => p.id === 'weather');
 const FUSION_LAYERS = [...(WEATHER_PRESET?.layers ?? []), 'birdcast'];
+
+/** Hook to toggle fusion mode from outside QuickLayers (keyboard shortcuts) */
+export function useFusionToggle() {
+  const { activeLayers, setLayer } = useLayerContext();
+  const fusionActive = FUSION_LAYERS.every(id => activeLayers.has(id));
+
+  const toggleFusion = useCallback(() => {
+    if (fusionActive) {
+      for (const id of FUSION_LAYERS) setLayer(id, false);
+    } else {
+      for (const id of FUSION_LAYERS) setLayer(id, true);
+    }
+  }, [fusionActive, setLayer]);
+
+  return toggleFusion;
+}
 
 export default function QuickLayers() {
   const { isLayerOn, toggleLayer, setLayer, applyPreset, activeLayers } = useLayerContext();
