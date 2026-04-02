@@ -156,6 +156,20 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
     setSelectedState(parsed.stateAbbr);
   }, [parsed.species, parsed.stateAbbr]);
 
+  // Dynamic browser tab title
+  useEffect(() => {
+    if (selectedState) {
+      const score = convergenceScoreMap.get(selectedState);
+      const stateScore = score ? Math.round(score.score) : '';
+      document.title = `${selectedState} ${stateScore} | Duck Countdown`;
+    } else {
+      const total = convergenceScoreMap.size;
+      document.title = total > 0
+        ? `Duck Countdown | ${total} states · ${stateArcs.length} arcs · Environmental Intelligence`
+        : 'Duck Countdown | Environmental Intelligence Platform';
+    }
+  }, [selectedState, convergenceScoreMap, stateArcs]);
+
   const handleSelectSpecies = useCallback((s: Species) => {
     setSpecies(s);
     setSelectedState(null);
