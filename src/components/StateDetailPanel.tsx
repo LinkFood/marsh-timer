@@ -331,8 +331,19 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
               );
             })()
           ) : (
+            {(() => {
+              // Deduplicate links by source+matched content type pair
+              const seen = new Set<string>();
+              const uniqueLinks = patternLinks.filter(link => {
+                const key = `${link.source_content_type}→${link.matched_content_type}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              });
+              const displayLinks = connectionsExpanded ? uniqueLinks : uniqueLinks.slice(0, 5);
+              return (
             <div className="space-y-0.5">
-              {(connectionsExpanded ? patternLinks : patternLinks.slice(0, 5)).map(link => (
+              {displayLinks.map(link => (
                 <div key={link.id} className="flex items-center gap-1 text-[9px] font-mono text-white/35">
                   <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: CONTENT_TYPE_COLORS[link.source_content_type] || '#6b7280' }} />
                   <span className="truncate">{link.source_content_type.replace(/-/g, ' ')}</span>
@@ -343,16 +354,17 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
                   <span className="truncate">{link.matched_content_type.replace(/-/g, ' ')}</span>
                 </div>
               ))}
-              {patternLinks.length > 5 && (
+              {uniqueLinks.length > 5 && (
                 <button
                   onClick={() => setConnectionsExpanded(e => !e)}
                   className="text-[8px] font-mono text-cyan-400/40 hover:text-cyan-400/60"
                 >
-                  {connectionsExpanded ? 'Show less' : `Show all ${patternLinks.length}`}
+                  {connectionsExpanded ? 'Show less' : `Show all ${uniqueLinks.length}`}
                 </button>
               )}
             </div>
-          )}
+              );
+            })()}
         </div>
 
         {/* Historical Odds */}
