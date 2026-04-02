@@ -493,6 +493,27 @@ function BrainVitals() {
         <div className="text-[9px] font-mono text-white/35">
           {brain.total.toLocaleString()} entries · <span className="text-emerald-400/50">+{brain.growth_today.toLocaleString()}</span> today · {brain.content_types?.length || '?'} types
         </div>
+        {/* Mini growth chart — last 7 days */}
+        {brain.growth_by_day && brain.growth_by_day.length > 0 && (
+          <div className="flex items-end gap-px h-3 mt-0.5">
+            {brain.growth_by_day.slice(-7).map((d: {day: string, count: number}, i: number) => {
+              const max = Math.max(...brain.growth_by_day.slice(-7).map((x: {day: string, count: number}) => x.count));
+              const height = max > 0 ? (d.count / max) * 12 : 1;
+              const isToday = i === brain.growth_by_day.slice(-7).length - 1;
+              return (
+                <div
+                  key={d.day}
+                  className="w-[4px] rounded-t-[1px]"
+                  style={{
+                    height: `${Math.max(1, height)}px`,
+                    backgroundColor: isToday ? '#5eead4' : '#ffffff15',
+                  }}
+                  title={`${d.day}: +${d.count.toLocaleString()}`}
+                />
+              );
+            })}
+          </div>
+        )}
         {totalGraded > 0 && (() => {
           const acc = bySource.length > 0 ? Math.round(bySource.reduce((s, src) => s + src.accuracy * src.total, 0) / bySource.reduce((s, src) => s + src.total, 0)) : 0;
           return (
