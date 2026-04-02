@@ -108,6 +108,135 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
           </div>
         )}
 
+        {/* Arc Journey */}
+        {arc && (() => {
+          const acts = ['buildup', 'recognition', 'outcome', 'grade'] as const;
+          const actIndex = acts.indexOf(arc.current_act as typeof acts[number]);
+          const colors: Record<string, string> = {
+            buildup: '#f59e0b',
+            recognition: '#f97316',
+            outcome: '#ef4444',
+            grade: '#22c55e',
+          };
+
+          const formatDate = (iso: string | null) => {
+            if (!iso) return '';
+            const d = new Date(iso);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          };
+
+          const buildSummary = () => {
+            const sig = arc.buildup_signals;
+            if (!sig || typeof sig !== 'object') return null;
+            const domains = Array.isArray(sig.domains) ? sig.domains as string[] : [];
+            const score = typeof sig.convergence_score === 'number' ? sig.convergence_score : null;
+            if (domains.length === 0 && score === null) return null;
+            const parts: string[] = [];
+            if (domains.length > 0) parts.push(`${domains.length} domains converging: ${domains.join(', ')}`);
+            if (score !== null) parts.push(`Score: ${Math.round(score)}`);
+            return parts.join('. ');
+          };
+
+          const recogSummary = () => {
+            const rc = arc.recognition_claim;
+            if (!rc || typeof rc !== 'object') return null;
+            const claim = typeof rc.claim === 'string' ? rc.claim : null;
+            const expected = Array.isArray(rc.expected_signals) ? rc.expected_signals as string[] : [];
+            const parts: string[] = [];
+            if (claim) parts.push(claim);
+            if (expected.length > 0) parts.push(`Expected: ${expected.join(', ')}`);
+            return parts.length > 0 ? parts.join('. ') : null;
+          };
+
+          const outcomeSummary = () => {
+            const deadline = arc.outcome_deadline ? formatDate(arc.outcome_deadline) : null;
+            const signals = Array.isArray(arc.outcome_signals) ? arc.outcome_signals : [];
+            const parts: string[] = [];
+            if (deadline) parts.push(`Deadline: ${deadline}`);
+            parts.push(`${signals.length} signal${signals.length !== 1 ? 's' : ''} found`);
+            return parts.join('. ');
+          };
+
+          const gradeSummary = () => {
+            if (!arc.grade) return null;
+            const parts = [arc.grade.toUpperCase()];
+            if (arc.grade_reasoning) {
+              const trimmed = arc.grade_reasoning.length > 80
+                ? arc.grade_reasoning.slice(0, 80) + '...'
+                : arc.grade_reasoning;
+              parts.push(trimmed);
+            }
+            return parts.join(' -- ');
+          };
+
+          const phaseData: { key: typeof acts[number]; label: string; summary: string | null; date: string }[] = [
+            { key: 'buildup', label: 'BUILDUP', summary: buildSummary(), date: formatDate(arc.opened_at) },
+            { key: 'recognition', label: 'RECOGNITION', summary: recogSummary(), date: actIndex >= 1 ? formatDate(arc.act_started_at) : '' },
+            { key: 'outcome', label: 'OUTCOME', summary: outcomeSummary(), date: actIndex >= 2 ? formatDate(arc.act_started_at) : '' },
+            { key: 'grade', label: 'GRADE', summary: gradeSummary(), date: actIndex >= 3 ? formatDate(arc.act_started_at) : '' },
+          ];
+
+          return (
+            <div>
+              <div className="text-[9px] font-mono text-white/25 uppercase tracking-widest mb-1.5">Arc Journey</div>
+              <div className="space-y-0">
+                {phaseData.map((phase, i) => {
+                  const isCurrent = arc.current_act === phase.key;
+                  const isPast = i < actIndex;
+                  const isFuture = i > actIndex;
+                  const color = colors[phase.key];
+
+                  return (
+                    <div
+                      key={phase.key}
+                      className="flex gap-2 py-1"
+                      style={{
+                        borderLeft: isCurrent ? `2px solid ${color}` : '2px solid transparent',
+                        paddingLeft: '6px',
+                      }}
+                    >
+                      <div className="shrink-0 pt-0.5">
+                        <div
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{
+                            backgroundColor: isFuture ? 'rgba(255,255,255,0.1)' : color,
+                            opacity: isPast ? 0.4 : 1,
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="text-[9px] font-mono font-bold tracking-wider"
+                            style={{ color: isFuture ? 'rgba(255,255,255,0.15)' : isCurrent ? color : 'rgba(255,255,255,0.3)' }}
+                          >
+                            {phase.label}
+                          </span>
+                          {phase.date && !isFuture && (
+                            <span className="text-[8px] font-mono text-white/15">{phase.date}</span>
+                          )}
+                        </div>
+                        {isFuture ? (
+                          <div className="text-[9px] font-mono text-white/10">--</div>
+                        ) : (
+                          phase.summary && (
+                            <div
+                              className="text-[9px] font-mono leading-snug mt-0.5 line-clamp-2"
+                              style={{ color: isCurrent ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.2)' }}
+                            >
+                              {phase.summary}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* 8-Component Grid */}
         {score && (
           <div>
