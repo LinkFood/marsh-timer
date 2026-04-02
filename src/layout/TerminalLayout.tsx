@@ -22,6 +22,7 @@ import { useDeck } from '@/contexts/DeckContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import ChatPanel from '@/panels/ChatPanel';
 import LayerPicker from '@/layers/LayerPicker';
+import QuickLayers from '@/layers/QuickLayers';
 import { useTrackRecord } from '@/hooks/useTrackRecord';
 import BrainReportCard from '@/components/BrainReportCard';
 import RecentGradesFeed from '@/components/RecentGradesFeed';
@@ -174,6 +175,8 @@ export default function TerminalLayout({
                   <div className="absolute inset-0">{children}</div>
                 </ErrorBoundary>
               </div>
+              {/* Quick layer toggles */}
+              <QuickLayers />
               {/* Collision feed below map */}
               <div className="shrink-0 h-[200px] overflow-hidden border-t border-white/[0.06]">
                 <CollisionFeed convergenceAlerts={convergenceAlerts} stateFilter={selectedState || undefined} onSelectState={onSelectState} />
@@ -276,6 +279,9 @@ export default function TerminalLayout({
               </div>
             </ErrorBoundary>
           </div>
+          {/* Quick layer toggles */}
+          <QuickLayers />
+
           {/* Drag divider */}
           <div
             className="shrink-0 h-2 flex items-center justify-center cursor-row-resize z-20 group border-t border-white/[0.06]"

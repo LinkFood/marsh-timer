@@ -224,10 +224,11 @@ const HeaderBar = ({ species, onSelectSpecies, onSearch, onSearchLocation, onHel
           {onToggleLayers && (
             <button
               onClick={onToggleLayers}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              className="px-2.5 py-1.5 rounded-full text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
               aria-label="Layers"
             >
               <Layers className="w-4 h-4" />
+              <span className="text-[10px] font-mono uppercase tracking-wider hidden sm:inline">Layers</span>
             </button>
           )}
           {onToggleChat && (
