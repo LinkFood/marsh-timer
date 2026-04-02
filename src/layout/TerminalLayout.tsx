@@ -500,13 +500,13 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-y-auto">
       <DailyBrief scores={scores} arcs={arcs} />
       <HeroArc arcs={arcs} scores={scores} onSelectState={onSelectState} />
       <div className="px-3 py-2 border-b border-white/[0.06]">
         <span className="text-[9px] font-mono text-white/25 uppercase tracking-widest">Hottest States</span>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div>
         {top5.map(s => {
           const tierColor = s.score >= 80 ? 'text-red-400' : s.score >= 50 ? 'text-amber-400' : 'text-white/50';
           const actColor = s.arc ? ACT_COLORS[s.arc.current_act] || '#6b7280' : undefined;
