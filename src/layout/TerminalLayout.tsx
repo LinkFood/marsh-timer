@@ -637,7 +637,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
       <BrainVitals />
 
       <div className="px-3 py-2 border-t border-white/[0.06] flex items-center justify-between">
-        <p className="text-[9px] font-mono text-white/15">Select a state for details</p>
+        <p className="text-[9px] font-mono text-white/15" title="Click a state on the map or scoreboard, or press 1-5 for top states">Click state or press 1-5</p>
         <Link to="/ops" className="text-[8px] font-mono text-cyan-400/30 hover:text-cyan-400/60 transition-colors">
           System health →
         </Link>
