@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
-import type { StateArc } from '@/hooks/useStateArcs';
+import { useState, useEffect, useRef } from 'react';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const GRADE_CONFIG: Record<string, { label: string; color: string }> = {
   confirmed: { label: 'CONFIRMED', color: '#22c55e' },
@@ -18,17 +20,43 @@ function timeAgo(ts: string): string {
   return `${Math.floor(hrs / 24)}d`;
 }
 
-export default function LatestPostMortem({ arcs }: { arcs: StateArc[] }) {
-  const latest = useMemo(() => {
-    return arcs
-      .filter(a => a.grade && a.grade_reasoning)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] || null;
-  }, [arcs]);
+interface PostMortemArc {
+  state_abbr: string;
+  grade: string;
+  grade_reasoning: string;
+  precedent_accuracy: number | null;
+  updated_at: string;
+}
+
+export default function LatestPostMortem() {
+  const [latest, setLatest] = useState<PostMortemArc | null>(null);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current || !SUPABASE_URL || !SUPABASE_KEY) return;
+    fetchedRef.current = true;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    fetch(
+      `${SUPABASE_URL}/rest/v1/hunt_state_arcs?grade_reasoning=neq.null&select=state_abbr,grade,grade_reasoning,precedent_accuracy,updated_at&order=updated_at.desc&limit=1`,
+      { headers: { apikey: SUPABASE_KEY }, signal: controller.signal }
+    )
+      .then(r => r.json())
+      .then((data: PostMortemArc[]) => {
+        if (Array.isArray(data) && data.length > 0) setLatest(data[0]);
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timeout));
+
+    return () => { clearTimeout(timeout); controller.abort(); };
+  }, []);
 
   if (!latest) return null;
 
-  const gradeConfig = GRADE_CONFIG[latest.grade!] || GRADE_CONFIG.missed;
-  const reasoning = latest.grade_reasoning!
+  const gradeConfig = GRADE_CONFIG[latest.grade] || GRADE_CONFIG.missed;
+  const reasoning = latest.grade_reasoning
     .replace(/^#.*$/gm, '')
     .replace(/\*\*/g, '')
     .replace(/\|/g, ' ')

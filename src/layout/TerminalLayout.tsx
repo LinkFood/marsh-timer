@@ -338,7 +338,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
 
       {/* Brain intelligence sections */}
       <BrainReportCard />
-      <LatestPostMortem arcs={arcs} />
+      <LatestPostMortem />
       <RecentGradesFeed />
 
       {/* Brain Vitals + Data Freshness */}
