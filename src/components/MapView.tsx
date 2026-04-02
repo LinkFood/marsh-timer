@@ -1530,12 +1530,34 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-size": 10,
             "text-allow-overlap": true,
             "text-offset": [0, 0.2],
-            visibility: mapMode === 'intel' ? 'visible' : 'none',
+            visibility: 'none',
           },
           paint: {
             "text-color": "#22d3ee",
             "text-halo-color": "rgba(0,0,0,0.9)",
             "text-halo-width": 1.5,
+          },
+        });
+      }
+
+      // State abbreviation labels — always visible, clean map default
+      if (!map.getLayer("state-abbr-labels")) {
+        map.addLayer({
+          id: "state-abbr-labels",
+          type: "symbol",
+          source: "convergence-labels",
+          layout: {
+            "text-field": ["get", "abbr"],
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-size": 10,
+            "text-allow-overlap": true,
+            "text-offset": [0, 0],
+            visibility: 'visible',
+          },
+          paint: {
+            "text-color": "rgba(255,255,255,0.4)",
+            "text-halo-color": "rgba(0,0,0,0.6)",
+            "text-halo-width": 1,
           },
         });
       }
