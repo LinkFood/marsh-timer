@@ -247,6 +247,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
                       duPinsGeoJSON={duPinsGeoJSON}
                       weatherEventsGeoJSON={weatherEventsGeoJSON}
                       onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+                      stateArcs={stateArcs}
                     />
                   </DeckLayout>
                 ) : (
@@ -283,6 +284,7 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
                       duPinsGeoJSON={duPinsGeoJSON}
                       weatherEventsGeoJSON={weatherEventsGeoJSON}
                       onMoveEnd={(center, zoom) => { setMapCenter(center); setMapZoom(zoom); }}
+                      stateArcs={stateArcs}
                     />
                   </TerminalLayout>
                 )}
@@ -338,6 +340,7 @@ function MapWithLayers({
   duPinsGeoJSON,
   weatherEventsGeoJSON,
   onMoveEnd,
+  stateArcs,
 }: any) {
   const { isSatellite, is3D, isLayerOn, visibleMapboxLayers } = useLayerContext();
   const { historyDate } = useDeck();
@@ -413,6 +416,7 @@ function MapWithLayers({
         duPinsGeoJSON={duPinsGeoJSON}
         weatherEventsGeoJSON={weatherEventsGeoJSON}
         visibleMapboxLayers={visibleMapboxLayers}
+        stateArcs={stateArcs}
       />
       {/* Elevation HUD */}
       {is3D && elevation !== null && (

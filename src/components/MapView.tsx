@@ -12,6 +12,7 @@ import { useOceanBuoys } from "@/hooks/useOceanBuoys";
 import * as topojson from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { Species } from "@/data/types";
+import type { StateArc } from "@/hooks/useStateArcs";
 import { speciesConfig } from "@/data/speciesConfig";
 import { fipsToAbbr } from "@/data/fips";
 import { getPrimarySeasonForState, getStatesForSpecies } from "@/data/seasons";
@@ -108,6 +109,8 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   // Ocean buoy stations
   'buoy-circles': new Set(['default', 'weather', 'intel']),
   'buoy-labels': new Set(['default', 'weather', 'intel']),
+  // Arc phase state outlines
+  'arc-phase-outline': new Set(['default', 'intel']),
 };
 
 function tempToColor(tempF: number): string {
@@ -181,6 +184,8 @@ export interface MapViewProps {
   weatherEventsGeoJSON?: FeatureCollection | null;
   /** Set of Mapbox layer IDs that should be visible — when provided, overrides LAYER_MODES */
   visibleMapboxLayers?: Set<string>;
+  /** Active state arcs — used for arc-phase outlines on map */
+  stateArcs?: StateArc[];
 }
 
 export interface MapViewRef {
@@ -416,6 +421,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
     duPinsGeoJSON = null,
     weatherEventsGeoJSON = null,
     visibleMapboxLayers,
+    stateArcs,
   },
   ref,
 ) {
@@ -1876,6 +1882,21 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         });
       }
 
+      // Arc phase outlines — colored state borders for active arcs
+      if (!map.getLayer("arc-phase-outline")) {
+        map.addLayer({
+          id: "arc-phase-outline",
+          type: "line",
+          source: "states",
+          filter: ["in", ["get", "abbr"], ["literal", []]],
+          paint: {
+            "line-color": "rgba(255,255,255,0.5)",
+            "line-width": 2.5,
+            "line-opacity": 0.85,
+          },
+        });
+      }
+
       loadedRef.current = true;
     },
     [species, selectedState, showFlyways, statesWithData, weatherTiles, countyGeoJSON, sightingsGeoJSON, convergenceScores, mapMode, nwsAlertsGeoJSON, migrationFrontLine, perfectStormStates, duPinsGeoJSON, weatherEventsGeoJSON],
@@ -2891,6 +2912,54 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
       map.setFilter("perfect-storm-ring", stormFilter);
     }
   }, [mapMode, weatherCache, weatherTiles, species, selectedState, convergenceScores, statesWithData, perfectStormStates, showRadar, showDUPins, visibleMapboxLayers]);
+
+  // Arc phase outlines — colored state borders for recognition/outcome/grade arcs
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !map.getLayer("arc-phase-outline")) return;
+
+    const ARC_PHASE_COLORS: Record<string, string> = {
+      recognition: "rgba(251, 146, 60, 0.9)",  // orange
+      outcome:     "rgba(239, 68, 68, 0.9)",    // red
+      grade:       "rgba(34, 197, 94, 0.9)",     // green
+    };
+
+    // Build per-state color entries from active arcs
+    const arcAbbrs: string[] = [];
+    const colorEntries: string[] = [];
+    if (stateArcs && stateArcs.length > 0) {
+      // Deduplicate: if a state has multiple arcs, highest-phase wins (grade > outcome > recognition)
+      const phaseRank: Record<string, number> = { buildup: 0, recognition: 1, outcome: 2, grade: 3 };
+      const bestPhase = new Map<string, string>();
+      for (const arc of stateArcs) {
+        const phase = arc.current_act;
+        if (!ARC_PHASE_COLORS[phase]) continue; // skip buildup/closed
+        const existing = bestPhase.get(arc.state_abbr);
+        if (!existing || (phaseRank[phase] ?? 0) > (phaseRank[existing] ?? 0)) {
+          bestPhase.set(arc.state_abbr, phase);
+        }
+      }
+      for (const [abbr, phase] of bestPhase) {
+        arcAbbrs.push(abbr);
+        colorEntries.push(abbr, ARC_PHASE_COLORS[phase]);
+      }
+    }
+
+    // Update filter — only show outlines for states with active arcs
+    const filter: mapboxgl.Expression = arcAbbrs.length > 0
+      ? ["in", ["get", "abbr"], ["literal", arcAbbrs]] as mapboxgl.Expression
+      : ["==", ["get", "abbr"], "__none__"] as mapboxgl.Expression;
+    map.setFilter("arc-phase-outline", filter);
+
+    // Update line color per state
+    if (colorEntries.length > 0) {
+      map.setPaintProperty("arc-phase-outline", "line-color", [
+        "match", ["get", "abbr"],
+        ...colorEntries,
+        "rgba(255,255,255,0.5)",
+      ] as mapboxgl.Expression);
+    }
+  }, [stateArcs]);
 
   // Auto-activate layers on zoom (waterways at state zoom in scout/intel)
   useEffect(() => {

@@ -34,6 +34,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'convergence-heatmap', label: 'Convergence Heatmap', category: 'intelligence', mapboxLayers: ['convergence-score-bg', 'convergence-score-label', 'convergence-forming-label', 'states-extrusion'], defaultOn: true },
   { id: 'convergence-pulse', label: 'Convergence Pulse', category: 'intelligence', mapboxLayers: ['convergence-pulse'], defaultOn: true },
   { id: 'perfect-storm', label: 'Perfect Storm', category: 'intelligence', mapboxLayers: ['perfect-storm-glow', 'perfect-storm-ring'], defaultOn: true },
+  { id: 'arc-phase', label: 'Arc Phase', category: 'intelligence', description: 'State outlines colored by active arc phase', mapboxLayers: ['arc-phase-outline'], defaultOn: true },
 
   // === Terrain ===
   { id: 'satellite', label: 'Satellite', category: 'terrain', mapboxLayers: [], defaultOn: true },
@@ -57,7 +58,7 @@ export const LAYER_PRESETS: LayerPreset[] = [
     id: 'intel',
     label: 'Intelligence',
     description: 'Convergence heatmap, pulse, migration front, perfect storm',
-    layers: ['convergence-heatmap', 'convergence-pulse', 'perfect-storm', 'migration-front', 'nws-alerts', 'weather-events', 'ocean-buoys', 'wind-flow', 'ebird-heatmap'],
+    layers: ['convergence-heatmap', 'convergence-pulse', 'perfect-storm', 'arc-phase', 'migration-front', 'nws-alerts', 'weather-events', 'ocean-buoys', 'wind-flow', 'ebird-heatmap'],
   },
   {
     id: 'terrain',
