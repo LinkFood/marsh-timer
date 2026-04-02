@@ -181,9 +181,10 @@ function GradeStoryCard({ detail }: { detail: string }) {
 
 interface Props {
   entry: CollisionEntry;
+  onSelectState?: (abbr: string) => void;
 }
 
-export default function CollisionCard({ entry }: Props) {
+export default function CollisionCard({ entry, onSelectState }: Props) {
   const [expanded, setExpanded] = useState(false);
   const borderColor = BORDER_COLORS[entry.type];
   const typeLabel = TYPE_LABELS[entry.type];
@@ -207,7 +208,10 @@ export default function CollisionCard({ entry }: Props) {
           {typeLabel}
         </span>
         {entry.stateAbbr && (
-          <span className="text-[8px] font-mono font-semibold text-cyan-400/60 shrink-0">
+          <span
+            className={`text-[8px] font-mono font-semibold text-cyan-400/60 shrink-0${onSelectState ? ' hover:text-cyan-400 cursor-pointer' : ''}`}
+            onClick={onSelectState ? (e) => { e.stopPropagation(); onSelectState(entry.stateAbbr!); } : undefined}
+          >
             {entry.stateAbbr}
           </span>
         )}

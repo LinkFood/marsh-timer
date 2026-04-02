@@ -203,12 +203,12 @@ export default function TerminalLayout({
                   {centerTab === 'timeline' && stateConvergenceHistory.length > 0 ? (
                     <FusionPanel history={stateConvergenceHistory} state={selectedState} />
                   ) : (
-                    <CollisionFeed convergenceAlerts={convergenceAlerts} stateFilter={selectedState} />
+                    <CollisionFeed convergenceAlerts={convergenceAlerts} stateFilter={selectedState} onSelectState={onSelectState} />
                   )}
                 </div>
               </>
             ) : (
-              <CollisionFeed convergenceAlerts={convergenceAlerts} />
+              <CollisionFeed convergenceAlerts={convergenceAlerts} onSelectState={onSelectState} />
             )}
           </div>
         </div>

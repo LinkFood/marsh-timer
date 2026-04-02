@@ -63,9 +63,10 @@ function useDiscoveries() {
 interface Props {
   convergenceAlerts: ConvergenceAlert[];
   stateFilter?: string | null;
+  onSelectState?: (abbr: string) => void;
 }
 
-export default function CollisionFeed({ convergenceAlerts, stateFilter = null }: Props) {
+export default function CollisionFeed({ convergenceAlerts, stateFilter = null, onSelectState }: Props) {
   const [activeFilter, setActiveFilter] = useState<CollisionFilter>('all');
   const { entries: journalEntries, loading: journalLoading } = useBrainJournal(null, 'brain', 100);
   const discoveryEntries = useDiscoveries();
@@ -148,7 +149,7 @@ export default function CollisionFeed({ convergenceAlerts, stateFilter = null }:
           </div>
         ) : (
           displayed.map(entry => (
-            <CollisionCard key={entry.id} entry={entry} />
+            <CollisionCard key={entry.id} entry={entry} onSelectState={onSelectState} />
           ))
         )}
       </div>
