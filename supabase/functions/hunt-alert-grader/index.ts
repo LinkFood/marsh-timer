@@ -3,7 +3,6 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
-import { enrichWithPatternScan } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 import { transitionArc, fireNarrator } from '../_shared/arcReactor.ts';
 
@@ -42,7 +41,7 @@ interface SignalFound {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 5; // Each alert needs embedding + vector search — keep under 150s
+const MAX_PER_RUN = 3; // Each alert needs embedding + vector search — 3 fits pg_cron ~60s HTTP timeout
 
 const DIRECT_QUERY_CONTENT_TYPES = [
   'migration-spike-extreme',
@@ -308,15 +307,7 @@ serve(async (req) => {
 
         const gradeKnowledgeId = insertedGrade?.id || null;
 
-        // 2h. Enrich with pattern scan
-        if (gradeKnowledgeId) {
-          await enrichWithPatternScan(gradeKnowledgeId, gradeEmbedding, {
-            state_abbr: alert.state_abbr || undefined,
-            exclude_content_type: 'alert-grade',
-          });
-        }
-
-        // 2i. Update hunt_alert_outcomes
+        // 2h. Update hunt_alert_outcomes
         const { error: updateErr } = await supabase
           .from('hunt_alert_outcomes')
           .update({

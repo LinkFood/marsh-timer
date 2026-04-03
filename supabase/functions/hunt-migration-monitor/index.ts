@@ -4,7 +4,6 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS, STATE_NAMES } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite, enrichWithPatternScan } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 const LOG_PREFIX = '[hunt-migration-monitor]';
@@ -78,8 +77,14 @@ serve(async (req) => {
     const currentWeek = getISOWeek(new Date());
     const results: StateResult[] = [];
 
+    const TIME_LIMIT_MS = 100_000; // 100s hard limit — leave 50s for embedding + upserts
+
     // Process states sequentially with 1s delay between eBird calls
     for (const state of states) {
+      if (Date.now() - startTime > TIME_LIMIT_MS) {
+        console.log(`${LOG_PREFIX} Time guard: ${Date.now() - startTime}ms elapsed, processed ${results.length}/${states.length} states — stopping`);
+        break;
+      }
       try {
         // 1. Fetch recent duck observations from eBird
         const url = `https://api.ebird.org/v2/data/obs/US-${state}/recent?back=1&cat=domestic,species`;
@@ -260,25 +265,6 @@ serve(async (req) => {
       try {
         const embeddings = await batchEmbed(embedTexts);
 
-        // Query-on-write: scan brain for pattern matches on migration spikes
-        for (let i = 0; i < embedRows.length; i++) {
-          if (embedRows[i].content_type.startsWith('migration-spike')) {
-            try {
-              const scan = await scanBrainOnWrite(embeddings[i], {
-                state_abbr: embedRows[i].state_abbr,
-                exclude_content_type: embedRows[i].content_type,
-              });
-              if (scan.matches.length > 0) {
-                (embedRows[i] as Record<string, unknown>).metadata = {
-                  pattern_matches: scan.matches,
-                  pattern_scan_at: new Date().toISOString(),
-                };
-                console.log(`${LOG_PREFIX} Brain scan: ${embedRows[i].title} → ${scan.matches.length} pattern matches`);
-              }
-            } catch { /* scanning is best-effort */ }
-          }
-        }
-
         const knowledgeRows = embedRows.map((row, i) => ({
           ...row,
           embedding: embeddings[i],
@@ -293,20 +279,6 @@ serve(async (req) => {
           console.log(`${LOG_PREFIX} Knowledge insert error: ${knowledgeInsertResult.error.message}`);
         } else {
           embeddingsCreated = knowledgeRows.length;
-
-          // Write pattern links for spike entries that got brain scan matches
-          if (knowledgeInsertResult.data) {
-            for (let i = 0; i < knowledgeInsertResult.data.length; i++) {
-              if (embedRows[i].content_type.startsWith('migration-spike') && knowledgeInsertResult.data[i]?.id) {
-                try {
-                  await enrichWithPatternScan(knowledgeInsertResult.data[i].id, embeddings[i], {
-                    state_abbr: embedRows[i].state_abbr,
-                    exclude_content_type: embedRows[i].content_type,
-                  });
-                } catch { /* best-effort */ }
-              }
-            }
-          }
         }
       } catch (err) {
         console.log(`${LOG_PREFIX} Embedding error: ${err.message}`);
