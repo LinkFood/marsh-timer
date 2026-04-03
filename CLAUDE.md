@@ -38,17 +38,18 @@ Every piece of intelligence follows this arc:
 
 Every piece of data that enters the system MUST be embedded via Voyage AI (voyage-3-lite, 512-dim) → hunt_knowledge. No exceptions. The embedding pipeline only grows — never shrinks, never skips. If data isn't being embedded, that's a bug.
 
-### Brain State (as of 2026-04-02)
+### Brain State (as of 2026-04-03)
 
 - **3,200,000+** entries in hunt_knowledge
 - **60+** content types, **43** types active
 - **50** states tracked, **50/50** convergence scoring daily
-- **88 crons** (39/41 healthy — weather-realtime and brain-synthesizer intermittent)
+- **66 edge functions**, **88 crons** (39/41 healthy — weather-realtime and brain-synthesizer intermittent)
 - **44 arcs** — 8 recognitions, 33 outcomes, 3 graded
 - **Self-grading loop** active — **29 graded, 100% confirmed accuracy** with Opus post-mortem reasoning
 - **API cost** ~$2-3/day (~$60-90/month) after convergence-scan throttle (Haiku for 3-4 domains, dedup)
 - **No auth wall** — terminal visible without sign-in
 - **Compound index** on (content_type, created_at DESC) — content_type queries <3s on 3.2M rows
+- **73 SQL migrations** in supabase/migrations/
 
 ### 8-Component Convergence Scoring
 
@@ -72,7 +73,7 @@ Each state gets a daily score from 0-135 across these weighted domains:
 ### Backend — Strong
 - 3.2M+ vector embeddings in one searchable brain
 - 66 Deno edge functions
-- 82 crons (80 healthy) feeding data continuously
+- 88 crons feeding data continuously
 - Self-grading loop (alert-grader → alert-calibration → grade suppression)
 - **Synthesis agent** — hunt_state_arcs table + arc reactor hooks + hunt-arc-narrator (Sonnet narratives, Opus grade reasoning, arc fingerprinting)
 - scanBrainOnWrite pattern matching on every data ingest
@@ -82,12 +83,12 @@ Each state gets a daily score from 0-135 across these weighted domains:
 - Ops dashboard at /ops ("Intelligence Control") with cron health, brain growth, alert performance, intelligence feed
 
 ### Frontend — Terminal Landing + Intelligence Command Center
-- React 18 + TypeScript + Vite + Tailwind
-- Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets
+- React 18 + TypeScript + Vite + Tailwind + @tanstack/react-query
+- Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets, weather front lines
 - **Terminal Landing (`/`)** — 3-zoom-level progressive disclosure: ConvergenceScoreboard (mini-bars, sparklines, conviction dots), RegimeDetector (QUIET/ACTIVE/SURGE), PressureDifferential scatter plot, FusionPanel (72h collision timeline), StateDetailPanel (arc, components, brief, conviction), SplitVerdict + AutopsyDrawer for graded arcs, enriched collision feed with brain narration
 - **Intelligence Page (`/intelligence`)** — deep-dive command center with FusionWeb SVG, rankings, brain recognition, outcome windows, live feed, METAR, chat overlay
 - **StateIntelView** — replaces panel dock when state selected, shows AI assessment + convergence + pattern links + alerts
-- 25 lazy-loaded panels in 4 categories (workbench mode)
+- ~23 lazy-loaded panels in 4 categories (workbench mode)
 - Chat synthesis: answer-first, collapsible evidence, CrossDomainPatternCard
 - Streaming AI chat with dynamic prompts
 - Real-time event ticker, brain heartbeat
@@ -106,7 +107,7 @@ Each state gets a daily score from 0-135 across these weighted domains:
 | Styling | Tailwind CSS |
 | Map | Mapbox GL JS (satellite-streets-v12, globe projection, 3D terrain, fog/atmosphere) |
 | Panel Layout | CSS Grid 12-col |
-| Routing | React Router 6 (`/`, `/:stateAbbr`, `/intelligence`, `/map`, `/auth`, `/ops`) — `/` is the terminal landing, `/intelligence` is the deep-dive command center |
+| Routing | React Router 6 (`/`, `/:first(/:second/:third)`, `/intelligence`, `/map`, `/ops`) — `/` is the terminal landing, `/intelligence` is the deep-dive command center |
 | Icons | Lucide React |
 | Fonts | Playfair Display (headings), Lora (body) |
 | Auth | Supabase Auth (Google OAuth) |
@@ -115,6 +116,9 @@ Each state gets a daily score from 0-135 across these weighted domains:
 | Embeddings | Voyage AI voyage-3-lite (512-dim) |
 | DB | Supabase Postgres + pgvector (512-dim IVFFlat) |
 | Edge Functions | Deno (Supabase Edge Functions) |
+| State Mgmt | @tanstack/react-query v5 (server state caching) |
+| Geo/Viz | @turf/turf (spatial analysis), recharts (charts), topojson-client (geo) |
+| Middleware | Vercel Edge (middleware.ts — species/state labels for SEO) |
 | Hosting | Vercel (frontend, auto-deploy on push) + Supabase (backend) |
 
 ### Edge Functions (66 total)
@@ -123,20 +127,22 @@ Run `ls supabase/functions/ | grep -v _shared` for current list. Key additions s
 
 All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84.0`, `std@0.168.0`.
 
-### Shared Edge Function Modules (_shared/)
+### Shared Edge Function Modules (_shared/ — 12 modules)
 
 | Module | Purpose |
 |--------|---------|
 | anthropic.ts | callClaude + callClaudeStream + CLAUDE_MODELS + cost calculation |
+| arcReactor.ts | Arc state transitions/reactions (hunt_state_arcs lifecycle) |
+| auth.ts | JWT verification for authenticated endpoints |
 | brainScan.ts | scanBrainOnWrite + enrichWithPatternScan |
 | cors.ts | handleCors + getCorsHeaders |
 | cronLog.ts | logCronRun (object signature: functionName, status, summary, errorMessage, durationMs) |
 | embedding.ts | generateEmbedding + batchEmbed (Voyage AI, max 20 per batch) |
-| response.ts | successResponse + errorResponse + cronResponse + cronErrorResponse |
-| supabase.ts | createSupabaseClient (service role) |
-| states.ts | STATE_ABBRS array |
-| tavily.ts | searchWeb (Tavily API, advanced depth) |
 | rateLimit.ts | checkRateLimit |
+| response.ts | successResponse + errorResponse + cronResponse + cronErrorResponse |
+| states.ts | STATE_ABBRS array |
+| supabase.ts | createSupabaseClient (service role) |
+| tavily.ts | searchWeb (Tavily API, advanced depth) |
 
 ### Cron Schedule
 
@@ -210,34 +216,72 @@ All cron functions MUST call `logCronRun` on EVERY exit path.
 
 ```
 src/
-  contexts/
-    DeckContext.tsx          # Species, selectedState, gridPreset, mapHeight, panelsCollapsed, chat/layer toggles
-    LayerContext.tsx         # 27+ user-toggleable map layers, 4 presets, localStorage persistence
-    MapActionContext.tsx     # flyTo, flyToCoords, setMapMode
-  layout/
-    DeckLayout.tsx           # 5-row grid (heartbeat→ticker→map→panels→bottombar) + side-by-side mode
-    MapRegion.tsx            # Draggable map container (height via DeckContext)
-    PanelDock.tsx            # CSS Grid 12-col, 60px rows
-    PanelDockMobile.tsx      # Vertical stack for mobile
-    BottomBar.tsx            # Category filters + panel collapse + add panel
-  panels/                    # 25 panels (lazy-loaded, error-bounded)
-    PanelRegistry.ts         # All panels cataloged with metadata
-    PanelWrapper.tsx         # Chrome: drag handle, title, minimize, fullscreen, share, close
-    WidgetManager.tsx        # Slide-out panel catalog
-  components/
-    MapView.tsx              # Mapbox GL — 3D extrusion, fog, feature-state hover
-    HeaderBar.tsx            # Brand + DeckSelector + GridPresetSelector + species + actions
-    BrainHeartbeat.tsx       # Live status + health dropdown
-    EventTicker.tsx          # 32px scrolling event strip
-    HuntChat.tsx             # Streaming AI chat with dynamic prompts
-    ChatMessage.tsx          # Brain cards + AI interpretation
-  hooks/                     # 31 data hooks
-  data/                      # types, speciesConfig, seasons, dataSourceCatalog
-  lib/                       # supabase, seasonUtils, isobars, terminator, migrationFront, panelShare
-  pages/
-    IntelligencePage.tsx     # /intelligence — the product (brain thinking in real time)
-    OpsPage.tsx              # /ops — system health dashboard
-    StateIntelView.tsx       # Replaces PanelDock when state selected — deep state intelligence view
+  contexts/                    # 3 React contexts
+    DeckContext.tsx             # Species, selectedState, gridPreset, mapHeight, panelsCollapsed, chat/layer toggles
+    LayerContext.tsx            # 27+ user-toggleable map layers, 4 presets, localStorage persistence
+    MapActionContext.tsx        # flyTo, flyToCoords, setMapMode
+  layout/                      # 6 layout components
+    DeckLayout.tsx             # 5-row grid (heartbeat→ticker→map→panels→bottombar) + side-by-side mode
+    TerminalLayout.tsx         # Terminal-style landing page layout
+    MapRegion.tsx              # Draggable map container (height via DeckContext)
+    PanelDock.tsx              # CSS Grid 12-col, 60px rows
+    PanelDockMobile.tsx        # Vertical stack for mobile
+    BottomBar.tsx              # Category filters + panel collapse + add panel
+  panels/                      # ~23 content panels + infrastructure (lazy-loaded, error-bounded)
+    PanelRegistry.ts           # All panels cataloged with metadata
+    PanelTypes.ts              # Panel type definitions
+    PanelWrapper.tsx           # Chrome: drag handle, title, minimize, fullscreen, share, close
+    WidgetManager.tsx          # Slide-out panel catalog
+  components/                  # 58 components across 4 subdirectories
+    MapView.tsx                # Mapbox GL — 3D extrusion, fog, feature-state hover, weather fronts
+    HeaderBar.tsx              # Brand + DeckSelector + GridPresetSelector + species + actions
+    BrainHeartbeat.tsx         # Live status + health dropdown
+    EventTicker.tsx            # 32px scrolling event strip
+    BrainChat.tsx              # Streaming AI chat with dynamic prompts
+    ChatMessage.tsx            # Brain cards + AI interpretation
+    StateIntelView.tsx         # Replaces PanelDock when state selected — deep state intelligence view
+    ConvergenceScoreboard.tsx  # Mini-bars, sparklines, conviction dots
+    RegimeDetector.tsx         # QUIET/ACTIVE/SURGE regime display
+    PressureDifferential.tsx   # Scatter plot visualization
+    FusionPanel.tsx            # 72h collision timeline
+    StateDetailPanel.tsx       # Arc, components, brief, conviction
+    SplitVerdict.tsx           # Graded arc verdicts
+    AutopsyDrawer.tsx          # Post-mortem analysis drawer
+    CollisionFeed.tsx          # Enriched collision feed with brain narration
+    intelligence/              # 15 components — deep-dive command center
+      FusionWeb.tsx            # SVG fusion visualization
+      StateBoard.tsx           # State ranking board
+      ArcDetailView.tsx        # Full arc deep dive
+      ChatOverlay.tsx          # Intelligence page chat overlay
+      ...                      # + 11 more (ArcClaimCard, ArcConvergence, ArcTimeline, etc.)
+    cards/                     # 8 card components for chat/data display
+      CrossDomainPatternCard, AlertCard, ConvergenceCard, PatternCard,
+      PatternLinksCard, SolunarCard, SourceCard, WeatherCard
+    charts/                    # 2 chart components
+      Sparkline.tsx, StackedArea.tsx
+  layers/                      # 5 map layer modules
+    LayerPicker.tsx            # Layer selection UI
+    LayerRegistry.ts           # Layer definitions + metadata
+    LayerTypes.ts              # Layer type definitions
+    QuickLayers.tsx            # Quick layer toggle buttons
+    useLayerState.ts           # Layer state management hook
+  hooks/                       # 46 data hooks
+  data/                        # Types, speciesConfig, seasons, dataSourceCatalog, fips, flyways, stateFacts
+    seasons/                   # Per-species season data (duck, goose, deer, turkey, dove)
+  lib/                         # 7 utility modules
+    supabase.ts                # Client init + SUPABASE_FUNCTIONS_URL
+    ebird.ts                   # eBird API integration
+    seasonUtils.ts             # Season status utilities
+    isobars.ts                 # Weather front detection
+    terminator.ts              # Day/night line + golden hour
+    migrationFront.ts          # Migration front calculation
+    panelShare.ts              # Panel sharing (URL generation, clipboard)
+  pages/                       # 5 page components
+    Index.tsx                  # / — main terminal landing
+    IntelligencePage.tsx       # /intelligence — brain thinking in real time
+    OpsPage.tsx                # /ops — system health dashboard
+    Auth.tsx                   # /auth — authentication page
+    NotFound.tsx               # 404 catch-all
 ```
 
 ### Chat Architecture
@@ -264,6 +308,54 @@ npx tsx scripts/orchestrator-v2.ts --status                     # Show pipe stat
 npx tsx scripts/orchestrator-v2.ts --reset                      # Reset checkpoint
 npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe solo
 ```
+
+---
+
+## Development Workflow
+
+### Build & Run
+
+```bash
+npm run dev                    # Start dev server (Vite, port 8080, host ::)
+npm run build                  # Production build (vite build)
+npm run build:dev              # Development build (vite build --mode development)
+npm run preview                # Preview production build
+npm run lint                   # ESLint
+npm run test                   # Vitest (run once)
+npm run test:watch             # Vitest (watch mode)
+```
+
+### Testing
+
+- **Framework:** Vitest + @testing-library/react + @testing-library/jest-dom
+- **Config:** vitest.config.ts (jsdom environment, Vitest globals)
+- Tests live alongside source or in `__tests__/` directories
+
+### Deployment
+
+- **Frontend:** Vercel auto-deploys on push to main. SPA routing via vercel.json rewrite rule.
+- **Backend:** Supabase edge functions deployed via `supabase functions deploy <function-name>`.
+- **Middleware:** middleware.ts (Vercel Edge) handles species/state labels for SEO.
+- **No CI/CD pipeline** — no .github/ workflows. Deploy is push-triggered (Vercel) or manual (Supabase).
+
+### Scripts Directory (50+ files)
+
+`scripts/` contains backfill, orchestration, and utility scripts (TypeScript + Python):
+
+- **orchestrator-v2.ts** — Primary backfill orchestrator (concurrency, checkpoints, retries)
+- **validate-data.mjs** — Data validation (`npm run validate-data`)
+- **generate-sitemap.mjs** — Sitemap generation (`npm run generate-sitemap`)
+- **import-csv.mjs** — CSV import utility (`npm run import-csv`)
+- Various per-domain backfill scripts for historical data loading
+
+### Key Conventions
+
+- **TypeScript:** Loose config — `noImplicitAny: false`, `strictNullChecks: false`, `allowJs: true`
+- **Transpiler:** SWC via @vitejs/plugin-react-swc (not Babel)
+- **Imports:** `@/` alias maps to `./src` (configured in vite.config.ts)
+- **Components:** Functional React with hooks. Panels are lazy-loaded via PanelRegistry.
+- **Data fetching:** @tanstack/react-query for server state. Supabase client in src/lib/supabase.ts.
+- **Realtime:** Supabase Realtime subscriptions (hunt_state_arcs).
 
 ---
 
@@ -301,3 +393,5 @@ npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe s
 **Repo:** github.com/LinkFood/marsh-timer
 **Hosting:** Vercel (frontend, auto-deploy on push) + Supabase `rvhyotvklfowklzjahdd` (backend)
 **Supabase Plan:** Pro (watch IO budget)
+**Docs:** 8 setup guides in `docs/` directory
+**Config Files:** vite.config.ts, tailwind.config.ts, tsconfig.json (+app/node), eslint.config.js, postcss.config.js, components.json, vitest.config.ts, vercel.json
