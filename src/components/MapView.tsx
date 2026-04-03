@@ -24,7 +24,7 @@ import { stateFlyways, FLYWAY_COLORS, isFlywaySpecies } from "@/data/flyways";
 import { FLYWAY_CORRIDORS, FLYWAY_FLOW_LINES } from "@/data/flywayPaths";
 import { calculateTerminator, calculateGoldenHour } from "@/lib/terminator";
 import type { FeatureCollection, Feature, Geometry, Position, LineString } from "geojson";
-import { generateIsobars } from "@/lib/isobars";
+import { generateIsobars, detectFronts } from "@/lib/isobars";
 import type { WeatherTiles } from "@/hooks/useWeatherTiles";
 import { LAYER_REGISTRY } from "@/layers/LayerRegistry";
 
@@ -71,6 +71,7 @@ const LAYER_MODES: Record<string, Set<MapMode>> = {
   'wind-arrow-heads': new Set(['weather']),
   'isobar-lines': new Set(['weather']),
   'pressure-center-labels': new Set(['weather']),
+  'weather-front-lines': new Set(['weather']),
   'nws-alert-fill': new Set(['weather', 'intel']),
   'nws-alert-outline': new Set(['weather', 'intel']),
   'nws-alert-labels': new Set(['weather', 'intel']),
@@ -1465,6 +1466,33 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
             "text-halo-color": "rgba(0,0,0,0.8)",
             "text-halo-width": 2,
           },
+        });
+      }
+
+      // Weather front lines source + layer
+      if (!map.getSource("weather-fronts")) {
+        map.addSource("weather-fronts", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+      }
+      if (!map.getLayer("weather-front-lines")) {
+        map.addLayer({
+          id: "weather-front-lines",
+          type: "line",
+          source: "weather-fronts",
+          paint: {
+            "line-color": [
+              "match", ["get", "type"],
+              "cold", "#3b82f6",   // blue
+              "warm", "#ef4444",   // red
+              "#a78bfa",           // purple for stationary
+            ],
+            "line-width": 2.5,
+            "line-blur": 1,
+            "line-opacity": 0.85,
+          },
+          layout: { visibility: "none" },
         });
       }
 
@@ -3322,6 +3350,22 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
         const centerSource = map.getSource("pressure-centers") as mapboxgl.GeoJSONSource | undefined;
         if (centerSource) {
           centerSource.setData(centers as any);
+        }
+      }
+
+      // Weather front detection — pressure + temp from same weatherCache
+      const frontPoints: { lng: number; lat: number; pressure: number; temp?: number }[] = [];
+      for (const [abbr, w] of weatherCache!) {
+        const centroid = centroidsRef.current.get(abbr);
+        if (centroid && w.pressure > 0) {
+          frontPoints.push({ lng: centroid[0], lat: centroid[1], pressure: w.pressure, temp: w.temp });
+        }
+      }
+      if (frontPoints.length >= 10) {
+        const fronts = detectFronts(frontPoints);
+        const frontSource = map.getSource("weather-fronts") as mapboxgl.GeoJSONSource | undefined;
+        if (frontSource) {
+          frontSource.setData(fronts as any);
         }
       }
     }

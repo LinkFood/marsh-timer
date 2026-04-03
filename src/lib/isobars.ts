@@ -184,3 +184,94 @@ export function generateIsobars(points: PressurePoint[]): IsobarResult {
     centers: { type: 'FeatureCollection', features: centerFeatures },
   };
 }
+
+// --- Weather Front Detection ---
+
+export interface FrontSegment {
+  type: 'cold' | 'warm' | 'stationary';
+  coordinates: [number, number][];
+  gradient: number; // mb per 100km
+}
+
+/**
+ * Detect weather fronts from pressure gradient analysis.
+ * Fronts are where pressure changes rapidly over short distance — visible as isobar crowding.
+ * Returns GeoJSON LineStrings colored by front type.
+ */
+export function detectFronts(
+  pressurePoints: { lng: number; lat: number; pressure: number; temp?: number; windDir?: number }[]
+): FeatureCollection {
+  if (pressurePoints.length < 10) return { type: 'FeatureCollection', features: [] };
+
+  const GRADIENT_THRESHOLD = 1.5; // mb per 100km — fronts typically 2-4mb/200km
+  const MAX_DISTANCE_KM = 500;
+
+  const segments: { from: [number, number]; to: [number, number]; gradient: number; type: string }[] = [];
+
+  for (let i = 0; i < pressurePoints.length; i++) {
+    for (let j = i + 1; j < pressurePoints.length; j++) {
+      const a = pressurePoints[i];
+      const b = pressurePoints[j];
+
+      // Haversine distance approximation (good enough for CONUS)
+      const dlat = (b.lat - a.lat) * 111;
+      const dlng = (b.lng - a.lng) * 111 * Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+      const distKm = Math.sqrt(dlat * dlat + dlng * dlng);
+
+      if (distKm > MAX_DISTANCE_KM || distKm < 50) continue;
+
+      const gradient = Math.abs(b.pressure - a.pressure) / (distKm / 100);
+
+      if (gradient >= GRADIENT_THRESHOLD) {
+        // Midpoint of the front segment
+        const midLng = (a.lng + b.lng) / 2;
+        const midLat = (a.lat + b.lat) / 2;
+
+        // Perpendicular to the pressure gradient = front line direction
+        const angle = Math.atan2(b.lat - a.lat, b.lng - a.lng);
+        const perpAngle = angle + Math.PI / 2;
+        const halfLen = distKm / 4 * 0.009; // ~degrees
+
+        const lineStart: [number, number] = [
+          midLng + Math.cos(perpAngle) * halfLen,
+          midLat + Math.sin(perpAngle) * halfLen,
+        ];
+        const lineEnd: [number, number] = [
+          midLng - Math.cos(perpAngle) * halfLen,
+          midLat - Math.sin(perpAngle) * halfLen,
+        ];
+
+        // Classify: temperature difference > 5°F between stations
+        let frontType = 'stationary';
+        if (a.temp != null && b.temp != null) {
+          const tempDiff = b.temp - a.temp;
+          if (Math.abs(tempDiff) > 5) {
+            frontType = tempDiff < 0 ? 'cold' : 'warm';
+          }
+        }
+
+        segments.push({
+          from: lineStart,
+          to: lineEnd,
+          gradient,
+          type: frontType,
+        });
+      }
+    }
+  }
+
+  // Convert segments to GeoJSON LineStrings
+  const features: Feature[] = segments.map(seg => ({
+    type: 'Feature' as const,
+    geometry: {
+      type: 'LineString' as const,
+      coordinates: [seg.from, seg.to],
+    },
+    properties: {
+      type: seg.type,
+      gradient: Math.round(seg.gradient * 10) / 10,
+    },
+  }));
+
+  return { type: 'FeatureCollection', features };
+}

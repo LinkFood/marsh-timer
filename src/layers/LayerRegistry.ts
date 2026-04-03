@@ -25,6 +25,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'radar', label: 'Radar', category: 'weather', description: 'NEXRAD precipitation radar', mapboxLayers: ['radar-overlay'] },
   { id: 'wind-flow', label: 'Wind Flow', category: 'weather', description: 'Surface wind speed and direction', mapboxLayers: ['wind-flow', 'wind-speed-labels', 'wind-arrow-heads'], defaultOn: true },
   { id: 'isobars', label: 'Isobars', category: 'weather', description: 'Pressure contours and centers', mapboxLayers: ['isobar-lines', 'pressure-center-labels'] },
+  { id: 'weather-fronts', label: 'Weather Fronts', category: 'weather', description: 'Cold/warm/stationary front lines from pressure gradients', mapboxLayers: ['weather-front-lines'] },
   { id: 'pressure-trends', label: 'Pressure Trends', category: 'weather', description: 'Rising/falling pressure arrows', mapboxLayers: ['pressure-trend-arrows'], defaultOn: true },
   { id: 'nws-alerts', label: 'NWS Alerts', category: 'weather', description: 'Active severe weather warnings', mapboxLayers: ['nws-alert-fill', 'nws-alert-outline', 'nws-alert-labels'] },
   { id: 'weather-events', label: 'Weather Events', category: 'weather', description: 'Detected weather events', mapboxLayers: ['weather-event-circles', 'weather-event-pulse', 'weather-event-labels'], defaultOn: true },
@@ -57,7 +58,7 @@ export const LAYER_PRESETS: LayerPreset[] = [
     id: 'weather',
     label: 'Weather',
     description: 'Full weather picture: radar, wind, isobars, NWS alerts, events',
-    layers: ['radar', 'wind-flow', 'isobars', 'pressure-trends', 'nws-alerts', 'weather-events', 'ocean-buoys'],
+    layers: ['radar', 'wind-flow', 'isobars', 'weather-fronts', 'pressure-trends', 'nws-alerts', 'weather-events', 'ocean-buoys'],
   },
   {
     id: 'intel',
