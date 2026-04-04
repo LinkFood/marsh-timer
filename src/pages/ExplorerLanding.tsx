@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap, ThumbsUp, ThumbsDown, Clock, X } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
+import { useChatHistory } from '@/hooks/useChatHistory';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -39,6 +40,8 @@ export default function ExplorerLanding() {
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const { sessions: historySessions } = useChatHistory();
   const [month2, setMonth2] = useState(1); // Feb
   const [day2, setDay2] = useState(10);
   const [year2, setYear2] = useState(2021);
@@ -180,6 +183,11 @@ export default function ExplorerLanding() {
               <span className="text-[9px] font-mono text-white/30">{brainCount.toLocaleString()}</span>
               <span className="text-[8px] font-mono text-emerald-400/40">LIVE</span>
             </div>
+          )}
+          {historySessions.length > 0 && (
+            <button onClick={() => setShowHistory(!showHistory)} className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Query History">
+              <Clock size={14} className={showHistory ? 'text-cyan-400' : 'text-white/40'} />
+            </button>
           )}
           <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Dashboard">
             <Settings size={14} className="text-white/40" />
@@ -483,6 +491,39 @@ export default function ExplorerLanding() {
           <div ref={bottomRef} className="h-8" />
         </div>
       </main>
+
+      {/* History sidebar */}
+      {showHistory && (
+        <div className="fixed top-12 left-0 bottom-0 w-72 bg-[#0b1018] border-r border-white/[0.06] z-40 overflow-y-auto">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/[0.06]">
+            <span className="text-[9px] font-mono text-white/30 tracking-wider">QUERY HISTORY</span>
+            <button onClick={() => setShowHistory(false)} className="p-1 rounded hover:bg-white/[0.06]">
+              <X size={12} className="text-white/30" />
+            </button>
+          </div>
+          {historySessions.map(session => {
+            const age = Date.now() - new Date(session.lastMessageAt).getTime();
+            const label = age < 3600000 ? 'just now' : age < 86400000 ? 'today' : age < 172800000 ? 'yesterday' : new Date(session.lastMessageAt).toLocaleDateString();
+            return (
+              <button
+                key={session.sessionId}
+                onClick={() => {
+                  setHasSearched(true);
+                  sendMessage(session.firstMessage);
+                  setShowHistory(false);
+                }}
+                className="w-full text-left px-3 py-2.5 border-b border-white/[0.03] hover:bg-white/[0.03] transition-colors"
+              >
+                <p className="text-[11px] text-white/60 font-body truncate">{session.firstMessage}</p>
+                <p className="text-[9px] text-white/20 font-mono mt-0.5">{label} · {session.messageCount} msgs</p>
+              </button>
+            );
+          })}
+          {historySessions.length === 0 && (
+            <p className="text-[10px] text-white/20 text-center py-8">No history yet</p>
+          )}
+        </div>
+      )}
 
       <div className="grain-overlay" />
     </div>
