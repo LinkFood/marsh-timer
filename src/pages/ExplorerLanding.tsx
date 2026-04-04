@@ -5,6 +5,7 @@ import { useChat } from '@/hooks/useChat';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { useChatHistory } from '@/hooks/useChatHistory';
+import { useBrainPulse, getDomainColor } from '@/hooks/useBrainPulse';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -42,6 +43,17 @@ export default function ExplorerLanding() {
   const [compareMode, setCompareMode] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const { sessions: historySessions } = useChatHistory();
+  const pulseEntries = useBrainPulse();
+  const [pulseIndex, setPulseIndex] = useState(0);
+
+  // Cycle pulse every 4 seconds
+  useEffect(() => {
+    if (pulseEntries.length === 0) return;
+    const interval = setInterval(() => {
+      setPulseIndex(i => (i + 1) % pulseEntries.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [pulseEntries.length]);
   const [month2, setMonth2] = useState(1); // Feb
   const [day2, setDay2] = useState(10);
   const [year2, setYear2] = useState(2021);
@@ -200,8 +212,26 @@ export default function ExplorerLanding() {
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
 
+          {/* Brain Pulse — live ingestion ticker */}
+          {!hasSearched && pulseEntries.length > 0 && (() => {
+            const entry = pulseEntries[pulseIndex];
+            if (!entry) return null;
+            const age = Date.now() - new Date(entry.created_at).getTime();
+            const ageStr = age < 60000 ? 'just now' : age < 3600000 ? `${Math.floor(age / 60000)}m ago` : `${Math.floor(age / 3600000)}h ago`;
+            return (
+              <div className="flex items-center justify-center gap-2 py-2 transition-opacity duration-500">
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${getDomainColor(entry.content_type)}`} />
+                <span className="text-[9px] font-mono text-white/30">
+                  {entry.content_type}
+                </span>
+                {entry.state_abbr && <span className="text-[9px] font-mono text-white/20">{entry.state_abbr}</span>}
+                <span className="text-[9px] font-mono text-white/15">{ageStr}</span>
+              </div>
+            );
+          })()}
+
           {/* Search area */}
-          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-8 sm:pt-14 pb-4'}`}>
+          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-4 sm:pt-8 pb-4'}`}>
 
             {!hasSearched && (
               <>
