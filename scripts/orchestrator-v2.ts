@@ -581,7 +581,14 @@ const PIPES: PipeConfig[] = [
 function loadCheckpoint(): Checkpoint {
   if (existsSync(CHECKPOINT_FILE)) {
     try {
-      return JSON.parse(readFileSync(CHECKPOINT_FILE, "utf-8"));
+      const cp: Checkpoint = JSON.parse(readFileSync(CHECKPOINT_FILE, "utf-8"));
+      // Merge in any new pipes not yet in the checkpoint
+      for (const p of PIPES) {
+        if (!cp.pipes[p.name]) {
+          cp.pipes[p.name] = { status: "pending", resumeEnv: { ...p.resumeEnv } };
+        }
+      }
+      return cp;
     } catch {
       log("WARN: Corrupt checkpoint, starting fresh");
     }
