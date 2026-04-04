@@ -22,7 +22,7 @@ const INTENT_TOOLS = [
       properties: {
         intent: {
           type: 'string',
-          enum: ['weather', 'solunar', 'season_info', 'search', 'recent_activity', 'self_assessment', 'general'],
+          enum: ['weather', 'solunar', 'season_info', 'search', 'pattern_query', 'recent_activity', 'self_assessment', 'general'],
           description: 'The classified intent of the user message',
         },
         state_abbr: {
@@ -348,12 +348,20 @@ Current context:
 - Selected state: ${ctxState || 'none'}
 ${conversationContext}
 
-Classify the user's intent into one of: weather, solunar, season_info, search, recent_activity, self_assessment, general.
+Classify the user's intent into one of: weather, solunar, season_info, search, pattern_query, recent_activity, self_assessment, general.
 
 Use "weather" for questions about weather, wind, temperature, pressure, fronts, environmental conditions.
 Use "solunar" for moon phase, tidal influence, activity cycles, solunar.
 Use "season_info" for when does season open/close, seasonal transitions, regulatory dates.
 Use "search" for searching for environmental knowledge, ecological patterns, historical data, general research.
+
+Use "pattern_query" when the user asks cross-domain conditional questions like:
+- "Every time X happened, what followed?"
+- "When has AO been below -2 during La Nina?"
+- "Find dates where drought and earthquakes coincided"
+- "What storms followed when climate indices looked like this?"
+- Any question asking to cross-reference multiple data types by date to find patterns
+- Questions with "every time", "when has", "find dates where", "what happened when X and Y"
 
 Use "recent_activity" when the user asks:
 - What's happening / what's going on / what's new
@@ -464,6 +472,9 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
         break;
       case 'search':
         handlerResult = await handleSearch(query, resolvedSpecies, resolvedState, dateFrom, dateTo);
+        break;
+      case 'pattern_query':
+        handlerResult = await handlePatternQuery(query, resolvedState, message);
         break;
       case 'recent_activity':
         handlerResult = await handleRecentActivity(supabase, resolvedSpecies, resolvedState, message);
@@ -1433,5 +1444,71 @@ Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
     userContent: message,
     _webResults: webResults,
+  };
+}
+
+// --- Pattern Query Handler ---
+// Cross-domain conditional queries that Google can't answer
+
+async function handlePatternQuery(query: string, stateAbbr: string | null | undefined, originalMessage: string): Promise<HandlerResult> {
+  // Call hunt-pattern-query edge function
+  const patternUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-pattern-query`;
+  let patternData: any = null;
+
+  try {
+    const res = await fetch(patternUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        query: originalMessage,
+        state_abbr: stateAbbr || null,
+      }),
+    });
+    if (res.ok) {
+      patternData = await res.json();
+    }
+  } catch (err) {
+    console.error('[dispatcher] pattern query failed:', err);
+  }
+
+  // Build context from pattern results
+  let patternContext = '';
+  if (patternData) {
+    patternContext = `\n\nPATTERN QUERY RESULTS:
+Conditions searched: ${(patternData.conditions || []).join(' AND ')}
+Per-condition matches: ${JSON.stringify(patternData.per_condition_matches || {})}
+Dates matching ALL conditions: ${patternData.total_intersected || 0}
+All matched dates: ${(patternData.all_matched_dates || []).join(', ')}
+
+Detailed matches (date + what followed within ${patternData.followup_window_days || 30} days):
+${(patternData.matches || []).map((m: any) =>
+  `\n--- ${m.date} ---\n${m.followup_events?.length ? m.followup_events.map((e: any) =>
+    `  [${e.content_type}] ${e.state_abbr || ''} ${e.effective_date}: ${e.content?.slice(0, 200)}`
+  ).join('\n') : '  No followup events found in the brain for this window.'}`
+).join('\n')}`;
+  } else {
+    patternContext = '\n\nPattern query engine returned no results. The brain may not have enough data for this specific cross-reference yet.';
+  }
+
+  return {
+    cards: [],
+    systemPrompt: `You are an environmental intelligence engine that answers cross-domain pattern queries — questions that CANNOT be answered by Google because they require cross-referencing multiple independent datasets by date.
+
+The user asked a pattern query and the brain searched for dates matching specific conditions across different domains, then checked what happened within a followup window.
+
+YOUR JOB:
+1. Lead with the finding — how many dates matched, what's the pattern.
+2. For each matched date, summarize what followed (storms, weather events, etc).
+3. If the current date or recent months also match the pattern, FLAG IT prominently.
+4. Note what data gaps exist (if followup events are sparse, explain the brain may not have that data yet).
+5. Suggest what additional data would strengthen or weaken the pattern.
+6. This is the kind of analysis that literally cannot be done anywhere else. The cross-reference between these datasets does not exist on the internet.
+
+${patternContext}
+${BRAIN_RULES}`,
+    userContent: originalMessage,
   };
 }
