@@ -6,6 +6,7 @@ import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useBrainPulse, getDomainColor } from '@/hooks/useBrainPulse';
+import { useCoincidenceSnapshot } from '@/hooks/useCoincidenceSnapshot';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -82,6 +83,7 @@ export default function ExplorerLanding() {
     }
   }, [searchParams, sendMessage]);
   const { entries: historyEntries } = useThisDayInHistory();
+  const { data: coincidence } = useCoincidenceSnapshot();
 
   useEffect(() => {
     if (!SUPABASE_URL) return;
@@ -308,6 +310,38 @@ export default function ExplorerLanding() {
                 </div>
               </form>
             </div>
+
+            {/* Coincidence Counter — the hook */}
+            {!hasSearched && coincidence && coincidence.activeArcs > 0 && (
+              <div className="max-w-2xl mx-auto mb-5 text-center">
+                <p className="text-xs font-body text-white/40">
+                  Right now, the brain is tracking{' '}
+                  <span className="text-cyan-400/70 font-semibold">{coincidence.activeArcs} unusual patterns</span>
+                  {' '}across{' '}
+                  <span className="text-cyan-400/70 font-semibold">{coincidence.activeStates} states</span>.
+                  {coincidence.pendingOutcomes > 0 && (
+                    <span className="text-purple-400/50"> {coincidence.pendingOutcomes} investigations waiting for confirmation.</span>
+                  )}
+                </p>
+                {coincidence.hotStates.length > 0 && (
+                  <div className="flex items-center justify-center gap-1.5 mt-2">
+                    <span className="text-[8px] font-mono text-white/15">HOTTEST:</span>
+                    {coincidence.hotStates.map(s => (
+                      <button
+                        key={s.abbr}
+                        onClick={() => {
+                          setHasSearched(true);
+                          sendMessage(`What's the brain tracking in ${s.abbr} right now? What patterns are unusual?`);
+                        }}
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-400/[0.06] text-cyan-400/50 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors"
+                      >
+                        {s.abbr} {s.score}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Example queries — things Google can't answer */}
             {!hasSearched && (
