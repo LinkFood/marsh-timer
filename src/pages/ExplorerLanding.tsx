@@ -163,29 +163,74 @@ export default function ExplorerLanding() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
 
           {/* Search area */}
-          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-10 sm:pt-16 pb-6'}`}>
+          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-8 sm:pt-14 pb-4'}`}>
 
             {!hasSearched && (
               <>
-                <h1 className="font-display text-2xl sm:text-3xl text-white/90 mb-2 leading-tight">
-                  Pick a date. See everything.
+                <h1 className="font-display text-2xl sm:text-4xl text-white/90 mb-2 leading-tight">
+                  Ask the brain anything.
                 </h1>
-                <p className="text-sm text-white/30 mb-8 font-body">
-                  Cross-reference any date across every domain in the brain.
+                <p className="text-sm text-white/30 mb-6 font-body max-w-lg mx-auto">
+                  Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
                 </p>
               </>
             )}
 
-            {/* Date Spinners + State */}
-            <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3">
+            {/* Primary: Question input — BIG */}
+            <div className="max-w-2xl mx-auto mb-4">
+              <form onSubmit={handleFreeformSubmit}>
+                <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
+                  <Search size={18} className="text-white/20 shrink-0" />
+                  <input
+                    value={question}
+                    onChange={e => setQuestion(e.target.value)}
+                    placeholder="Ask anything..."
+                    className="flex-1 bg-transparent text-base font-body text-white/90 placeholder:text-white/25 outline-none"
+                  />
+                  {question.trim() && (
+                    <button
+                      type="submit"
+                      disabled={loading || streaming}
+                      className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 transition-colors"
+                    >
+                      <span className="font-body text-xs font-semibold text-white">Ask</span>
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Example queries — things Google can't answer */}
+            {!hasSearched && (
+              <div className="max-w-2xl mx-auto mb-6">
+                <div className="flex flex-wrap justify-center gap-2">
+                  {[
+                    'Every time AO dropped below -2 during La Nina, what storms followed?',
+                    'What was happening across all domains on February 10, 2021?',
+                    'When has drought in Texas coincided with negative NAO?',
+                    'Show me the weirdest environmental day in the last 10 years',
+                  ].map(q => (
+                    <button
+                      key={q}
+                      onClick={() => { setHasSearched(true); sendMessage(q); }}
+                      disabled={loading || streaming}
+                      className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 transition-colors text-[11px] font-body text-white/40 hover:text-white/60 text-left"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Secondary: Date picker row */}
+            <div className={`flex items-center justify-center gap-2 sm:gap-3 ${hasSearched ? 'mb-2' : 'mb-3'}`}>
               <Spinner label="MONTH" value={MONTHS[month]} onUp={() => spinMonth(1)} onDown={() => spinMonth(-1)} wide />
               <Spinner label="DAY" value={String(day)} onUp={() => spinDay(1)} onDown={() => spinDay(-1)} />
               <Spinner label="YEAR" value={String(year)} onUp={() => spinYear(1)} onDown={() => spinYear(-1)} onEdit={(v) => {
                 const n = parseInt(v, 10);
                 if (!isNaN(n) && n >= 1950 && n <= 2026) setYear(n);
               }} />
-
-              {/* State filter */}
               <div className="flex flex-col items-center">
                 <div className="h-[28px]" />
                 <select
@@ -201,64 +246,32 @@ export default function ExplorerLanding() {
               </div>
             </div>
 
-            {/* Question input */}
-            <div className="max-w-lg mx-auto mb-3">
-              <form onSubmit={handleFreeformSubmit}>
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
-                  <Search size={14} className="text-white/20 shrink-0" />
-                  <input
-                    value={question}
-                    onChange={e => setQuestion(e.target.value)}
-                    placeholder="Ask anything, or just pick a date..."
-                    className="flex-1 bg-transparent text-sm font-body text-white/90 placeholder:text-white/25 outline-none"
-                  />
-                </div>
-              </form>
-            </div>
-
-            {/* Action buttons */}
+            {/* Date query + New buttons */}
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
                 onClick={handleDateQuery}
                 disabled={loading || streaming}
-                className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+                className="px-4 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
               >
                 {(loading || streaming) ? (
-                  <Loader2 size={15} className="text-white animate-spin" />
+                  <Loader2 size={14} className="text-cyan-400 animate-spin" />
                 ) : (
-                  <Calendar size={15} className="text-white" />
+                  <Calendar size={14} className="text-white/40" />
                 )}
-                <span className="font-body text-xs font-semibold text-white">{dateStr}</span>
-                {stateFilter && <span className="font-mono text-[10px] text-white/60">· {stateFilter}</span>}
+                <span className="font-body text-xs text-white/50">{dateStr}</span>
+                {stateFilter && <span className="font-mono text-[10px] text-white/30">· {stateFilter}</span>}
               </button>
-
-              {question.trim() && (
-                <button
-                  onClick={() => { setHasSearched(true); sendMessage(question.trim()); setQuestion(''); }}
-                  disabled={loading || streaming}
-                  className="px-5 py-2.5 rounded-lg bg-purple-500/80 hover:bg-purple-400/80 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-                >
-                  <Sparkles size={15} className="text-white" />
-                  <span className="font-body text-xs font-semibold text-white">Ask Brain</span>
-                </button>
-              )}
 
               {hasSearched && (
                 <button
                   onClick={handleNewQuery}
-                  className="px-3 py-2.5 rounded-lg border border-white/10 hover:bg-white/[0.04] transition-colors inline-flex items-center gap-1.5"
+                  className="px-3 py-2 rounded-lg border border-white/[0.06] hover:bg-white/[0.04] transition-colors inline-flex items-center gap-1.5"
                 >
-                  <RotateCcw size={13} className="text-white/40" />
-                  <span className="font-body text-xs text-white/40">New</span>
+                  <RotateCcw size={12} className="text-white/30" />
+                  <span className="font-body text-xs text-white/30">New</span>
                 </button>
               )}
             </div>
-
-            {!hasSearched && brainCount && (
-              <p className="text-[10px] font-mono text-white/15 mt-4">
-                {brainCount.toLocaleString()}+ records across 83 domains · 1950–present
-              </p>
-            )}
           </div>
 
           {/* Brain Responses — inline conversation */}
