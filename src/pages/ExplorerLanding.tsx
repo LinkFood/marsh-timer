@@ -522,10 +522,7 @@ export default function ExplorerLanding() {
               })}
 
               {loading && !streaming && (
-                <div className="flex items-center justify-center gap-2 py-8">
-                  <Loader2 size={16} className="text-cyan-400/60 animate-spin" />
-                  <span className="text-xs font-mono text-cyan-400/40">Brain is thinking...</span>
-                </div>
+                <ThinkingIndicator />
               )}
             </ErrorBoundary>
           </div>
@@ -590,6 +587,40 @@ export default function ExplorerLanding() {
       )}
 
       <div className="grain-overlay" />
+    </div>
+  );
+}
+
+/** Thinking indicator with elapsed time and timeout messaging */
+function ThinkingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex flex-col items-center gap-2 py-8">
+      <div className="flex items-center gap-2">
+        <Loader2 size={16} className="text-cyan-400/60 animate-spin" />
+        <span className="text-xs font-mono text-cyan-400/40">
+          Brain is thinking...
+          {elapsed > 5 && <span className="text-white/20 ml-2">{elapsed}s</span>}
+        </span>
+      </div>
+      {elapsed > 15 && elapsed <= 45 && (
+        <span className="text-[10px] text-white/20">Searching across 83 domains — complex queries take longer</span>
+      )}
+      {elapsed > 45 && elapsed <= 90 && (
+        <span className="text-[10px] text-amber-400/40">Taking longer than usual — the brain is searching deep</span>
+      )}
+      {elapsed > 90 && (
+        <span className="text-[10px] text-red-400/40">This query may have timed out. Try a more specific question.</span>
+      )}
     </div>
   );
 }

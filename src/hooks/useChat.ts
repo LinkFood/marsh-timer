@@ -189,7 +189,9 @@ export function useChat(
       setMessages(prev => prev.map(m =>
         m.id === assistantId ? {
           ...m,
-          content: `Sorry, something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          content: err instanceof Error && err.message === 'Failed to fetch'
+            ? 'The brain timed out on this query — it was searching too deep. Try a more specific question, or narrow it to a state or time range.'
+            : `Sorry, something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`,
         } : m
       ));
     } finally {
