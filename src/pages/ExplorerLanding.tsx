@@ -38,6 +38,10 @@ export default function ExplorerLanding() {
   const [followUp, setFollowUp] = useState('');
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [month2, setMonth2] = useState(1); // Feb
+  const [day2, setDay2] = useState(10);
+  const [year2, setYear2] = useState(2021);
   const [searchParams, setSearchParams] = useSearchParams();
   const resultsRef = useRef<HTMLDivElement>(null);
   const followUpRef = useRef<HTMLInputElement>(null);
@@ -150,6 +154,10 @@ export default function ExplorerLanding() {
     return next;
   });
   const spinYear = (dir: number) => setYear(y => Math.max(1950, Math.min(2026, y + dir)));
+  const spinMonth2 = (dir: number) => setMonth2(m => (m + dir + 12) % 12);
+  const spinDay2 = (dir: number) => setDay2(d => { const max = DAYS_IN_MONTH[month2]; const next = d + dir; if (next < 1) return max; if (next > max) return 1; return next; });
+  const spinYear2 = (dir: number) => setYear2(y => Math.max(1950, Math.min(2026, y + dir)));
+  const dateStr2 = `${MONTHS[month2]} ${day2}, ${year2}`;
 
   const assistantMessages = messages.filter(m => m.role === 'assistant' && m.content);
 
@@ -362,7 +370,16 @@ export default function ExplorerLanding() {
                 className="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/20 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
               >
                 <Sparkles size={14} className="text-purple-400/60" />
-                <span className="font-body text-xs text-purple-300/60">Grade this date</span>
+                <span className="font-body text-xs text-purple-300/60">Grade</span>
+              </button>
+
+              <button
+                onClick={() => setCompareMode(!compareMode)}
+                className={`px-4 py-2 rounded-lg border transition-colors inline-flex items-center gap-2 ${
+                  compareMode ? 'bg-orange-500/10 border-orange-400/20' : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'
+                }`}
+              >
+                <span className="font-body text-xs text-white/40">Compare</span>
               </button>
 
               {hasSearched && (
@@ -376,6 +393,35 @@ export default function ExplorerLanding() {
               )}
             </div>
           </div>
+
+          {/* Compare mode — second date picker */}
+          {compareMode && (
+            <div className="text-center mb-4">
+              <p className="text-[9px] font-mono text-orange-400/40 tracking-wider mb-2">COMPARE WITH</p>
+              <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3">
+                <Spinner label="" value={MONTHS[month2]} onUp={() => spinMonth2(1)} onDown={() => spinMonth2(-1)} wide />
+                <Spinner label="" value={String(day2)} onUp={() => spinDay2(1)} onDown={() => spinDay2(-1)} />
+                <Spinner label="" value={String(year2)} onUp={() => spinYear2(1)} onDown={() => spinYear2(-1)} onEdit={(v) => {
+                  const n = parseInt(v, 10);
+                  if (!isNaN(n) && n >= 1950 && n <= 2026) setYear2(n);
+                }} />
+              </div>
+              <button
+                onClick={() => {
+                  if (loading || streaming) return;
+                  const d1 = `${MONTHS[month]} ${day}, ${year}`;
+                  const d2 = `${MONTHS[month2]} ${day2}, ${year2}`;
+                  const st = stateFilter ? ` in ${STATES.find(s => s.abbr === stateFilter)?.name || stateFilter}` : '';
+                  setHasSearched(true);
+                  sendMessage(`Compare the environmental conditions on ${d1} vs ${d2}${st}. What was the same across all domains? What was different? Rate the overall environmental similarity as a percentage. Include climate indices, weather, storms, migration, tides, moon phase, and any other domains with data for both dates. Format as a side-by-side comparison.`);
+                }}
+                disabled={loading || streaming}
+                className="px-5 py-2 rounded-lg bg-orange-500/20 border border-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+              >
+                <span className="font-body text-xs font-semibold text-orange-300/70">Compare {dateStr} vs {dateStr2}</span>
+              </button>
+            </div>
+          )}
 
           {/* Brain Responses — inline conversation */}
           <div ref={resultsRef}>
