@@ -561,6 +561,9 @@ verify_jwt = false
 [functions.hunt-pattern-query]
 verify_jwt = false
 
+[functions.hunt-daily-discovery]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

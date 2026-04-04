@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send } from 'lucide-react';
+import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
+import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -45,6 +46,8 @@ export default function ExplorerLanding() {
     stateAbbr: stateFilter,
     onMapAction: () => {},
   });
+
+  const { discovery } = useDailyDiscovery();
 
   useEffect(() => {
     if (!SUPABASE_URL) return;
@@ -170,9 +173,28 @@ export default function ExplorerLanding() {
                 <h1 className="font-display text-2xl sm:text-4xl text-white/90 mb-2 leading-tight">
                   Ask the brain anything.
                 </h1>
-                <p className="text-sm text-white/30 mb-6 font-body max-w-lg mx-auto">
+                <p className="text-sm text-white/30 mb-4 font-body max-w-lg mx-auto">
                   Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
                 </p>
+
+                {/* Daily Discovery */}
+                {discovery && (
+                  <div className="max-w-2xl mx-auto mb-6">
+                    <div className="rounded-xl bg-gradient-to-r from-cyan-400/[0.04] to-purple-400/[0.04] border border-cyan-400/10 px-4 sm:px-5 py-3.5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Zap size={13} className="text-cyan-400" />
+                        <span className="text-[9px] font-mono text-cyan-400/70 tracking-wider">TODAY'S DISCOVERY</span>
+                      </div>
+                      <p className="text-sm font-bold text-white/80 mb-1">{discovery.headline}</p>
+                      <p className="text-xs text-white/50 leading-relaxed">{discovery.discovery}</p>
+                      {discovery.dejaVu && (
+                        <p className="text-[10px] text-purple-400/60 mt-2 font-mono">
+                          Environmental déjà vu: Today most closely resembles {discovery.dejaVu.date} ({Math.round(discovery.dejaVu.similarity * 100)}% match)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
