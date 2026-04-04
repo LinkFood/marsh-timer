@@ -36,8 +36,8 @@ serve(async (req) => {
           query_embedding: embedding,
           match_threshold: 0.3,
           match_count: resultLimit,
-          filter_content_types: null,  // Search full brain — cross-domain discovery
-          filter_state_abbr: null,     // No geographic pre-filtering
+          filter_content_types: content_types || null,
+          filter_state_abbr: state_abbr || null,
           filter_species: species || null,
           filter_date_from: date_from || null,
           filter_date_to: date_to || null,

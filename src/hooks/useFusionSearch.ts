@@ -39,6 +39,21 @@ const EMPTY_RESULTS: FusionSearchResults = {
   stats: { totalMatched: 0, domainsRepresented: [], statesRepresented: [] },
 };
 
+function buildQueryFromFilters(
+  group: string | null | undefined,
+  state: string | null | undefined,
+  dateFrom: string | null | undefined,
+  dateTo: string | null | undefined,
+): string {
+  const parts: string[] = [];
+  if (group && group !== 'all') parts.push(group.replace(/_/g, ' '));
+  else parts.push('environmental data');
+  if (state) parts.push(`in ${state}`);
+  if (dateFrom) parts.push(`from ${dateFrom}`);
+  if (dateTo) parts.push(`to ${dateTo}`);
+  return parts.join(' ');
+}
+
 function shiftDate(date: string, days: number): string {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -70,7 +85,11 @@ export function useFusionSearch() {
 
   const search = useCallback(async (params: FusionSearchParams) => {
     const { query, contentTypeGroup, stateAbbr, dateFrom, dateTo } = params;
-    if (!query?.trim() || !SUPABASE_URL) return;
+    if (!SUPABASE_URL) return;
+
+    // Build a query string from filters if none provided
+    const searchQuery = query?.trim() || buildQueryFromFilters(contentTypeGroup, stateAbbr, dateFrom, dateTo);
+    if (!searchQuery) return;
 
     // Abort any in-flight search
     abortRef.current?.abort();
@@ -91,7 +110,7 @@ export function useFusionSearch() {
           apikey: SUPABASE_KEY,
         },
         body: JSON.stringify({
-          query: query.trim(),
+          query: searchQuery,
           species: null,
           state_abbr: stateAbbr || null,
           content_types: contentTypes,
