@@ -30,9 +30,9 @@ const SCRIPTS_DIR = import.meta.dirname || __dirname;
 const CHECKPOINT_FILE = join(SCRIPTS_DIR, ".orchestrator-v2-checkpoint.json");
 const LOG_FILE = join(SCRIPTS_DIR, ".orchestrator-v2.log");
 
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = 6;             // Cranked up — get throttle warnings, then pull back
 const MAX_RETRIES = 3;                // Max retries per pipe before giving up
-const LAYER_DELAY_MS = 60_000;        // 60s between starting new pipes
+const LAYER_DELAY_MS = 30_000;        // 30s between starting new pipes (was 60s)
 const STALL_WARN_MS = 5 * 60_000;     // 5 min no output = warning
 const STALL_KILL_MS = 10 * 60_000;    // 10 min no output = stalled
 const HEALTH_CHECK_MS = 30_000;       // Check health every 30s

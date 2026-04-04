@@ -153,7 +153,7 @@ function daysInMonth(year: number, month: number): number {
 interface DailyMeanEntry {
   t: string; // "YYYY-MM-DD"
   v: string; // value in feet
-  f: string; // flags
+  f?: string; // flags (not present in aggregated daily means)
 }
 
 interface PredictionEntry {
@@ -166,7 +166,9 @@ async function fetchDailyMean(
   beginDate: string,
   endDate: string,
 ): Promise<DailyMeanEntry[]> {
-  const url = `${COOPS_BASE}?begin_date=${beginDate}&end_date=${endDate}&station=${stationId}&product=daily_mean&datum=STND&units=english&time_zone=gmt&format=json`;
+  // daily_mean only works for Great Lakes — use hourly_height for all stations
+  // then aggregate to daily mean ourselves
+  const url = `${COOPS_BASE}?begin_date=${beginDate}&end_date=${endDate}&station=${stationId}&product=hourly_height&datum=STND&units=english&time_zone=gmt&format=json`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -176,17 +178,41 @@ async function fetchDailyMean(
     clearTimeout(timeout);
 
     if (!res.ok) {
-      if (res.status >= 400 && res.status < 500) return []; // No retry on 4xx
-      throw new Error(`CO-OPS daily_mean ${res.status}`);
+      if (res.status >= 400 && res.status < 500) return [];
+      throw new Error(`CO-OPS hourly_height ${res.status}`);
     }
 
     const data = await res.json();
-    if (data.error) return []; // No data for this range
+    if (data.error) return [];
     if (!data.data || !Array.isArray(data.data)) return [];
-    return data.data;
+
+    // Aggregate hourly readings to daily means
+    const dayTotals = new Map<string, { sum: number; count: number }>();
+    for (const reading of data.data) {
+      const day = (reading.t as string).substring(0, 10); // "YYYY-MM-DD"
+      const val = parseFloat(reading.v);
+      if (isNaN(val)) continue;
+      const existing = dayTotals.get(day);
+      if (existing) {
+        existing.sum += val;
+        existing.count += 1;
+      } else {
+        dayTotals.set(day, { sum: val, count: 1 });
+      }
+    }
+
+    // Convert to DailyMeanEntry format
+    const result: DailyMeanEntry[] = [];
+    for (const [day, { sum, count }] of dayTotals) {
+      result.push({
+        t: day,
+        v: (sum / count).toFixed(3),
+      });
+    }
+    return result.sort((a, b) => a.t.localeCompare(b.t));
   } catch (err: any) {
     clearTimeout(timeout);
-    if (err.name === "AbortError") throw new Error("CO-OPS daily_mean timeout");
+    if (err.name === "AbortError") throw new Error("CO-OPS hourly_height timeout");
     throw err;
   }
 }
