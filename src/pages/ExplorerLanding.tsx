@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap } from 'lucide-react';
+import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
@@ -624,6 +624,63 @@ function BrainResponse({ message, isStreaming, onFollowUp }: {
           </div>
         </div>
       )}
+
+      {/* Feedback — the brain learns */}
+      {!isStreaming && <ResponseFeedback messageId={message.id} content={content} />}
+    </div>
+  );
+}
+
+/** Feedback buttons — embeds user rating back into brain */
+function ResponseFeedback({ messageId, content }: { messageId: string; content: string }) {
+  const [rating, setRating] = useState<'up' | 'down' | null>(null);
+  const [surprising, setSurprising] = useState(false);
+
+  const submitFeedback = useCallback((r: 'up' | 'down') => {
+    setRating(r);
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+    const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (!SUPABASE_URL) return;
+    fetch(`${SUPABASE_URL}/functions/v1/hunt-embed-interaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}`, apikey: SUPABASE_KEY },
+      body: JSON.stringify({
+        content: `User rated brain response ${r === 'up' ? 'USEFUL' : 'NOT USEFUL'}${surprising ? ' and SURPRISING' : ''}. Response: ${content.slice(0, 200)}`,
+        content_type: 'query-feedback',
+        title: `Feedback: ${r} ${surprising ? '+ surprising' : ''}`,
+        metadata: { rating: r, surprising, response_length: content.length, message_id: messageId, timestamp: new Date().toISOString() },
+      }),
+    }).catch(() => {});
+  }, [content, messageId, surprising]);
+
+  if (rating) {
+    return (
+      <div className="mt-3 pt-2 border-t border-white/[0.03] flex items-center gap-2">
+        <span className={`text-[9px] font-mono ${rating === 'up' ? 'text-emerald-400/50' : 'text-red-400/50'}`}>
+          {rating === 'up' ? 'Marked useful' : 'Marked not useful'}{surprising ? ' + surprising' : ''}
+        </span>
+        <span className="text-[8px] text-white/15">— the brain learns from this</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 pt-2 border-t border-white/[0.03] flex items-center gap-3">
+      <span className="text-[8px] font-mono text-white/15">Was this useful?</span>
+      <button onClick={() => submitFeedback('up')} className="p-1 rounded hover:bg-emerald-400/10 transition-colors">
+        <ThumbsUp size={12} className="text-white/20 hover:text-emerald-400/60" />
+      </button>
+      <button onClick={() => submitFeedback('down')} className="p-1 rounded hover:bg-red-400/10 transition-colors">
+        <ThumbsDown size={12} className="text-white/20 hover:text-red-400/60" />
+      </button>
+      <button
+        onClick={() => setSurprising(!surprising)}
+        className={`text-[9px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+          surprising ? 'border-purple-400/30 text-purple-400/60 bg-purple-400/[0.06]' : 'border-white/[0.06] text-white/20 hover:text-purple-400/40'
+        }`}
+      >
+        Surprising?
+      </button>
     </div>
   );
 }
