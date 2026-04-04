@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
@@ -38,9 +38,11 @@ export default function ExplorerLanding() {
   const [followUp, setFollowUp] = useState('');
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const resultsRef = useRef<HTMLDivElement>(null);
   const followUpRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const autoFiredRef = useRef(false);
 
   const { messages, loading, streaming, sendMessage, clearMessages } = useChat({
     species: 'all',
@@ -49,6 +51,17 @@ export default function ExplorerLanding() {
   });
 
   const { discovery, loading: discoveryLoading } = useDailyDiscovery();
+
+  // Auto-fire query from URL params (?q=...)
+  useEffect(() => {
+    if (autoFiredRef.current) return;
+    const q = searchParams.get('q');
+    if (q && q.trim()) {
+      autoFiredRef.current = true;
+      setHasSearched(true);
+      sendMessage(q.trim());
+    }
+  }, [searchParams, sendMessage]);
   const { entries: historyEntries } = useThisDayInHistory();
 
   useEffect(() => {
@@ -106,9 +119,10 @@ export default function ExplorerLanding() {
     e.preventDefault();
     if (!question.trim() || loading || streaming) return;
     setHasSearched(true);
+    setSearchParams({ q: question.trim() }, { replace: true });
     sendMessage(question.trim());
     setQuestion('');
-  }, [question, loading, streaming, sendMessage]);
+  }, [question, loading, streaming, sendMessage, setSearchParams]);
 
   const handleFollowUp = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +136,9 @@ export default function ExplorerLanding() {
     setHasSearched(false);
     setQuestion('');
     setFollowUp('');
-  }, [clearMessages]);
+    setSearchParams({}, { replace: true });
+    autoFiredRef.current = false;
+  }, [clearMessages, setSearchParams]);
 
   const dateStr = `${MONTHS[month]} ${day}, ${year}`;
   const spinMonth = (dir: number) => setMonth(m => (m + dir + 12) % 12);
@@ -512,12 +528,15 @@ function BrainResponse({ message, isStreaming, onFollowUp }: {
   const content = message.content;
   if (!content) return null;
 
+  const [copied, setCopied] = useState(false);
   const handleShare = useCallback(() => {
-    const text = content.slice(0, 500) + (content.length > 500 ? '...' : '') + '\n\n— Duck Countdown Brain (duckcountdown.com)';
-    navigator.clipboard.writeText(text).then(() => {
-      // Could add a toast, but keeping it simple
+    // Copy the current URL (which has ?q=... param)
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }).catch(() => {});
-  }, [content]);
+  }, []);
 
   const rendered = content.split('\n').map((line, i) => {
     const trimmed = line.trim();
@@ -582,9 +601,9 @@ function BrainResponse({ message, isStreaming, onFollowUp }: {
         {!isStreaming && (
           <button
             onClick={handleShare}
-            className="text-[9px] font-mono text-white/20 hover:text-cyan-400/60 transition-colors px-2 py-1 rounded hover:bg-white/[0.03]"
+            className={`text-[9px] font-mono transition-colors px-2 py-1 rounded hover:bg-white/[0.03] ${copied ? 'text-emerald-400/60' : 'text-white/20 hover:text-cyan-400/60'}`}
           >
-            COPY
+            {copied ? 'COPIED!' : 'SHARE'}
           </button>
         )}
       </div>
