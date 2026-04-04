@@ -155,6 +155,15 @@ async function fetchLOC(
       return fetchLOC(dateStart, dateEnd, page, attempt + 1);
     }
 
+    if (res.status === 503) {
+      // LOC goes down periodically — back off hard and retry
+      if (attempt > 10) throw new Error("LOC 503 for 10 attempts — API may be down for maintenance");
+      const wait = Math.min(60 * attempt, 600); // Up to 10 min backoff
+      console.log(`  LOC 503 (attempt ${attempt}), API may be down — waiting ${wait}s...`);
+      await delay(wait * 1000);
+      return fetchLOC(dateStart, dateEnd, page, attempt + 1);
+    }
+
     if (!res.ok) {
       throw new Error(`LOC API ${res.status}`);
     }
