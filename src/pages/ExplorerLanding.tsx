@@ -268,7 +268,7 @@ export default function ExplorerLanding() {
               </div>
             </div>
 
-            {/* Date query + New buttons */}
+            {/* Date query + Grade + New buttons */}
             <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
                 onClick={handleDateQuery}
@@ -282,6 +282,21 @@ export default function ExplorerLanding() {
                 )}
                 <span className="font-body text-xs text-white/50">{dateStr}</span>
                 {stateFilter && <span className="font-mono text-[10px] text-white/30">· {stateFilter}</span>}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (loading || streaming) return;
+                  const d = `${MONTHS[month]} ${day}, ${year}`;
+                  const st = stateFilter ? ` in ${STATES.find(s => s.abbr === stateFilter)?.name || stateFilter}` : '';
+                  setHasSearched(true);
+                  sendMessage(`Grade ${d}${st} as an environmental day. Score it A+ through F based on how unusual or extreme the conditions were across all domains. Show a report card with each domain scored. Make it fun and shareable — like a personality quiz for a date. Include one surprising fact about this date that nobody would expect.`);
+                }}
+                disabled={loading || streaming}
+                className="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/20 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+              >
+                <Sparkles size={14} className="text-purple-400/60" />
+                <span className="font-body text-xs text-purple-300/60">Grade this date</span>
               </button>
 
               {hasSearched && (
