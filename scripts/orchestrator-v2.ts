@@ -560,12 +560,110 @@ const PIPES: PipeConfig[] = [
     },
   },
 
-  // Tier 8 — Cleanup (run last)
+  // Tier 8 — Wave 3: High-value human data (what people want to see on any date)
+  {
+    name: "fred-economic",
+    script: "backfill-fred-economic.ts",
+    description: "FRED economic data — 40 series (GDP, unemployment, CPI, S&P500, VIX, oil, gold) ~137K entries",
+    tier: 8,
+    resumeEnv: {},
+    requiredEnv: ["FRED_API_KEY"],
+    progressParser: (line) => {
+      const m = line.match(/^\[(\d+)\/\d+\]\s/);
+      if (m) return { START_SERIES: String(parseInt(m[1], 10) - 1) };
+      return null;
+    },
+  },
+  {
+    name: "project-tycho",
+    script: "backfill-project-tycho.ts",
+    description: "Project Tycho disease surveillance 1888-2013 — measles, polio, flu, smallpox ~1-2M entries",
+    tier: 8,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const diseaseMatch = line.match(/^\[(\d+)\/\d+\]\s/);
+      if (diseaseMatch) return { START_DISEASE: String(parseInt(diseaseMatch[1], 10) - 1) };
+      const stateMatch = line.match(/^\s+([A-Z]{2}):\s/);
+      if (stateMatch) return { START_STATE: stateMatch[1] };
+      return null;
+    },
+  },
+  {
+    name: "pdsi-drought",
+    script: "backfill-pdsi-drought.ts",
+    description: "Palmer Drought Severity Index 1895-2025, 50 states — the Dust Bowl pipe ~78K entries",
+    tier: 8,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const stateMatch = line.match(/^--- ([A-Z]{2}) /);
+      if (stateMatch) return { START_STATE: stateMatch[1] };
+      return null;
+    },
+  },
+  {
+    name: "ntsb-aviation",
+    script: "backfill-ntsb-aviation.ts",
+    description: "NTSB aviation accidents 1962-present ~83K entries",
+    tier: 8,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const yearMatch = line.match(/^--- (\d{4}) ---/);
+      if (yearMatch) return { START_YEAR: yearMatch[1] };
+      const pageMatch = line.match(/Page (\d+)/);
+      if (pageMatch) return { START_PAGE: pageMatch[1] };
+      return null;
+    },
+  },
+  {
+    name: "eia-energy",
+    script: "backfill-eia-energy.ts",
+    description: "EIA daily energy prices — oil, gas, electricity 1986-present ~55K entries",
+    tier: 8,
+    resumeEnv: {},
+    requiredEnv: ["EIA_API_KEY"],
+    progressParser: (line) => {
+      const m = line.match(/^\[(\d+)\/\d+\]\s/);
+      if (m) return { START_SERIES: String(parseInt(m[1], 10) - 1) };
+      return null;
+    },
+  },
+
+  // Tier 9 — Wave 3: Ocean volume plays (run after human data)
+  {
+    name: "noaa-coops-water",
+    script: "backfill-noaa-coops-water.ts",
+    description: "NOAA CO-OPS verified water levels + residuals 50 stations 1854-2025 ~2.5M entries",
+    tier: 9,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const stationMatch = line.match(/^--- (\d+) \(/);
+      if (stationMatch) return { START_STATION: stationMatch[1], START_YEAR: "" };
+      const yearMatch = line.match(/^\s+(\d{4}):\s+\d+\s+days/);
+      if (yearMatch) return { START_YEAR: yearMatch[1] };
+      return null;
+    },
+  },
+  {
+    name: "ndbc-deep",
+    script: "backfill-ndbc-deep.ts",
+    description: "NDBC deep buoy history 50 stations 1972-2025 ~2.2M entries",
+    tier: 9,
+    resumeEnv: {},
+    progressParser: (line) => {
+      const stationMatch = line.match(/^--- (\d+) \(/);
+      if (stationMatch) return { START_STATION: stationMatch[1], START_YEAR: "" };
+      const yearMatch = line.match(/^\s+(\d{4}):\s+\d+\s+days/);
+      if (yearMatch) return { START_YEAR: yearMatch[1] };
+      return null;
+    },
+  },
+
+  // Tier 10 — Cleanup (run last)
   {
     name: "dedup-storm-events",
     script: "dedup-storm-events.ts",
     description: "Deduplicate storm events (DRY_RUN first)",
-    tier: 8,
+    tier: 10,
     resumeEnv: { DRY_RUN: "true" },
     progressParser: (line) => {
       // "[checkpoint] Checked: 5000, Dups found: 120, Deleted: 0, Offset: 5000"
