@@ -152,6 +152,7 @@ export default function ExplorerLanding() {
             <div className="hidden sm:flex items-center gap-1.5">
               <Brain size={12} className="text-cyan-400/40" />
               <span className="text-[9px] font-mono text-white/30">{brainCount.toLocaleString()}</span>
+              <span className="text-[8px] font-mono text-emerald-400/40">LIVE</span>
             </div>
           )}
           <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Dashboard">
@@ -177,13 +178,23 @@ export default function ExplorerLanding() {
                   Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
                 </p>
 
-                {/* Daily Discovery */}
+                {/* Daily Discovery — clickable to dig deeper */}
                 {discovery && (
                   <div className="max-w-2xl mx-auto mb-6">
-                    <div className="rounded-xl bg-gradient-to-r from-cyan-400/[0.04] to-purple-400/[0.04] border border-cyan-400/10 px-4 sm:px-5 py-3.5">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Zap size={13} className="text-cyan-400" />
-                        <span className="text-[9px] font-mono text-cyan-400/70 tracking-wider">TODAY'S DISCOVERY</span>
+                    <button
+                      onClick={() => {
+                        setHasSearched(true);
+                        sendMessage(`Tell me more about this: ${discovery.headline}. ${discovery.discovery} Dig deeper into the cross-domain connections. What caused this? Has this combination happened before? What might follow?`);
+                      }}
+                      disabled={loading || streaming}
+                      className="w-full text-left rounded-xl bg-gradient-to-r from-cyan-400/[0.04] to-purple-400/[0.04] border border-cyan-400/10 hover:border-cyan-400/25 px-4 sm:px-5 py-3.5 transition-colors group"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Zap size={13} className="text-cyan-400" />
+                          <span className="text-[9px] font-mono text-cyan-400/70 tracking-wider">TODAY'S DISCOVERY</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-white/20 group-hover:text-cyan-400/40 transition-colors">click to dig deeper →</span>
                       </div>
                       <p className="text-sm font-bold text-white/80 mb-1">{discovery.headline}</p>
                       <p className="text-xs text-white/50 leading-relaxed">{discovery.discovery}</p>
@@ -192,7 +203,7 @@ export default function ExplorerLanding() {
                           Environmental déjà vu: Today most closely resembles {discovery.dejaVu.date} ({Math.round(discovery.dejaVu.similarity * 100)}% match)
                         </p>
                       )}
-                    </div>
+                    </button>
                   </div>
                 )}
               </>
@@ -330,6 +341,7 @@ export default function ExplorerLanding() {
                       key={msg.id}
                       message={msg}
                       isStreaming={streaming && i === messages.length - 1}
+                      onFollowUp={(q) => sendMessage(q)}
                     />
                   );
                 }
@@ -453,12 +465,20 @@ function Spinner({ label, value, onUp, onDown, wide, onEdit }: {
 }
 
 /** Renders a brain response with markdown formatting */
-function BrainResponse({ message, isStreaming }: {
+function BrainResponse({ message, isStreaming, onFollowUp }: {
   message: { content: string; id: string };
   isStreaming: boolean;
+  onFollowUp?: (query: string) => void;
 }) {
   const content = message.content;
   if (!content) return null;
+
+  const handleShare = useCallback(() => {
+    const text = content.slice(0, 500) + (content.length > 500 ? '...' : '') + '\n\n— Duck Countdown Brain (duckcountdown.com)';
+    navigator.clipboard.writeText(text).then(() => {
+      // Could add a toast, but keeping it simple
+    }).catch(() => {});
+  }, [content]);
 
   const rendered = content.split('\n').map((line, i) => {
     const trimmed = line.trim();
@@ -499,15 +519,53 @@ function BrainResponse({ message, isStreaming }: {
     return <p key={i} className="text-xs text-white/60 leading-relaxed mb-1">{renderBold(trimmed)}</p>;
   });
 
+  // Extract follow-up questions (lines starting with "**" that look like quoted questions)
+  const followUps: string[] = [];
+  if (!isStreaming && onFollowUp) {
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const match = line.match(/\*"([^"]+)"\*/);
+      if (match && match[1].length > 15 && match[1].endsWith('?')) {
+        followUps.push(match[1]);
+      }
+    }
+  }
+
   return (
     <div className={`rounded-xl bg-white/[0.015] border border-white/[0.05] p-4 sm:p-5 mb-4 ${isStreaming ? 'border-cyan-400/10' : ''}`}>
-      <div className="flex items-center gap-2 mb-3">
-        <Brain size={14} className={`${isStreaming ? 'text-cyan-400 animate-pulse' : 'text-cyan-400/50'}`} />
-        <span className="text-[9px] font-mono text-white/30 tracking-wider">
-          {isStreaming ? 'THINKING...' : 'BRAIN'}
-        </span>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Brain size={14} className={`${isStreaming ? 'text-cyan-400 animate-pulse' : 'text-cyan-400/50'}`} />
+          <span className="text-[9px] font-mono text-white/30 tracking-wider">
+            {isStreaming ? 'THINKING...' : 'BRAIN'}
+          </span>
+        </div>
+        {!isStreaming && (
+          <button
+            onClick={handleShare}
+            className="text-[9px] font-mono text-white/20 hover:text-cyan-400/60 transition-colors px-2 py-1 rounded hover:bg-white/[0.03]"
+          >
+            COPY
+          </button>
+        )}
       </div>
       <div>{rendered}</div>
+      {followUps.length > 0 && onFollowUp && (
+        <div className="mt-4 pt-3 border-t border-white/[0.04]">
+          <p className="text-[9px] font-mono text-white/20 mb-2">DIG DEEPER</p>
+          <div className="flex flex-wrap gap-1.5">
+            {followUps.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => onFollowUp(q)}
+                className="text-[10px] font-body text-cyan-400/50 hover:text-cyan-400 bg-cyan-400/[0.04] hover:bg-cyan-400/[0.08] border border-cyan-400/10 rounded-lg px-2.5 py-1.5 transition-colors text-left"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
