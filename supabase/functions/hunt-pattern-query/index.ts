@@ -186,10 +186,17 @@ Examples:
 
       // For climate-index, use title-based filtering which is more reliable
       if (cond.content_type === 'climate-index') {
-        // Extract the index name (AO, ENSO, NAO, PNA, PDO) from the label
-        const indexMatch = cond.label.match(/\b(AO|ENSO|NAO|PNA|PDO)\b/i);
-        if (indexMatch) {
-          q = q.ilike('title', `${indexMatch[1]}%`);
+        // Map common names to actual index titles
+        const labelLower = (cond.label + ' ' + (cond.field_pattern || '')).toLowerCase();
+        let indexName: string | null = null;
+        if (labelLower.includes('la ni') || labelLower.includes('el ni') || labelLower.includes('enso') || labelLower.includes('oni')) {
+          indexName = 'ENSO';
+        } else {
+          const indexMatch = labelLower.match(/\b(ao|nao|pna|pdo)\b/i);
+          if (indexMatch) indexName = indexMatch[1].toUpperCase();
+        }
+        if (indexName) {
+          q = q.ilike('title', `${indexName}%`);
         }
       } else if (cond.field_pattern) {
         q = q.ilike('content', `%${cond.field_pattern}%`);
@@ -217,11 +224,27 @@ Examples:
           if (cond.operator === 'eq' && Math.abs(val - cond.threshold) > 0.01) continue;
         } else if (cond.operator === 'contains' && cond.field_pattern) {
           if (!row.content.includes(cond.field_pattern)) continue;
-        } else if (phaseMatch && cond.label.toLowerCase().includes('negative')) {
-          // Phase-based matching: "ENSO negative" → phase:negative
-          if (phaseMatch[1] !== 'negative') continue;
-        } else if (phaseMatch && cond.label.toLowerCase().includes('positive')) {
-          if (phaseMatch[1] !== 'positive') continue;
+        } else {
+          // Smart label-based matching for common conditions
+          const labelLower = cond.label.toLowerCase();
+          const hasValue = valueMatch ? parseFloat(valueMatch[1]) : null;
+
+          if ((labelLower.includes('la ni') || labelLower.includes('la nina')) && hasValue !== null) {
+            // La Nina = ENSO value < -0.5 (standard threshold)
+            if (hasValue >= -0.5 || Math.abs(hasValue) > 500) continue;
+          } else if ((labelLower.includes('el ni') || labelLower.includes('el nino')) && hasValue !== null) {
+            // El Nino = ENSO value > 0.5
+            if (hasValue <= 0.5 || Math.abs(hasValue) > 500) continue;
+          } else if (labelLower.includes('negative')) {
+            if (phaseMatch && phaseMatch[1] !== 'negative') {
+              // Also accept numeric < 0 if phase isn't explicitly negative
+              if (hasValue === null || hasValue >= 0) continue;
+            }
+          } else if (labelLower.includes('positive')) {
+            if (phaseMatch && phaseMatch[1] !== 'positive') {
+              if (hasValue === null || hasValue <= 0) continue;
+            }
+          }
         }
 
         if (row.effective_date) {
