@@ -172,8 +172,26 @@ interface DaySummary {
   snowDepth: number | null;
 }
 
-function aggregateStations(acisData: AcisStation[]): Map<string, DaySummary> {
-  // Collect per-day readings across all stations
+function generateDates(year: number): string[] {
+  const dates: string[] = [];
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  const cur = new Date(start);
+  while (cur <= end) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, "0");
+    const d = String(cur.getDate()).padStart(2, "0");
+    dates.push(`${y}-${m}-${d}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+function aggregateStations(acisData: AcisStation[], year: number): Map<string, DaySummary> {
+  // ACIS MultiStnData does NOT include dates in data rows —
+  // rows are positional from sdate. Compute dates from year.
+  const dates = generateDates(year);
+
   const dayMap = new Map<
     string,
     {
@@ -196,17 +214,16 @@ function aggregateStations(acisData: AcisStation[]): Map<string, DaySummary> {
     const stationName = station.meta?.name || "Unknown";
     if (!station.data) continue;
 
-    for (const row of station.data) {
-      const date = row[0];
-      if (!date || typeof date !== "string") continue;
-      // Validate date format (YYYY-MM-DD) — ACIS sometimes returns malformed rows
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    for (let i = 0; i < station.data.length && i < dates.length; i++) {
+      const row = station.data[i];
+      const date = dates[i];
 
-      const maxt = parseAcisValue(row[1] as string);
-      const mint = parseAcisValue(row[2] as string);
-      const pcpn = parseAcisValue(row[3] as string);
-      const snow = parseAcisValue(row[4] as string);
-      const snwd = parseAcisValue(row[5] as string);
+      // ACIS rows are [maxt, mint, pcpn, snow, snwd] — NO date column
+      const maxt = parseAcisValue(row[0] as string);
+      const mint = parseAcisValue(row[1] as string);
+      const pcpn = parseAcisValue(row[2] as string);
+      const snow = parseAcisValue(row[3] as string);
+      const snwd = parseAcisValue(row[4] as string);
 
       // Need at least one temp reading to count as a reporting station
       if (maxt === null && mint === null) continue;
@@ -539,7 +556,7 @@ async function main() {
       }
 
       // Aggregate stations into daily summaries
-      const summaries = aggregateStations(acisData.data);
+      const summaries = aggregateStations(acisData.data, year);
 
       if (summaries.size === 0) {
         console.log(`  ${year}: no valid daily data`);
