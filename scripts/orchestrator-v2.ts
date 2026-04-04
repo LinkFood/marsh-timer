@@ -467,12 +467,105 @@ const PIPES: PipeConfig[] = [
     },
   },
 
-  // Tier 6 — Cleanup (run last)
+  // Tier 6 — Deep Historical Backfill (time machine data)
+  {
+    name: "ghcn-daily",
+    script: "backfill-ghcn-daily.ts",
+    description: "NOAA GHCN-Daily weather observations 1950-2025, 50 states (~1.4M entries)",
+    tier: 6,
+    resumeEnv: {},
+    progressParser: (line) => {
+      // "--- AL ---" → state started
+      const stateMatch = line.match(/^--- ([A-Z]{2}) ---$/);
+      if (stateMatch) return { START_STATE: stateMatch[1], START_YEAR: "" };
+      // "  1965: 365 days -> 365 embedded" → year done
+      const yearMatch = line.match(/^\s+(\d{4}):\s+\d+\s+days\s+->\s+\d+\s+embedded/);
+      if (yearMatch) {
+        const nextYear = parseInt(yearMatch[1], 10) + 1;
+        if (nextYear <= 2025) return { START_YEAR: String(nextYear) };
+      }
+      // "  AL total: N entries" → state done
+      const doneMatch = line.match(/^\s+([A-Z]{2}) total:/);
+      if (doneMatch) {
+        const next = nextState(doneMatch[1]);
+        if (next) return { START_STATE: next, START_YEAR: "" };
+      }
+      return null;
+    },
+  },
+  {
+    name: "usgs-water-deep",
+    script: "backfill-usgs-water-deep.ts",
+    description: "USGS water gauge history 1990-2020, 50 states (~900K entries)",
+    tier: 6,
+    resumeEnv: {},
+    progressParser: (line) => {
+      // "--- AL ---" → state started
+      const stateMatch = line.match(/^--- ([A-Z]{2}) ---$/);
+      if (stateMatch) return { START_STATE: stateMatch[1], START_MONTH: "" };
+      // "  1995-03: 45 stations -> 45 embedded" → month done
+      const monthMatch = line.match(/^\s+(\d{4}-\d{2}):\s+\d+\s+stations/);
+      if (monthMatch) return { START_MONTH: monthMatch[1] };
+      // "  AL total: N entries" → state done
+      const doneMatch = line.match(/^\s+([A-Z]{2}) total:/);
+      if (doneMatch) {
+        const next = nextState(doneMatch[1]);
+        if (next) return { START_STATE: next, START_MONTH: "" };
+      }
+      return null;
+    },
+  },
+  {
+    name: "astronomical",
+    script: "backfill-astronomical.ts",
+    description: "Moon phases, eclipses, solstices 1900-2026 (~47K entries)",
+    tier: 6,
+    resumeEnv: {},
+    progressParser: (line) => {
+      // "--- 1965 ---" → year started
+      const yearMatch = line.match(/^--- (\d{4}) ---$/);
+      if (yearMatch) return { START_YEAR: yearMatch[1] };
+      return null;
+    },
+  },
+  {
+    name: "earthquakes-extended",
+    script: "backfill-earthquakes-extended.ts",
+    description: "USGS earthquakes M2.0+ 1950-1989 CONUS (~85K entries)",
+    tier: 6,
+    resumeEnv: {},
+    progressParser: (line) => {
+      // "  1965-03: 12 earthquakes -> 8 embedded" → month done
+      const m = line.match(/^\s+(\d{4})-(\d{2}):\s+\d+\s+earthquakes/);
+      if (m) return { START_YEAR: m[1], START_MONTH: m[2] };
+      return null;
+    },
+  },
+
+  // Tier 7 — Slow/rate-limited historical (max 1 pipe)
+  {
+    name: "chronicling-america",
+    script: "backfill-chronicling-america-expanded.ts",
+    description: "LOC newspapers 1850-1963, environmental/disaster articles (~15K entries)",
+    tier: 7,
+    resumeEnv: {},
+    progressParser: (line) => {
+      // "[3/12] Searching:" → term started
+      const termMatch = line.match(/^\[(\d+)\/\d+\] Searching:/);
+      if (termMatch) return { START_TERM: String(parseInt(termMatch[1], 10) - 1) };
+      // "  1900s: Page 1-5:" → decade started
+      const decadeMatch = line.match(/^\s+(\d{4})s:/);
+      if (decadeMatch) return { START_DECADE: decadeMatch[1] };
+      return null;
+    },
+  },
+
+  // Tier 8 — Cleanup (run last)
   {
     name: "dedup-storm-events",
     script: "dedup-storm-events.ts",
     description: "Deduplicate storm events (DRY_RUN first)",
-    tier: 5,
+    tier: 8,
     resumeEnv: { DRY_RUN: "true" },
     progressParser: (line) => {
       // "[checkpoint] Checked: 5000, Dups found: 120, Deleted: 0, Offset: 5000"
