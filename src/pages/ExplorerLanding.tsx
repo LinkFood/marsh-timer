@@ -46,6 +46,33 @@ export default function ExplorerLanding() {
     }
   }, [messages.length]);
 
+  // Embed every completed assistant response back into the brain
+  const embeddedRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (!SUPABASE_URL || !SUPABASE_KEY) return;
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.content && msg.content.length > 50 && !embeddedRef.current.has(msg.id)) {
+        if (loading || streaming) continue; // wait until response is complete
+        embeddedRef.current.add(msg.id);
+        // Find the user message that triggered this response
+        const msgIndex = messages.indexOf(msg);
+        const userMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
+        const queryText = userMsg?.role === 'user' ? userMsg.content : 'unknown query';
+        // Fire and forget — embed the interaction
+        fetch(`${SUPABASE_URL}/functions/v1/hunt-embed-interaction`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}`, apikey: SUPABASE_KEY },
+          body: JSON.stringify({
+            content: `User asked: "${queryText}" — Brain responded with ${msg.content.length} chars of cross-domain analysis.`,
+            content_type: 'query-signal',
+            title: `Query: ${queryText.slice(0, 80)}`,
+            metadata: { query: queryText, response_length: msg.content.length, timestamp: new Date().toISOString() },
+          }),
+        }).catch(() => {});
+      }
+    }
+  }, [messages, loading, streaming]);
+
   // Send date query through the dispatcher
   const handleDateQuery = useCallback(() => {
     if (loading || streaming) return;
