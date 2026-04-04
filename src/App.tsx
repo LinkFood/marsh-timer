@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import ExplorerLanding from "./pages/ExplorerLanding";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import OpsPage from "./pages/OpsPage";
@@ -10,11 +11,18 @@ const App = () => (
   <BrowserRouter>
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Index />} />
+        {/* Explorer — the product */}
+        <Route path="/" element={<ExplorerLanding />} />
+        <Route path="/:stateAbbr" element={<ExplorerLanding />} />
+
+        {/* Old dashboard — preserved at /dashboard */}
+        <Route path="/dashboard" element={<Index />} />
+        <Route path="/dashboard/:first" element={<Index />} />
+        <Route path="/dashboard/:first/:second" element={<Index />} />
+        <Route path="/dashboard/:first/:second/:third" element={<Index />} />
         <Route path="/map" element={<Index legacyLayout />} />
-        <Route path="/:first" element={<Index />} />
-        <Route path="/:first/:second" element={<Index />} />
-        <Route path="/:first/:second/:third" element={<Index />} />
+
+        {/* System pages */}
         <Route path="/ops" element={<OpsPage />} />
         <Route path="/intelligence" element={<IntelligencePage />} />
         <Route path="/auth" element={<Auth />} />
