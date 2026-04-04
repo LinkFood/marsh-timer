@@ -166,12 +166,14 @@ Examples:
     }
 
     // Step 2: Query each condition independently, get matching dates
+    // Climate index content format: "climate-index | AO (Arctic Oscillation) | Jan 2021 | value:-2.48 | phase:negative"
+    // The value_pattern from Haiku often doesn't match, so we normalize parsing here.
     const dateSetsByCondition: Map<string, Set<string>> = new Map();
 
     for (const cond of conditions) {
       const dates = new Set<string>();
 
-      // Fetch entries matching this condition's content type and field pattern
+      // Build the query
       let q = supabase
         .from('hunt_knowledge')
         .select('content,effective_date')
@@ -182,31 +184,49 @@ Examples:
         q = q.eq('state_abbr', state_abbr);
       }
 
-      // Use ilike for field pattern matching
-      if (cond.field_pattern) {
+      // For climate-index, use title-based filtering which is more reliable
+      if (cond.content_type === 'climate-index') {
+        // Extract the index name (AO, ENSO, NAO, PNA, PDO) from the label
+        const indexMatch = cond.label.match(/\b(AO|ENSO|NAO|PNA|PDO)\b/i);
+        if (indexMatch) {
+          q = q.ilike('title', `${indexMatch[1]}%`);
+        }
+      } else if (cond.field_pattern) {
         q = q.ilike('content', `%${cond.field_pattern}%`);
       }
 
-      const { data } = await q.order('effective_date', { ascending: true }).limit(2000);
+      // Fetch in pages to handle large datasets
+      let allData: any[] = [];
+      for (let offset = 0; offset < 10000; offset += 1000) {
+        const { data } = await q.order('effective_date', { ascending: true }).range(offset, offset + 999);
+        if (!data || data.length === 0) break;
+        allData = allData.concat(data);
+        if (data.length < 1000) break;
+      }
 
-      if (data) {
-        for (const row of data) {
-          // Apply numeric threshold if specified
-          if (cond.value_pattern && cond.operator && cond.threshold !== undefined) {
-            const match = new RegExp(cond.value_pattern).exec(row.content);
-            if (match) {
-              const val = parseFloat(match[1]);
-              if (isNaN(val)) continue;
-              if (cond.operator === 'lt' && val >= cond.threshold) continue;
-              if (cond.operator === 'gt' && val <= cond.threshold) continue;
-              if (cond.operator === 'eq' && Math.abs(val - cond.threshold) > 0.01) continue;
-            } else {
-              continue; // pattern didn't match, skip
-            }
-          }
-          if (row.effective_date) {
-            dates.add(row.effective_date);
-          }
+      for (const row of allData) {
+        // Universal value extraction: look for "value:NUMBER" in content
+        const valueMatch = /value:([-\d.]+)/.exec(row.content);
+        const phaseMatch = /phase:(\w+)/.exec(row.content);
+
+        if (cond.operator && cond.threshold !== undefined && valueMatch) {
+          const val = parseFloat(valueMatch[1]);
+          if (isNaN(val) || Math.abs(val) > 500) continue; // skip garbage values like -999
+          if (cond.operator === 'lt' && val >= cond.threshold) continue;
+          if (cond.operator === 'gt' && val <= cond.threshold) continue;
+          if (cond.operator === 'eq' && Math.abs(val - cond.threshold) > 0.01) continue;
+        } else if (cond.operator === 'contains' && cond.field_pattern) {
+          if (!row.content.includes(cond.field_pattern)) continue;
+        } else if (phaseMatch && cond.label.toLowerCase().includes('negative')) {
+          // Phase-based matching: "ENSO negative" → phase:negative
+          if (phaseMatch[1] !== 'negative') continue;
+        } else if (phaseMatch && cond.label.toLowerCase().includes('positive')) {
+          if (phaseMatch[1] !== 'positive') continue;
+        }
+
+        if (row.effective_date) {
+          // Deduplicate by date (handle duplicate entries)
+          dates.add(row.effective_date);
         }
       }
 
