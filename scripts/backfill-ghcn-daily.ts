@@ -199,6 +199,8 @@ function aggregateStations(acisData: AcisStation[]): Map<string, DaySummary> {
     for (const row of station.data) {
       const date = row[0];
       if (!date || typeof date !== "string") continue;
+      // Validate date format (YYYY-MM-DD) — ACIS sometimes returns malformed rows
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
       const maxt = parseAcisValue(row[1] as string);
       const mint = parseAcisValue(row[2] as string);
@@ -334,7 +336,9 @@ interface PreparedEntry {
   embedText: string;
 }
 
-function buildEntry(state: string, summary: DaySummary): PreparedEntry {
+function buildEntry(state: string, summary: DaySummary): PreparedEntry | null {
+  // Final date validation — reject anything that's not a real date
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(summary.date)) return null;
   const narrative = buildNarrative(state, summary);
 
   const tags = [state, "weather", "temperature", "daily-observation", "historical"];
@@ -542,10 +546,11 @@ async function main() {
         continue;
       }
 
-      // Build entries
+      // Build entries (filter nulls from invalid dates)
       const entries: PreparedEntry[] = [];
       for (const [, summary] of summaries) {
-        entries.push(buildEntry(state, summary));
+        const entry = buildEntry(state, summary);
+        if (entry) entries.push(entry);
       }
 
       // Sort by date for consistent output
