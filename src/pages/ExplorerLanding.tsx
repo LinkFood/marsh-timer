@@ -1,8 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw } from 'lucide-react';
+import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
-import { useAuth } from '@/hooks/useAuth';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -12,53 +11,67 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_IN_MONTH = [31,29,31,30,31,30,31,31,30,31,30,31];
 
+const STATES: { abbr: string; name: string }[] = [
+  {abbr:'AL',name:'Alabama'},{abbr:'AK',name:'Alaska'},{abbr:'AZ',name:'Arizona'},{abbr:'AR',name:'Arkansas'},
+  {abbr:'CA',name:'California'},{abbr:'CO',name:'Colorado'},{abbr:'CT',name:'Connecticut'},{abbr:'DE',name:'Delaware'},
+  {abbr:'FL',name:'Florida'},{abbr:'GA',name:'Georgia'},{abbr:'HI',name:'Hawaii'},{abbr:'ID',name:'Idaho'},
+  {abbr:'IL',name:'Illinois'},{abbr:'IN',name:'Indiana'},{abbr:'IA',name:'Iowa'},{abbr:'KS',name:'Kansas'},
+  {abbr:'KY',name:'Kentucky'},{abbr:'LA',name:'Louisiana'},{abbr:'ME',name:'Maine'},{abbr:'MD',name:'Maryland'},
+  {abbr:'MA',name:'Massachusetts'},{abbr:'MI',name:'Michigan'},{abbr:'MN',name:'Minnesota'},{abbr:'MS',name:'Mississippi'},
+  {abbr:'MO',name:'Missouri'},{abbr:'MT',name:'Montana'},{abbr:'NE',name:'Nebraska'},{abbr:'NV',name:'Nevada'},
+  {abbr:'NH',name:'New Hampshire'},{abbr:'NJ',name:'New Jersey'},{abbr:'NM',name:'New Mexico'},{abbr:'NY',name:'New York'},
+  {abbr:'NC',name:'North Carolina'},{abbr:'ND',name:'North Dakota'},{abbr:'OH',name:'Ohio'},{abbr:'OK',name:'Oklahoma'},
+  {abbr:'OR',name:'Oregon'},{abbr:'PA',name:'Pennsylvania'},{abbr:'RI',name:'Rhode Island'},{abbr:'SC',name:'South Carolina'},
+  {abbr:'SD',name:'South Dakota'},{abbr:'TN',name:'Tennessee'},{abbr:'TX',name:'Texas'},{abbr:'UT',name:'Utah'},
+  {abbr:'VT',name:'Vermont'},{abbr:'VA',name:'Virginia'},{abbr:'WA',name:'Washington'},{abbr:'WV',name:'West Virginia'},
+  {abbr:'WI',name:'Wisconsin'},{abbr:'WY',name:'Wyoming'},
+];
+
 export default function ExplorerLanding() {
   const [month, setMonth] = useState(3);
   const [day, setDay] = useState(4);
   const [year, setYear] = useState(2026);
+  const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
+  const [followUp, setFollowUp] = useState('');
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const followUpRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Chat hook — this IS the brain interface
   const { messages, loading, streaming, sendMessage, clearMessages } = useChat({
     species: 'all',
-    stateAbbr: null,
+    stateAbbr: stateFilter,
     onMapAction: () => {},
   });
 
-  // Fetch brain count
   useEffect(() => {
     if (!SUPABASE_URL) return;
-    fetch(`${SUPABASE_URL}/functions/v1/hunt-suggested-prompts`, {
-      headers: { apikey: SUPABASE_KEY },
-    })
+    fetch(`${SUPABASE_URL}/functions/v1/hunt-suggested-prompts`, { headers: { apikey: SUPABASE_KEY } })
       .then(r => r.json())
       .then(data => { if (data.stats?.total_entries) setBrainCount(data.stats.total_entries); })
       .catch(() => {});
   }, []);
 
-  // Auto-scroll to results when brain responds
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messages.length > 0 && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (messages.length > 0 && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length]);
+  }, [messages, streaming]);
 
-  // Embed every completed assistant response back into the brain
+  // Embed completed responses back into brain
   const embeddedRef = useRef(new Set<string>());
   useEffect(() => {
     if (!SUPABASE_URL || !SUPABASE_KEY) return;
     for (const msg of messages) {
       if (msg.role === 'assistant' && msg.content && msg.content.length > 50 && !embeddedRef.current.has(msg.id)) {
-        if (loading || streaming) continue; // wait until response is complete
+        if (loading || streaming) continue;
         embeddedRef.current.add(msg.id);
-        // Find the user message that triggered this response
         const msgIndex = messages.indexOf(msg);
         const userMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
         const queryText = userMsg?.role === 'user' ? userMsg.content : 'unknown query';
-        // Fire and forget — embed the interaction
         fetch(`${SUPABASE_URL}/functions/v1/hunt-embed-interaction`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}`, apikey: SUPABASE_KEY },
@@ -66,25 +79,24 @@ export default function ExplorerLanding() {
             content: `User asked: "${queryText}" — Brain responded with ${msg.content.length} chars of cross-domain analysis.`,
             content_type: 'query-signal',
             title: `Query: ${queryText.slice(0, 80)}`,
-            metadata: { query: queryText, response_length: msg.content.length, timestamp: new Date().toISOString() },
+            metadata: { query: queryText, response_length: msg.content.length, state: stateFilter, timestamp: new Date().toISOString() },
           }),
         }).catch(() => {});
       }
     }
-  }, [messages, loading, streaming]);
+  }, [messages, loading, streaming, stateFilter]);
 
-  // Send date query through the dispatcher
   const handleDateQuery = useCallback(() => {
     if (loading || streaming) return;
     const dateStr = `${MONTHS[month]} ${day}, ${year}`;
+    const stateStr = stateFilter ? ` in ${STATES.find(s => s.abbr === stateFilter)?.name || stateFilter}` : '';
     const msg = question.trim()
-      ? `On ${dateStr}: ${question.trim()}`
-      : `What was happening on ${dateStr}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`;
+      ? `On ${dateStr}${stateStr}: ${question.trim()}`
+      : `What was happening on ${dateStr}${stateStr}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`;
     setHasSearched(true);
     sendMessage(msg);
-  }, [month, day, year, question, loading, streaming, sendMessage]);
+  }, [month, day, year, stateFilter, question, loading, streaming, sendMessage]);
 
-  // Send freeform question through the dispatcher
   const handleFreeformSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim() || loading || streaming) return;
@@ -93,10 +105,18 @@ export default function ExplorerLanding() {
     setQuestion('');
   }, [question, loading, streaming, sendMessage]);
 
+  const handleFollowUp = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (!followUp.trim() || loading || streaming) return;
+    sendMessage(followUp.trim());
+    setFollowUp('');
+  }, [followUp, loading, streaming, sendMessage]);
+
   const handleNewQuery = useCallback(() => {
     clearMessages();
     setHasSearched(false);
     setQuestion('');
+    setFollowUp('');
   }, [clearMessages]);
 
   const dateStr = `${MONTHS[month]} ${day}, ${year}`;
@@ -110,7 +130,6 @@ export default function ExplorerLanding() {
   });
   const spinYear = (dir: number) => setYear(y => Math.max(1950, Math.min(2026, y + dir)));
 
-  // Get the latest assistant message for display
   const assistantMessages = messages.filter(m => m.role === 'assistant' && m.content);
 
   return (
@@ -129,9 +148,7 @@ export default function ExplorerLanding() {
           {brainCount && (
             <div className="hidden sm:flex items-center gap-1.5">
               <Brain size={12} className="text-cyan-400/40" />
-              <span className="text-[9px] font-mono text-white/30">
-                {brainCount.toLocaleString()}
-              </span>
+              <span className="text-[9px] font-mono text-white/30">{brainCount.toLocaleString()}</span>
             </div>
           )}
           <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Dashboard">
@@ -145,32 +162,49 @@ export default function ExplorerLanding() {
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
 
-          {/* Search area — compact when results showing */}
-          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-4' : 'pt-10 sm:pt-16 pb-6'}`}>
+          {/* Search area */}
+          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-10 sm:pt-16 pb-6'}`}>
 
             {!hasSearched && (
-              <h1 className="font-display text-2xl sm:text-3xl text-white/90 mb-2 leading-tight">
-                Pick a date. See everything.
-              </h1>
+              <>
+                <h1 className="font-display text-2xl sm:text-3xl text-white/90 mb-2 leading-tight">
+                  Pick a date. See everything.
+                </h1>
+                <p className="text-sm text-white/30 mb-8 font-body">
+                  Cross-reference any date across every domain in the brain.
+                </p>
+              </>
             )}
 
-            {!hasSearched && (
-              <p className="text-sm text-white/30 mb-8 font-body">
-                Cross-reference any date across every domain in the brain.
-              </p>
-            )}
-
-            {/* Date Spinners */}
-            <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4">
+            {/* Date Spinners + State */}
+            <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3">
               <Spinner label="MONTH" value={MONTHS[month]} onUp={() => spinMonth(1)} onDown={() => spinMonth(-1)} wide />
               <Spinner label="DAY" value={String(day)} onUp={() => spinDay(1)} onDown={() => spinDay(-1)} />
-              <Spinner label="YEAR" value={String(year)} onUp={() => spinYear(1)} onDown={() => spinYear(-1)} />
+              <Spinner label="YEAR" value={String(year)} onUp={() => spinYear(1)} onDown={() => spinYear(-1)} onEdit={(v) => {
+                const n = parseInt(v, 10);
+                if (!isNaN(n) && n >= 1950 && n <= 2026) setYear(n);
+              }} />
+
+              {/* State filter */}
+              <div className="flex flex-col items-center">
+                <div className="h-[28px]" />
+                <select
+                  value={stateFilter || ''}
+                  onChange={e => setStateFilter(e.target.value || null)}
+                  className="h-12 px-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-sm font-bold text-white appearance-none cursor-pointer outline-none w-20 sm:w-24 text-center"
+                >
+                  <option value="">US</option>
+                  {STATES.map(s => <option key={s.abbr} value={s.abbr}>{s.abbr}</option>)}
+                </select>
+                <div className="h-[28px]" />
+                <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">STATE</span>
+              </div>
             </div>
 
-            {/* Question input + actions */}
+            {/* Question input */}
             <div className="max-w-lg mx-auto mb-3">
-              <form onSubmit={handleFreeformSubmit} className="flex items-center gap-2">
-                <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
+              <form onSubmit={handleFreeformSubmit}>
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
                   <Search size={14} className="text-white/20 shrink-0" />
                   <input
                     value={question}
@@ -183,7 +217,7 @@ export default function ExplorerLanding() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
               <button
                 onClick={handleDateQuery}
                 disabled={loading || streaming}
@@ -194,9 +228,8 @@ export default function ExplorerLanding() {
                 ) : (
                   <Calendar size={15} className="text-white" />
                 )}
-                <span className="font-body text-xs font-semibold text-white">
-                  {dateStr}
-                </span>
+                <span className="font-body text-xs font-semibold text-white">{dateStr}</span>
+                {stateFilter && <span className="font-mono text-[10px] text-white/60">· {stateFilter}</span>}
               </button>
 
               {question.trim() && (
@@ -228,17 +261,30 @@ export default function ExplorerLanding() {
             )}
           </div>
 
-          {/* Brain Response — inline, not a modal */}
+          {/* Brain Responses — inline conversation */}
           <div ref={resultsRef}>
             <ErrorBoundary fallback={<p className="text-xs text-white/40 text-center py-8">Error loading response.</p>}>
-              {assistantMessages.map((msg, i) => (
-                <BrainResponse
-                  key={msg.id}
-                  message={msg}
-                  isLatest={i === assistantMessages.length - 1}
-                  isStreaming={streaming && i === assistantMessages.length - 1}
-                />
-              ))}
+              {messages.map((msg, i) => {
+                if (msg.role === 'user') {
+                  return (
+                    <div key={msg.id} className="mb-3 text-right">
+                      <span className="inline-block text-xs font-body text-white/70 bg-cyan-400/[0.08] rounded-lg px-3 py-2 max-w-[85%] text-left">
+                        {msg.content}
+                      </span>
+                    </div>
+                  );
+                }
+                if (msg.role === 'assistant' && msg.content) {
+                  return (
+                    <BrainResponse
+                      key={msg.id}
+                      message={msg}
+                      isStreaming={streaming && i === messages.length - 1}
+                    />
+                  );
+                }
+                return null;
+              })}
 
               {loading && !streaming && (
                 <div className="flex items-center justify-center gap-2 py-8">
@@ -249,26 +295,29 @@ export default function ExplorerLanding() {
             </ErrorBoundary>
           </div>
 
-          {/* Conversation — show user messages for context */}
-          {messages.filter(m => m.role === 'user').length > 1 && (
-            <div className="border-t border-white/[0.04] mt-6 pt-4 pb-12">
-              <p className="text-[9px] font-mono text-white/20 mb-3">CONVERSATION</p>
-              {messages.map(msg => (
-                <div key={msg.id} className={`mb-2 ${msg.role === 'user' ? 'text-right' : ''}`}>
-                  <span className={`inline-block text-xs font-body leading-relaxed rounded-lg px-3 py-2 max-w-[85%] ${
-                    msg.role === 'user'
-                      ? 'bg-cyan-400/[0.08] text-white/70'
-                      : 'bg-white/[0.02] text-white/50'
-                  }`}>
-                    {msg.role === 'user' ? msg.content : msg.content.slice(0, 200) + (msg.content.length > 200 ? '...' : '')}
-                  </span>
-                </div>
-              ))}
-            </div>
+          {/* Follow-up input — appears after first response */}
+          {hasSearched && !loading && !streaming && assistantMessages.length > 0 && (
+            <form onSubmit={handleFollowUp} className="mt-4 mb-8">
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
+                <input
+                  ref={followUpRef}
+                  value={followUp}
+                  onChange={e => setFollowUp(e.target.value)}
+                  placeholder="Ask a follow-up question..."
+                  className="flex-1 bg-transparent text-sm font-body text-white/90 placeholder:text-white/25 outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!followUp.trim()}
+                  className="p-1.5 rounded hover:bg-white/[0.06] transition-colors disabled:opacity-20"
+                >
+                  <Send size={14} className="text-cyan-400" />
+                </button>
+              </div>
+            </form>
           )}
 
-          {/* Bottom padding */}
-          <div className="h-12" />
+          <div ref={bottomRef} className="h-8" />
         </div>
       </main>
 
@@ -277,19 +326,75 @@ export default function ExplorerLanding() {
   );
 }
 
-/** Date spinner component */
-function Spinner({ label, value, onUp, onDown, wide }: {
-  label: string; value: string; onUp: () => void; onDown: () => void; wide?: boolean;
+/** Date spinner with click-to-edit on year */
+function Spinner({ label, value, onUp, onDown, wide, onEdit }: {
+  label: string; value: string; onUp: () => void; onDown: () => void; wide?: boolean; onEdit?: (value: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startHold = useCallback((fn: () => void) => {
+    fn();
+    timeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(fn, 100);
+    }, 400);
+  }, []);
+
+  const stopHold = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    timeoutRef.current = null;
+    intervalRef.current = null;
+  }, []);
+
+  useEffect(() => () => stopHold(), [stopHold]);
+
+  if (editing && onEdit) {
+    return (
+      <div className="flex flex-col items-center">
+        <div className="h-[28px]" />
+        <input
+          autoFocus
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onBlur={() => { onEdit(editValue); setEditing(false); }}
+          onKeyDown={e => { if (e.key === 'Enter') { onEdit(editValue); setEditing(false); } if (e.key === 'Escape') setEditing(false); }}
+          className="w-20 sm:w-24 h-12 bg-[#0d1117] border border-cyan-400/30 rounded-lg text-base sm:text-lg font-bold text-white text-center outline-none"
+        />
+        <div className="h-[28px]" />
+        <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">{label}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center">
-      <button onClick={onUp} className="p-1.5 text-white/20 hover:text-white/50 transition-colors">
+      <button
+        onMouseDown={() => startHold(onUp)}
+        onMouseUp={stopHold}
+        onMouseLeave={stopHold}
+        onTouchStart={() => startHold(onUp)}
+        onTouchEnd={stopHold}
+        className="p-1.5 text-white/20 hover:text-white/50 transition-colors select-none"
+      >
         <ChevronUp size={16} />
       </button>
-      <div className={`${wide ? 'w-28 sm:w-32' : 'w-16 sm:w-20'} h-12 flex items-center justify-center bg-[#0d1117] border border-white/[0.08] rounded-lg`}>
+      <div
+        className={`${wide ? 'w-28 sm:w-32' : 'w-16 sm:w-20'} h-12 flex items-center justify-center bg-[#0d1117] border border-white/[0.08] rounded-lg ${onEdit ? 'cursor-pointer hover:border-white/20' : ''}`}
+        onClick={() => { if (onEdit) { setEditValue(value); setEditing(true); } }}
+      >
         <span className="text-base sm:text-lg font-bold text-white tracking-wide">{value}</span>
       </div>
-      <button onClick={onDown} className="p-1.5 text-white/20 hover:text-white/50 transition-colors">
+      <button
+        onMouseDown={() => startHold(onDown)}
+        onMouseUp={stopHold}
+        onMouseLeave={stopHold}
+        onTouchStart={() => startHold(onDown)}
+        onTouchEnd={stopHold}
+        className="p-1.5 text-white/20 hover:text-white/50 transition-colors select-none"
+      >
         <ChevronDown size={16} />
       </button>
       <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">{label}</span>
@@ -297,33 +402,19 @@ function Spinner({ label, value, onUp, onDown, wide }: {
   );
 }
 
-/** Renders a brain response with markdown-like formatting */
-function BrainResponse({ message, isLatest, isStreaming }: {
+/** Renders a brain response with markdown formatting */
+function BrainResponse({ message, isStreaming }: {
   message: { content: string; id: string };
-  isLatest: boolean;
   isStreaming: boolean;
 }) {
   const content = message.content;
   if (!content) return null;
 
-  // Simple markdown rendering — headers, bold, lists
   const rendered = content.split('\n').map((line, i) => {
     const trimmed = line.trim();
-
-    // Headers
-    if (trimmed.startsWith('## ')) {
-      return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{trimmed.slice(3)}</h3>;
-    }
-    if (trimmed.startsWith('# ')) {
-      return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{trimmed.slice(2)}</h2>;
-    }
-
-    // Horizontal rules
-    if (trimmed === '---') {
-      return <hr key={i} className="border-white/[0.06] my-3" />;
-    }
-
-    // List items
+    if (trimmed.startsWith('## ')) return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{trimmed.slice(3)}</h3>;
+    if (trimmed.startsWith('# ')) return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{trimmed.slice(2)}</h2>;
+    if (trimmed === '---') return <hr key={i} className="border-white/[0.06] my-3" />;
     if (trimmed.startsWith('- ')) {
       return (
         <div key={i} className="flex gap-2 ml-2 mb-0.5">
@@ -332,8 +423,6 @@ function BrainResponse({ message, isLatest, isStreaming }: {
         </div>
       );
     }
-
-    // Numbered list
     const numMatch = trimmed.match(/^(\d+)\.\s+/);
     if (numMatch) {
       return (
@@ -343,11 +432,9 @@ function BrainResponse({ message, isLatest, isStreaming }: {
         </div>
       );
     }
-
-    // Table-like rows (pipes)
     if (trimmed.includes('|') && trimmed.split('|').length >= 3) {
       const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
-      if (cells.every(c => c.match(/^[-:]+$/))) return null; // skip separator rows
+      if (cells.every(c => c.match(/^[-:]+$/))) return null;
       return (
         <div key={i} className="flex gap-3 mb-0.5 ml-2">
           {cells.map((cell, ci) => (
@@ -358,11 +445,7 @@ function BrainResponse({ message, isLatest, isStreaming }: {
         </div>
       );
     }
-
-    // Empty line
     if (!trimmed) return <div key={i} className="h-2" />;
-
-    // Regular paragraph
     return <p key={i} className="text-xs text-white/60 leading-relaxed mb-1">{renderBold(trimmed)}</p>;
   });
 
@@ -371,7 +454,7 @@ function BrainResponse({ message, isLatest, isStreaming }: {
       <div className="flex items-center gap-2 mb-3">
         <Brain size={14} className={`${isStreaming ? 'text-cyan-400 animate-pulse' : 'text-cyan-400/50'}`} />
         <span className="text-[9px] font-mono text-white/30 tracking-wider">
-          {isStreaming ? 'THINKING...' : 'BRAIN RESPONSE'}
+          {isStreaming ? 'THINKING...' : 'BRAIN'}
         </span>
       </div>
       <div>{rendered}</div>
@@ -379,7 +462,6 @@ function BrainResponse({ message, isLatest, isStreaming }: {
   );
 }
 
-/** Render **bold** text within a string */
 function renderBold(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
