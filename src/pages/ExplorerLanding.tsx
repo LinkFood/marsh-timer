@@ -351,7 +351,7 @@ export default function ExplorerLanding() {
                     'Every time AO dropped below -2 during La Nina, what storms followed?',
                     'What was happening across all domains on February 10, 2021?',
                     'When has drought in Texas coincided with negative NAO?',
-                    'Show me the weirdest environmental day in the last 10 years',
+                    'What were the climate indices doing before Hurricane Sandy in 2012?',
                   ].map(q => (
                     <button
                       key={q}
