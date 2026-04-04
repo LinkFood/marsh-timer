@@ -47,7 +47,7 @@ export default function ExplorerLanding() {
     onMapAction: () => {},
   });
 
-  const { discovery } = useDailyDiscovery();
+  const { discovery, loading: discoveryLoading } = useDailyDiscovery();
 
   useEffect(() => {
     if (!SUPABASE_URL) return;
@@ -178,8 +178,20 @@ export default function ExplorerLanding() {
                   Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
                 </p>
 
+                {/* Daily Discovery — skeleton while loading */}
+                {discoveryLoading && (
+                  <div className="max-w-2xl mx-auto mb-6">
+                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.05] px-4 sm:px-5 py-3.5 animate-pulse">
+                      <div className="h-3 w-32 bg-white/[0.06] rounded mb-3" />
+                      <div className="h-4 w-3/4 bg-white/[0.04] rounded mb-2" />
+                      <div className="h-3 w-full bg-white/[0.03] rounded mb-1" />
+                      <div className="h-3 w-5/6 bg-white/[0.03] rounded" />
+                    </div>
+                  </div>
+                )}
+
                 {/* Daily Discovery — clickable to dig deeper */}
-                {discovery && (
+                {!discoveryLoading && discovery && (
                   <div className="max-w-2xl mx-auto mb-6">
                     <button
                       onClick={() => {
