@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
+import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -48,6 +49,7 @@ export default function ExplorerLanding() {
   });
 
   const { discovery, loading: discoveryLoading } = useDailyDiscovery();
+  const { entries: historyEntries } = useThisDayInHistory();
 
   useEffect(() => {
     if (!SUPABASE_URL) return;
@@ -262,6 +264,31 @@ export default function ExplorerLanding() {
                       className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 transition-colors text-[11px] font-body text-white/40 hover:text-white/60 text-left"
                     >
                       {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* This Day in History — compact timeline */}
+            {!hasSearched && historyEntries.length > 0 && (
+              <div className="max-w-2xl mx-auto mb-6">
+                <p className="text-[9px] font-mono text-white/20 tracking-wider mb-2 text-center">
+                  THIS DAY IN THE BRAIN
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1 justify-center flex-wrap">
+                  {historyEntries.map((entry, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setHasSearched(true);
+                        sendMessage(`What was happening on ${MONTHS[new Date().getMonth()]} ${new Date().getDate()}, ${entry.year}? Cross-reference all domains.`);
+                      }}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.05] hover:border-white/10 hover:bg-white/[0.04] transition-colors text-left"
+                    >
+                      <span className="text-[10px] font-mono text-cyan-400/50">{entry.year}</span>
+                      <span className="text-[9px] text-white/30 ml-1.5">{entry.state_abbr || ''}</span>
+                      <p className="text-[9px] text-white/25 truncate max-w-[140px]">{entry.content_type}</p>
                     </button>
                   ))}
                 </div>
