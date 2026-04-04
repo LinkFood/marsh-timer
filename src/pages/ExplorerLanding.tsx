@@ -1,9 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, Settings, MessageSquare, X, ChevronLeft, ChevronRight, Search, Calendar, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { CONTENT_TYPE_GROUPS, typeColor } from '@/data/contentTypeGroups';
+import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
+import { useAuth } from '@/hooks/useAuth';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -13,31 +12,21 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_IN_MONTH = [31,29,31,30,31,30,31,31,30,31,30,31];
 
-interface TimeMachineResult {
-  domain: string;
-  domainColor: string;
-  entries: Array<{
-    title: string;
-    content: string;
-    content_type: string;
-    state_abbr: string | null;
-    effective_date: string | null;
-  }>;
-}
-
 export default function ExplorerLanding() {
-  // Date picker state
-  const [month, setMonth] = useState(3); // April (0-indexed)
+  const [month, setMonth] = useState(3);
   const [day, setDay] = useState(4);
   const [year, setYear] = useState(2026);
   const [question, setQuestion] = useState('');
-
-  // Results
-  const [results, setResults] = useState<TimeMachineResult[] | null>(null);
-  const [totalEntries, setTotalEntries] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [brainCount, setBrainCount] = useState<number | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Chat hook — this IS the brain interface
+  const { messages, loading, streaming, sendMessage, clearMessages } = useChat({
+    species: 'all',
+    stateAbbr: null,
+    onMapAction: () => {},
+  });
 
   // Fetch brain count
   useEffect(() => {
@@ -50,89 +39,40 @@ export default function ExplorerLanding() {
       .catch(() => {});
   }, []);
 
-  // Query the brain for a specific date
-  const handleTimeMachine = useCallback(async () => {
-    if (!supabase) return;
-    setLoading(true);
-    setResults(null);
-
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    // Query ±3 days to catch nearby data
-    const from = new Date(year, month, day - 3);
-    const to = new Date(year, month, day + 3);
-    const fromStr = from.toISOString().split('T')[0];
-    const toStr = to.toISOString().split('T')[0];
-
-    try {
-      const { data, error } = await supabase
-        .from('hunt_knowledge')
-        .select('title,content,content_type,state_abbr,effective_date')
-        .gte('effective_date', fromStr)
-        .lte('effective_date', toStr)
-        .order('content_type')
-        .limit(500);
-
-      if (error || !data) {
-        setResults([]);
-        setTotalEntries(0);
-        setLoading(false);
-        return;
-      }
-
-      // Group by domain
-      const grouped = new Map<string, TimeMachineResult>();
-      for (const entry of data) {
-        const ct = entry.content_type || 'unknown';
-        const group = CONTENT_TYPE_GROUPS.find(g => g.types.includes(ct));
-        const domainKey = group?.key || 'other';
-        const domainLabel = group?.label || 'Other';
-        const domainColor = group?.color || 'text-white/50 bg-white/[0.06]';
-
-        if (!grouped.has(domainKey)) {
-          grouped.set(domainKey, { domain: domainLabel, domainColor, entries: [] });
-        }
-        grouped.get(domainKey)!.entries.push({
-          title: entry.title || '',
-          content: entry.content || '',
-          content_type: ct,
-          state_abbr: entry.state_abbr || null,
-          effective_date: entry.effective_date || null,
-        });
-      }
-
-      // Sort by entry count descending
-      const sorted = [...grouped.values()].sort((a, b) => b.entries.length - a.entries.length);
-      setResults(sorted);
-      setTotalEntries(data.length);
-
-      // Embed this query back into the brain (fire and forget)
-      if (SUPABASE_URL && SUPABASE_KEY) {
-        const queryContent = `time-machine query | ${dateStr} | ${question || 'browsing'} | domains: ${sorted.map(s => s.domain).join(', ')} | results: ${data.length}`;
-        fetch(`${SUPABASE_URL}/functions/v1/hunt-embed-interaction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${SUPABASE_KEY}`,
-            apikey: SUPABASE_KEY,
-          },
-          body: JSON.stringify({
-            content: queryContent,
-            content_type: 'query-signal',
-            title: `Time Machine: ${dateStr}`,
-            metadata: { date: dateStr, question, result_count: data.length },
-          }),
-        }).catch(() => {}); // fire and forget
-      }
-    } catch {
-      setResults([]);
-      setTotalEntries(0);
-    } finally {
-      setLoading(false);
+  // Auto-scroll to results when brain responds
+  useEffect(() => {
+    if (messages.length > 0 && resultsRef.current) {
+      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [month, day, year, question]);
+  }, [messages.length]);
+
+  // Send date query through the dispatcher
+  const handleDateQuery = useCallback(() => {
+    if (loading || streaming) return;
+    const dateStr = `${MONTHS[month]} ${day}, ${year}`;
+    const msg = question.trim()
+      ? `On ${dateStr}: ${question.trim()}`
+      : `What was happening on ${dateStr}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`;
+    setHasSearched(true);
+    sendMessage(msg);
+  }, [month, day, year, question, loading, streaming, sendMessage]);
+
+  // Send freeform question through the dispatcher
+  const handleFreeformSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (!question.trim() || loading || streaming) return;
+    setHasSearched(true);
+    sendMessage(question.trim());
+    setQuestion('');
+  }, [question, loading, streaming, sendMessage]);
+
+  const handleNewQuery = useCallback(() => {
+    clearMessages();
+    setHasSearched(false);
+    setQuestion('');
+  }, [clearMessages]);
 
   const dateStr = `${MONTHS[month]} ${day}, ${year}`;
-
   const spinMonth = (dir: number) => setMonth(m => (m + dir + 12) % 12);
   const spinDay = (dir: number) => setDay(d => {
     const max = DAYS_IN_MONTH[month];
@@ -143,285 +83,282 @@ export default function ExplorerLanding() {
   });
   const spinYear = (dir: number) => setYear(y => Math.max(1950, Math.min(2026, y + dir)));
 
+  // Get the latest assistant message for display
+  const assistantMessages = messages.filter(m => m.role === 'assistant' && m.content);
+
   return (
     <div className="h-[100dvh] w-screen overflow-hidden bg-[#0a0f1a] flex flex-col">
       {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-4 h-12 border-b border-white/[0.06]">
+      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-white/[0.06]">
         <div className="flex items-center gap-3">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link to="/" onClick={handleNewQuery} className="hover:opacity-80 transition-opacity">
             <span className="text-sm font-bold text-white tracking-wider">DUCK COUNTDOWN</span>
           </Link>
           <span className="text-[9px] font-mono text-cyan-400/60 tracking-widest hidden sm:inline">
-            TIME MACHINE
+            ENVIRONMENTAL INTELLIGENCE
           </span>
         </div>
         <div className="flex items-center gap-2">
           {brainCount && (
-            <span className="text-[9px] font-mono text-white/30 hidden sm:inline">
-              BRAIN: {brainCount.toLocaleString()}
-            </span>
+            <div className="hidden sm:flex items-center gap-1.5">
+              <Brain size={12} className="text-cyan-400/40" />
+              <span className="text-[9px] font-mono text-white/30">
+                {brainCount.toLocaleString()}
+              </span>
+            </div>
           )}
           <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Dashboard">
             <Settings size={14} className="text-white/40" />
           </Link>
-          <button onClick={() => setChatOpen(true)} className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Ask Brain">
-            <MessageSquare size={14} className="text-white/40" />
-          </button>
           <UserMenu />
         </div>
       </header>
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 py-8">
-          {/* Date Spinner */}
-          <div className="text-center mb-8">
-            <h1 className="font-display text-xl sm:text-2xl text-white/90 mb-6">
-              Pick a date. See everything.
-            </h1>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6">
 
-            <div className="flex items-center justify-center gap-1 sm:gap-3 mb-4">
-              {/* Month spinner */}
-              <div className="flex flex-col items-center">
-                <button onClick={() => spinMonth(1)} className="p-1 text-white/30 hover:text-white/60"><ChevronLeft size={16} className="rotate-90" /></button>
-                <div className="w-28 sm:w-36 h-14 flex items-center justify-center bg-[#0d1117] border border-white/10 rounded-lg">
-                  <span className="text-lg sm:text-xl font-bold text-white">{MONTHS[month]}</span>
-                </div>
-                <button onClick={() => spinMonth(-1)} className="p-1 text-white/30 hover:text-white/60"><ChevronRight size={16} className="rotate-90" /></button>
-                <span className="text-[8px] font-mono text-white/20 mt-1">MONTH</span>
-              </div>
+          {/* Search area — compact when results showing */}
+          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-4' : 'pt-10 sm:pt-16 pb-6'}`}>
 
-              {/* Day spinner */}
-              <div className="flex flex-col items-center">
-                <button onClick={() => spinDay(1)} className="p-1 text-white/30 hover:text-white/60"><ChevronLeft size={16} className="rotate-90" /></button>
-                <div className="w-16 sm:w-20 h-14 flex items-center justify-center bg-[#0d1117] border border-white/10 rounded-lg">
-                  <span className="text-lg sm:text-xl font-bold text-white">{day}</span>
-                </div>
-                <button onClick={() => spinDay(-1)} className="p-1 text-white/30 hover:text-white/60"><ChevronRight size={16} className="rotate-90" /></button>
-                <span className="text-[8px] font-mono text-white/20 mt-1">DAY</span>
-              </div>
+            {!hasSearched && (
+              <h1 className="font-display text-2xl sm:text-3xl text-white/90 mb-2 leading-tight">
+                Pick a date. See everything.
+              </h1>
+            )}
 
-              {/* Year spinner */}
-              <div className="flex flex-col items-center">
-                <button onClick={() => spinYear(1)} className="p-1 text-white/30 hover:text-white/60"><ChevronLeft size={16} className="rotate-90" /></button>
-                <div className="w-20 sm:w-24 h-14 flex items-center justify-center bg-[#0d1117] border border-white/10 rounded-lg">
-                  <span className="text-lg sm:text-xl font-bold text-white">{year}</span>
-                </div>
-                <button onClick={() => spinYear(-1)} className="p-1 text-white/30 hover:text-white/60"><ChevronRight size={16} className="rotate-90" /></button>
-                <span className="text-[8px] font-mono text-white/20 mt-1">YEAR</span>
-              </div>
+            {!hasSearched && (
+              <p className="text-sm text-white/30 mb-8 font-body">
+                Cross-reference any date across every domain in the brain.
+              </p>
+            )}
+
+            {/* Date Spinners */}
+            <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4">
+              <Spinner label="MONTH" value={MONTHS[month]} onUp={() => spinMonth(1)} onDown={() => spinMonth(-1)} wide />
+              <Spinner label="DAY" value={String(day)} onUp={() => spinDay(1)} onDown={() => spinDay(-1)} />
+              <Spinner label="YEAR" value={String(year)} onUp={() => spinYear(1)} onDown={() => spinYear(-1)} />
             </div>
 
-            {/* Optional question */}
-            <div className="max-w-md mx-auto mb-4">
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0d1117] border border-white/10">
-                <Search size={14} className="text-white/30 shrink-0" />
-                <input
-                  value={question}
-                  onChange={e => setQuestion(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleTimeMachine()}
-                  placeholder="Optional: what are you looking for?"
-                  className="flex-1 bg-transparent text-sm font-body text-white/90 placeholder:text-white/30 outline-none"
-                />
-              </div>
+            {/* Question input + actions */}
+            <div className="max-w-lg mx-auto mb-3">
+              <form onSubmit={handleFreeformSubmit} className="flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
+                  <Search size={14} className="text-white/20 shrink-0" />
+                  <input
+                    value={question}
+                    onChange={e => setQuestion(e.target.value)}
+                    placeholder="Ask anything, or just pick a date..."
+                    className="flex-1 bg-transparent text-sm font-body text-white/90 placeholder:text-white/25 outline-none"
+                  />
+                </div>
+              </form>
             </div>
 
-            {/* Go button */}
-            <button
-              onClick={handleTimeMachine}
-              disabled={loading}
-              className="px-8 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-            >
-              {loading ? (
-                <Loader2 size={18} className="text-white animate-spin" />
-              ) : (
-                <Calendar size={18} className="text-white" />
+            {/* Action buttons */}
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={handleDateQuery}
+                disabled={loading || streaming}
+                className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+              >
+                {(loading || streaming) ? (
+                  <Loader2 size={15} className="text-white animate-spin" />
+                ) : (
+                  <Calendar size={15} className="text-white" />
+                )}
+                <span className="font-body text-xs font-semibold text-white">
+                  {dateStr}
+                </span>
+              </button>
+
+              {question.trim() && (
+                <button
+                  onClick={() => { setHasSearched(true); sendMessage(question.trim()); setQuestion(''); }}
+                  disabled={loading || streaming}
+                  className="px-5 py-2.5 rounded-lg bg-purple-500/80 hover:bg-purple-400/80 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+                >
+                  <Sparkles size={15} className="text-white" />
+                  <span className="font-body text-xs font-semibold text-white">Ask Brain</span>
+                </button>
               )}
-              <span className="font-body text-sm font-bold text-white">
-                {loading ? 'Searching...' : `What happened on ${dateStr}?`}
-              </span>
-            </button>
 
-            {brainCount && (
-              <p className="text-[10px] font-mono text-white/20 mt-3">
-                {brainCount.toLocaleString()}+ records · 83 domains · 1950–present
+              {hasSearched && (
+                <button
+                  onClick={handleNewQuery}
+                  className="px-3 py-2.5 rounded-lg border border-white/10 hover:bg-white/[0.04] transition-colors inline-flex items-center gap-1.5"
+                >
+                  <RotateCcw size={13} className="text-white/40" />
+                  <span className="font-body text-xs text-white/40">New</span>
+                </button>
+              )}
+            </div>
+
+            {!hasSearched && brainCount && (
+              <p className="text-[10px] font-mono text-white/15 mt-4">
+                {brainCount.toLocaleString()}+ records across 83 domains · 1950–present
               </p>
             )}
           </div>
 
-          {/* Results */}
-          <ErrorBoundary fallback={<p className="text-xs text-white/40 text-center">Error loading results.</p>}>
-            {results && results.length > 0 && (
-              <div>
-                <div className="text-center mb-6">
-                  <h2 className="text-lg font-bold text-white/90 mb-1">{dateStr}</h2>
-                  <p className="text-xs font-mono text-white/40">
-                    {totalEntries} entries across {results.length} domains
-                  </p>
-                </div>
+          {/* Brain Response — inline, not a modal */}
+          <div ref={resultsRef}>
+            <ErrorBoundary fallback={<p className="text-xs text-white/40 text-center py-8">Error loading response.</p>}>
+              {assistantMessages.map((msg, i) => (
+                <BrainResponse
+                  key={msg.id}
+                  message={msg}
+                  isLatest={i === assistantMessages.length - 1}
+                  isStreaming={streaming && i === assistantMessages.length - 1}
+                />
+              ))}
 
-                <div className="space-y-4">
-                  {results.map(domain => (
-                    <DomainSection key={domain.domain} domain={domain} />
-                  ))}
+              {loading && !streaming && (
+                <div className="flex items-center justify-center gap-2 py-8">
+                  <Loader2 size={16} className="text-cyan-400/60 animate-spin" />
+                  <span className="text-xs font-mono text-cyan-400/40">Brain is thinking...</span>
                 </div>
-              </div>
-            )}
+              )}
+            </ErrorBoundary>
+          </div>
 
-            {results && results.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-sm text-white/40">No data found for {dateStr}.</p>
-                <p className="text-xs text-white/20 mt-1">The brain has data from 1950–present, but coverage varies by domain.</p>
-              </div>
-            )}
-          </ErrorBoundary>
+          {/* Conversation — show user messages for context */}
+          {messages.filter(m => m.role === 'user').length > 1 && (
+            <div className="border-t border-white/[0.04] mt-6 pt-4 pb-12">
+              <p className="text-[9px] font-mono text-white/20 mb-3">CONVERSATION</p>
+              {messages.map(msg => (
+                <div key={msg.id} className={`mb-2 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                  <span className={`inline-block text-xs font-body leading-relaxed rounded-lg px-3 py-2 max-w-[85%] ${
+                    msg.role === 'user'
+                      ? 'bg-cyan-400/[0.08] text-white/70'
+                      : 'bg-white/[0.02] text-white/50'
+                  }`}>
+                    {msg.role === 'user' ? msg.content : msg.content.slice(0, 200) + (msg.content.length > 200 ? '...' : '')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bottom padding */}
+          <div className="h-12" />
         </div>
       </main>
-
-      {/* Chat overlay */}
-      {chatOpen && <ChatOverlay onClose={() => setChatOpen(false)} />}
 
       <div className="grain-overlay" />
     </div>
   );
 }
 
-function DomainSection({ domain }: { domain: TimeMachineResult }) {
-  const [expanded, setExpanded] = useState(false);
-  const preview = domain.entries.slice(0, 5);
-  const rest = domain.entries.slice(5);
-
+/** Date spinner component */
+function Spinner({ label, value, onUp, onDown, wide }: {
+  label: string; value: string; onUp: () => void; onDown: () => void; wide?: boolean;
+}) {
   return (
-    <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.02] transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${domain.domainColor}`}>
-            {domain.domain}
-          </span>
-          <span className="text-xs font-mono text-white/30">{domain.entries.length} entries</span>
-        </div>
-        <ChevronRight size={14} className={`text-white/30 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+    <div className="flex flex-col items-center">
+      <button onClick={onUp} className="p-1.5 text-white/20 hover:text-white/50 transition-colors">
+        <ChevronUp size={16} />
       </button>
-
-      <div className="px-4 pb-3 space-y-1.5">
-        {preview.map((entry, i) => (
-          <EntryRow key={i} entry={entry} />
-        ))}
-        {expanded && rest.map((entry, i) => (
-          <EntryRow key={`rest-${i}`} entry={entry} />
-        ))}
-        {!expanded && rest.length > 0 && (
-          <button
-            onClick={() => setExpanded(true)}
-            className="text-[10px] font-mono text-cyan-400/60 hover:text-cyan-400 transition-colors"
-          >
-            + {rest.length} more entries
-          </button>
-        )}
+      <div className={`${wide ? 'w-28 sm:w-32' : 'w-16 sm:w-20'} h-12 flex items-center justify-center bg-[#0d1117] border border-white/[0.08] rounded-lg`}>
+        <span className="text-base sm:text-lg font-bold text-white tracking-wide">{value}</span>
       </div>
+      <button onClick={onDown} className="p-1.5 text-white/20 hover:text-white/50 transition-colors">
+        <ChevronDown size={16} />
+      </button>
+      <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">{label}</span>
     </div>
   );
 }
 
-function EntryRow({ entry }: { entry: TimeMachineResult['entries'][0] }) {
-  const [showFull, setShowFull] = useState(false);
-  const content = entry.content || '';
-  const short = content.slice(0, 150);
-  const isLong = content.length > 150;
+/** Renders a brain response with markdown-like formatting */
+function BrainResponse({ message, isLatest, isStreaming }: {
+  message: { content: string; id: string };
+  isLatest: boolean;
+  isStreaming: boolean;
+}) {
+  const content = message.content;
+  if (!content) return null;
 
-  return (
-    <div className="py-1 border-t border-white/[0.03] first:border-0">
-      <div className="flex items-center gap-1.5 mb-0.5">
-        <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${typeColor(entry.content_type)}`}>
-          {entry.content_type}
-        </span>
-        {entry.state_abbr && (
-          <span className="text-[9px] font-mono text-white/40">{entry.state_abbr}</span>
-        )}
-        {entry.effective_date && (
-          <span className="text-[9px] font-mono text-white/20">{entry.effective_date}</span>
-        )}
-      </div>
-      <p className="text-[10px] text-white/50 leading-relaxed">
-        {showFull ? content : short}{isLong && !showFull && '...'}
-        {isLong && (
-          <button
-            onClick={() => setShowFull(!showFull)}
-            className="ml-1 text-cyan-400/50 hover:text-cyan-400"
-          >
-            {showFull ? 'less' : 'more'}
-          </button>
-        )}
-      </p>
-    </div>
-  );
-}
+  // Simple markdown rendering — headers, bold, lists
+  const rendered = content.split('\n').map((line, i) => {
+    const trimmed = line.trim();
 
-function ChatOverlay({ onClose }: { onClose: () => void }) {
-  const { messages, loading: chatLoading, streaming, sendMessage } = useChat({
-    species: 'all',
-    stateAbbr: null,
-    onMapAction: () => {},
-  });
-  const [input, setInput] = useState('');
+    // Headers
+    if (trimmed.startsWith('## ')) {
+      return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{trimmed.slice(3)}</h3>;
+    }
+    if (trimmed.startsWith('# ')) {
+      return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{trimmed.slice(2)}</h2>;
+    }
 
-  const handleSend = useCallback(() => {
-    if (!input.trim()) return;
-    sendMessage(input.trim());
-    setInput('');
-  }, [input, sendMessage]);
+    // Horizontal rules
+    if (trimmed === '---') {
+      return <hr key={i} className="border-white/[0.06] my-3" />;
+    }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl h-[70vh] bg-[#0d1117] border border-white/10 rounded-xl flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-          <span className="text-xs font-bold text-white tracking-wider">ASK THE BRAIN</span>
-          <button onClick={onClose} className="p-1 rounded hover:bg-white/[0.06]">
-            <X size={14} className="text-white/50" />
-          </button>
+    // List items
+    if (trimmed.startsWith('- ')) {
+      return (
+        <div key={i} className="flex gap-2 ml-2 mb-0.5">
+          <span className="text-cyan-400/40 text-xs mt-0.5">-</span>
+          <span className="text-xs text-white/60 leading-relaxed">{renderBold(trimmed.slice(2))}</span>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.length === 0 && (
-            <div className="text-center text-white/20 text-xs mt-8">
-              <Brain size={24} className="mx-auto mb-2 text-white/10" />
-              <p>Ask anything about any date, any pattern, any connection.</p>
-            </div>
-          )}
-          {messages.map((msg, i) => (
-            <div key={i} className={`text-xs font-body leading-relaxed ${
-              msg.role === 'user'
-                ? 'text-white/80 bg-cyan-400/[0.08] rounded-lg px-3 py-2 ml-12'
-                : 'text-white/60 bg-white/[0.02] rounded-lg px-3 py-2 mr-12'
-            }`}>
-              {msg.content}
-            </div>
+      );
+    }
+
+    // Numbered list
+    const numMatch = trimmed.match(/^(\d+)\.\s+/);
+    if (numMatch) {
+      return (
+        <div key={i} className="flex gap-2 ml-2 mb-0.5">
+          <span className="text-cyan-400/40 text-xs mt-0.5 font-mono w-3">{numMatch[1]}.</span>
+          <span className="text-xs text-white/60 leading-relaxed">{renderBold(trimmed.slice(numMatch[0].length))}</span>
+        </div>
+      );
+    }
+
+    // Table-like rows (pipes)
+    if (trimmed.includes('|') && trimmed.split('|').length >= 3) {
+      const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
+      if (cells.every(c => c.match(/^[-:]+$/))) return null; // skip separator rows
+      return (
+        <div key={i} className="flex gap-3 mb-0.5 ml-2">
+          {cells.map((cell, ci) => (
+            <span key={ci} className={`text-[10px] font-mono ${ci === 0 ? 'text-white/60 w-24' : 'text-white/40 flex-1'}`}>
+              {renderBold(cell)}
+            </span>
           ))}
-          {(chatLoading || streaming) && (
-            <div className="text-xs text-cyan-400/40 animate-pulse">Thinking...</div>
-          )}
         </div>
-        <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-t border-white/[0.06]">
-          <input
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Ask the brain..."
-            className="flex-1 bg-transparent text-xs font-body text-white/80 placeholder:text-white/20 outline-none"
-            autoFocus
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || chatLoading}
-            className="px-3 py-1.5 bg-cyan-400/10 text-cyan-400 text-[10px] font-mono rounded hover:bg-cyan-400/20 transition-colors disabled:opacity-30"
-          >
-            SEND
-          </button>
-        </div>
+      );
+    }
+
+    // Empty line
+    if (!trimmed) return <div key={i} className="h-2" />;
+
+    // Regular paragraph
+    return <p key={i} className="text-xs text-white/60 leading-relaxed mb-1">{renderBold(trimmed)}</p>;
+  });
+
+  return (
+    <div className={`rounded-xl bg-white/[0.015] border border-white/[0.05] p-4 sm:p-5 mb-4 ${isStreaming ? 'border-cyan-400/10' : ''}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Brain size={14} className={`${isStreaming ? 'text-cyan-400 animate-pulse' : 'text-cyan-400/50'}`} />
+        <span className="text-[9px] font-mono text-white/30 tracking-wider">
+          {isStreaming ? 'THINKING...' : 'BRAIN RESPONSE'}
+        </span>
       </div>
+      <div>{rendered}</div>
     </div>
   );
+}
+
+/** Render **bold** text within a string */
+function renderBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="text-white/80 font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
 }
