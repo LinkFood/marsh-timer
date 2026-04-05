@@ -6,6 +6,7 @@ import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useBrainPulse, getDomainColor } from '@/hooks/useBrainPulse';
+import StateActivityMap from '@/components/StateActivityMap';
 import { useCoincidenceSnapshot } from '@/hooks/useCoincidenceSnapshot';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -240,6 +241,14 @@ export default function ExplorerLanding() {
                 <p className="text-sm text-white/30 mb-4 font-body max-w-lg mx-auto">
                   Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
                 </p>
+
+                {/* State Activity Map — visual proof the brain is watching */}
+                <div className="mb-4">
+                  <StateActivityMap onStateClick={(abbr) => {
+                    setHasSearched(true);
+                    sendMessage(`What's unusual in ${abbr} right now?`);
+                  }} />
+                </div>
 
                 {/* Daily Discovery — skeleton while loading */}
                 {discoveryLoading && (
