@@ -441,7 +441,7 @@ export default function ExplorerLanding() {
                 onClick={() => {
                   if (loading || streaming) return;
                   const dateIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  navigate(`/date/${dateIso}?grade=true`);
+                  navigate(`/report/${dateIso}`);
                 }}
                 disabled={loading || streaming}
                 className="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/20 disabled:opacity-50 transition-colors inline-flex items-center gap-2"

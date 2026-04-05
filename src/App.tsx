@@ -4,6 +4,7 @@ import ExplorerLanding from "./pages/ExplorerLanding";
 import DatePage from "./pages/DatePage";
 import NowPage from "./pages/NowPage";
 import StatePage from "./pages/StatePage";
+import ReportPage from "./pages/ReportPage";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import OpsPage from "./pages/OpsPage";
@@ -20,6 +21,7 @@ const App = () => (
         <Route path="/date/:dateStr" element={<DatePage />} />
         <Route path="/now" element={<NowPage />} />
         <Route path="/state/:stateAbbr" element={<StatePage />} />
+        <Route path="/report/:dateStr" element={<ReportPage />} />
 
         {/* Old dashboard — preserved at /dashboard */}
         <Route path="/dashboard" element={<Index />} />
