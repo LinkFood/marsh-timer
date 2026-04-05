@@ -166,7 +166,9 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
 
 // The shared system prompt rules appended to every handler's system prompt
 const BRAIN_RULES = `
-SYSTEM CAPABILITY: You have access to 2.4M+ environmental data entries across 55+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 42 automated crons continuously ingest new data.
+SYSTEM CAPABILITY: You have access to 4.5M+ environmental data entries across 83+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 88 automated crons continuously ingest new data.
+
+TODAY'S DATE: ${new Date().toISOString().split('T')[0]}. Any date on or before today is a PAST date with potential data. Do NOT say a date is "in the future" if it is today or earlier.
 
 CRITICAL RULES:
 1. ANSWER THE QUESTION FIRST in 2-3 clear, direct sentences. Be opinionated. Lead with what matters most. State your assessment before showing evidence.
