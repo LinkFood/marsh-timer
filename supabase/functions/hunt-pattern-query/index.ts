@@ -172,84 +172,83 @@ Examples:
 
     for (const cond of conditions) {
       const dates = new Set<string>();
+      const labelLower = (cond.label + ' ' + (cond.field_pattern || '')).toLowerCase();
 
-      // Build the query
-      let q = supabase
-        .from('hunt_knowledge')
-        .select('content,effective_date')
-        .eq('content_type', cond.content_type)
-        .not('effective_date', 'is', null);
-
-      if (state_abbr) {
-        q = q.eq('state_abbr', state_abbr);
-      }
-
-      // For climate-index, use title-based filtering which is more reliable
+      // FAST PATH: Climate index queries use structured metadata (JSONB)
       if (cond.content_type === 'climate-index') {
-        // Map common names to actual index titles
-        const labelLower = (cond.label + ' ' + (cond.field_pattern || '')).toLowerCase();
-        let indexName: string | null = null;
+        // Determine which index
+        let indexId: string | null = null;
         if (labelLower.includes('la ni') || labelLower.includes('el ni') || labelLower.includes('enso') || labelLower.includes('oni')) {
-          indexName = 'ENSO';
+          indexId = 'ENSO';
         } else {
-          const indexMatch = labelLower.match(/\b(ao|nao|pna|pdo)\b/i);
-          if (indexMatch) indexName = indexMatch[1].toUpperCase();
+          const m = labelLower.match(/\b(ao|nao|pna|pdo)\b/i);
+          if (m) indexId = m[1].toUpperCase();
         }
-        if (indexName) {
-          q = q.ilike('title', `${indexName}%`);
-        }
-      } else if (cond.field_pattern) {
-        q = q.ilike('content', `%${cond.field_pattern}%`);
-      }
 
-      // Fetch in pages to handle large datasets
-      let allData: any[] = [];
-      for (let offset = 0; offset < 10000; offset += 1000) {
-        const { data } = await q.order('effective_date', { ascending: true }).range(offset, offset + 999);
-        if (!data || data.length === 0) break;
-        allData = allData.concat(data);
-        if (data.length < 1000) break;
-      }
+        if (indexId) {
+          // Use metadata JSONB filtering — no content parsing needed
+          let q = supabase
+            .from('hunt_knowledge')
+            .select('effective_date,metadata')
+            .eq('content_type', 'climate-index')
+            .not('effective_date', 'is', null)
+            .contains('metadata', { index_id: indexId });
 
-      for (const row of allData) {
-        // Universal value extraction: look for "value:NUMBER" in content
-        const valueMatch = /value:([-\d.]+)/.exec(row.content);
-        const phaseMatch = /phase:(\w+)/.exec(row.content);
+          if (state_abbr) q = q.eq('state_abbr', state_abbr);
 
-        if (cond.operator && cond.threshold !== undefined && valueMatch) {
-          const val = parseFloat(valueMatch[1]);
-          if (isNaN(val) || Math.abs(val) > 500) continue; // skip garbage values like -999
-          if (cond.operator === 'lt' && val >= cond.threshold) continue;
-          if (cond.operator === 'gt' && val <= cond.threshold) continue;
-          if (cond.operator === 'eq' && Math.abs(val - cond.threshold) > 0.01) continue;
-        } else if (cond.operator === 'contains' && cond.field_pattern) {
-          if (!row.content.includes(cond.field_pattern)) continue;
-        } else {
-          // Smart label-based matching for common conditions
-          const labelLower = cond.label.toLowerCase();
-          const hasValue = valueMatch ? parseFloat(valueMatch[1]) : null;
+          const { data } = await q.order('effective_date', { ascending: true }).limit(2000);
 
-          if ((labelLower.includes('la ni') || labelLower.includes('la nina')) && hasValue !== null) {
-            // La Nina = ENSO value < -0.5 (standard threshold)
-            if (hasValue >= -0.5 || Math.abs(hasValue) > 500) continue;
-          } else if ((labelLower.includes('el ni') || labelLower.includes('el nino')) && hasValue !== null) {
-            // El Nino = ENSO value > 0.5
-            if (hasValue <= 0.5 || Math.abs(hasValue) > 500) continue;
-          } else if (labelLower.includes('negative')) {
-            if (phaseMatch && phaseMatch[1] !== 'negative') {
-              // Also accept numeric < 0 if phase isn't explicitly negative
-              if (hasValue === null || hasValue >= 0) continue;
-            }
-          } else if (labelLower.includes('positive')) {
-            if (phaseMatch && phaseMatch[1] !== 'positive') {
-              if (hasValue === null || hasValue <= 0) continue;
+          if (data) {
+            for (const row of data) {
+              const meta = row.metadata as Record<string, unknown>;
+              const val = meta?.value as number;
+              if (val === undefined || val === null || Math.abs(val) > 500) continue;
+
+              // Apply threshold
+              if (cond.operator === 'lt' && cond.threshold !== undefined) {
+                if (val >= cond.threshold) continue;
+              } else if (cond.operator === 'gt' && cond.threshold !== undefined) {
+                if (val <= cond.threshold) continue;
+              } else if (labelLower.includes('la ni') || labelLower.includes('la nina')) {
+                if (val >= -0.5) continue;
+              } else if (labelLower.includes('el ni') || labelLower.includes('el nino')) {
+                if (val <= 0.5) continue;
+              } else if (labelLower.includes('negative')) {
+                if (val >= 0) continue;
+              } else if (labelLower.includes('positive')) {
+                if (val <= 0) continue;
+              }
+
+              if (row.effective_date) dates.add(row.effective_date);
             }
           }
         }
+      } else {
+        // STANDARD PATH: other content types use content text filtering
+        let q = supabase
+          .from('hunt_knowledge')
+          .select('content,effective_date')
+          .eq('content_type', cond.content_type)
+          .not('effective_date', 'is', null);
 
-        if (row.effective_date) {
-          // Deduplicate by date (handle duplicate entries)
-          dates.add(row.effective_date);
+        if (state_abbr) q = q.eq('state_abbr', state_abbr);
+        if (cond.field_pattern) q = q.ilike('content', `%${cond.field_pattern}%`);
+
+        const { data } = await q.order('effective_date', { ascending: true }).limit(2000);
+
+        if (data) {
+          for (const row of data) {
+            const valueMatch = /value:([-\d.]+)/.exec(row.content);
+            if (cond.operator && cond.threshold !== undefined && valueMatch) {
+              const val = parseFloat(valueMatch[1]);
+              if (isNaN(val) || Math.abs(val) > 500) continue;
+              if (cond.operator === 'lt' && val >= cond.threshold) continue;
+              if (cond.operator === 'gt' && val <= cond.threshold) continue;
+            } else if (cond.operator === 'contains' && cond.field_pattern) {
+              if (!row.content.includes(cond.field_pattern)) continue;
+            }
+            if (row.effective_date) dates.add(row.effective_date);
+          }
         }
       }
 
@@ -275,48 +274,55 @@ Examples:
 
     const matchedDates = [...intersectedDates].sort();
 
-    // Step 4: For each matched date, get followup events
+    // Step 4: Batch-fetch all followup events in ONE query
     const matches: PatternMatch[] = [];
-    const maxMatches = Math.min(matchedDates.length, 20); // cap at 20 for performance
+    const maxMatches = Math.min(matchedDates.length, 20);
+    const datesToQuery = matchedDates.slice(0, maxMatches);
 
-    for (let i = 0; i < maxMatches; i++) {
-      const date = matchedDates[i];
-      const endDate = new Date(date);
-      endDate.setDate(endDate.getDate() + followupDays);
-      const endStr = endDate.toISOString().split('T')[0];
+    // Build date ranges for all matches and fetch in one query
+    let allFollowups: any[] = [];
+    if (datesToQuery.length > 0) {
+      const earliestDate = datesToQuery[0];
+      const latestDate = datesToQuery[datesToQuery.length - 1];
+      const latestEnd = new Date(latestDate);
+      latestEnd.setDate(latestEnd.getDate() + followupDays);
 
-      // Get condition values for this date
-      const conditionsMet: Array<{ label: string; value: string }> = [];
-      for (const cond of conditions) {
-        conditionsMet.push({ label: cond.label, value: `matched on ${date}` });
-      }
-
-      // Get followup events
       let followupQuery = supabase
         .from('hunt_knowledge')
         .select('content_type,state_abbr,effective_date,title,content')
         .in('content_type', followupTypes)
-        .gte('effective_date', date)
-        .lte('effective_date', endStr)
-        .limit(50);
+        .gte('effective_date', earliestDate)
+        .lte('effective_date', latestEnd.toISOString().split('T')[0])
+        .limit(200);
 
       if (state_abbr) {
         followupQuery = followupQuery.eq('state_abbr', state_abbr);
       }
 
-      const { data: followups } = await followupQuery;
+      const { data } = await followupQuery;
+      allFollowups = data || [];
+    }
 
-      matches.push({
-        date,
-        conditions_met: conditionsMet,
-        followup_events: (followups || []).map(f => ({
+    // Distribute followups to their matching dates
+    for (const date of datesToQuery) {
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + followupDays);
+      const endStr = endDate.toISOString().split('T')[0];
+
+      const conditionsMet = conditions.map((c: any) => ({ label: c.label, value: `matched on ${date}` }));
+
+      const dateFollowups = allFollowups
+        .filter(f => f.effective_date >= date && f.effective_date <= endStr)
+        .slice(0, 30)
+        .map((f: any) => ({
           content_type: f.content_type,
           state_abbr: f.state_abbr,
           effective_date: f.effective_date,
           title: f.title,
           content: f.content?.slice(0, 300) || '',
-        })),
-      });
+        }));
+
+      matches.push({ date, conditions_met: conditionsMet, followup_events: dateFollowups });
     }
 
     // Step 5: Build summary
