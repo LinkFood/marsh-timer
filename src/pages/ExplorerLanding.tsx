@@ -308,9 +308,9 @@ export default function ExplorerLanding() {
               </form>
             </div>
 
-            {/* Coincidence Counter — the hook */}
+            {/* Coincidence Counter — links to /now */}
             {!hasSearched && coincidence && coincidence.activeArcs > 0 && (
-              <div className="max-w-2xl mx-auto mb-5 text-center">
+              <Link to="/now" className="block max-w-2xl mx-auto mb-5 text-center hover:opacity-80 transition-opacity">
                 <p className="text-xs font-body text-white/40">
                   Right now, the brain is tracking{' '}
                   <span className="text-cyan-400/70 font-semibold">{coincidence.activeArcs} unusual patterns</span>
@@ -337,7 +337,7 @@ export default function ExplorerLanding() {
                     ))}
                   </div>
                 )}
-              </div>
+              </Link>
             )}
 
             {/* Example queries — things Google can't answer */}

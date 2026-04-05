@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import ExplorerLanding from "./pages/ExplorerLanding";
 import DatePage from "./pages/DatePage";
+import NowPage from "./pages/NowPage";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import OpsPage from "./pages/OpsPage";
@@ -16,6 +17,7 @@ const App = () => (
         <Route path="/" element={<ExplorerLanding />} />
         <Route path="/:stateAbbr" element={<ExplorerLanding />} />
         <Route path="/date/:dateStr" element={<DatePage />} />
+        <Route path="/now" element={<NowPage />} />
 
         {/* Old dashboard — preserved at /dashboard */}
         <Route path="/dashboard" element={<Index />} />
