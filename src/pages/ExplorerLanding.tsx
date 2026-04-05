@@ -247,8 +247,7 @@ export default function ExplorerLanding() {
                 {/* State Activity Map — visual proof the brain is watching */}
                 <div className="mb-4">
                   <StateActivityMap onStateClick={(abbr) => {
-                    setHasSearched(true);
-                    sendMessage(`What's unusual in ${abbr} right now?`);
+                    navigate(`/state/${abbr.toLowerCase()}`);
                   }} />
                 </div>
 
