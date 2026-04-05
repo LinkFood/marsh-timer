@@ -738,13 +738,26 @@ function BrainResponse({ message, isStreaming, onFollowUp }: {
     if (trimmed.includes('|') && trimmed.split('|').length >= 3) {
       const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
       if (cells.every(c => c.match(/^[-:]+$/))) return null;
+      // Check if this is a header row
+      const isHeader = i === 0 || (content.split('\n')[i + 1]?.trim()?.match(/^[\|:\-\s]+$/));
       return (
-        <div key={i} className="flex gap-3 mb-0.5 ml-2">
-          {cells.map((cell, ci) => (
-            <span key={ci} className={`text-[10px] font-mono ${ci === 0 ? 'text-white/60 w-24' : 'text-white/40 flex-1'}`}>
-              {renderBold(cell)}
-            </span>
-          ))}
+        <div key={i} className={`flex gap-2 mb-px px-2 py-1 rounded ${isHeader ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}`}>
+          {cells.map((cell, ci) => {
+            // Color-code severity labels
+            const lower = cell.toLowerCase();
+            let extraClass = '';
+            if (lower === 'extreme' || lower === 'critical') extraClass = 'text-red-400/70';
+            else if (lower === 'high') extraClass = 'text-amber-400/60';
+            else if (lower === 'moderate') extraClass = 'text-yellow-400/50';
+            else if (lower === 'low' || lower === 'baseline') extraClass = 'text-white/25';
+            else if (lower.includes('confirmed')) extraClass = 'text-emerald-400/60';
+
+            return (
+              <span key={ci} className={`text-[10px] font-mono ${ci === 0 ? 'text-white/60 w-28 shrink-0' : extraClass || 'text-white/40 flex-1'} ${isHeader ? 'font-semibold text-white/50' : ''}`}>
+                {renderBold(cell)}
+              </span>
+            );
+          })}
         </div>
       );
     }
@@ -864,7 +877,31 @@ function renderBold(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="text-white/80 font-semibold">{part.slice(2, -2)}</strong>;
+      const inner = part.slice(2, -2);
+      // Detect score patterns like "25/25" or "8/20" or "0/15"
+      const scoreMatch = inner.match(/^(\d+)\/(\d+)$/);
+      if (scoreMatch) {
+        const val = parseInt(scoreMatch[1], 10);
+        const max = parseInt(scoreMatch[2], 10);
+        const pct = max > 0 ? (val / max) * 100 : 0;
+        const color = pct >= 80 ? 'bg-emerald-400' : pct >= 50 ? 'bg-cyan-400' : pct >= 25 ? 'bg-amber-400' : pct > 0 ? 'bg-red-400' : 'bg-white/10';
+        return (
+          <span key={i} className="inline-flex items-center gap-1.5 mx-0.5">
+            <span className="text-white/80 font-semibold text-[10px] font-mono">{inner}</span>
+            <span className="inline-block w-12 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+              <span className={`block h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+            </span>
+          </span>
+        );
+      }
+      // Detect percentage patterns like "87%" or "111%"
+      const pctMatch = inner.match(/^(\d+(?:\.\d+)?)%$/);
+      if (pctMatch) {
+        const val = parseFloat(pctMatch[1]);
+        const color = val >= 100 ? 'text-emerald-400' : val >= 50 ? 'text-cyan-400' : val >= 25 ? 'text-amber-400' : 'text-red-400';
+        return <span key={i} className={`font-semibold font-mono text-[11px] ${color}`}>{inner}</span>;
+      }
+      return <strong key={i} className="text-white/80 font-semibold">{inner}</strong>;
     }
     return part;
   });
