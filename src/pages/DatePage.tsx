@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Brain, Settings, Calendar, Loader2, RotateCcw, Send, ChevronLeft, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import UserMenu from '@/components/UserMenu';
@@ -19,7 +19,10 @@ function formatDateStr(dateStr: string): string {
 
 export default function DatePage() {
   const { dateStr } = useParams<{ dateStr: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const isGrade = searchParams.get('grade') === 'true';
+  const compareDate = searchParams.get('compare');
   const [followUp, setFollowUp] = useState('');
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -45,8 +48,16 @@ export default function DatePage() {
     if (autoFiredRef.current || !dateStr) return;
     autoFiredRef.current = true;
     const formatted = formatDateStr(dateStr);
-    sendMessage(`What was happening on ${formatted}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`);
-  }, [dateStr, sendMessage]);
+
+    if (isGrade) {
+      sendMessage(`Grade ${formatted} as an environmental day. Score it A+ through F based on how unusual or extreme the conditions were across all domains. Show a report card with each domain scored. Make it fun and shareable — like a personality quiz for a date. Include one surprising fact about this date that nobody would expect.`);
+    } else if (compareDate) {
+      const formatted2 = formatDateStr(compareDate);
+      sendMessage(`Compare the environmental conditions on ${formatted} vs ${formatted2}. What was the same across all domains? What was different? Rate the overall environmental similarity as a percentage. Include climate indices, weather, storms, migration, tides, moon phase, and any other domains with data for both dates.`);
+    } else {
+      sendMessage(`What was happening on ${formatted}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`);
+    }
+  }, [dateStr, sendMessage, isGrade, compareDate]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -89,6 +100,16 @@ export default function DatePage() {
 
   const formattedDate = dateStr ? formatDateStr(dateStr) : 'Unknown Date';
 
+  // Update page title for SEO/sharing
+  useEffect(() => {
+    const mode = isGrade ? 'Report Card' : compareDate ? `vs ${formatDateStr(compareDate)}` : 'Environmental Portrait';
+    document.title = `${formattedDate} — ${mode} | Duck Countdown`;
+    // Update meta description
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute('content', `Cross-domain environmental analysis for ${formattedDate}. Weather, climate, storms, migration, tides, moon phase — everything the brain knows.`);
+    return () => { document.title = 'Duck Countdown | Environmental Intelligence Platform'; };
+  }, [formattedDate, isGrade, compareDate]);
+
   return (
     <div className="h-[100dvh] w-screen overflow-hidden bg-[#0a0f1a] flex flex-col">
       {/* Header */}
@@ -123,7 +144,9 @@ export default function DatePage() {
               <Calendar size={18} className="text-cyan-400/50" />
               <h1 className="font-display text-xl sm:text-2xl text-white/90">{formattedDate}</h1>
             </div>
-            <p className="text-xs text-white/30 font-body">Cross-domain environmental portrait</p>
+            <p className="text-xs text-white/30 font-body">
+              {isGrade ? 'Environmental Report Card' : compareDate ? `Compared with ${formatDateStr(compareDate)}` : 'Cross-domain environmental portrait'}
+            </p>
             <div className="flex items-center justify-center gap-2 mt-3">
               <button
                 onClick={() => navigate('/')}

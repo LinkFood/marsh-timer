@@ -430,10 +430,8 @@ export default function ExplorerLanding() {
               <button
                 onClick={() => {
                   if (loading || streaming) return;
-                  const d = `${MONTHS[month]} ${day}, ${year}`;
-                  const st = stateFilter ? ` in ${STATES.find(s => s.abbr === stateFilter)?.name || stateFilter}` : '';
-                  setHasSearched(true);
-                  sendMessage(`Grade ${d}${st} as an environmental day. Score it A+ through F based on how unusual or extreme the conditions were across all domains. Show a report card with each domain scored. Make it fun and shareable — like a personality quiz for a date. Include one surprising fact about this date that nobody would expect.`);
+                  const dateIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  navigate(`/date/${dateIso}?grade=true`);
                 }}
                 disabled={loading || streaming}
                 className="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/20 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
@@ -478,11 +476,9 @@ export default function ExplorerLanding() {
               <button
                 onClick={() => {
                   if (loading || streaming) return;
-                  const d1 = `${MONTHS[month]} ${day}, ${year}`;
-                  const d2 = `${MONTHS[month2]} ${day2}, ${year2}`;
-                  const st = stateFilter ? ` in ${STATES.find(s => s.abbr === stateFilter)?.name || stateFilter}` : '';
-                  setHasSearched(true);
-                  sendMessage(`Compare the environmental conditions on ${d1} vs ${d2}${st}. What was the same across all domains? What was different? Rate the overall environmental similarity as a percentage. Include climate indices, weather, storms, migration, tides, moon phase, and any other domains with data for both dates. Format as a side-by-side comparison.`);
+                  const dateIso1 = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const dateIso2 = `${year2}-${String(month2 + 1).padStart(2, '0')}-${String(day2).padStart(2, '0')}`;
+                  navigate(`/date/${dateIso1}?compare=${dateIso2}`);
                 }}
                 disabled={loading || streaming}
                 className="px-5 py-2 rounded-lg bg-orange-500/20 border border-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
