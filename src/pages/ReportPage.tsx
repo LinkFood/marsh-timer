@@ -86,7 +86,7 @@ export default function ReportPage() {
   useEffect(() => {
     if (autoFiredRef.current || !dateStr) return;
     autoFiredRef.current = true;
-    sendMessage(`Grade ${formatted} as an environmental day. Give it an overall letter grade A+ through F based on how unusual, extreme, or interesting the environmental conditions were across all domains. Then grade each domain individually: Weather, Storms, Climate Indices, Migration, Water/Tides, Moon Phase, Drought/Soil, Seismic. Format each domain as: - **Domain**: **Grade** — one sentence explanation. End with one surprising fact about this date. Be specific and use data.`);
+    sendMessage(`Grade ${formatted}. Overall letter grade A+ through F based on environmental activity. List each domain with a grade: - **Weather**: **B+** — explanation. Cover weather, storms, climate, migration, water, moon, drought, seismic. End with one surprising fact.`);
   }, [dateStr, formatted, sendMessage]);
 
   useEffect(() => {
