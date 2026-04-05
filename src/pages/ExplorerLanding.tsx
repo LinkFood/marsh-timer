@@ -36,9 +36,9 @@ const STATES: { abbr: string; name: string }[] = [
 ];
 
 export default function ExplorerLanding() {
-  const [month, setMonth] = useState(3);
-  const [day, setDay] = useState(4);
-  const [year, setYear] = useState(2026);
+  const [month, setMonth] = useState(() => new Date().getMonth());
+  const [day, setDay] = useState(() => new Date().getDate());
+  const [year, setYear] = useState(() => new Date().getFullYear());
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
   const [followUp, setFollowUp] = useState('');
@@ -46,6 +46,9 @@ export default function ExplorerLanding() {
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
+  const [month2, setMonth2] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.getMonth(); });
+  const [day2, setDay2] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.getDate(); });
+  const [year2, setYear2] = useState(() => new Date().getFullYear() - 1);
   const [showHistory, setShowHistory] = useState(false);
   const { sessions: historySessions } = useChatHistory();
   const pulseEntries = useBrainPulse();
@@ -59,9 +62,6 @@ export default function ExplorerLanding() {
     }, 4000);
     return () => clearInterval(interval);
   }, [pulseEntries.length]);
-  const [month2, setMonth2] = useState(1); // Feb
-  const [day2, setDay2] = useState(10);
-  const [year2, setYear2] = useState(2021);
   const [searchParams, setSearchParams] = useSearchParams();
   const resultsRef = useRef<HTMLDivElement>(null);
   const followUpRef = useRef<HTMLInputElement>(null);
