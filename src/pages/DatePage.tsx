@@ -54,7 +54,7 @@ export default function DatePage() {
       sendMessage(`Grade ${formatted} as an environmental day. Score it A+ through F based on how unusual or extreme the conditions were across all domains. Show a report card with each domain scored. Make it fun and shareable — like a personality quiz for a date. Include one surprising fact about this date that nobody would expect.`);
     } else if (compareDate) {
       const formatted2 = formatDateStr(compareDate);
-      sendMessage(`Compare the environmental conditions on ${formatted} vs ${formatted2}. What was the same across all domains? What was different? Rate the overall environmental similarity as a percentage. Include climate indices, weather, storms, migration, tides, moon phase, and any other domains with data for both dates.`);
+      sendMessage(`Compare the environmental conditions on ${formatted} vs ${formatted2}. Search the brain for data around both dates (within ±3 days of each). For each date, show what the brain has across weather, climate indices, storms, migration, tides, earthquakes, moon phase, drought, and any other domains. Then compare: what was the same? What was different? Rate overall similarity as a percentage.`);
     } else {
       sendMessage(`What was happening on ${formatted}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`);
     }
