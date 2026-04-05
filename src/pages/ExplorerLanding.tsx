@@ -7,6 +7,7 @@ import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useBrainPulse, getDomainColor } from '@/hooks/useBrainPulse';
 import StateActivityMap from '@/components/StateActivityMap';
+import InlineStateMap, { extractStates } from '@/components/InlineStateMap';
 import { useCoincidenceSnapshot } from '@/hooks/useCoincidenceSnapshot';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -805,6 +806,13 @@ function BrainResponse({ message, isStreaming, onFollowUp }: {
         )}
       </div>
       <div>{rendered}</div>
+
+      {/* Inline map showing mentioned states */}
+      {!isStreaming && (() => {
+        const states = extractStates(content);
+        return states.length >= 2 ? <InlineStateMap highlightedStates={states} /> : null;
+      })()}
+
       {followUps.length > 0 && onFollowUp && (
         <div className="mt-4 pt-3 border-t border-white/[0.04]">
           <p className="text-[9px] font-mono text-white/20 mb-2">DIG DEEPER</p>
