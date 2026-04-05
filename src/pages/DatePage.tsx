@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Brain, Settings, Calendar, Loader2, RotateCcw, Send, ChevronLeft, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Brain, Settings, Calendar, Loader2, RotateCcw, Send, ChevronLeft } from 'lucide-react';
+import BrainResponseCard from '@/components/BrainResponseCard';
 import { useChat } from '@/hooks/useChat';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -180,7 +181,7 @@ export default function DatePage() {
                 );
               }
               if (msg.role === 'assistant' && msg.content) {
-                return <BrainResponse key={msg.id} message={msg} isStreaming={streaming && i === messages.length - 1} onFollowUp={sendMessage} />;
+                return <BrainResponseCard key={msg.id} message={msg} isStreaming={streaming && i === messages.length - 1} onFollowUp={sendMessage} />;
               }
               return null;
             })}
@@ -219,89 +220,3 @@ export default function DatePage() {
   );
 }
 
-/** Reused BrainResponse — same as ExplorerLanding but standalone */
-function BrainResponse({ message, isStreaming, onFollowUp }: {
-  message: { content: string; id: string };
-  isStreaming: boolean;
-  onFollowUp?: (query: string) => void;
-}) {
-  const content = message.content;
-  if (!content) return null;
-
-  const [copied, setCopied] = useState(false);
-
-  const rendered = content.split('\n').map((line, i) => {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('## ')) return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{trimmed.slice(3)}</h3>;
-    if (trimmed.startsWith('# ')) return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{trimmed.slice(2)}</h2>;
-    if (trimmed === '---') return <hr key={i} className="border-white/[0.06] my-3" />;
-    if (trimmed.startsWith('- ')) {
-      return (
-        <div key={i} className="flex gap-2 ml-2 mb-0.5">
-          <span className="text-cyan-400/40 text-xs mt-0.5">-</span>
-          <span className="text-xs text-white/60 leading-relaxed">{renderBold(trimmed.slice(2))}</span>
-        </div>
-      );
-    }
-    const numMatch = trimmed.match(/^(\d+)\.\s+/);
-    if (numMatch) {
-      return (
-        <div key={i} className="flex gap-2 ml-2 mb-0.5">
-          <span className="text-cyan-400/40 text-xs mt-0.5 font-mono w-3">{numMatch[1]}.</span>
-          <span className="text-xs text-white/60 leading-relaxed">{renderBold(trimmed.slice(numMatch[0].length))}</span>
-        </div>
-      );
-    }
-    if (trimmed.includes('|') && trimmed.split('|').length >= 3) {
-      const cells = trimmed.split('|').map(c => c.trim()).filter(Boolean);
-      if (cells.every(c => c.match(/^[-:]+$/))) return null;
-      return (
-        <div key={i} className="flex gap-3 mb-0.5 ml-2">
-          {cells.map((cell, ci) => (
-            <span key={ci} className={`text-[10px] font-mono ${ci === 0 ? 'text-white/60 w-24' : 'text-white/40 flex-1'}`}>
-              {renderBold(cell)}
-            </span>
-          ))}
-        </div>
-      );
-    }
-    if (!trimmed) return <div key={i} className="h-2" />;
-    return <p key={i} className="text-xs text-white/60 leading-relaxed mb-1">{renderBold(trimmed)}</p>;
-  });
-
-  return (
-    <div className={`rounded-xl bg-white/[0.015] border border-white/[0.05] p-4 sm:p-5 mb-4 ${isStreaming ? 'border-cyan-400/10' : ''}`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Brain size={14} className={`${isStreaming ? 'text-cyan-400 animate-pulse' : 'text-cyan-400/50'}`} />
-          <span className="text-[9px] font-mono text-white/30 tracking-wider">
-            {isStreaming ? 'THINKING...' : 'BRAIN'}
-          </span>
-        </div>
-        {!isStreaming && (
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className={`text-[9px] font-mono transition-colors px-2 py-1 rounded hover:bg-white/[0.03] ${copied ? 'text-emerald-400/60' : 'text-white/20 hover:text-cyan-400/60'}`}
-          >
-            {copied ? 'COPIED!' : 'SHARE'}
-          </button>
-        )}
-      </div>
-      <div>{rendered}</div>
-    </div>
-  );
-}
-
-function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="text-white/80 font-semibold">{part.slice(2, -2)}</strong>;
-    }
-    return part;
-  });
-}

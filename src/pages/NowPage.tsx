@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, Settings, Loader2, Send, ChevronLeft, Zap, MapPin } from 'lucide-react';
+import { Brain, Settings, Loader2, Send, ChevronLeft, Zap } from 'lucide-react';
+import BrainResponseCard from '@/components/BrainResponseCard';
 import { useChat } from '@/hooks/useChat';
 import { useCoincidenceSnapshot } from '@/hooks/useCoincidenceSnapshot';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
@@ -162,7 +163,7 @@ export default function NowPage() {
                 );
               }
               if (msg.role === 'assistant' && msg.content) {
-                return <BrainResponse key={msg.id} content={msg.content} isStreaming={streaming && i === messages.length - 1} />;
+                return <BrainResponseCard key={msg.id} message={msg} isStreaming={streaming && i === messages.length - 1} onFollowUp={sendMessage} />;
               }
               return null;
             })}
@@ -201,41 +202,3 @@ export default function NowPage() {
   );
 }
 
-function BrainResponse({ content, isStreaming }: { content: string; isStreaming: boolean }) {
-  const rendered = content.split('\n').map((line, i) => {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('## ')) return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{trimmed.slice(3)}</h3>;
-    if (trimmed.startsWith('# ')) return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{trimmed.slice(2)}</h2>;
-    if (trimmed === '---') return <hr key={i} className="border-white/[0.06] my-3" />;
-    if (trimmed.startsWith('- ')) {
-      return (
-        <div key={i} className="flex gap-2 ml-2 mb-0.5">
-          <span className="text-cyan-400/40 text-xs mt-0.5">-</span>
-          <span className="text-xs text-white/60 leading-relaxed">{renderBold(trimmed.slice(2))}</span>
-        </div>
-      );
-    }
-    if (!trimmed) return <div key={i} className="h-2" />;
-    return <p key={i} className="text-xs text-white/60 leading-relaxed mb-1">{renderBold(trimmed)}</p>;
-  });
-
-  return (
-    <div className={`rounded-xl bg-white/[0.015] border border-white/[0.05] p-4 sm:p-5 mb-4 ${isStreaming ? 'border-cyan-400/10' : ''}`}>
-      <div className="flex items-center gap-2 mb-3">
-        <Brain size={14} className={isStreaming ? 'text-cyan-400 animate-pulse' : 'text-cyan-400/50'} />
-        <span className="text-[9px] font-mono text-white/30 tracking-wider">{isStreaming ? 'SCANNING...' : 'BRAIN'}</span>
-      </div>
-      <div>{rendered}</div>
-    </div>
-  );
-}
-
-function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="text-white/80 font-semibold">{part.slice(2, -2)}</strong>;
-    }
-    return part;
-  });
-}
