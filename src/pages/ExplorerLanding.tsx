@@ -608,11 +608,22 @@ function ThinkingIndicator() {
 
   return (
     <div className="flex flex-col items-center gap-2 py-8">
-      <div className="flex items-center gap-2">
-        <Loader2 size={16} className="text-cyan-400/60 animate-spin" />
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
+          {[0, 1, 2].map(i => (
+            <span
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-cyan-400"
+              style={{
+                animation: 'pulse 1.4s ease-in-out infinite',
+                animationDelay: `${i * 0.2}s`,
+              }}
+            />
+          ))}
+        </div>
         <span className="text-xs font-mono text-cyan-400/40">
-          Brain is thinking...
-          {elapsed > 5 && <span className="text-white/20 ml-2">{elapsed}s</span>}
+          Brain is thinking
+          {elapsed > 5 && <span className="text-white/20 ml-1">· {elapsed}s</span>}
         </span>
       </div>
       {elapsed > 15 && elapsed <= 45 && (
