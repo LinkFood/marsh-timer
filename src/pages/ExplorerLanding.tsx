@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap, ThumbsUp, ThumbsDown, Clock, X } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
@@ -39,6 +39,7 @@ export default function ExplorerLanding() {
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [question, setQuestion] = useState('');
   const [followUp, setFollowUp] = useState('');
+  const navigate = useNavigate();
   const [brainCount, setBrainCount] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
@@ -127,14 +128,10 @@ export default function ExplorerLanding() {
 
   const handleDateQuery = useCallback(() => {
     if (loading || streaming) return;
-    const dateStr = `${MONTHS[month]} ${day}, ${year}`;
-    const stateStr = stateFilter ? ` in ${STATES.find(s => s.abbr === stateFilter)?.name || stateFilter}` : '';
-    const msg = question.trim()
-      ? `On ${dateStr}${stateStr}: ${question.trim()}`
-      : `What was happening on ${dateStr}${stateStr}? Cross-reference every domain you have — weather, climate indices, storms, migration, tides, earthquakes, moon phase, everything. Show me the full picture of that date.`;
-    setHasSearched(true);
-    sendMessage(msg);
-  }, [month, day, year, stateFilter, question, loading, streaming, sendMessage]);
+    const dateIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    // Navigate to permanent date page
+    navigate(`/date/${dateIso}`);
+  }, [month, day, year, navigate, loading, streaming]);
 
   const handleFreeformSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
