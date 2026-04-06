@@ -110,7 +110,7 @@
       "completedAt": "2026-03-22T19:38:10.197Z"
     },
     "historical-news": {
-      "status": "running",
+      "status": "done",
       "resumeEnv": {
         "START_TERM": "4",
         "START_PAGE": "323"
@@ -178,7 +178,161 @@
       "startedAt": "2026-03-22T21:02:49.331Z",
       "lastOutputAt": "2026-03-22T21:15:45.303Z",
       "completedAt": "2026-03-22T21:15:45.320Z"
+    },
+    "soil-conditions": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WI"
+      },
+      "startedAt": "2026-04-04T03:54:24.242Z",
+      "lastOutputAt": "2026-04-04T06:08:57.506Z",
+      "entriesLogged": 36347,
+      "completedAt": "2026-04-04T06:08:57.531Z"
+    },
+    "air-quality": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-04-04T03:55:24.246Z",
+      "lastOutputAt": "2026-04-04T05:21:05.641Z",
+      "entriesLogged": 26660,
+      "completedAt": "2026-04-04T05:21:05.667Z"
+    },
+    "river-discharge": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-04-04T03:56:24.247Z",
+      "lastOutputAt": "2026-04-04T04:14:01.255Z",
+      "entriesLogged": 7652,
+      "completedAt": "2026-04-04T04:14:01.279Z"
+    },
+    "space-weather": {
+      "status": "done",
+      "resumeEnv": {},
+      "startedAt": "2026-04-04T02:58:50.906Z",
+      "lastOutputAt": "2026-04-04T02:58:52.752Z",
+      "completedAt": "2026-04-04T02:58:52.789Z"
+    },
+    "ocean-buoy": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATION": "44025",
+        "START_YEAR": "2025"
+      },
+      "startedAt": "2026-04-04T02:58:52.790Z",
+      "lastOutputAt": "2026-04-04T03:36:45.817Z",
+      "completedAt": "2026-04-04T03:36:45.837Z"
+    },
+    "ghcn-daily": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY"
+      },
+      "startedAt": "2026-04-04T03:57:24.249Z",
+      "lastOutputAt": "2026-04-04T10:31:56.293Z",
+      "entriesLogged": 6389,
+      "completedAt": "2026-04-04T10:31:56.311Z"
+    },
+    "usgs-water-deep": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATE": "WY",
+        "START_MONTH": "2020-10"
+      },
+      "startedAt": "2026-04-04T11:42:26.109Z",
+      "lastOutputAt": "2026-04-05T16:28:08.227Z",
+      "entriesLogged": 674658,
+      "completedAt": "2026-04-05T16:28:08.254Z"
+    },
+    "astronomical": {
+      "status": "done",
+      "resumeEnv": {
+        "START_YEAR": "2026"
+      },
+      "startedAt": "2026-04-04T05:21:05.668Z",
+      "lastOutputAt": "2026-04-04T06:59:03.332Z",
+      "entriesLogged": 47799,
+      "completedAt": "2026-04-04T06:59:03.355Z"
+    },
+    "earthquakes-extended": {
+      "status": "done",
+      "resumeEnv": {
+        "START_YEAR": "1989",
+        "START_MONTH": "12"
+      },
+      "startedAt": "2026-04-04T06:08:57.532Z",
+      "lastOutputAt": "2026-04-04T07:51:09.530Z",
+      "entriesLogged": 49120,
+      "completedAt": "2026-04-04T07:51:09.556Z"
+    },
+    "chronicling-america": {
+      "status": "done",
+      "resumeEnv": {
+        "START_TERM": "11"
+      },
+      "startedAt": "2026-04-04T11:42:56.112Z",
+      "lastOutputAt": "2026-04-04T13:43:50.851Z",
+      "completedAt": "2026-04-04T13:43:50.854Z"
+    },
+    "fred-economic": {
+      "status": "skipped",
+      "resumeEnv": {},
+      "error": "Missing env: FRED_API_KEY"
+    },
+    "project-tycho": {
+      "status": "skipped",
+      "resumeEnv": {},
+      "startedAt": "2026-04-04T07:51:10.573Z",
+      "lastOutputAt": "2026-04-04T07:51:11.069Z",
+      "retryCount": 3,
+      "error": "Exceeded 3 retries. Last error: Exit code 1. Last output: Diseases: 26 | States: 50 | Years: 1888-2014"
+    },
+    "pdsi-drought": {
+      "status": "done",
+      "resumeEnv": {},
+      "startedAt": "2026-04-04T07:51:11.078Z",
+      "lastOutputAt": "2026-04-04T07:51:43.770Z",
+      "completedAt": "2026-04-04T07:51:43.791Z"
+    },
+    "ntsb-aviation": {
+      "status": "done",
+      "resumeEnv": {
+        "START_PAGE": "1"
+      },
+      "startedAt": "2026-04-04T07:51:43.792Z",
+      "lastOutputAt": "2026-04-04T08:37:08.794Z",
+      "completedAt": "2026-04-04T08:37:08.816Z"
+    },
+    "eia-energy": {
+      "status": "skipped",
+      "resumeEnv": {},
+      "error": "Missing env: EIA_API_KEY"
+    },
+    "noaa-coops-water": {
+      "status": "failed",
+      "resumeEnv": {
+        "START_STATION": "8461490",
+        "START_YEAR": "1979"
+      },
+      "startedAt": "2026-04-04T11:43:26.111Z",
+      "lastOutputAt": "2026-04-06T11:35:01.324Z",
+      "entriesLogged": 46352,
+      "error": "Interrupted by shutdown. Last output:   1979: 357 days -> 357 embedded"
+    },
+    "ndbc-deep": {
+      "status": "done",
+      "resumeEnv": {
+        "START_STATION": "51003",
+        "START_YEAR": "2025"
+      },
+      "startedAt": "2026-04-04T11:43:56.112Z",
+      "lastOutputAt": "2026-04-05T05:42:50.692Z",
+      "entriesLogged": 601348,
+      "completedAt": "2026-04-05T05:42:50.720Z"
     }
   },
-  "lastUpdated": "2026-03-23T05:21:44.195Z"
+  "lastUpdated": "2026-04-06T11:36:05.469Z"
 }

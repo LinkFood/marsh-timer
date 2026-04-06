@@ -30,7 +30,7 @@ const SCRIPTS_DIR = import.meta.dirname || __dirname;
 const CHECKPOINT_FILE = join(SCRIPTS_DIR, ".orchestrator-v2-checkpoint.json");
 const LOG_FILE = join(SCRIPTS_DIR, ".orchestrator-v2.log");
 
-const MAX_CONCURRENT = 6;             // Cranked up — get throttle warnings, then pull back
+const MAX_CONCURRENT = 5;             // 5 in orchestrator + ghcn-daily standalone = 6 total writers
 const MAX_RETRIES = 3;                // Max retries per pipe before giving up
 const LAYER_DELAY_MS = 30_000;        // 30s between starting new pipes (was 60s)
 const STALL_WARN_MS = 5 * 60_000;     // 5 min no output = warning

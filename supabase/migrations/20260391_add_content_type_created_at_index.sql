@@ -1,14 +1,20 @@
--- Add compound index on (content_type, created_at) for hunt_knowledge
--- This makes content_type + date range queries fast (used by brain journal, collision feed)
--- Without this, every query on 3.2M rows requires a sequential scan
+-- Use pg_cron to build the index asynchronously (avoids migration timeout on 3.2M rows)
+-- The cron job runs once, creates the index, then unschedules itself
 
-SET statement_timeout = '600s';
-
--- Drop potentially invalid index from interrupted CONCURRENTLY build
-DROP INDEX IF EXISTS idx_hunt_knowledge_type_created;
-
--- Recreate non-concurrently (brief table lock, but completes reliably)
-CREATE INDEX idx_hunt_knowledge_type_created
-  ON hunt_knowledge (content_type, created_at DESC);
-
-RESET statement_timeout;
+SELECT cron.schedule(
+  'build-content-type-index',
+  '* * * * *',
+  $cron$
+  DO $$
+  BEGIN
+    -- Drop invalid index if exists from interrupted CONCURRENTLY build
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_hunt_knowledge_type_created') THEN
+      EXECUTE 'DROP INDEX idx_hunt_knowledge_type_created';
+    END IF;
+    -- Build the index
+    EXECUTE 'CREATE INDEX idx_hunt_knowledge_type_created ON hunt_knowledge (content_type, created_at DESC)';
+    -- Unschedule this job after success
+    PERFORM cron.unschedule('build-content-type-index');
+  END $$;
+  $cron$
+);
