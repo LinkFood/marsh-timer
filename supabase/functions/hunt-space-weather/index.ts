@@ -62,8 +62,8 @@ async function fetchJson(url: string): Promise<unknown> {
   return res.json();
 }
 
-function getDateKey(timeTag: string): string {
-  // "2026-03-28 00:00:00.000" -> "2026-03-28"
+function getDateKey(timeTag: string | undefined | null): string {
+  if (!timeTag || typeof timeTag !== "string") return "";
   return timeTag.substring(0, 10);
 }
 
@@ -188,18 +188,19 @@ serve(async (req) => {
       magByDate.get(dateKey)!.push({ bz });
     }
 
-    // Parse Kp: array of arrays, first row is headers — only today's data
+    // Parse Kp: array of objects with time_tag and Kp fields
     const kpByDate = new Map<string, number[]>();
-    const kpArr = kpRaw as string[][];
-    for (let i = 1; i < kpArr.length; i++) {
-      const row = kpArr[i];
-      if (!row || row.length < 2) continue;
-      const dateKey = getDateKey(row[0]);
-      if (dateKey !== today) continue;
-      const kp = parseFloat(row[1]);
-      if (isNaN(kp)) continue;
-      if (!kpByDate.has(dateKey)) kpByDate.set(dateKey, []);
-      kpByDate.get(dateKey)!.push(kp);
+    const kpArr = kpRaw as Array<{ time_tag?: string; Kp?: number | string; [k: string]: unknown }>;
+    if (Array.isArray(kpArr)) {
+      for (const entry of kpArr) {
+        if (!entry.time_tag) continue;
+        const dateKey = getDateKey(entry.time_tag);
+        if (dateKey !== today) continue;
+        const kp = typeof entry.Kp === "number" ? entry.Kp : parseFloat(String(entry.Kp || ""));
+        if (isNaN(kp)) continue;
+        if (!kpByDate.has(dateKey)) kpByDate.set(dateKey, []);
+        kpByDate.get(dateKey)!.push(kp);
+      }
     }
 
     // Parse X-ray: array of objects with time_tag and flux — only today's data
