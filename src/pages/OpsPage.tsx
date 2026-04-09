@@ -341,6 +341,46 @@ export default function OpsPage() {
 
         {/* Right column */}
         <div className="lg:col-span-3 space-y-6">
+          {/* Storage Ceiling */}
+          {(() => {
+            const CEILING = 25_000_000;
+            const growthDays = data.brain.growth_by_day;
+            const avgDaily = growthDays.length > 1
+              ? Math.round(growthDays.slice(-7).reduce((sum, d) => sum + d.count, 0) / Math.min(7, growthDays.length))
+              : 0;
+            const remaining = CEILING - data.brain.total;
+            const daysLeft = avgDaily > 0 ? Math.round(remaining / avgDaily) : Infinity;
+            const pct = Math.min(100, (data.brain.total / CEILING) * 100);
+            const color = daysLeft > 30 ? 'emerald' : daysLeft > 15 ? 'amber' : 'red';
+            const barColor = color === 'emerald' ? 'bg-emerald-400' : color === 'amber' ? 'bg-amber-400' : 'bg-red-400';
+            const textColor = color === 'emerald' ? 'text-emerald-400' : color === 'amber' ? 'text-amber-400' : 'text-red-400';
+
+            return (
+              <Card title="Storage Ceiling">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex flex-col">
+                    <span className="text-2xl font-mono font-bold text-white">{data.brain.total.toLocaleString()}</span>
+                    <span className="text-[9px] font-mono text-white/40">of {(CEILING).toLocaleString()} capacity</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className={`text-2xl font-mono font-bold ${textColor}`}>
+                      {daysLeft === Infinity ? '--' : `${daysLeft}d`}
+                    </span>
+                    <span className="text-[9px] font-mono text-white/40">until ceiling</span>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full h-2 bg-white/[0.06] rounded-full overflow-hidden mb-3">
+                  <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono text-white/40">
+                  <span>{pct.toFixed(1)}% used</span>
+                  <span>~{avgDaily.toLocaleString()}/day avg (7d)</span>
+                </div>
+              </Card>
+            );
+          })()}
+
           {/* Brain Growth */}
           <Card title="Brain Growth">
             {data.brain.growth_by_day.length > 0 && (
