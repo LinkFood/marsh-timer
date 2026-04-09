@@ -1,27 +1,25 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { callClaude, CLAUDE_MODELS, parseTextContent } from '../_shared/anthropic.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { STATE_ABBRS } from '../_shared/states.ts';
 
 const FUNCTION_NAME = 'hunt-brain-synthesizer';
-const STATE_ABBRS = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+const MAX_STATES_PER_RUN = 3;
+const HARD_TIMEOUT_MS = 120_000; // 120s hard cutoff — leave 30s buffer before 150s edge limit
 
 serve(async (req: Request) => {
   const cors = handleCors(req);
   if (cors) return cors;
 
-  // Cache request data before any async work
   let body: Record<string, any> = {};
   try {
     body = await req.json().catch(() => ({}));
   } catch {
-    return new Response(JSON.stringify({ error: 'Request closed' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    // Request already closed before we could read body — still proceed with defaults
   }
 
   const startTime = Date.now();
@@ -32,17 +30,34 @@ serve(async (req: Request) => {
     const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
     const today = now.toISOString().split('T')[0];
     let synthesized = 0;
+    let skipped = 0;
+    let timedOut = false;
 
-    // Batch support: split 50 states into 5 batches of 10
+    // Batch support: split 50 states into batches of MAX_STATES_PER_RUN
     const batchNum = body.batch ? Number(body.batch) : null;
-    let statesToProcess = STATE_ABBRS;
-    if (batchNum && batchNum >= 1 && batchNum <= 5) {
-      const start = (batchNum - 1) * 10;
-      statesToProcess = STATE_ABBRS.slice(start, start + 10);
-      console.log(`[${FUNCTION_NAME}] Batch ${batchNum}: processing ${statesToProcess.join(', ')}`);
+    let statesToProcess: string[];
+    const totalBatches = Math.ceil(STATE_ABBRS.length / MAX_STATES_PER_RUN);
+    if (batchNum && batchNum >= 1 && batchNum <= totalBatches) {
+      const start = (batchNum - 1) * MAX_STATES_PER_RUN;
+      statesToProcess = STATE_ABBRS.slice(start, start + MAX_STATES_PER_RUN);
+      console.log(`[${FUNCTION_NAME}] Batch ${batchNum}/${totalBatches}: processing ${statesToProcess.join(', ')}`);
+    } else {
+      // No batch specified — pick a rotating slice based on day-of-year
+      const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
+      const batchIndex = dayOfYear % totalBatches;
+      const start = batchIndex * MAX_STATES_PER_RUN;
+      statesToProcess = STATE_ABBRS.slice(start, start + MAX_STATES_PER_RUN);
+      console.log(`[${FUNCTION_NAME}] Auto-batch ${batchIndex + 1}/${totalBatches} (day ${dayOfYear}): processing ${statesToProcess.join(', ')}`);
     }
 
     for (const state of statesToProcess) {
+      // Hard timeout check
+      if (Date.now() - startTime > HARD_TIMEOUT_MS) {
+        console.warn(`[${FUNCTION_NAME}] Hard timeout reached at ${Date.now() - startTime}ms — stopping`);
+        timedOut = true;
+        break;
+      }
+
       const { data: entries } = await supabase
         .from('hunt_knowledge')
         .select('id, title, content, content_type, metadata, effective_date')
@@ -52,7 +67,10 @@ serve(async (req: Request) => {
         .order('created_at', { ascending: false })
         .limit(50);
 
-      if (!entries || entries.length < 10) continue;
+      if (!entries || entries.length < 10) {
+        skipped++;
+        continue;
+      }
 
       const typeGroups: Record<string, typeof entries> = {};
       for (const e of entries) {
@@ -62,7 +80,10 @@ serve(async (req: Request) => {
       }
 
       const domainCount = Object.keys(typeGroups).length;
-      if (domainCount < 3) continue;
+      if (domainCount < 3) {
+        skipped++;
+        continue;
+      }
 
       console.log(`[${FUNCTION_NAME}] ${state}: ${entries.length} entries across ${domainCount} domains — synthesizing`);
 
@@ -85,7 +106,7 @@ serve(async (req: Request) => {
 
       try {
         const synthesisResponse = await callClaude({
-          model: CLAUDE_MODELS.sonnet,
+          model: CLAUDE_MODELS.haiku,
           system: `You are an environmental intelligence synthesizer. You receive clustered data from multiple domains (weather, water, seismic, biological, atmospheric) for a specific state and time window. Write a concise synthesis (3-5 sentences) that:
 1. Identifies the key pattern: what's converging?
 2. References specific data points (dates, values, sources)
@@ -137,14 +158,21 @@ Format: Start with the state and the pattern, then the evidence, then the confid
         console.error(`[${FUNCTION_NAME}] Synthesis error for ${state}:`, err);
       }
 
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 500));
     }
 
-    const summary = { states_checked: statesToProcess.length, synthesized, batch: batchNum };
-    await logCronRun({ functionName: FUNCTION_NAME, status: 'success', summary, durationMs: Date.now() - startTime });
-    return successResponse(req, summary);
+    const summary = {
+      states_checked: statesToProcess.length,
+      synthesized,
+      skipped,
+      timed_out: timedOut,
+      batch: batchNum,
+      duration_ms: Date.now() - startTime,
+    };
+    await logCronRun({ functionName: FUNCTION_NAME, status: timedOut ? 'partial' : 'success', summary, durationMs: Date.now() - startTime });
+    return cronResponse(summary);
   } catch (err: any) {
     await logCronRun({ functionName: FUNCTION_NAME, status: 'error', errorMessage: err.message, durationMs: Date.now() - startTime });
-    return errorResponse(req, err.message, 500);
+    return cronErrorResponse(err.message);
   }
 });
