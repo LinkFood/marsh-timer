@@ -38,7 +38,7 @@ export default function BrainChat({ species, stateAbbr, isMobile, onActionsReady
     }
   }, [flyTo, setMapMode]);
 
-  const { messages, loading, streaming, sendMessage, clearMessages, loadSession } = useChat(species, stateAbbr, handleMapAction);
+  const { messages, loading, streaming, sendMessage, clearMessages, loadSession } = useChat({ species, stateAbbr, onMapAction: handleMapAction });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([

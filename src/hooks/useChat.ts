@@ -16,11 +16,14 @@ export interface ChatCard {
   data: Record<string, unknown>;
 }
 
-export function useChat(
-  species: string,
-  stateAbbr: string | null,
-  onMapAction?: (action: { type: string; target: string }) => void
-) {
+interface UseChatOptions {
+  species: string;
+  stateAbbr: string | null;
+  onMapAction?: (action: { type: string; target: string }) => void;
+}
+
+export function useChat(options: UseChatOptions) {
+  const { species, stateAbbr, onMapAction } = options;
   const { session } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {

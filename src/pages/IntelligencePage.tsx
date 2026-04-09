@@ -94,7 +94,7 @@ export default function IntelligencePage() {
   const { entries: journalEntries } = useBrainJournal(selectedState, 'brain', 10);
   const { totalGraded, bySource } = useTrackRecord();
   const weatherMap = useNationalWeather();
-  const { messages, loading: chatLoading, streaming, sendMessage } = useChat('all', selectedState);
+  const { messages, loading: chatLoading, streaming, sendMessage } = useChat({ species: 'all', stateAbbr: selectedState });
 
   // Auto-select top state on first load so the page isn't empty
   useEffect(() => {
