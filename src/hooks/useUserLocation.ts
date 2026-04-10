@@ -81,24 +81,18 @@ export function getStateName(abbr: string): string {
 export function useUserLocation() {
   const [state, setState] = useState<string>(() => {
     if (typeof window === 'undefined') return 'TX';
-    return localStorage.getItem(STORAGE_KEY) || '';
+    return localStorage.getItem(STORAGE_KEY) || 'TX'; // Default to TX immediately
   });
-  const [detecting, setDetecting] = useState(!state);
+  const [detecting, setDetecting] = useState(false);
   const [denied, setDenied] = useState(false);
 
+  // Try geolocation in background — update if we get a better answer
   useEffect(() => {
-    // If we already have a persisted state, skip geolocation
-    if (state) {
-      setDetecting(false);
-      return;
-    }
+    // If user manually chose a state, don't override
+    if (localStorage.getItem(STORAGE_KEY)) return;
+    if (!navigator.geolocation) return;
 
-    if (!navigator.geolocation) {
-      setDetecting(false);
-      setState('TX');
-      return;
-    }
-
+    setDetecting(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const found = nearestState(pos.coords.latitude, pos.coords.longitude);
@@ -107,14 +101,13 @@ export function useUserLocation() {
         setDetecting(false);
       },
       () => {
-        // Permission denied or error — default to TX
         setDenied(true);
-        setState('TX');
         setDetecting(false);
+        // Keep the TX default
       },
       { timeout: 5000, maximumAge: 3600000 }
     );
-  }, [state]);
+  }, []);
 
   const setUserState = useCallback((abbr: string) => {
     setState(abbr);
