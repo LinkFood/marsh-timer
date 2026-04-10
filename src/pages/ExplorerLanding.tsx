@@ -12,6 +12,7 @@ import BrainResponseCard from '@/components/BrainResponseCard';
 import { useCoincidenceSnapshot } from '@/hooks/useCoincidenceSnapshot';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import TodayBriefing from '@/components/TodayBriefing';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -213,6 +214,13 @@ export default function ExplorerLanding() {
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
+
+          {/* Today's Briefing — weather-first data dashboard */}
+          {!hasSearched && (
+            <div className="pt-4">
+              <TodayBriefing />
+            </div>
+          )}
 
           {/* Brain Pulse — live ingestion ticker */}
           {!hasSearched && pulseEntries.length > 0 && (() => {
