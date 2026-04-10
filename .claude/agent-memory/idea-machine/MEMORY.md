@@ -42,6 +42,12 @@
 ## Prioritized Roadmap
 - See `roadmap_april_2026.md` — 15-item roadmap. THIS WEEK: Date Card + Backfill Blitz + /date/ route + Today Feed + Feedback loop. NEXT WEEK: API v1 + Compare Dates + Wikidata + Email + Catalog. THIS MONTH: Embeddable widget + Newspapers + Birthday Report + Prediction Market + CLI. If only 3: Backfill + Date Card + /date/ route.
 
+## JAC Agent OS — Future Direction
+- See `brainstorm_jac_agent_os_future_2026_04_09.md` — 17 ideas. Core thesis: JAC should become the agent/ops/conversational layer for DCD, not a standalone product. Top 5: Brain Bridge (JAC searches hunt_knowledge), Cron Management (JAC manages DCD's 88 crons), Conversational Ops (Slack = ops dashboard), Kill the Dashboard (chat-only), Phone Widget (1-sec dump). Key tension: James's stated "no interface" principles vs 12 routes + 20 widgets actually built.
+
+## Interface Rethinking
+- See `brainstorm_kill_the_chat_2026_04_09.md` — 20 ideas for replacing chat-first interface. Core thesis: stop translating data into words. Top 5: The Tape (real-time ticker), Conviction Charts (state as stock), Autopsy Table (cinematic grading), The Receipt (structured query response), Inverse Search (condition-first temporal query). Also: Ledger, Equalizer, Calendar Heatmap, Diff View, Evidence Locker, Ambient Mode, Nervous System Map, Trust Thermometer, Narrated Replay, plus 5 bonus sparks.
+
 ## Brainstorm History
 - See `brainstorm_ux_visualization_2026_03_19.md` — 15 specific ideas for surfacing 213K data points. Core problem: data trapped in vectors, UI is 6 static cards. Top recommendations: sparklines everywhere, convergence decomposition chart, brain activity monitor.
 - See `brainstorm_synthesis_agent_2026_03_26.md` — 40+ ideas across 8 categories for the synthesis agent. Architecture, arc data model, narrative gen, visualization, v1 scope, embedding tricks, grading visibility, wild novelty. Top picks: Arc Reactor Lite, Dual-Loop, Heartbeat model, Arc Fingerprinting, Hindsight Machine.
