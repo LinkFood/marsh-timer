@@ -4,15 +4,18 @@ import { SUPABASE_FUNCTIONS_URL } from '@/lib/supabase';
 // --- Types ---
 
 export interface CurrentWeather {
-  temperature_f: number;
+  temperature_f: number | null;
+  temp_high_f: number | null;
+  temp_low_f: number | null;
   conditions: string;
-  wind_mph: number;
+  wind_mph: number | null;
   wind_direction: string;
-  pressure_mb: number;
-  humidity_pct: number;
-  dewpoint_f: number;
-  visibility_mi: number;
-  cloud_cover_pct: number;
+  pressure_mb: number | null;
+  humidity_pct: number | null;
+  dewpoint_f: number | null;
+  visibility_mi: number | null;
+  cloud_cover_pct: number | null;
+  precipitation_mm: number | null;
 }
 
 export interface SolunarData {

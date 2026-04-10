@@ -66,19 +66,18 @@ serve(async (req) => {
       entriesTodayRes,
       ...historyResults
     ] = await Promise.all([
-      // 1. Current weather for this state
+      // 1. Current weather from dedicated forecast table (fast, small table)
       supabase
-        .from('hunt_knowledge')
-        .select('title, content, content_type, metadata, created_at')
+        .from('hunt_weather_forecast')
+        .select('date, temp_high_f, temp_low_f, wind_speed_max_mph, wind_direction_dominant, pressure_msl, precipitation_mm, weather_code, cloud_cover_pct, updated_at')
         .eq('state_abbr', stateAbbr)
-        .in('content_type', ['weather-realtime', 'weather-forecast', 'weather-event'])
-        .order('created_at', { ascending: false })
-        .limit(5),
+        .eq('date', today)
+        .limit(1),
 
-      // 2. Solunar for today
+      // 2. Solunar from cache table
       supabase
-        .from('hunt_solunar_precomputed')
-        .select('*')
+        .from('hunt_solunar_cache')
+        .select('data')
         .eq('date', today)
         .limit(1),
 
@@ -123,35 +122,52 @@ serve(async (req) => {
       ...historyQueries,
     ]);
 
-    // --- Parse current weather ---
-    const weatherRows = Array.isArray(weatherRes.data) ? weatherRes.data : [];
+    // --- Parse current weather from forecast table ---
+    const weatherRow = Array.isArray(weatherRes.data) && weatherRes.data.length > 0
+      ? weatherRes.data[0] as Record<string, any>
+      : null;
     let current_weather = null;
-    if (weatherRows.length > 0) {
-      const w = weatherRows[0];
-      const m = (w.metadata || {}) as Record<string, any>;
+    if (weatherRow) {
+      // WMO weather codes → conditions text
+      const WMO: Record<number, string> = {
+        0: 'Clear', 1: 'Mostly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+        45: 'Foggy', 48: 'Freezing Fog', 51: 'Light Drizzle', 53: 'Drizzle',
+        55: 'Heavy Drizzle', 61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+        71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow', 80: 'Rain Showers',
+        81: 'Heavy Showers', 82: 'Violent Showers', 85: 'Snow Showers',
+        95: 'Thunderstorm', 96: 'T-storm w/ Hail', 99: 'Severe T-storm',
+      };
+      const windDeg = weatherRow.wind_direction_dominant ?? 0;
+      const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+      const windDir = dirs[Math.round(windDeg / 22.5) % 16] || '';
+
       current_weather = {
-        temperature_f: m.temperature_f ?? m.temp_f ?? m.temperature ?? null,
-        conditions: m.conditions ?? m.sky_condition ?? m.weather ?? w.title ?? '',
-        wind_mph: m.wind_mph ?? m.wind_speed ?? null,
-        wind_direction: m.wind_direction ?? m.wind_dir ?? '',
-        pressure_mb: m.pressure_mb ?? m.slp ?? m.altimeter ?? null,
-        humidity_pct: m.humidity_pct ?? m.relative_humidity ?? null,
-        dewpoint_f: m.dewpoint_f ?? m.dewpoint ?? null,
-        visibility_mi: m.visibility_mi ?? m.visibility ?? null,
-        cloud_cover_pct: m.cloud_cover_pct ?? m.cloud_cover ?? null,
+        temperature_f: Math.round((weatherRow.temp_high_f + weatherRow.temp_low_f) / 2),
+        temp_high_f: Math.round(weatherRow.temp_high_f),
+        temp_low_f: Math.round(weatherRow.temp_low_f),
+        conditions: WMO[weatherRow.weather_code] ?? `Code ${weatherRow.weather_code}`,
+        wind_mph: Math.round(weatherRow.wind_speed_max_mph ?? 0),
+        wind_direction: windDir,
+        pressure_mb: Math.round(weatherRow.pressure_msl ?? 0),
+        humidity_pct: null, // not in forecast table
+        dewpoint_f: null,
+        visibility_mi: null,
+        cloud_cover_pct: weatherRow.cloud_cover_pct ?? null,
+        precipitation_mm: weatherRow.precipitation_mm ?? 0,
       };
     }
 
-    // --- Parse solunar ---
+    // --- Parse solunar from cache ---
     let solunar = null;
     const solRow = solunarRes.data?.[0];
     if (solRow) {
+      const solData = typeof solRow.data === 'string' ? JSON.parse(solRow.data) : (solRow.data || {});
       solunar = {
-        moon_phase: solRow.moon_phase ?? solRow.phase_name ?? '',
-        moon_illumination: solRow.illumination ?? solRow.moon_illumination ?? 0,
-        next_major: solRow.major_1 ?? solRow.next_major ?? '',
-        next_minor: solRow.minor_1 ?? solRow.next_minor ?? '',
-        rating: solRow.rating ?? solRow.overall_rating ?? 'fair',
+        moon_phase: solData.moon_phase ?? solData.phase ?? '',
+        moon_illumination: solData.moon_illumination ?? solData.illumination ?? 0,
+        next_major: solData.major_1 ?? solData.next_major ?? '',
+        next_minor: solData.minor_1 ?? solData.next_minor ?? '',
+        rating: solData.rating ?? solData.overall_rating ?? 'fair',
       };
     }
 
@@ -204,17 +220,28 @@ serve(async (req) => {
     this_day_history.sort((a, b) => a.year - b.year);
 
     // --- Parse claims/grades ---
-    const claims_grades = (Array.isArray(claimsRes.data) ? claimsRes.data : []).map((c: any) => ({
-      id: c.id,
-      claim_text: c.predicted_outcome || c.alert_source || 'Unknown claim',
-      status: c.outcome_grade
-        ? c.outcome_grade
-        : (c.outcome_checked ? 'missed' : 'watching'),
-      deadline: c.outcome_deadline || null,
-      grade_reason: c.outcome_reasoning || null,
-      accuracy_pct: null,
-      created_at: c.created_at,
-    }));
+    const claims_grades = (Array.isArray(claimsRes.data) ? claimsRes.data : []).map((c: any) => {
+      // predicted_outcome can be a string or an object with .claim
+      let claimText = '';
+      if (typeof c.predicted_outcome === 'string') {
+        claimText = c.predicted_outcome;
+      } else if (c.predicted_outcome?.claim) {
+        claimText = c.predicted_outcome.claim;
+      } else {
+        claimText = c.alert_source || 'Unknown claim';
+      }
+      return {
+        id: c.id,
+        claim_text: claimText,
+        status: c.outcome_grade
+          ? c.outcome_grade
+          : (c.outcome_checked ? 'missed' : 'watching'),
+        deadline: c.outcome_deadline || null,
+        grade_reason: c.outcome_reasoning || null,
+        accuracy_pct: null,
+        created_at: c.created_at,
+      };
+    });
 
     // --- Parse anomalies ---
     const anomalies = (Array.isArray(anomaliesRes.data) ? anomaliesRes.data : []).map((a: any) => {

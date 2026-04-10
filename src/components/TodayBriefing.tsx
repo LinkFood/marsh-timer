@@ -179,33 +179,44 @@ function WeatherHero({ weather }: { weather: TodayBriefingData['current_weather'
     <div>
       <div className="flex items-end gap-3 mb-2">
         <span className="text-5xl sm:text-6xl font-display font-bold text-white/90 leading-none tabular-nums">
-          {Math.round(weather.temperature_f)}°
+          {weather.temperature_f != null ? `${weather.temperature_f}°` : '--'}
         </span>
-        <span className="text-sm font-body text-white/40 mb-1.5">
-          {weather.conditions}
-        </span>
+        <div className="mb-1.5">
+          <span className="text-sm font-body text-white/40 block">
+            {weather.conditions}
+          </span>
+          {weather.temp_high_f != null && weather.temp_low_f != null && (
+            <span className="text-[11px] font-mono text-white/25">
+              H:{weather.temp_high_f}° L:{weather.temp_low_f}°
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
-          <Wind size={10} className="text-white/20" />
-          {weather.wind_mph}mph {weather.wind_direction}
-        </span>
-        <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
-          <Gauge size={10} className="text-white/20" />
-          {weather.pressure_mb}mb
-        </span>
-        <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
-          <Droplets size={10} className="text-white/20" />
-          {weather.humidity_pct}%
-        </span>
-        <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
-          <Eye size={10} className="text-white/20" />
-          {weather.visibility_mi}mi
-        </span>
-        <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
-          <Cloud size={10} className="text-white/20" />
-          {weather.cloud_cover_pct}%
-        </span>
+        {weather.wind_mph != null && (
+          <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
+            <Wind size={10} className="text-white/20" />
+            {weather.wind_mph}mph {weather.wind_direction}
+          </span>
+        )}
+        {weather.pressure_mb != null && (
+          <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
+            <Gauge size={10} className="text-white/20" />
+            {weather.pressure_mb}mb
+          </span>
+        )}
+        {weather.cloud_cover_pct != null && (
+          <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
+            <Cloud size={10} className="text-white/20" />
+            {weather.cloud_cover_pct}%
+          </span>
+        )}
+        {weather.precipitation_mm != null && weather.precipitation_mm > 0 && (
+          <span className="flex items-center gap-1 text-[11px] font-mono text-white/30">
+            <Droplets size={10} className="text-white/20" />
+            {weather.precipitation_mm.toFixed(1)}mm
+          </span>
+        )}
       </div>
     </div>
   );
