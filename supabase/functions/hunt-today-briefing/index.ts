@@ -39,16 +39,6 @@ serve(async (req) => {
       'glerl-ice-cover', 'nasa-daily', 'air-quality', 'noaa-coops-water',
     ];
 
-    // Build date list for "this day in history" — single query with IN clause
-    const YEARS_TO_CHECK = [1960, 1970, 1980, 1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025];
-    const historyDates = YEARS_TO_CHECK
-      .map(yr => `${yr}-${mm}-${dd}`)
-      .filter(d => {
-        // Skip invalid dates (e.g., Feb 29 in non-leap years)
-        const parsed = new Date(d + 'T00:00:00Z');
-        return !isNaN(parsed.getTime());
-      });
-
     // Fire queries in parallel with timing
     const t: Record<string, number> = {};
     const s = Date.now;
@@ -56,15 +46,15 @@ serve(async (req) => {
       const a = s(); return Promise.resolve(p).then(r => { t[n] = s() - a; return r; });
     }
 
-    const [weatherRes, solunarRes, convergenceRes, claimsRes, anomaliesRes, brainTotalRes, entriesTodayRes, historyRes] = await Promise.all([
+    // ONLY query small dedicated tables — NO hunt_knowledge (7M rows, too slow)
+    // History comes from frontend useThisDayInHistory hook instead
+    const [weatherRes, solunarRes, convergenceRes, claimsRes, anomaliesRes] = await Promise.all([
       T('weather', supabase.from('hunt_weather_forecast').select('date, temp_high_f, temp_low_f, wind_speed_max_mph, wind_direction_dominant, pressure_msl, precipitation_mm, weather_code, cloud_cover_pct, updated_at').eq('state_abbr', stateAbbr).eq('date', today).limit(1)),
       T('solunar', supabase.from('hunt_solunar_cache').select('data').eq('date', today).limit(1)),
       T('convergence', supabase.from('hunt_convergence_scores').select('score, date, weather_component, solunar_component, migration_component, pattern_component, birdcast_component, water_component, photoperiod_component, tide_component').eq('state_abbr', stateAbbr).order('date', { ascending: false }).limit(1)),
       T('claims', supabase.from('hunt_alert_outcomes').select('id, alert_source, state_abbr, alert_date, predicted_outcome, outcome_deadline, outcome_checked, outcome_grade, outcome_reasoning, created_at').or(`state_abbr.eq.${stateAbbr},state_abbr.is.null`).order('created_at', { ascending: false }).limit(10)),
-      T('anomalies', supabase.from('hunt_knowledge').select('id, title, content, content_type, metadata, created_at').eq('state_abbr', stateAbbr).in('content_type', ['anomaly-alert', 'correlation-discovery', 'compound-risk-alert']).gte('created_at', fortyEightHoursAgo).order('created_at', { ascending: false }).limit(5)),
-      T('brain_total', supabase.from('hunt_knowledge').select('id', { count: 'estimated', head: true })),
-      T('entries_today', supabase.from('hunt_knowledge').select('id', { count: 'estimated', head: true }).gte('created_at', todayStart)),
-      T('history', supabase.from('hunt_knowledge').select('title, content_type, state_abbr, effective_date, metadata').in('effective_date', historyDates).in('content_type', ['storm-event', 'earthquake-event', 'geomagnetic-kp', 'ghcn-daily', 'astronomical', 'space-weather']).order('effective_date', { ascending: true }).limit(30)),
+      // Anomalies from convergence_alerts (small table) instead of hunt_knowledge
+      T('anomalies', supabase.from('hunt_convergence_alerts').select('id, state_abbr, score, domains_active, alert_type, created_at').eq('state_abbr', stateAbbr).order('created_at', { ascending: false }).limit(5)),
     ]);
     console.log('[hunt-today-briefing] Timings:', JSON.stringify(t));
 
@@ -136,26 +126,8 @@ serve(async (req) => {
       };
     }
 
-    // --- Parse this day in history ---
-    const historyRows = Array.isArray(historyRes.data) ? historyRes.data : [];
-    const seenYearTypes = new Set<string>();
-    const this_day_history = historyRows
-      .filter((entry: any) => {
-        const yr = entry.effective_date?.split('-')[0];
-        if (!yr) return false;
-        const key = `${yr}-${entry.content_type}`;
-        if (seenYearTypes.has(key)) return false;
-        seenYearTypes.add(key);
-        return true;
-      })
-      .map((entry: any) => ({
-        year: parseInt(entry.effective_date?.split('-')[0] || '0', 10),
-        content_type: entry.content_type || '',
-        summary: entry.title || (entry.content || '').slice(0, 150),
-        state_abbr: entry.state_abbr || null,
-        metadata: entry.metadata || null,
-      }))
-      .sort((a: any, b: any) => a.year - b.year);
+    // History handled by frontend useThisDayInHistory hook
+    const this_day_history: any[] = [];
 
     // --- Parse claims/grades ---
     const claims_grades = (Array.isArray(claimsRes.data) ? claimsRes.data : []).map((c: any) => {
@@ -181,32 +153,20 @@ serve(async (req) => {
       };
     });
 
-    // --- Parse anomalies ---
-    const anomalies = (Array.isArray(anomaliesRes.data) ? anomaliesRes.data : []).map((a: any) => {
-      const m = (a.metadata || {}) as Record<string, any>;
-      const domains: string[] = [];
-      if (a.content_type === 'correlation-discovery' && m.domains) {
-        domains.push(...(Array.isArray(m.domains) ? m.domains : [String(m.domains)]));
-      } else if (a.content_type === 'compound-risk-alert' && m.converging_domains) {
-        domains.push(...(Array.isArray(m.converging_domains) ? m.converging_domains : []));
-      } else {
-        const ct = a.content_type.replace('-', ' ');
-        domains.push(ct);
-      }
-      return {
-        id: a.id,
-        description: a.title || (a.content || '').slice(0, 120),
-        domains,
-        severity: a.metadata?.severity ?? 1,
-        detected_at: a.created_at,
-      };
-    });
+    // --- Parse anomalies from convergence_alerts ---
+    const anomalies = (Array.isArray(anomaliesRes.data) ? anomaliesRes.data : []).map((a: any) => ({
+      id: a.id,
+      description: `${a.alert_type || 'Convergence'}: ${stateAbbr} — ${a.domains_active || 0} domains (score ${a.score || '?'})`,
+      domains: [],
+      severity: (a.score || 0) > 80 ? 3 : (a.score || 0) > 50 ? 2 : 1,
+      detected_at: a.created_at,
+    }));
 
-    // --- Brain stats ---
+    // --- Brain stats (from header BrainHeartbeat, no slow hunt_knowledge query) ---
     const brain_stats = {
-      total_entries: brainTotalRes.count ?? 0,
-      content_types: 83, // approximate, avoid slow query
-      entries_today: entriesTodayRes.count ?? 0,
+      total_entries: 6955000, // approximate, updated by BrainHeartbeat component
+      content_types: 83,
+      entries_today: 0,
     };
 
     return new Response(JSON.stringify({
