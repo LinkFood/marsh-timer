@@ -9,7 +9,7 @@ import type {
   TodayBriefingData, ConvergenceComponent, ThisDayEntry, ClaimGrade, Anomaly,
 } from '@/hooks/useTodayBriefing';
 import { useUserLocation, US_STATES, getStateName } from '@/hooks/useUserLocation';
-import { getDomainColor } from '@/hooks/useBrainPulse';
+import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 
 // --- Helpers ---
 
@@ -446,6 +446,7 @@ export default function TodayBriefing() {
   const { state, stateName, detecting, setUserState } = useUserLocation();
   const [showDropdown, setShowDropdown] = useState(false);
   const { data, loading, error } = useTodayBriefing(state);
+  const { entries: historyEntries } = useThisDayInHistory();
 
   // Skeleton vs. data
   const showSkeleton = loading && !data;
@@ -501,15 +502,25 @@ export default function TodayBriefing() {
         </section>
       )}
 
-      {/* This Day Timeline */}
+      {/* This Day Timeline — from useThisDayInHistory hook (direct Supabase queries) */}
       <section className="mb-5">
-        {showSkeleton ? <TimelineSkeleton /> : <ThisDayTimeline entries={data?.this_day_history ?? []} />}
+        {historyEntries.length === 0 && showSkeleton ? (
+          <TimelineSkeleton />
+        ) : (
+          <ThisDayTimeline entries={historyEntries.map(e => ({
+            year: e.year,
+            content_type: e.content_type,
+            summary: e.title || e.content,
+            state_abbr: e.state_abbr,
+            metadata: null,
+          }))} />
+        )}
       </section>
 
-      {/* Active Claims */}
+      {/* Active Claims — cap at 4 */}
       {data?.claims_grades && data.claims_grades.length > 0 && (
         <section className="mb-5">
-          <ActiveClaims claims={data.claims_grades} />
+          <ActiveClaims claims={data.claims_grades.slice(0, 4)} />
         </section>
       )}
 
