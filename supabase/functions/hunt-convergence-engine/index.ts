@@ -420,7 +420,7 @@ async function scoreState(
   const rawSum = weatherResult.score + solunarResult.score + migrationResult.score
     + patternResult.score + birdcastResult.score
     + waterScore + photoperiodScore + tideScore;
-  const total = Math.min(100, Math.max(0, Math.round(rawSum * 100 / 135)));
+  const total = Math.min(100, Math.max(0, Math.round(rawSum * 100 / 120)));
 
   // Build reasoning
   const parts: string[] = [];
@@ -546,10 +546,7 @@ serve(async (req) => {
     // -----------------------------------------------------------------------
     allResults.sort((a, b) => b.score - a.score);
     for (let i = 0; i < allResults.length; i++) {
-      // Only assign ranks when scoring all 50
-      if (statesToScore.length === 50) {
-        (allResults[i] as ScoreResult & { national_rank: number }).national_rank = i + 1;
-      }
+      (allResults[i] as ScoreResult & { national_rank: number }).national_rank = i + 1;
     }
 
     // -----------------------------------------------------------------------
