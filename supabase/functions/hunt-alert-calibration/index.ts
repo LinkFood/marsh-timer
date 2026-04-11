@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -121,15 +121,28 @@ serve(async (req) => {
           upsertRows.push(buildRow(st, agg));
         }
 
-        // Upsert in batches of 50
+        // Delete existing rows for this source+window, then insert fresh.
+        // Supabase upsert can't handle NULL state_abbr in conflict resolution,
+        // so we use delete+insert to avoid duplicate national rows.
+        const { error: delErr } = await supabase
+          .from('hunt_alert_calibration')
+          .delete()
+          .eq('alert_source', alertSource)
+          .eq('window_days', windowDays);
+
+        if (delErr) {
+          console.error(`[${fnName}] Delete error ${alertSource}/${windowDays}d:`, delErr);
+          continue;
+        }
+
         const BATCH = 50;
         for (let i = 0; i < upsertRows.length; i += BATCH) {
           const batch = upsertRows.slice(i, i + BATCH);
-          const { error: upErr } = await supabase
+          const { error: insErr } = await supabase
             .from('hunt_alert_calibration')
-            .upsert(batch, { onConflict: 'alert_source,state_abbr,window_days' });
-          if (upErr) {
-            console.error(`[${fnName}] Upsert error ${alertSource}/${windowDays}d batch ${i / BATCH}:`, upErr);
+            .insert(batch);
+          if (insErr) {
+            console.error(`[${fnName}] Insert error ${alertSource}/${windowDays}d batch ${i / BATCH}:`, insErr);
           } else {
             upserted += batch.length;
           }
@@ -198,7 +211,7 @@ serve(async (req) => {
       durationMs: Date.now() - startTime,
     });
 
-    return successResponse(req, summary);
+    return cronResponse(summary);
   } catch (error) {
     console.error(`[${fnName}] Fatal error:`, error);
     await logCronRun({
@@ -207,6 +220,6 @@ serve(async (req) => {
       errorMessage: error instanceof Error ? error.message : String(error),
       durationMs: Date.now() - startTime,
     });
-    return errorResponse(req, 'Internal server error', 500);
+    return cronErrorResponse('Internal server error');
   }
 });
