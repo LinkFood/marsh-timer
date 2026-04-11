@@ -1,7 +1,8 @@
 # Idea Machine Memory
 
 ## Audit History
-- See `audit_2026_03_14.md` — Full product audit of Duck Countdown. Brutally honest assessment of vision vs reality gap.
+- See `audit_strategic_2026_04_11.md` — THE definitive audit. Self-knowledge = the company. Three moves: /accuracy page, narrative blitz 10x, forensic report. Frontend = 4 dead visions taped together. Chat = cost center. Grading loop (204 claims) = only real moat. Kill Intelligence page + RegimeDetector + CollisionFeed + DeckLayout + 25 panels.
+- See `audit_2026_03_14.md` — March audit. Vision vs reality gap (superseded by April 11 audit).
 
 ## Data Source Research
 - See `data_source_recon_v2.md` — 30 untapped free public data sources for wildlife movement intelligence. Tiered by impact. Generated 2026-03-14.
