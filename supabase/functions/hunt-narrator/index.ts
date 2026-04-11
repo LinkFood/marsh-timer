@@ -66,7 +66,9 @@ Rules:
 4. Always name the seam — where and when does this touch observable reality?
 5. Include what a human could verify. Give station names, readings, dates.
 6. If the data seems anomalous (impossible pressure values, etc.), flag it. Honesty over headlines.
-7. Keep it short. 2-3 sentences for the finding. A paragraph for explanation. Bullet list of data points.`;
+7. Keep it short. 2-3 sentences for the finding. A paragraph for explanation. Bullet list of data points.
+8. DO NOT use markdown headers, emoji, or formatting. Plain text only. No ## headers, no bold **, no bullet points with -. Write like you're talking to someone. The rendering layer handles formatting.
+9. Start with: "[CONFIDENCE_LEVEL] — " then a one-sentence headline. Then a paragraph explaining what the brain found and why it matters (or doesn't).`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -228,7 +230,9 @@ function buildNarrationPrompt(event: GeometricEvent, brainSignals: BrainSignals)
   const sections: string[] = [];
 
   sections.push(`## Geometric Event: Cross-Domain Pattern Link`);
-  sections.push(`Similarity: ${(link.similarity * 100).toFixed(1)}%`);
+  // Raw cosine similarity (before signal_weight multiplication) — cap at 1.0 for display
+  const displaySimilarity = Math.min(link.similarity, 1.0);
+  sections.push(`Similarity: ${(displaySimilarity * 100).toFixed(1)}% (raw cosine, capped at 100%)`);
   sections.push(`Source type: ${link.source_content_type}`);
   sections.push(`Matched type: ${link.matched_content_type}`);
   sections.push(`State: ${link.state_abbr || 'national'}`);
@@ -326,11 +330,17 @@ serve(async (req) => {
       return isCron ? cronResponse({ error: linkErr.message }, 500) : errorResponse(req, linkErr.message, 500);
     }
 
-    // Filter to cross-domain only and skip already-narrated
+    // Filter to cross-domain only, skip already-narrated, dedup by state+domain pair
+    const seenStatedomains = new Set<string>();
     const candidates = (patternLinks || []).filter((link: PatternLink) => {
       if (alreadyNarrated.has(link.id)) return false;
       if (!link.source_content_type || !link.matched_content_type) return false;
-      return isCrossDomain(link.source_content_type, link.matched_content_type);
+      if (!isCrossDomain(link.source_content_type, link.matched_content_type)) return false;
+      // Dedup: only one narrative per state + domain pair combo
+      const key = `${link.state_abbr || 'national'}:${[link.source_content_type, link.matched_content_type].sort().join('+')}`;
+      if (seenStatedomains.has(key)) return false;
+      seenStatedomains.add(key);
+      return true;
     });
 
     if (candidates.length === 0) {

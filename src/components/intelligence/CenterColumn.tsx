@@ -113,7 +113,7 @@ export default function CenterColumn({
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span style={{ fontSize: 20, fontFamily: 'monospace', fontWeight: 800, color: '#22d3ee' }}>{selectedState}</span>
-              <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#ffffff20' }}>{stateScore.score}/135</span>
+              <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#ffffff20' }}>{stateScore.score}/120</span>
               {stateArc && (
                 <>
                   <div style={{ flex: 1, display: 'flex', gap: 2 }}>

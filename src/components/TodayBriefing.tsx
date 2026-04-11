@@ -258,7 +258,7 @@ function ConvergencePulse({ convergence }: { convergence: TodayBriefingData['con
       <div className="flex items-center justify-between mb-2">
         <span className="text-[9px] font-mono text-white/20 tracking-wider">CONVERGENCE</span>
         <span className="text-[10px] font-mono text-cyan-400/50">
-          {convergence.total_score}<span className="text-white/15">/135</span>
+          {convergence.total_score}<span className="text-white/15">/120</span>
         </span>
       </div>
       <div className="flex gap-1.5">

@@ -19,28 +19,55 @@ export function useDailyDiscovery() {
 
     const today = new Date().toISOString().split('T')[0];
 
-    supabase
-      .from('hunt_knowledge')
-      .select('content,metadata,effective_date')
-      .eq('content_type', 'daily-discovery')
-      .order('effective_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data: row }) => {
-        if (row?.metadata) {
-          const meta = row.metadata as Record<string, unknown>;
-          setData({
-            headline: (meta.headline as string) || 'Daily Discovery',
-            discovery: (meta.discovery as string) || row.content || '',
-            state: (meta.state as string) || null,
-            domains: (meta.domains as string[]) || [],
-            dejaVu: (meta.deja_vu as DailyDiscovery['dejaVu']) || null,
-            date: row.effective_date || today,
-          });
-        }
+    // Prefer brain-narrative (narrator output with fact-checking), fall back to daily-discovery
+    const fetchDiscovery = async () => {
+      // Try brain-narrative first (narrator output)
+      const { data: narrative } = await supabase
+        .from('hunt_knowledge')
+        .select('title,content,metadata,state_abbr,effective_date')
+        .eq('content_type', 'brain-narrative')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (narrative) {
+        const meta = (narrative.metadata || {}) as Record<string, unknown>;
+        setData({
+          headline: narrative.title || 'Brain Discovery',
+          discovery: narrative.content || '',
+          state: narrative.state_abbr || null,
+          domains: (meta.domains_involved as string[]) || [],
+          dejaVu: null,
+          date: narrative.effective_date || today,
+        });
         setLoading(false);
-      })
-      .catch(() => setLoading(false));
+        return;
+      }
+
+      // Fall back to daily-discovery
+      const { data: row } = await supabase
+        .from('hunt_knowledge')
+        .select('content,metadata,effective_date')
+        .eq('content_type', 'daily-discovery')
+        .order('effective_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (row?.metadata) {
+        const meta = row.metadata as Record<string, unknown>;
+        setData({
+          headline: (meta.headline as string) || 'Daily Discovery',
+          discovery: (meta.discovery as string) || row.content || '',
+          state: (meta.state as string) || null,
+          domains: (meta.domains as string[]) || [],
+          dejaVu: (meta.deja_vu as DailyDiscovery['dejaVu']) || null,
+          date: row.effective_date || today,
+        });
+      }
+      setLoading(false);
+    };
+
+    fetchDiscovery().catch(() => setLoading(false));
   }, []);
 
   return { discovery: data, loading };
