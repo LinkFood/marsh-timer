@@ -41,7 +41,7 @@ interface SignalFound {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 3; // Each alert needs embedding + vector search — 3 fits pg_cron ~60s HTTP timeout
+const MAX_PER_RUN = 15; // Each alert needs embedding + vector search — 3 fits pg_cron ~60s HTTP timeout
 
 const DIRECT_QUERY_CONTENT_TYPES = [
   'migration-spike-extreme',
@@ -62,40 +62,39 @@ function gradeAlert(
   directMatches: { id: string; title: string; content_type: string; effective_date?: string }[],
   severity: string | undefined,
 ): { grade: Grade; reasoning: string } {
-  const highRelevanceVector = vectorMatches.filter(m => m.similarity > 0.7);
-  const midRelevanceVector = vectorMatches.filter(m => m.similarity > 0.5 && m.similarity <= 0.7);
+  const highRelevanceVector = vectorMatches.filter(m => m.similarity > 0.6);
+  const midRelevanceVector = vectorMatches.filter(m => m.similarity > 0.5 && m.similarity <= 0.6);
   const directCount = directMatches.length;
-  const totalSignals = directCount;
 
-  // confirmed: 3+ matching signals OR 1+ vector matches with similarity > 0.7
-  if (totalSignals >= 3 || highRelevanceVector.length >= 1) {
+  // confirmed: 5+ direct signals OR 2+ high-relevance vector matches
+  if (directCount >= 5 || highRelevanceVector.length >= 2) {
     return {
       grade: 'confirmed',
-      reasoning: `Found ${totalSignals} direct signal(s) and ${highRelevanceVector.length} high-relevance vector match(es). Pattern validated.`,
+      reasoning: `Found ${directCount} direct signal(s) and ${highRelevanceVector.length} high-relevance vector match(es) (>0.6). Strong pattern validation.`,
     };
   }
 
-  // partially_confirmed: 1-2 matching signals OR vector matches 0.5-0.7
-  if (totalSignals >= 1 || midRelevanceVector.length >= 1) {
+  // partially_confirmed: 2-4 direct signals OR 1+ vector match > 0.5
+  if (directCount >= 2 || midRelevanceVector.length >= 1 || highRelevanceVector.length >= 1) {
     return {
       grade: 'partially_confirmed',
-      reasoning: `Found ${totalSignals} direct signal(s) and ${midRelevanceVector.length} mid-relevance vector match(es). Partial confirmation.`,
+      reasoning: `Found ${directCount} direct signal(s) and ${midRelevanceVector.length + highRelevanceVector.length} mid/high-relevance vector match(es). Partial confirmation.`,
     };
   }
 
-  // false_alarm: 0 signals AND alert was high severity
+  // false_alarm: 0-1 signals AND alert was high severity
   const isHighSeverity = severity === 'high' || severity === 'extreme' || severity === 'spike' || severity === 'threshold_crossed';
   if (isHighSeverity) {
     return {
       grade: 'false_alarm',
-      reasoning: `No matching signals found in outcome window. Alert was ${severity} severity — classifying as false alarm.`,
+      reasoning: `Only ${directCount} direct signal(s) found in outcome window. Alert was ${severity} severity — classifying as false alarm.`,
     };
   }
 
-  // missed: 0 signals AND alert was low/medium severity
+  // missed: 0-1 signals AND alert was low/medium severity
   return {
     grade: 'missed',
-    reasoning: `No matching signals found in outcome window. Alert was ${severity || 'unknown'} severity — no predicted activity materialized.`,
+    reasoning: `Only ${directCount} direct signal(s) found in outcome window. Alert was ${severity || 'unknown'} severity — no predicted activity materialized.`,
   };
 }
 
@@ -192,7 +191,7 @@ serve(async (req) => {
 
         const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v3', {
           query_embedding: queryEmbedding,
-          match_threshold: 0.25,
+          match_threshold: 0.40,
           match_count: 10,
           filter_state_abbr: alert.state_abbr || null,
           filter_content_types: expectedSignals,
@@ -211,10 +210,15 @@ serve(async (req) => {
         }));
 
         // 2d. Direct query for recent activity in state/date window
+        // Use alert's expected signals if available, fall back to defaults
+        const queryContentTypes = (Array.isArray(alert.predicted_outcome?.expected_signals) && alert.predicted_outcome.expected_signals.length > 0)
+          ? alert.predicted_outcome.expected_signals
+          : DIRECT_QUERY_CONTENT_TYPES;
+
         let directQuery = supabase
           .from('hunt_knowledge')
           .select('id, title, content_type, effective_date')
-          .in('content_type', DIRECT_QUERY_CONTENT_TYPES)
+          .in('content_type', queryContentTypes)
           .gte('created_at', alert.alert_date)
           .lte('created_at', alert.outcome_deadline)
           .order('created_at', { ascending: false })
