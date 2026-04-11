@@ -34,7 +34,7 @@ async function handleDate(req: Request, params: {
     queryDomains.map(async (ct) => {
       let q = supabase
         .from('hunt_knowledge')
-        .select('id, title, content, content_type, state_abbr, effective_date, confidence')
+        .select('id, title, content, content_type, state_abbr, effective_date, signal_weight, metadata')
         .eq('content_type', ct)
         .gte('effective_date', from)
         .lte('effective_date', to)
@@ -50,7 +50,7 @@ async function handleDate(req: Request, params: {
   // Also fetch brain narratives for the date window
   let narrativeQuery = supabase
     .from('hunt_knowledge')
-    .select('id, title, content, content_type, state_abbr, effective_date, confidence')
+    .select('id, title, content, content_type, state_abbr, effective_date, signal_weight, metadata')
     .eq('content_type', 'brain-narrative')
     .gte('effective_date', from)
     .lte('effective_date', to)
@@ -231,7 +231,7 @@ async function handleNarratives(req: Request, params: {
 
   let q = supabase
     .from('hunt_knowledge')
-    .select('id, title, content, content_type, state_abbr, effective_date, confidence, metadata')
+    .select('id, title, content, content_type, state_abbr, effective_date, signal_weight, metadata')
     .eq('content_type', 'brain-narrative')
     .order('effective_date', { ascending: false })
     .limit(resultLimit);
@@ -247,7 +247,7 @@ async function handleNarratives(req: Request, params: {
     id: entry.id,
     title: entry.title,
     content: entry.content,
-    confidence: entry.confidence,
+    signal_weight: entry.signal_weight,
     state: entry.state_abbr,
     date: entry.effective_date,
     metadata: entry.metadata,
