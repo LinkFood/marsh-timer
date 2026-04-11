@@ -94,7 +94,7 @@ async function searchBrain(opts: {
   }
 }
 
-// Fetch recent pattern links for a state via RPC
+// Fetch recent pattern links for a state via RPC (or top national links when no state)
 async function getRecentPatternLinks(stateAbbr: string | null, limit = 5): Promise<Array<{
   source_title: string;
   source_content_type: string;
@@ -104,17 +104,77 @@ async function getRecentPatternLinks(stateAbbr: string | null, limit = 5): Promi
   similarity: number;
   created_at: string;
 }>> {
-  if (!stateAbbr) return [];
   try {
     const supabase = createSupabaseClient();
-    const { data } = await supabase.rpc('get_recent_pattern_links', {
-      p_state_abbr: stateAbbr,
-      p_limit: limit,
-      p_hours_back: 72,
-    });
+    if (stateAbbr) {
+      const { data } = await supabase.rpc('get_recent_pattern_links', {
+        p_state_abbr: stateAbbr,
+        p_limit: limit,
+        p_hours_back: 72,
+      });
+      return data || [];
+    }
+    // National: fetch top links across all states, ordered by similarity
+    const { data } = await supabase
+      .from('hunt_pattern_links')
+      .select('source_title, source_content_type, matched_title, matched_content_type, matched_content, similarity, created_at')
+      .gte('created_at', new Date(Date.now() - 72 * 3600000).toISOString())
+      .order('similarity', { ascending: false })
+      .limit(limit);
     return data || [];
   } catch {
     return [];
+  }
+}
+
+// Fetch national-level context: moon, space weather, drought
+async function getNationalContext(): Promise<string> {
+  try {
+    const supabase = createSupabaseClient();
+    const today = new Date().toISOString().split('T')[0];
+
+    const [moonRes, spaceRes, droughtRes] = await Promise.all([
+      // Moon phase from solunar calendar
+      supabase
+        .from('hunt_solunar_calendar')
+        .select('moon_phase, illumination_pct, is_prime')
+        .eq('date', today)
+        .limit(1)
+        .maybeSingle(),
+      // Latest space weather
+      supabase
+        .from('hunt_knowledge')
+        .select('title, content')
+        .eq('content_type', 'space-weather')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // Latest drought summary
+      supabase
+        .from('hunt_knowledge')
+        .select('title, content')
+        .eq('content_type', 'drought-monitor')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const parts: string[] = [];
+    if (moonRes.data) {
+      parts.push(`Moon: ${moonRes.data.moon_phase}, ${moonRes.data.illumination_pct}% illumination${moonRes.data.is_prime ? ' (PRIME day)' : ''}`);
+    }
+    if (spaceRes.data) {
+      parts.push(`Space weather: ${spaceRes.data.content?.slice(0, 200) || spaceRes.data.title}`);
+    }
+    if (droughtRes.data) {
+      parts.push(`Drought: ${droughtRes.data.content?.slice(0, 200) || droughtRes.data.title}`);
+    }
+
+    return parts.length > 0
+      ? `\n\nNational context (today):\n${parts.join('\n')}`
+      : '';
+  } catch {
+    return '';
   }
 }
 
@@ -434,7 +494,45 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
     const resolvedState = state_abbr || ctxState;
     const resolvedSpecies = intentSpecies || ctxSpecies || 'all';
 
-    // Intercept comparison queries BEFORE intent routing
+    // Intercept date comparison queries BEFORE state comparison
+    const dateCompareMatch = message.match(
+      /compare.*?(\d{4}-\d{2}-\d{2}).*?(?:vs\.?|versus|and|to|with).*?(\d{4}-\d{2}-\d{2})/i
+    );
+    if (dateCompareMatch) {
+      const handlerResult = await handleDateCompare(dateCompareMatch[1], dateCompareMatch[2], message, resolvedState);
+      if (useStreaming) {
+        return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'date_compare');
+      }
+      const result = await executeLegacy(handlerResult);
+      if (userId && sessionId) {
+        await supabase.from('hunt_conversations').insert([
+          { user_id: userId, session_id: sessionId, role: 'user', content: message },
+          { user_id: userId, session_id: sessionId, role: 'assistant', content: result.response, metadata: { cards: result.cards, intent: 'date_compare' } },
+        ]);
+      }
+      return new Response(JSON.stringify(result), { status: 200, headers });
+    }
+
+    // Also detect date comparisons via Haiku's extracted dates (far-apart ranges + comparison language)
+    if (dateFrom && dateTo) {
+      const daysBetween = Math.abs(new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000;
+      if (daysBetween > 30 && /compare|vs\.?|versus|difference|same|similar/i.test(message)) {
+        const handlerResult = await handleDateCompare(dateFrom, dateTo, message, resolvedState);
+        if (useStreaming) {
+          return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'date_compare');
+        }
+        const result = await executeLegacy(handlerResult);
+        if (userId && sessionId) {
+          await supabase.from('hunt_conversations').insert([
+            { user_id: userId, session_id: sessionId, role: 'user', content: message },
+            { user_id: userId, session_id: sessionId, role: 'assistant', content: result.response, metadata: { cards: result.cards, intent: 'date_compare' } },
+          ]);
+        }
+        return new Response(JSON.stringify(result), { status: 200, headers });
+      }
+    }
+
+    // Intercept state comparison queries BEFORE intent routing
     const compareMatch = message.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
       || message.match(/(\w{2})\s+vs\.?\s+(\w{2})/i);
     if (compareMatch) {
@@ -1164,6 +1262,110 @@ ${BRAIN_RULES}`,
   };
 }
 
+async function handleDateCompare(date1: string, date2: string, query: string, stateAbbr: string | null): Promise<HandlerResult> {
+  // Create +/-3 day windows around each date
+  const window = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const from = new Date(d.getTime() - 3 * 86400000).toISOString().split('T')[0];
+    const to = new Date(d.getTime() + 3 * 86400000).toISOString().split('T')[0];
+    return { from, to };
+  };
+
+  const w1 = window(date1);
+  const w2 = window(date2);
+
+  // Run parallel searches for both date windows + national context
+  const [results1, results2, nationalCtx] = await Promise.all([
+    searchBrain({
+      query: `environmental conditions ${date1}`,
+      state_abbr: stateAbbr || undefined,
+      date_from: w1.from,
+      date_to: w1.to,
+      recency_weight: 0.0,
+      limit: 15,
+      min_similarity: 0.25,
+    }),
+    searchBrain({
+      query: `environmental conditions ${date2}`,
+      state_abbr: stateAbbr || undefined,
+      date_from: w2.from,
+      date_to: w2.to,
+      recency_weight: 0.0,
+      limit: 15,
+      min_similarity: 0.25,
+    }),
+    getNationalContext(),
+  ]);
+
+  // Group results by domain
+  const groupByDomain = (results: typeof results1) => {
+    const groups: Record<string, typeof results> = {};
+    for (const r of results) {
+      const domain = r.content_type.split('-')[0] || r.content_type;
+      if (!groups[domain]) groups[domain] = [];
+      groups[domain].push(r);
+    }
+    return groups;
+  };
+
+  const domains1 = groupByDomain(results1);
+  const domains2 = groupByDomain(results2);
+  const allDomains = new Set([...Object.keys(domains1), ...Object.keys(domains2)]);
+
+  // Build structured comparison context
+  let context = `## Date Comparison: ${date1} vs ${date2}\n`;
+  if (stateAbbr) context += `Geographic focus: ${stateAbbr}\n`;
+  context += `Search windows: ${w1.from} to ${w1.to} | ${w2.from} to ${w2.to}\n\n`;
+
+  for (const domain of allDomains) {
+    const d1 = domains1[domain] || [];
+    const d2 = domains2[domain] || [];
+    context += `### ${domain.toUpperCase()}\n`;
+    context += `${date1} (${d1.length} entries): ${d1.map(r => r.title).join('; ') || 'No data'}\n`;
+    context += `${date2} (${d2.length} entries): ${d2.map(r => r.title).join('; ') || 'No data'}\n\n`;
+  }
+
+  context += `\n### RAW DATA — ${date1}\n`;
+  for (const r of results1.slice(0, 10)) {
+    context += `[${r.content_type}] ${r.title}: ${r.content.slice(0, 300)}\n`;
+  }
+  context += `\n### RAW DATA — ${date2}\n`;
+  for (const r of results2.slice(0, 10)) {
+    context += `[${r.content_type}] ${r.title}: ${r.content.slice(0, 300)}\n`;
+  }
+
+  context += nationalCtx;
+
+  // Build cards
+  const cards: unknown[] = [];
+  if (results1.length > 0 || results2.length > 0) {
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: results1.length + results2.length,
+        keywordCount: 0,
+        contentTypes: [...allDomains],
+        label: `${results1.length} entries for ${date1}, ${results2.length} for ${date2}`,
+      },
+    });
+  }
+
+  return {
+    cards,
+    systemPrompt: `You are an environmental intelligence analyst performing a date-vs-date comparison. You have brain data for two date windows. For EACH domain present, compare what happened on each date. Be specific — cite actual data values, event types, and conditions.
+
+Structure your response as:
+1. VERDICT FIRST: Overall similarity percentage and 2-sentence summary of key differences
+2. DOMAIN-BY-DOMAIN: For each domain with data, side-by-side comparison
+3. GAPS: What domains are missing data for one or both dates
+4. If one date has significantly more data than the other, note this honestly
+
+CRITICAL: If the brain has NO data for a domain on a date, say "No data" — never fabricate conditions. Never assign a similarity percentage based on missing data.
+${BRAIN_RULES}`,
+    userContent: `${context}\n\nUser question: ${query}`,
+  };
+}
+
 async function handleSearch(query: string, species: string = 'all', stateAbbr?: string | null, dateFrom?: string | null, dateTo?: string | null): Promise<HandlerResult> {
   // Check for comparison pattern (e.g., "compare AR vs LA", "TX or OK")
   const compareMatch = query.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
@@ -1183,7 +1385,7 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
   const isComparative = !stateAbbr && /\b(best|top|where|which state|compare|recommend)\b/i.test(query);
 
   const supabase = createSupabaseClient();
-  const [brainResults, patternLinks, topStatesResult, convergenceData, historicalResults] = await Promise.all([
+  const [brainResults, patternLinks, topStatesResult, convergenceData, historicalResults, nationalContext] = await Promise.all([
     searchBrain({
       query: searchQuery,
       species: species,
@@ -1203,7 +1405,7 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
           .order('score', { ascending: false })
           .limit(10)
       : Promise.resolve({ data: null }),
-    // Fetch convergence score for the state if mentioned
+    // Fetch convergence score for the state if mentioned, or top 5 national
     stateAbbr
       ? supabase
           .from('hunt_convergence_scores')
@@ -1212,17 +1414,22 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
           .order('date', { ascending: false })
           .limit(1)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
-    // Historical pattern search: "what happened last time conditions looked like this?"
-    stateAbbr
-      ? searchBrain({
-          query: `historical pattern ${stateAbbr} similar conditions precedent`,
-          state_abbr: stateAbbr,
-          recency_weight: 0.0,
-          limit: 5,
-          min_similarity: 0.35,
-        })
-      : Promise.resolve([]),
+      : supabase
+          .from('hunt_convergence_scores')
+          .select('state_abbr, score, reasoning, national_rank')
+          .order('score', { ascending: false })
+          .limit(5),
+    // Historical pattern search: always run, with or without state
+    searchBrain({
+        query: stateAbbr
+          ? `historical pattern ${stateAbbr} similar conditions precedent`
+          : `historical environmental pattern notable conditions precedent`,
+        state_abbr: stateAbbr || undefined,
+        recency_weight: 0.0,
+        limit: 5,
+        min_similarity: 0.35,
+      }),
+    getNationalContext(),
   ]);
 
   // Web search if brain is thin
@@ -1332,13 +1539,20 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
     topStatesContext += `\n\nNote: Check season dates before recommending — some of these states may have closed seasons right now.`;
   }
 
-  // Convergence score breakdown for the queried state
+  // Convergence score breakdown for the queried state (or top national)
   let convergenceContext = '';
-  const convData = convergenceData?.data;
-  if (convData) {
-    convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
-    convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
-    if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
+  const convRaw = convergenceData?.data;
+  if (convRaw) {
+    if (Array.isArray(convRaw) && convRaw.length > 0) {
+      // National: top states by score
+      convergenceContext = `\n\nTop states by convergence score:\n${convRaw.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank || '-'} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning || ''}`).join('\n')}`;
+    } else if (!Array.isArray(convRaw)) {
+      // Single state
+      const convData = convRaw;
+      convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
+      convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
+      if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
+    }
   }
 
   // Historical pattern matches
@@ -1355,7 +1569,7 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
     cards,
     systemPrompt: `Lead with a 2-3 sentence direct answer to the user's question. Then organize supporting evidence by theme. You are an environmental intelligence analyst with access to a brain containing 2.4M+ embedded data entries across 55+ content types including weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
 ${BRAIN_RULES}`,
-    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${convergenceContext}${historicalContext}${webContext}\n\nQuestion: ${query}`,
+    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${convergenceContext}${historicalContext}${nationalContext}${webContext}\n\nQuestion: ${query}`,
     _webResults: webResults,
   } as HandlerResult & { _webResults: TavilyResult[] };
 }
@@ -1363,8 +1577,8 @@ ${BRAIN_RULES}`,
 async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = '', dateFrom?: string | null, dateTo?: string | null): Promise<HandlerResult & { _webResults?: TavilyResult[] }> {
   const supabase = createSupabaseClient();
 
-  // Brain search + convergence + pattern links + historical in parallel
-  const [brainResults, convergenceData, patternLinks, historicalResults] = await Promise.all([
+  // Brain search + convergence + pattern links + historical + national context in parallel
+  const [brainResults, convergenceData, patternLinks, historicalResults, nationalContext] = await Promise.all([
     searchBrain({
       query: message,
       state_abbr: stateAbbr || undefined,
@@ -1383,17 +1597,23 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
           .order('date', { ascending: false })
           .limit(1)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : supabase
+          .from('hunt_convergence_scores')
+          .select('state_abbr, score, reasoning, national_rank')
+          .order('score', { ascending: false })
+          .limit(5),
     getRecentPatternLinks(stateAbbr),
-    stateAbbr
-      ? searchBrain({
-          query: `historical pattern ${stateAbbr} similar conditions precedent`,
-          state_abbr: stateAbbr,
-          recency_weight: 0.0,
-          limit: 5,
-          min_similarity: 0.35,
-        })
-      : Promise.resolve([]),
+    // Historical: always run, with or without state
+    searchBrain({
+        query: stateAbbr
+          ? `historical pattern ${stateAbbr} similar conditions precedent`
+          : `historical environmental pattern notable conditions precedent`,
+        state_abbr: stateAbbr || undefined,
+        recency_weight: 0.0,
+        limit: 5,
+        min_similarity: 0.35,
+      }),
+    getNationalContext(),
   ]);
 
   // Web search if brain is thin
@@ -1417,13 +1637,18 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
     brainContext = `\n\nRelevant knowledge (${brainResults.length} entries, cite if useful):\n${brainResults.map(v => `[${v.content_type}] ${v.title}: ${v.content}`).join('\n')}`;
   }
 
-  // Convergence score breakdown
+  // Convergence score breakdown (single state or top national)
   let convergenceContext = '';
-  const convData = convergenceData?.data;
-  if (convData) {
-    convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
-    convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
-    if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
+  const convRaw = convergenceData?.data;
+  if (convRaw) {
+    if (Array.isArray(convRaw) && convRaw.length > 0) {
+      convergenceContext = `\n\nTop states by convergence score:\n${convRaw.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank || '-'} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning || ''}`).join('\n')}`;
+    } else if (!Array.isArray(convRaw)) {
+      const convData = convRaw;
+      convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
+      convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
+      if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
+    }
   }
 
   // Pattern links
@@ -1441,7 +1666,7 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
   return {
     cards: [],
     systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. Adapt your framing to the user's context — environmental research, agriculture, ecology, weather, or general awareness. Your core function is environmental pattern recognition.${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
-${conversationContext}${brainContext}${convergenceContext}${linksContext}${historicalContext}${webContext}
+${conversationContext}${brainContext}${convergenceContext}${linksContext}${historicalContext}${nationalContext}${webContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
     userContent: message,
