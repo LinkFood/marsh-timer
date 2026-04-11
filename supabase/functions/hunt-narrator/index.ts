@@ -5,6 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { callClaude, parseTextContent, calculateCost, CLAUDE_MODELS } from '../_shared/anthropic.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
+import { shouldNarrate, classifyContentType } from '../_shared/contentTypes.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,11 +63,15 @@ const MAX_ARC_GRADES = 3;
 const LOOKBACK_HOURS = 240; // Widened for initial test — pattern links stalled until brainScan threshold fix
 const MIN_SIMILARITY = 0.6;
 
-// Cross-domain means source and matched content types are different
-function isCrossDomain(sourceType: string, matchedType: string): boolean {
-  // Strip suffixes to get the domain root (e.g., "weather-event" → "weather", "migration-spike-extreme" → "migration")
-  const domainOf = (ct: string): string => ct.split('-')[0];
-  return domainOf(sourceType) !== domainOf(matchedType);
+// Cross-domain filter: uses the EXTERNAL/BRIDGE/INTERNAL classification.
+// Only narrate links between external signals or narrative bridges to external signals.
+// The old isCrossDomain just checked if domain roots differed, which let
+// alert-grade ↔ convergence-score through (both internal bookkeeping).
+function isNarratableLink(sourceType: string, matchedType: string): boolean {
+  // Must also be genuinely different content types
+  if (sourceType === matchedType) return false;
+  // Use the shared classification
+  return shouldNarrate(sourceType, matchedType);
 }
 
 // ---------------------------------------------------------------------------
@@ -397,7 +402,7 @@ serve(async (req) => {
     const candidates = (patternLinks || []).filter((link: PatternLink) => {
       if (alreadyNarrated.has(link.id)) return false;
       if (!link.source_content_type || !link.matched_content_type) return false;
-      if (!isCrossDomain(link.source_content_type, link.matched_content_type)) return false;
+      if (!isNarratableLink(link.source_content_type, link.matched_content_type)) return false;
       // Dedup: only one narrative per state + domain pair combo
       const key = `${link.state_abbr || 'national'}:${[link.source_content_type, link.matched_content_type].sort().join('+')}`;
       if (seenStatedomains.has(key)) return false;
