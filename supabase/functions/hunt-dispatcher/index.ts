@@ -1274,34 +1274,49 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
   const w1 = window(date1);
   const w2 = window(date2);
 
-  // Run parallel searches for both date windows + national context
+  // Direct data retrieval — vector search doesn't work for date comparison
+  // because 600 nearest vectors out of 7M won't hit a specific week.
+  // Instead, query hunt_knowledge directly by effective_date + content_type.
+  const supabase = createSupabaseClient();
+  const COMPARE_DOMAINS = [
+    'weather-realtime', 'weather-event', 'nws-alert', 'convergence-score',
+    'birdcast-daily', 'migration-spike', 'migration-spike-significant', 'migration-spike-extreme',
+    'ocean-buoy', 'soil-conditions', 'river-discharge', 'air-quality',
+    'space-weather', 'drought-monitor', 'wildfire-perimeter', 'anomaly-alert',
+  ];
+
+  const fetchWindow = async (from: string, to: string) => {
+    // Query per content type to avoid expensive IN-clause scans on 7M rows
+    const perType = await Promise.all(
+      COMPARE_DOMAINS.map(async (ct) => {
+        let q = supabase
+          .from('hunt_knowledge')
+          .select('title, content, content_type, state_abbr, effective_date')
+          .eq('content_type', ct)
+          .gte('effective_date', from)
+          .lte('effective_date', to)
+          .limit(5);
+        if (stateAbbr) q = q.eq('state_abbr', stateAbbr);
+        const { data, error } = await q;
+        if (error) console.warn(`[handleDateCompare] ${ct} query error:`, error.message);
+        return data || [];
+      })
+    );
+    return perType.flat();
+  };
+
   const [results1, results2, nationalCtx] = await Promise.all([
-    searchBrain({
-      query: `environmental conditions ${date1}`,
-      state_abbr: stateAbbr || undefined,
-      date_from: w1.from,
-      date_to: w1.to,
-      recency_weight: 0.0,
-      limit: 15,
-      min_similarity: 0.25,
-    }),
-    searchBrain({
-      query: `environmental conditions ${date2}`,
-      state_abbr: stateAbbr || undefined,
-      date_from: w2.from,
-      date_to: w2.to,
-      recency_weight: 0.0,
-      limit: 15,
-      min_similarity: 0.25,
-    }),
+    fetchWindow(w1.from, w1.to),
+    fetchWindow(w2.from, w2.to),
     getNationalContext(),
   ]);
 
   // Group results by domain
-  const groupByDomain = (results: typeof results1) => {
-    const groups: Record<string, typeof results> = {};
+  type Entry = { title: string; content: string; content_type: string; state_abbr?: string; effective_date?: string };
+  const groupByDomain = (results: Entry[]) => {
+    const groups: Record<string, Entry[]> = {};
     for (const r of results) {
-      const domain = r.content_type.split('-')[0] || r.content_type;
+      const domain = r.content_type;
       if (!groups[domain]) groups[domain] = [];
       groups[domain].push(r);
     }
@@ -1315,23 +1330,24 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
   // Build structured comparison context
   let context = `## Date Comparison: ${date1} vs ${date2}\n`;
   if (stateAbbr) context += `Geographic focus: ${stateAbbr}\n`;
-  context += `Search windows: ${w1.from} to ${w1.to} | ${w2.from} to ${w2.to}\n\n`;
+  context += `Search windows: ${w1.from} to ${w1.to} | ${w2.from} to ${w2.to}\n`;
+  context += `Data found: ${results1.length} entries for ${date1}, ${results2.length} for ${date2}\n\n`;
 
   for (const domain of allDomains) {
     const d1 = domains1[domain] || [];
     const d2 = domains2[domain] || [];
-    context += `### ${domain.toUpperCase()}\n`;
-    context += `${date1} (${d1.length} entries): ${d1.map(r => r.title).join('; ') || 'No data'}\n`;
-    context += `${date2} (${d2.length} entries): ${d2.map(r => r.title).join('; ') || 'No data'}\n\n`;
+    context += `### ${domain}\n`;
+    context += `${date1} (${d1.length} entries): ${d1.slice(0, 3).map(r => r.title).join('; ') || 'No data'}\n`;
+    context += `${date2} (${d2.length} entries): ${d2.slice(0, 3).map(r => r.title).join('; ') || 'No data'}\n\n`;
   }
 
   context += `\n### RAW DATA — ${date1}\n`;
-  for (const r of results1.slice(0, 10)) {
-    context += `[${r.content_type}] ${r.title}: ${r.content.slice(0, 300)}\n`;
+  for (const r of results1.slice(0, 15)) {
+    context += `[${r.content_type}] ${r.title}: ${(r.content || '').slice(0, 200)}\n`;
   }
   context += `\n### RAW DATA — ${date2}\n`;
-  for (const r of results2.slice(0, 10)) {
-    context += `[${r.content_type}] ${r.title}: ${r.content.slice(0, 300)}\n`;
+  for (const r of results2.slice(0, 15)) {
+    context += `[${r.content_type}] ${r.title}: ${(r.content || '').slice(0, 200)}\n`;
   }
 
   context += nationalCtx;
@@ -1345,7 +1361,7 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
         vectorCount: results1.length + results2.length,
         keywordCount: 0,
         contentTypes: [...allDomains],
-        label: `${results1.length} entries for ${date1}, ${results2.length} for ${date2}`,
+        label: `${results1.length} entries for ${date1}, ${results2.length} for ${date2} (direct query)`,
       },
     });
   }
