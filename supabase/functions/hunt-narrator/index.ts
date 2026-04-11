@@ -31,9 +31,23 @@ interface KnowledgeEntry {
   metadata: Record<string, unknown> | null;
 }
 
+interface ArcGrade {
+  id: string;
+  state_abbr: string;
+  grade: string;
+  grade_reasoning: string | null;
+  narrative: string | null;
+  recognition_claim: Record<string, unknown> | null;
+  buildup_signals: Record<string, unknown> | null;
+  outcome_signals: Record<string, unknown> | null;
+  opened_at: string;
+  closed_at: string | null;
+}
+
 interface GeometricEvent {
-  type: 'pattern_link';
-  link: PatternLink;
+  type: 'pattern_link' | 'arc_grade';
+  link?: PatternLink;
+  arc?: ArcGrade;
   source_entry: KnowledgeEntry | null;
   matched_entry: KnowledgeEntry | null;
 }
@@ -224,6 +238,52 @@ async function checkBrainSignals(
   };
 }
 
+function buildArcPrompt(arc: ArcGrade, brainSignals: BrainSignals): string {
+  const sections: string[] = [];
+  sections.push(`## Self-Grading Report: ${arc.state_abbr}`);
+  sections.push(`Grade: ${arc.grade}`);
+  sections.push(`Opened: ${arc.opened_at}`);
+  if (arc.closed_at) sections.push(`Closed: ${arc.closed_at}`);
+
+  if (arc.recognition_claim) {
+    sections.push(`\n## What the brain claimed`);
+    sections.push(JSON.stringify(arc.recognition_claim).slice(0, 600));
+  }
+  if (arc.buildup_signals) {
+    sections.push(`\n## Buildup signals`);
+    sections.push(JSON.stringify(arc.buildup_signals).slice(0, 600));
+  }
+  if (arc.outcome_signals) {
+    sections.push(`\n## Outcome signals (what actually happened)`);
+    sections.push(JSON.stringify(arc.outcome_signals).slice(0, 600));
+  }
+  if (arc.grade_reasoning) {
+    sections.push(`\n## Brain's own grade reasoning`);
+    sections.push(arc.grade_reasoning.slice(0, 800));
+  }
+  if (arc.narrative) {
+    sections.push(`\n## Brain's internal narrative`);
+    sections.push(arc.narrative.slice(0, 800));
+  }
+
+  sections.push(`\n## Brain's Internal Signals`);
+  sections.push(`Confidence: ${brainSignals.confidence}`);
+  sections.push(brainSignals.raw);
+
+  return sections.join('\n');
+}
+
+const ARC_NARRATOR_SYSTEM = `You are narrating the brain's self-grading report. The brain made a prediction, set a deadline, waited, then graded itself. Your job is to translate this into plain English.
+
+Rules:
+1. Lead with the verdict: what did the brain predict, and was it right?
+2. If confirmed: explain what signals showed up to validate the prediction. Be specific — station names, readings, dates.
+3. If false_alarm or missed: explain honestly. The brain got it wrong. Say why.
+4. If partially_confirmed: explain what matched and what didn't.
+5. Cite the brain's own reasoning — it wrote a post-mortem. Quote the relevant parts.
+6. DO NOT use markdown, emoji, or formatting. Plain text only.
+7. Keep it to 2-3 paragraphs.`;
+
 function buildNarrationPrompt(event: GeometricEvent, brainSignals: BrainSignals): string {
   const { link, source_entry, matched_entry } = event;
 
@@ -343,9 +403,30 @@ serve(async (req) => {
       return true;
     });
 
-    if (candidates.length === 0) {
-      console.log('[hunt-narrator] No unnarrated cross-domain events found');
-      const summary = { narrated: 0, message: 'No unnarrated cross-domain events' };
+    // -----------------------------------------------------------------
+    // 1b. Find recently graded arcs that haven't been narrated
+    // -----------------------------------------------------------------
+    const { data: gradedArcs } = await supabase
+      .from('hunt_state_arcs')
+      .select('id, state_abbr, grade, grade_reasoning, narrative, recognition_claim, buildup_signals, outcome_signals, opened_at, closed_at')
+      .in('current_act', ['grade', 'closed'])
+      .not('grade', 'is', null)
+      .gte('updated_at', cutoff)
+      .order('updated_at', { ascending: false })
+      .limit(10);
+
+    // Filter out already-narrated arcs
+    const arcCandidates = (gradedArcs || []).filter((arc: ArcGrade) => {
+      if (alreadyNarrated.has(arc.id)) return false;
+      if (filterState && arc.state_abbr !== filterState) return false;
+      return true;
+    });
+
+    const totalCandidates = candidates.length + arcCandidates.length;
+
+    if (totalCandidates === 0) {
+      console.log('[hunt-narrator] No unnarrated events found');
+      const summary = { narrated: 0, message: 'No unnarrated events' };
       await logCronRun({
         functionName: 'hunt-narrator',
         status: 'success',
@@ -355,7 +436,7 @@ serve(async (req) => {
       return isCron ? cronResponse(summary) : successResponse(req, summary);
     }
 
-    console.log(`[hunt-narrator] Found ${candidates.length} candidates, processing up to ${MAX_PER_RUN}`);
+    console.log(`[hunt-narrator] Found ${candidates.length} pattern links + ${arcCandidates.length} graded arcs, processing up to ${MAX_PER_RUN}`);
 
     // -----------------------------------------------------------------
     // 2. Process each event
@@ -502,6 +583,82 @@ serve(async (req) => {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[hunt-narrator] Error processing link ${link.id}:`, msg);
+        errors++;
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // 2c. Process graded arcs (remaining slots after pattern links)
+    // -----------------------------------------------------------------
+    const arcSlots = MAX_PER_RUN - narrated;
+    for (const arc of arcCandidates.slice(0, arcSlots) as ArcGrade[]) {
+      try {
+        console.log(`[hunt-narrator] Processing arc ${arc.id}: ${arc.state_abbr} grade=${arc.grade}`);
+
+        const brainSignals = await checkBrainSignals(supabase, arc.state_abbr, null);
+        // Override confidence from the arc's own grade
+        if (arc.grade === 'confirmed') brainSignals.confidence = 'CONFIRMED';
+        else if (arc.grade === 'false_alarm' || arc.grade === 'missed') brainSignals.confidence = 'SKEPTICAL';
+
+        const userPrompt = buildArcPrompt(arc, brainSignals);
+
+        const response = await callClaude({
+          model: CLAUDE_MODELS.sonnet,
+          system: ARC_NARRATOR_SYSTEM,
+          messages: [{ role: 'user', content: userPrompt }],
+          max_tokens: 1024,
+          temperature: 0.4,
+        });
+
+        const narrationText = parseTextContent(response);
+        if (!narrationText) { errors++; continue; }
+
+        totalCost += calculateCost(CLAUDE_MODELS.sonnet, response.usage);
+
+        // Clean headline
+        const cleanedNarr = narrationText.replace(/^(UNCERTAIN|SKEPTICAL|CONFIRMED)\s*[—–-]\s*/i, '');
+        const gradeEmoji = arc.grade === 'confirmed' ? '' : arc.grade === 'false_alarm' ? '[False Alarm] ' : arc.grade === 'missed' ? '[Missed] ' : '';
+        const arcHeadline = `${gradeEmoji}${arc.state_abbr}: Brain graded itself ${arc.grade}`.slice(0, 120);
+
+        const effectiveDate = arc.closed_at?.split('T')[0] || arc.opened_at?.split('T')[0] || new Date().toISOString().slice(0, 10);
+
+        const embeddingText = `${arcHeadline}\n${narrationText}`;
+        const embedding = await generateEmbedding(embeddingText, 'document');
+
+        const { error: insertErr } = await supabase
+          .from('hunt_knowledge')
+          .insert({
+            title: arcHeadline,
+            content: narrationText,
+            content_type: 'brain-narrative',
+            tags: ['brain-narrative', 'arc-grade', arc.grade, arc.state_abbr],
+            state_abbr: arc.state_abbr,
+            effective_date: effectiveDate,
+            embedding,
+            metadata: {
+              event_type: 'arc_grade',
+              confidence_level: brainSignals.confidence,
+              source_ids: [arc.id],
+              matched_ids: [],
+              arc_grade: arc.grade,
+              domains_involved: ['self-assessment'],
+              seam: { date: effectiveDate, location: arc.state_abbr },
+              brain_signals: {
+                arc_status: arc.grade,
+                convergence_trend: brainSignals.convergence_trend,
+                convergence_score: brainSignals.convergence_score,
+                grading_summary: brainSignals.grading_summary,
+              },
+              llm_model: CLAUDE_MODELS.sonnet,
+              llm_cost: calculateCost(CLAUDE_MODELS.sonnet, response.usage),
+            },
+          });
+
+        if (insertErr) { console.error(`[hunt-narrator] Arc insert error:`, insertErr); errors++; continue; }
+        narrated++;
+        console.log(`[hunt-narrator] Narrated arc ${arc.id}: "${arcHeadline}"`);
+      } catch (err) {
+        console.error(`[hunt-narrator] Arc error ${arc.id}:`, err instanceof Error ? err.message : String(err));
         errors++;
       }
     }
