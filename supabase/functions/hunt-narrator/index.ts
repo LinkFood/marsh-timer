@@ -421,13 +421,32 @@ serve(async (req) => {
           matched_type: link.matched_content_type,
         };
 
-        // 2d. Build headline from first sentence of narration
-        // Strip any leading confidence labels (UNCERTAIN/SKEPTICAL/CONFIRMED —)
-        const cleaned = narration.replace(/^(UNCERTAIN|SKEPTICAL|CONFIRMED)\s*[—–-]\s*/i, '');
-        const firstSentence = cleaned.split(/[.!]\s/)[0];
-        const headline = firstSentence.length > 120
-          ? firstSentence.slice(0, 117) + '...'
-          : firstSentence + '.';
+        // 2d. Build a punchy headline (max 80 chars)
+        const DOMAIN_LABELS: Record<string, string> = {
+          'alert-grade': 'Prediction Grade',
+          'bio-environmental-correlation': 'Wildlife-Weather Link',
+          'compound-risk-alert': 'Multi-Domain Risk',
+          'convergence-score': 'Convergence',
+          'weather-realtime': 'Weather',
+          'weather-event': 'Storm Event',
+          'nws-alert': 'NWS Alert',
+          'birdcast-daily': 'Migration Radar',
+          'migration-spike': 'Migration Spike',
+          'ocean-buoy': 'Ocean Conditions',
+          'soil-conditions': 'Soil Moisture',
+          'river-discharge': 'River Flow',
+          'air-quality': 'Air Quality',
+          'space-weather': 'Space Weather',
+          'drought-monitor': 'Drought',
+          'anomaly-alert': 'Anomaly',
+          'wildfire-perimeter': 'Wildfire',
+        };
+        const labelOf = (ct: string) => DOMAIN_LABELS[ct] || ct.replace(/-/g, ' ');
+        const stateLabel = primaryState || 'National';
+        const d1 = labelOf(link.source_content_type);
+        const d2 = labelOf(link.matched_content_type);
+        const confPrefix = brainSignals.confidence === 'SKEPTICAL' ? '[Unconfirmed] ' : '';
+        const headline = `${confPrefix}${stateLabel}: ${d1} + ${d2}`.slice(0, 120);
 
         // 2e. Determine date (state already resolved above)
         const narrativeDate = sourceEntry?.effective_date || matchedEntry?.effective_date || new Date().toISOString().slice(0, 10);
