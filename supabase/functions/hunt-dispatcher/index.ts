@@ -532,6 +532,25 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
       }
     }
 
+    // Intercept single-date portrait queries — "what happened on [date]?"
+    // Uses direct data retrieval (not vector search) because vectors can't find dates
+    const isSingleDate = dateFrom && (!dateTo || dateTo === dateFrom);
+    const isPortraitQuery = /what.*happen|show.*everything|full.*picture|portrait|environmental.*on|conditions.*on|what.*going.*on|everything.*on/i.test(message);
+    if (isSingleDate && isPortraitQuery) {
+      const handlerResult = await handleDatePortrait(dateFrom, message, resolvedState);
+      if (useStreaming) {
+        return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'date_portrait');
+      }
+      const result = await executeLegacy(handlerResult);
+      if (userId && sessionId) {
+        await supabase.from('hunt_conversations').insert([
+          { user_id: userId, session_id: sessionId, role: 'user', content: message },
+          { user_id: userId, session_id: sessionId, role: 'assistant', content: result.response, metadata: { cards: result.cards, intent: 'date_portrait' } },
+        ]);
+      }
+      return new Response(JSON.stringify(result), { status: 200, headers });
+    }
+
     // Intercept state comparison queries BEFORE intent routing
     const compareMatch = message.match(/compare\s+(\w{2})\s+(?:vs?\.?|and|or|versus)\s+(\w{2})/i)
       || message.match(/(\w{2})\s+vs\.?\s+(\w{2})/i);
@@ -1262,6 +1281,83 @@ ${BRAIN_RULES}`,
   };
 }
 
+async function handleDatePortrait(dateStr: string, query: string, stateAbbr: string | null): Promise<HandlerResult> {
+  const supabase = createSupabaseClient();
+  const d = new Date(dateStr);
+  const from = new Date(d.getTime() - 3 * 86400000).toISOString().split('T')[0];
+  const to = new Date(d.getTime() + 3 * 86400000).toISOString().split('T')[0];
+
+  const PORTRAIT_DOMAINS = [
+    'weather-event', 'nws-alert', 'convergence-score', 'birdcast-daily',
+    'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
+  ];
+
+  // Per-type parallel queries (same pattern as date compare)
+  const perType = await Promise.all(
+    PORTRAIT_DOMAINS.map(async (ct) => {
+      let q = supabase
+        .from('hunt_knowledge')
+        .select('title, content, content_type, state_abbr, effective_date')
+        .eq('content_type', ct)
+        .gte('effective_date', from)
+        .lte('effective_date', to)
+        .limit(8);
+      if (stateAbbr) q = q.eq('state_abbr', stateAbbr);
+      const { data } = await q;
+      return data || [];
+    })
+  );
+  const results = perType.flat();
+
+  const [nationalCtx] = await Promise.all([getNationalContext()]);
+
+  // Group by domain
+  const groups: Record<string, typeof results> = {};
+  for (const r of results) {
+    if (!groups[r.content_type]) groups[r.content_type] = [];
+    groups[r.content_type].push(r);
+  }
+
+  let context = `## Environmental Portrait: ${dateStr}\n`;
+  context += `Window: ${from} to ${to} | ${results.length} entries found\n`;
+  if (stateAbbr) context += `Focus: ${stateAbbr}\n`;
+  context += `\n`;
+
+  for (const [domain, entries] of Object.entries(groups)) {
+    context += `### ${domain} (${entries.length} entries)\n`;
+    for (const e of entries.slice(0, 5)) {
+      context += `[${e.state_abbr || 'national'}] ${e.title}: ${(e.content || '').slice(0, 200)}\n`;
+    }
+    context += '\n';
+  }
+
+  context += nationalCtx;
+
+  const cards: unknown[] = [];
+  if (results.length > 0) {
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: results.length,
+        keywordCount: 0,
+        contentTypes: Object.keys(groups),
+        label: `${results.length} entries for ${dateStr} (±3 days)`,
+      },
+    });
+  }
+
+  return {
+    cards,
+    systemPrompt: `You are an environmental intelligence analyst creating a comprehensive portrait of a single date. Show EVERYTHING the brain has for this date window across all domains. Structure by domain, cite specific data values, and highlight anything unusual or notable.
+
+If data is missing for a domain, say so — don't fill in with general knowledge.
+
+End with: "What stands out about this date" — the 1-2 most notable or unusual findings.
+${BRAIN_RULES}`,
+    userContent: `${context}\n\nUser question: ${query}`,
+  };
+}
+
 async function handleDateCompare(date1: string, date2: string, query: string, stateAbbr: string | null): Promise<HandlerResult> {
   // Create +/-3 day windows around each date
   const window = (dateStr: string) => {
@@ -1278,11 +1374,10 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
   // because 600 nearest vectors out of 7M won't hit a specific week.
   // Instead, query hunt_knowledge directly by effective_date + content_type.
   const supabase = createSupabaseClient();
+  // 8 key domains — keeps parallel queries under 150s edge function limit
   const COMPARE_DOMAINS = [
-    'weather-realtime', 'weather-event', 'nws-alert', 'convergence-score',
-    'birdcast-daily', 'migration-spike', 'migration-spike-significant', 'migration-spike-extreme',
-    'ocean-buoy', 'soil-conditions', 'river-discharge', 'air-quality',
-    'space-weather', 'drought-monitor', 'wildfire-perimeter', 'anomaly-alert',
+    'weather-event', 'nws-alert', 'convergence-score', 'birdcast-daily',
+    'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
   ];
 
   const fetchWindow = async (from: string, to: string) => {
