@@ -43,7 +43,7 @@ interface GeometricEvent {
 // ---------------------------------------------------------------------------
 
 const MAX_PER_RUN = 5;
-const LOOKBACK_HOURS = 48;
+const LOOKBACK_HOURS = 240; // Widened for initial test — pattern links stalled until brainScan threshold fix
 const MIN_SIMILARITY = 0.6;
 
 // Cross-domain means source and matched content types are different
