@@ -56,7 +56,9 @@ interface GeometricEvent {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 5;
+const MAX_PER_RUN = 7;
+const MAX_PATTERN_LINKS = 4;
+const MAX_ARC_GRADES = 3;
 const LOOKBACK_HOURS = 240; // Widened for initial test — pattern links stalled until brainScan threshold fix
 const MIN_SIMILARITY = 0.6;
 
@@ -445,7 +447,7 @@ serve(async (req) => {
     let errors = 0;
     let totalCost = 0;
 
-    for (const link of candidates.slice(0, MAX_PER_RUN) as PatternLink[]) {
+    for (const link of candidates.slice(0, MAX_PATTERN_LINKS) as PatternLink[]) {
       try {
         console.log(`[hunt-narrator] Processing link ${link.id}: ${link.source_content_type} <-> ${link.matched_content_type} (${(link.similarity * 100).toFixed(1)}%) in ${link.state_abbr || 'national'}`);
 
@@ -590,7 +592,7 @@ serve(async (req) => {
     // -----------------------------------------------------------------
     // 2c. Process graded arcs (remaining slots after pattern links)
     // -----------------------------------------------------------------
-    const arcSlots = MAX_PER_RUN - narrated;
+    const arcSlots = MAX_ARC_GRADES;
     for (const arc of arcCandidates.slice(0, arcSlots) as ArcGrade[]) {
       try {
         console.log(`[hunt-narrator] Processing arc ${arc.id}: ${arc.state_abbr} grade=${arc.grade}`);
