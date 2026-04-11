@@ -26,13 +26,29 @@ export default function StateActivityMap({ onStateClick }: { onStateClick?: (abb
 
   useEffect(() => {
     if (!supabase) return;
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    // Try today first, fall back to yesterday
     supabase
       .from('hunt_convergence_scores')
       .select('state_abbr,score')
+      .eq('date', today)
       .order('score', { ascending: false })
       .limit(50)
-      .then(({ data }) => {
-        if (data) setScores(data.map(d => ({ state_abbr: d.state_abbr, score: d.score })));
+      .then(async ({ data }) => {
+        if (data && data.length > 0) {
+          setScores(data.map(d => ({ state_abbr: d.state_abbr, score: d.score })));
+        } else {
+          // Fall back to yesterday
+          const { data: yd } = await supabase
+            .from('hunt_convergence_scores')
+            .select('state_abbr,score')
+            .eq('date', yesterday)
+            .order('score', { ascending: false })
+            .limit(50);
+          if (yd) setScores(yd.map(d => ({ state_abbr: d.state_abbr, score: d.score })));
+        }
       })
       .catch(() => {});
   }, []);
