@@ -96,20 +96,29 @@ async function handleSimilar(req: Request, params: {
   const supabase = createSupabaseClient();
   const k = Math.min(top_k || 5, 20);
 
-  // Step 1: Get entries from the target date (diverse content types)
+  // Step 1: Get entries from the target date using per-type parallel queries
+  // (unfiltered queries on 7M rows time out)
   const d = new Date(date);
   const from = new Date(d.getTime() - 1 * 86400000).toISOString().split('T')[0];
   const to = new Date(d.getTime() + 1 * 86400000).toISOString().split('T')[0];
 
-  let seedQuery = supabase
-    .from('hunt_knowledge')
-    .select('content, content_type')
-    .gte('effective_date', from)
-    .lte('effective_date', to)
-    .order('created_at', { ascending: false })
-    .limit(20);
-  if (state) seedQuery = seedQuery.eq('state_abbr', state);
-  const { data: seedEntries, error: seedError } = await seedQuery;
+  const seedResults = await Promise.all(
+    DATE_DOMAINS.map(async (ct) => {
+      let q = supabase
+        .from('hunt_knowledge')
+        .select('content, content_type')
+        .eq('content_type', ct)
+        .gte('effective_date', from)
+        .lte('effective_date', to)
+        .limit(3);
+      if (state) q = q.eq('state_abbr', state);
+      const { data, error } = await q;
+      if (error) console.error(`[hunt-api/similar] seed ${ct} error:`, error.message);
+      return data || [];
+    })
+  );
+  const seedEntries = seedResults.flat();
+  const seedError = null;
 
   if (seedError) {
     console.error('[hunt-api/similar] seed query error:', seedError.message);
@@ -156,8 +165,8 @@ async function handleSimilar(req: Request, params: {
   const { data: vectorResults, error: vecError } = await supabase.rpc('search_hunt_knowledge_v3', {
     query_embedding: embedding,
     match_threshold: 0.3,
-    match_count: k * 10, // fetch extra to have enough after date grouping
-    filter_content_types: null,
+    match_count: Math.min(k * 5, 20), // cap at 20 to stay under RPC timeout
+    filter_content_types: DATE_DOMAINS,
     filter_state_abbr: state || null,
     filter_species: null,
     filter_date_from: null,
@@ -167,8 +176,8 @@ async function handleSimilar(req: Request, params: {
   });
 
   if (vecError) {
-    console.error('[hunt-api/similar] vector search error:', vecError.message);
-    return errorResponse(req, 'Vector search failed', 500);
+    console.error('[hunt-api/similar] vector search error:', JSON.stringify(vecError));
+    return errorResponse(req, `Vector search failed: ${vecError.message}`, 500);
   }
 
   // Filter out entries in the excluded date range and group by effective_date
