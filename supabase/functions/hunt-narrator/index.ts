@@ -57,7 +57,16 @@ function isCrossDomain(sourceType: string, matchedType: string): boolean {
 // System prompt for narration
 // ---------------------------------------------------------------------------
 
-const NARRATOR_SYSTEM = `You are the voice of an environmental intelligence brain. Translate this geometric event into a plain-English discovery. Be specific — cite actual values, stations, dates. Explain WHY this matters — what's the cross-domain connection that nobody would have noticed? If the connection is trivial (weather caused weather), say so honestly. Only flag genuine cross-domain insights. Keep it to 2-3 paragraphs. Lead with the finding.`;
+const NARRATOR_SYSTEM = `You are the narrator for an autonomous environmental intelligence brain. The brain operates in 512-dimensional embedding space, discovering cross-domain patterns between weather, migration, soil, water, air quality, space weather, and 20+ other data streams.
+
+Rules:
+1. If the brain's own internal signals (arc status, convergence trends, grading history) indicate skepticism, YOU are skeptical. Say "the brain flagged this as unconfirmed" or "internal signals are mixed."
+2. Never claim causation. The brain finds geometric proximity (correlation in embedding space). Say "these patterns are geometrically close" or "the brain sees a connection" — not "X caused Y."
+3. Always state the confidence level you are given: CONFIRMED, UNCERTAIN, or SKEPTICAL.
+4. Always name the seam — where and when does this touch observable reality?
+5. Include what a human could verify. Give station names, readings, dates.
+6. If the data seems anomalous (impossible pressure values, etc.), flag it. Honesty over headlines.
+7. Keep it short. 2-3 sentences for the finding. A paragraph for explanation. Bullet list of data points.`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -103,7 +112,117 @@ function buildSeam(
   return parts.join('\n');
 }
 
-function buildNarrationPrompt(event: GeometricEvent): string {
+type Confidence = 'CONFIRMED' | 'UNCERTAIN' | 'SKEPTICAL';
+
+interface BrainSignals {
+  confidence: Confidence;
+  arc_status: string | null;
+  convergence_trend: string | null;
+  convergence_score: number | null;
+  grading_summary: string | null;
+  raw: string;
+}
+
+async function checkBrainSignals(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  stateAbbr: string | null,
+  effectiveDate: string | null,
+): Promise<BrainSignals> {
+  const signals: string[] = [];
+  let confidence: Confidence = 'UNCERTAIN';
+  let arcStatus: string | null = null;
+  let convergenceTrend: string | null = null;
+  let convergenceScore: number | null = null;
+  let gradingSummary: string | null = null;
+
+  if (!stateAbbr) {
+    return { confidence: 'UNCERTAIN', arc_status: null, convergence_trend: null, convergence_score: null, grading_summary: null, raw: 'No state context — cannot check brain signals.' };
+  }
+
+  // Check state arc
+  const { data: arc } = await supabase
+    .from('hunt_state_arcs')
+    .select('current_act, grade, grade_reasoning, narrative')
+    .eq('state_abbr', stateAbbr)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (arc) {
+    arcStatus = arc.current_act;
+    if (arc.grade) {
+      signals.push(`Arc grade: ${arc.grade}`);
+      if (arc.grade === 'confirmed') confidence = 'CONFIRMED';
+      else if (arc.grade === 'false_alarm' || arc.grade === 'missed') confidence = 'SKEPTICAL';
+    } else {
+      signals.push(`Arc status: ${arc.current_act} (not yet graded)`);
+    }
+    if (arc.narrative && arc.narrative.includes('unconfirmed')) {
+      signals.push('Arc narrative flags patterns as unconfirmed');
+      confidence = 'SKEPTICAL';
+    }
+    if (arc.grade_reasoning) {
+      signals.push(`Grade reasoning: ${arc.grade_reasoning.slice(0, 200)}`);
+    }
+  } else {
+    signals.push('No active arc for this state');
+  }
+
+  // Check convergence trend (last 3 days)
+  const { data: convScores } = await supabase
+    .from('hunt_convergence_scores')
+    .select('score, date')
+    .eq('state_abbr', stateAbbr)
+    .order('date', { ascending: false })
+    .limit(3);
+
+  if (convScores && convScores.length >= 2) {
+    convergenceScore = convScores[0].score;
+    const trend = convScores[0].score - convScores[convScores.length - 1].score;
+    convergenceTrend = trend > 5 ? 'rising' : trend < -5 ? 'declining' : 'stable';
+    signals.push(`Convergence: ${convScores[0].score}/100, trend ${convergenceTrend} (${convScores.map(s => s.score).join(' → ')})`);
+
+    if (convergenceTrend === 'declining' && confidence !== 'SKEPTICAL') {
+      signals.push('WARNING: Convergence declining while pattern link is strong — contradictory signals');
+      if (confidence === 'CONFIRMED') confidence = 'UNCERTAIN';
+    }
+  }
+
+  // Check recent grading for this state
+  const { data: grades } = await supabase
+    .from('hunt_alert_outcomes')
+    .select('outcome_grade')
+    .eq('state_abbr', stateAbbr)
+    .eq('outcome_checked', true)
+    .order('graded_at', { ascending: false })
+    .limit(10);
+
+  if (grades && grades.length > 0) {
+    const counts: Record<string, number> = {};
+    for (const g of grades) {
+      counts[g.outcome_grade] = (counts[g.outcome_grade] || 0) + 1;
+    }
+    gradingSummary = Object.entries(counts).map(([g, c]) => `${g}: ${c}`).join(', ');
+    signals.push(`Recent grading (last ${grades.length}): ${gradingSummary}`);
+
+    const hitRate = ((counts['confirmed'] || 0) + (counts['partially_confirmed'] || 0)) / grades.length;
+    if (hitRate < 0.4) {
+      signals.push(`WARNING: Low historical accuracy (${(hitRate * 100).toFixed(0)}%) for ${stateAbbr}`);
+      confidence = 'SKEPTICAL';
+    }
+  }
+
+  return {
+    confidence,
+    arc_status: arcStatus,
+    convergence_trend: convergenceTrend,
+    convergence_score: convergenceScore,
+    grading_summary: gradingSummary,
+    raw: signals.join('\n'),
+  };
+}
+
+function buildNarrationPrompt(event: GeometricEvent, brainSignals: BrainSignals): string {
   const { link, source_entry, matched_entry } = event;
 
   const sections: string[] = [];
@@ -132,6 +251,10 @@ function buildNarrationPrompt(event: GeometricEvent): string {
   const seam = buildSeam(source_entry, matched_entry);
   sections.push(`\n## The Seam (where this touches observable reality)`);
   sections.push(seam);
+
+  sections.push(`\n## Brain's Internal Signals`);
+  sections.push(`Confidence: ${brainSignals.confidence}`);
+  sections.push(brainSignals.raw);
 
   return sections.join('\n');
 }
@@ -253,8 +376,15 @@ serve(async (req) => {
           matched_entry: matchedEntry,
         };
 
-        // 2b. Build prompt and call Claude
-        const userPrompt = buildNarrationPrompt(event);
+        // 2b. Check brain's own signals (arcs, convergence, grades)
+        const primaryState = link.state_abbr || sourceEntry?.state_abbr || matchedEntry?.state_abbr || null;
+        const effectiveDate = sourceEntry?.effective_date || matchedEntry?.effective_date || null;
+        const brainSignals = await checkBrainSignals(supabase, primaryState, effectiveDate);
+
+        console.log(`[hunt-narrator] Brain signals for ${primaryState}: ${brainSignals.confidence} — ${brainSignals.raw.slice(0, 200)}`);
+
+        // 2c. Build prompt and call Claude
+        const userPrompt = buildNarrationPrompt(event, brainSignals);
 
         const response = await callClaude({
           model: CLAUDE_MODELS.sonnet,
@@ -287,9 +417,8 @@ serve(async (req) => {
           ? firstSentence.slice(0, 117) + '...'
           : firstSentence + '.';
 
-        // 2e. Determine state and date
-        const primaryState = link.state_abbr || sourceEntry?.state_abbr || matchedEntry?.state_abbr || null;
-        const effectiveDate = sourceEntry?.effective_date || matchedEntry?.effective_date || new Date().toISOString().slice(0, 10);
+        // 2e. Determine date (state already resolved above)
+        const narrativeDate = sourceEntry?.effective_date || matchedEntry?.effective_date || new Date().toISOString().slice(0, 10);
 
         // 2f. Embed the narration (THE EMBEDDING LAW)
         const embeddingText = `${headline}\n${narration}`;
@@ -309,15 +438,23 @@ serve(async (req) => {
               primaryState,
             ].filter(Boolean),
             state_abbr: primaryState,
-            effective_date: effectiveDate,
+            effective_date: narrativeDate,
             embedding,
             metadata: {
               event_type: 'pattern_link',
+              confidence_level: brainSignals.confidence,
               source_ids: [link.source_id],
               matched_ids: [link.matched_id],
               pattern_link_id: link.id,
               similarity_scores: [link.similarity],
+              domains_involved: [link.source_content_type, link.matched_content_type],
               seam,
+              brain_signals: {
+                arc_status: brainSignals.arc_status,
+                convergence_trend: brainSignals.convergence_trend,
+                convergence_score: brainSignals.convergence_score,
+                grading_summary: brainSignals.grading_summary,
+              },
               llm_model: CLAUDE_MODELS.sonnet,
               llm_cost: calculateCost(CLAUDE_MODELS.sonnet, response.usage),
             },

@@ -27,6 +27,7 @@
 
 ## Real Use Cases Analysis
 - See `use_cases_real_2026_04_03.md` — 17 brutally honest use cases. Top B2B: insurance/ag commodity/energy/event insurance/legal. Top consumer: weather nerds/hunters/allergy. Top viral: date explorer/argument settler/climate anxiety SEO. Strategy: viral consumer = front door, API = business.
+- See `brainstorm_audience_personas_2026_04_10.md` — 10 deep-specificity personas with Wednesday problems. Emergency mgr (FEMA precedent), crop adjuster ($180K claims), litigation support (construction defect), energy site assessor, phenology hobbyist (viral), cat bond analyst, TV weather producer, water utility operator (50K systems TAM), event insurance underwriter, environmental journalist (credits in stories). 3 structural patterns: compound context gap, "compared to what?" as core value, grading loop = compliance.
 
 ## User Preferences
 - James thinks like a trader building a terminal. Data density > pretty UI.
@@ -47,6 +48,13 @@
 
 ## Interface Rethinking
 - See `brainstorm_kill_the_chat_2026_04_09.md` — 20 ideas for replacing chat-first interface. Core thesis: stop translating data into words. Top 5: The Tape (real-time ticker), Conviction Charts (state as stock), Autopsy Table (cinematic grading), The Receipt (structured query response), Inverse Search (condition-first temporal query). Also: Ledger, Equalizer, Calendar Heatmap, Diff View, Evidence Locker, Ambient Mode, Nervous System Map, Trust Thermometer, Narrated Replay, plus 5 bonus sparks.
+
+## Naming / Identity
+- See `brainstorm_naming_the_thing_2026_04_10.md` — THE identity session. Core synthesis: "artificial hippocampus for the Earth." Top category name: "observational intelligence." Key insight: DCD is a new MEDIUM, not a known category.
+- **Intellectual Identity (2026-04-10):** Breakthrough = "hypothesis-free causal discovery via narrative embedding geometry." Best metaphor = "Earth state space telescope." 5 moats: grading corpus, emergent topology, scanBrainOnWrite meta-knowledge, narrative embedding (non-obvious), temporal density (time-locked). 3 discoveries at 100M: earthquake bio-precursors, cross-domain teleconnections with lag times, regime shift early detection. Closest analog: IC fusion centers minus human analysts -- cosine similarity IS the analyst.
+
+## The Definitive "What Is This" Brainstorm
+- See `/Users/jameschellis/marsh-timer/docs/brainstorm-what-is-this.md` — THE identity document (written to project docs/). 8 sections: 6 framings (Bloomberg for Earth, fusion center, self-assembling encyclopedia, Wayback+pattern completion, domain-agnostic environmental memory, hypothesis-free causal discovery), 5 metaphors (core sample, seismograph for everything, palimpsest, multi-wavelength telescope, crime board), 5 intellectual breakthroughs (narrative as universal schema, write-time autonomous discovery, self-grading = Popperian falsificationism, temporal holography, embedding topology as discovery), 10 one-liners, 10 named personas, 5 at-scale discoveries, 6 moats, 10 missing pieces. Key NEW insights: "witness" framing for legal/insurance markets, "printing press for environmental data" analogy, Metcalfe's Law for domain count, temporal embedding as feature not filter, "null result as feature" product concept. Generated 2026-04-10.
 
 ## Brainstorm History
 - See `brainstorm_ux_visualization_2026_03_19.md` — 15 specific ideas for surfacing 213K data points. Core problem: data trapped in vectors, UI is 6 static cards. Top recommendations: sparklines everywhere, convergence decomposition chart, brain activity monitor.

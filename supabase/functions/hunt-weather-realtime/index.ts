@@ -19,7 +19,7 @@ interface MetarObs {
   dewp: number | null;     // Celsius
   wdir: number | null;     // degrees (0-360) or "VRB"
   wspd: number | null;     // knots
-  altim: number | null;    // inches Hg
+  altim: number | null;    // millibars (aviationweather.gov API returns mb, NOT inHg)
   visib: number | null;    // statute miles
   obsTime: string;         // ISO 8601
   rawOb?: string;
@@ -296,9 +296,13 @@ function detectChanges(
   }
 
   // --- Pressure changes ---
-  if (recent.altim !== null && older.altim !== null) {
-    const recentMb = inHgToMb(recent.altim);
-    const olderMb = inHgToMb(older.altim);
+  // altim from aviationweather.gov METAR API is ALREADY in millibars.
+  // Do NOT apply inHgToMb() — that was a double-conversion bug inflating values 33.86x.
+  if (recent.altim !== null && older.altim !== null
+    && recent.altim > 870 && recent.altim < 1100
+    && older.altim > 870 && older.altim < 1100) {
+    const recentMb = Math.round(recent.altim * 10) / 10;
+    const olderMb = Math.round(older.altim * 10) / 10;
     const pressureDelta = recentMb - olderMb;
 
     if (pressureDelta < -2) {
@@ -492,7 +496,7 @@ serve(async (req) => {
     const { error: delKnErr } = await supabase
       .from('hunt_knowledge')
       .delete()
-      .eq('content_type', 'realtime-weather-event')
+      .eq('content_type', 'weather-realtime')
       .gte('created_at', twentyMinAgo);
     if (delKnErr) {
       console.error('[hunt-weather-realtime] Knowledge delete error:', delKnErr);
