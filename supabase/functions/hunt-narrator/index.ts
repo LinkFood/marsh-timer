@@ -68,7 +68,7 @@ Rules:
 6. If the data seems anomalous (impossible pressure values, etc.), flag it. Honesty over headlines.
 7. Keep it short. 2-3 sentences for the finding. A paragraph for explanation. Bullet list of data points.
 8. DO NOT use markdown headers, emoji, or formatting. Plain text only. No ## headers, no bold **, no bullet points with -. Write like you're talking to someone. The rendering layer handles formatting.
-9. Start with: "[CONFIDENCE_LEVEL] — " then a one-sentence headline. Then a paragraph explaining what the brain found and why it matters (or doesn't).`;
+9. Start with a one-sentence finding that describes what the brain detected. Then a paragraph explaining why it matters (or doesn't). Do NOT include the confidence level in your text — that's handled by metadata.`;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -422,7 +422,9 @@ serve(async (req) => {
         };
 
         // 2d. Build headline from first sentence of narration
-        const firstSentence = narration.split(/[.!]\s/)[0];
+        // Strip any leading confidence labels (UNCERTAIN/SKEPTICAL/CONFIRMED —)
+        const cleaned = narration.replace(/^(UNCERTAIN|SKEPTICAL|CONFIRMED)\s*[—–-]\s*/i, '');
+        const firstSentence = cleaned.split(/[.!]\s/)[0];
         const headline = firstSentence.length > 120
           ? firstSentence.slice(0, 117) + '...'
           : firstSentence + '.';
