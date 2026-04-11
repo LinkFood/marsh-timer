@@ -5,7 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
-const ALERT_SOURCES = ['convergence-alert', 'anomaly-alert', 'disaster-watch'] as const;
+const ALERT_SOURCES = ['convergence-alert', 'anomaly-alert', 'disaster-watch', 'compound-risk'] as const;
 const WINDOWS = [30, 60, 90] as const;
 
 type OutcomeStatus = 'confirmed' | 'partially_confirmed' | 'missed' | 'false_alarm';

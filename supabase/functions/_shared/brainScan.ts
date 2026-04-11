@@ -39,7 +39,7 @@ export async function scanBrainOnWrite(
     const supabase = createSupabaseClient();
     const { data } = await supabase.rpc('search_hunt_knowledge_v3', {
       query_embedding: embedding,
-      match_threshold: opts.min_similarity ?? 0.55,
+      match_threshold: opts.min_similarity ?? 0.50,
       match_count: opts.limit ?? 5,
       filter_state_abbr: opts.state_abbr || null,
       filter_content_types: null,
@@ -118,7 +118,7 @@ export async function enrichWithPatternScan(
     const result = await scanBrainOnWrite(embedding, {
       state_abbr: opts.state_abbr,
       exclude_content_type: opts.exclude_content_type,
-      min_similarity: 0.55,
+      min_similarity: 0.50,
       limit: 5,
     });
 
