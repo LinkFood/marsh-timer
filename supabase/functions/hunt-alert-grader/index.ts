@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
@@ -20,6 +20,7 @@ interface AlertOutcome {
     claim?: string;
     expected_signals?: string[];
     severity?: string;
+    converging_domains?: number;
     [key: string]: unknown;
   };
   outcome_window_hours: number;
@@ -28,79 +29,221 @@ interface AlertOutcome {
 
 type Grade = 'confirmed' | 'partially_confirmed' | 'false_alarm' | 'missed';
 
+interface DomainResult {
+  domain: string;
+  content_types_checked: string[];
+  signals_found: number;
+  confirmed: boolean;
+  samples: { id: string; title: string; content_type: string }[];
+}
+
 interface SignalFound {
   id: string;
   title: string;
   content_type: string;
-  source: 'vector' | 'direct';
-  similarity?: number;
-  effective_date?: string;
+  source: 'direct';
+  domain: string;
 }
 
 // ---------------------------------------------------------------------------
-// Constants
+// Domain → Content Type Mapping
+//
+// Maps the domain names used in convergence claims to the actual content_types
+// in hunt_knowledge that represent real external signals for that domain.
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 15; // Each alert needs embedding + vector search — 3 fits pg_cron ~60s HTTP timeout
+const DOMAIN_CONTENT_TYPES: Record<string, string[]> = {
+  // Weather — ASOS observations, NWS warnings, detected weather events, storm reports
+  weather: ['weather-event', 'nws-alert', 'weather-realtime', 'storm-event'],
+  // Birds — eBird migration spikes, BirdCast radar data, daily migration counts
+  birds: ['birdcast-daily', 'migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate', 'migration-daily'],
+  // Water — USGS stream gauges
+  water: ['usgs-water'],
+  // Drought — weekly drought monitor data
+  drought: ['drought-weekly'],
+  // Climate — climate indices (NAO, AO, ENSO, etc.)
+  climate: ['climate-index'],
+  // Solunar — lunar phase and feeding windows
+  solunar: ['solunar-weekly'],
+  // Photoperiod — day length calculations
+  photoperiod: ['photoperiod'],
+  // Tide — NOAA tidal stations
+  tide: ['noaa-tide'],
+  // NWS (used in some convergence-alert claims)
+  nws: ['nws-alert', 'weather-event', 'storm-event'],
+};
 
-const DIRECT_QUERY_CONTENT_TYPES = [
-  'migration-spike-extreme',
-  'migration-spike-significant',
-  'migration-spike-moderate',
-  'weather-event',
-  'nws-alert',
-  'anomaly-alert',
-  'convergence-score',
-];
+// "convergence" appears as a claimed domain but it's self-referential —
+// a convergence score changing IS the claim, not something to confirm externally.
+// We skip it in domain checks.
+const SKIP_DOMAINS = new Set(['convergence']);
+
+// Minimum signals per domain to count it as confirmed
+const DOMAIN_CONFIRM_THRESHOLD = 2;
 
 // ---------------------------------------------------------------------------
-// Grading logic
+// Parse domains from claim text
 // ---------------------------------------------------------------------------
 
-function gradeAlert(
-  vectorMatches: { id: string; title: string; content_type: string; similarity: number }[],
-  directMatches: { id: string; title: string; content_type: string; effective_date?: string }[],
+function parseClaimedDomains(claim: string): string[] {
+  // Format: "5 domains converging in SD: drought, birds, water, climate, convergence"
+  // or: "Score 63/100. Weather active: pressure drop, high wind."
+  const colonIdx = claim.indexOf(':');
+  if (colonIdx === -1) return [];
+
+  const prefix = claim.slice(0, colonIdx).toLowerCase();
+  // Only parse domain lists from "N domains converging" style claims
+  if (!prefix.includes('domain')) return [];
+
+  const domainPart = claim.slice(colonIdx + 1).trim();
+  return domainPart
+    .split(',')
+    .map(d => d.trim().toLowerCase())
+    .filter(d => d.length > 0 && d.length < 30); // sanity filter
+}
+
+// ---------------------------------------------------------------------------
+// Per-domain grading
+// ---------------------------------------------------------------------------
+
+async function checkDomain(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  domain: string,
+  contentTypes: string[],
+  stateAbbr: string | null,
+  dateFrom: string,
+  dateTo: string,
+): Promise<DomainResult> {
+  let query = supabase
+    .from('hunt_knowledge')
+    .select('id, title, content_type')
+    .in('content_type', contentTypes)
+    .gte('created_at', dateFrom)
+    .lte('created_at', dateTo)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (stateAbbr) {
+    query = query.eq('state_abbr', stateAbbr);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error(`[hunt-alert-grader] Domain check failed for ${domain}:`, error.message);
+  }
+
+  const signals = data || [];
+  return {
+    domain,
+    content_types_checked: contentTypes,
+    signals_found: signals.length,
+    confirmed: signals.length >= DOMAIN_CONFIRM_THRESHOLD,
+    samples: signals.slice(0, 3).map(s => ({ id: s.id, title: s.title, content_type: s.content_type })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Grading logic — per-domain confirmation ratio
+// ---------------------------------------------------------------------------
+
+function gradeFromDomainResults(
+  domainResults: DomainResult[],
   severity: string | undefined,
 ): { grade: Grade; reasoning: string } {
-  const highRelevanceVector = vectorMatches.filter(m => m.similarity > 0.6);
-  const midRelevanceVector = vectorMatches.filter(m => m.similarity > 0.5 && m.similarity <= 0.6);
-  const directCount = directMatches.length;
+  const total = domainResults.length;
+  if (total === 0) {
+    return {
+      grade: severity === 'high' || severity === 'extreme' ? 'false_alarm' : 'missed',
+      reasoning: 'No testable domains found in claim.',
+    };
+  }
 
-  // confirmed: 5+ direct signals OR 2+ high-relevance vector matches
-  if (directCount >= 5 || highRelevanceVector.length >= 2) {
+  const confirmedDomains = domainResults.filter(d => d.confirmed);
+  const confirmedCount = confirmedDomains.length;
+  const ratio = confirmedCount / total;
+
+  const breakdown = domainResults
+    .map(d => `${d.domain}: ${d.signals_found} signal${d.signals_found !== 1 ? 's' : ''} (${d.confirmed ? 'CONFIRMED' : 'MISSED'})`)
+    .join('; ');
+
+  // 80%+ domains confirmed = CONFIRMED
+  if (ratio >= 0.8) {
     return {
       grade: 'confirmed',
-      reasoning: `Found ${directCount} direct signal(s) and ${highRelevanceVector.length} high-relevance vector match(es) (>0.6). Strong pattern validation.`,
+      reasoning: `${confirmedCount}/${total} domains confirmed (${Math.round(ratio * 100)}%). ${breakdown}`,
     };
   }
 
-  // partially_confirmed: 2-4 direct signals OR 1+ vector match > 0.5
-  if (directCount >= 2 || midRelevanceVector.length >= 1 || highRelevanceVector.length >= 1) {
+  // 40-79% = PARTIAL
+  if (ratio >= 0.4) {
     return {
       grade: 'partially_confirmed',
-      reasoning: `Found ${directCount} direct signal(s) and ${midRelevanceVector.length + highRelevanceVector.length} mid/high-relevance vector match(es). Partial confirmation.`,
+      reasoning: `${confirmedCount}/${total} domains confirmed (${Math.round(ratio * 100)}%). ${breakdown}`,
     };
   }
 
-  // false_alarm: 0-1 signals AND alert was high severity
+  // <40% + high severity = FALSE ALARM
   const isHighSeverity = severity === 'high' || severity === 'extreme' || severity === 'spike' || severity === 'threshold_crossed';
   if (isHighSeverity) {
     return {
       grade: 'false_alarm',
-      reasoning: `Only ${directCount} direct signal(s) found in outcome window. Alert was ${severity} severity — classifying as false alarm.`,
+      reasoning: `Only ${confirmedCount}/${total} domains confirmed (${Math.round(ratio * 100)}%). ${breakdown}. High-severity claim with weak outcome.`,
     };
   }
 
-  // missed: 0-1 signals AND alert was low/medium severity
+  // <40% + low severity = MISSED
   return {
     grade: 'missed',
-    reasoning: `Only ${directCount} direct signal(s) found in outcome window. Alert was ${severity || 'unknown'} severity — no predicted activity materialized.`,
+    reasoning: `Only ${confirmedCount}/${total} domains confirmed (${Math.round(ratio * 100)}%). ${breakdown}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fallback: convergence-alert and anomaly-alert grading
+// These don't have structured domain claims — use the old expected_signals approach
+// but with stricter thresholds and no blanket limit(20)
+// ---------------------------------------------------------------------------
+
+function gradeFromSignalCount(
+  directCount: number,
+  vectorHighCount: number,
+  severity: string | undefined,
+): { grade: Grade; reasoning: string } {
+  // Confirmed: 5+ direct signals OR 2+ high-relevance vector matches
+  if (directCount >= 5 || vectorHighCount >= 2) {
+    return {
+      grade: 'confirmed',
+      reasoning: `Found ${directCount} direct signal(s) and ${vectorHighCount} high-relevance vector match(es) (>0.6).`,
+    };
+  }
+
+  // Partial: 2-4 direct signals
+  if (directCount >= 2) {
+    return {
+      grade: 'partially_confirmed',
+      reasoning: `Found ${directCount} direct signal(s) and ${vectorHighCount} high-relevance match(es). Partial confirmation.`,
+    };
+  }
+
+  const isHighSeverity = severity === 'high' || severity === 'extreme' || severity === 'spike' || severity === 'threshold_crossed';
+  if (isHighSeverity) {
+    return {
+      grade: 'false_alarm',
+      reasoning: `Only ${directCount} direct signal(s). High-severity claim with weak outcome.`,
+    };
+  }
+
+  return {
+    grade: 'missed',
+    reasoning: `Only ${directCount} direct signal(s). No predicted activity materialized.`,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+const MAX_PER_RUN = 15;
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
@@ -114,9 +257,7 @@ serve(async (req) => {
 
     console.log('[hunt-alert-grader] Starting alert grading run');
 
-    // -----------------------------------------------------------------
     // 1. Query ungraded alerts past their deadline
-    // -----------------------------------------------------------------
     const { data: ungradedAlerts, error: queryErr } = await supabase
       .from('hunt_alert_outcomes')
       .select('id, alert_source, alert_knowledge_id, state_abbr, alert_date, predicted_outcome, outcome_window_hours, outcome_deadline')
@@ -127,156 +268,148 @@ serve(async (req) => {
 
     if (queryErr) {
       console.error('[hunt-alert-grader] Query error:', queryErr);
-      await logCronRun({
-        functionName: 'hunt-alert-grader',
-        status: 'error',
-        errorMessage: queryErr.message,
-        durationMs: Date.now() - startTime,
-      });
-      return errorResponse(req, 'Query failed', 500);
+      await logCronRun({ functionName: 'hunt-alert-grader', status: 'error', errorMessage: queryErr.message, durationMs: Date.now() - startTime });
+      return cronErrorResponse('Query failed');
     }
 
     if (!ungradedAlerts || ungradedAlerts.length === 0) {
       console.log('[hunt-alert-grader] No alerts to grade');
-      const summary = { graded: 0, message: 'No alerts past deadline to grade' };
-      await logCronRun({
-        functionName: 'hunt-alert-grader',
-        status: 'success',
-        summary,
-        durationMs: Date.now() - startTime,
-      });
-      return successResponse(req, summary);
+      await logCronRun({ functionName: 'hunt-alert-grader', status: 'success', summary: { graded: 0, message: 'No alerts past deadline' }, durationMs: Date.now() - startTime });
+      return cronResponse({ graded: 0, message: 'No alerts past deadline' });
     }
 
     console.log(`[hunt-alert-grader] Found ${ungradedAlerts.length} alerts to grade`);
 
-    // -----------------------------------------------------------------
     // 2. Grade each alert
-    // -----------------------------------------------------------------
-    const gradeCounts: Record<Grade, number> = {
-      confirmed: 0,
-      partially_confirmed: 0,
-      false_alarm: 0,
-      missed: 0,
-    };
+    const gradeCounts: Record<Grade, number> = { confirmed: 0, partially_confirmed: 0, false_alarm: 0, missed: 0 };
     let errors = 0;
 
     for (const alert of ungradedAlerts as AlertOutcome[]) {
       try {
+        const claim = alert.predicted_outcome?.claim || '';
+        const severity = alert.predicted_outcome?.severity as string | undefined;
+        const deadlineDate = new Date(alert.outcome_deadline).toISOString().split('T')[0];
+
         console.log(`[hunt-alert-grader] Grading ${alert.id} (${alert.alert_source} / ${alert.state_abbr || 'national'} / ${alert.alert_date})`);
 
-        // 2a. Read original alert from hunt_knowledge (if available)
-        let originalClaim = alert.predicted_outcome?.claim || 'Unknown alert';
+        let grade: Grade;
+        let reasoning: string;
+        let signalsFound: SignalFound[] = [];
+        let domainResults: DomainResult[] = [];
+
+        // --- COMPOUND-RISK: Per-domain grading ---
+        if (alert.alert_source === 'compound-risk') {
+          const claimedDomains = parseClaimedDomains(claim);
+          const testable = claimedDomains.filter(d => !SKIP_DOMAINS.has(d) && DOMAIN_CONTENT_TYPES[d]);
+
+          if (testable.length === 0) {
+            // Can't parse domains — fall back to generic check
+            console.log(`[hunt-alert-grader] No parseable domains in claim: "${claim.slice(0, 80)}"`);
+            grade = 'missed';
+            reasoning = `Could not parse testable domains from claim. Raw claim: "${claim.slice(0, 120)}"`;
+          } else {
+            // Check each domain independently
+            domainResults = await Promise.all(
+              testable.map(domain =>
+                checkDomain(supabase, domain, DOMAIN_CONTENT_TYPES[domain], alert.state_abbr, alert.alert_date, deadlineDate)
+              )
+            );
+
+            const result = gradeFromDomainResults(domainResults, severity);
+            grade = result.grade;
+            reasoning = result.reasoning;
+
+            // Collect signals from all domains
+            for (const dr of domainResults) {
+              for (const s of dr.samples) {
+                signalsFound.push({ id: s.id, title: s.title, content_type: s.content_type, source: 'direct', domain: dr.domain });
+              }
+            }
+          }
+        }
+        // --- CONVERGENCE-ALERT / ANOMALY-ALERT: Signal-count grading ---
+        else {
+          const queryContentTypes = Array.isArray(alert.predicted_outcome?.expected_signals) && alert.predicted_outcome.expected_signals.length > 0
+            ? alert.predicted_outcome.expected_signals
+            : ['migration-spike-extreme', 'migration-spike-significant', 'weather-event', 'nws-alert'];
+
+          // Direct query — limit per content type to avoid weather flooding
+          const directMatches: { id: string; title: string; content_type: string }[] = [];
+          for (const ct of queryContentTypes) {
+            let q = supabase
+              .from('hunt_knowledge')
+              .select('id, title, content_type')
+              .eq('content_type', ct)
+              .gte('created_at', alert.alert_date)
+              .lte('created_at', alert.outcome_deadline)
+              .order('created_at', { ascending: false })
+              .limit(5);
+
+            if (alert.state_abbr) q = q.eq('state_abbr', alert.state_abbr);
+            const { data } = await q;
+            if (data) directMatches.push(...data);
+          }
+
+          // Vector search for broader signal detection
+          const searchText = `What happened in ${alert.state_abbr || 'the US'} between ${alert.alert_date} and ${deadlineDate}?`;
+          const queryEmbedding = await generateEmbedding(searchText, 'query');
+
+          const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v3', {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.40,
+            match_count: 10,
+            filter_state_abbr: alert.state_abbr || null,
+            filter_content_types: queryContentTypes,
+            filter_species: null,
+            filter_date_from: alert.alert_date,
+            filter_date_to: deadlineDate,
+            recency_weight: 0.1,
+            exclude_du_report: true,
+          });
+
+          const highRelevanceVector = (vectorResults || []).filter((r: { similarity: number }) => r.similarity > 0.6);
+
+          const result = gradeFromSignalCount(directMatches.length, highRelevanceVector.length, severity);
+          grade = result.grade;
+          reasoning = result.reasoning;
+
+          const seenIds = new Set<string>();
+          for (const m of directMatches) {
+            if (!seenIds.has(m.id)) {
+              seenIds.add(m.id);
+              signalsFound.push({ id: m.id, title: m.title, content_type: m.content_type, source: 'direct', domain: 'general' });
+            }
+          }
+        }
+
+        gradeCounts[grade]++;
+
+        // Build grade text for embedding
+        let originalClaim = claim;
         if (alert.alert_knowledge_id) {
           const { data: origEntry } = await supabase
             .from('hunt_knowledge')
             .select('title, content')
             .eq('id', alert.alert_knowledge_id)
             .single();
-
-          if (origEntry) {
-            originalClaim = origEntry.content || origEntry.title || originalClaim;
-          }
+          if (origEntry) originalClaim = origEntry.content || origEntry.title || originalClaim;
         }
 
-        // 2b. Generate embedding for search query
-        const deadlineDate = new Date(alert.outcome_deadline).toISOString().split('T')[0];
-        const searchText = `What happened in ${alert.state_abbr || 'the US'} between ${alert.alert_date} and ${deadlineDate}?`;
-        const queryEmbedding = await generateEmbedding(searchText, 'query');
-
-        // 2c. Vector search via search_hunt_knowledge_v3
-        const expectedSignals = Array.isArray(alert.predicted_outcome?.expected_signals)
-          ? alert.predicted_outcome.expected_signals
-          : null;
-
-        const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v3', {
-          query_embedding: queryEmbedding,
-          match_threshold: 0.40,
-          match_count: 10,
-          filter_state_abbr: alert.state_abbr || null,
-          filter_content_types: expectedSignals,
-          filter_species: null,
-          filter_date_from: alert.alert_date,
-          filter_date_to: deadlineDate,
-          recency_weight: 0.1,
-          exclude_du_report: true,
-        });
-
-        const vectorMatches = (vectorResults || []).map((r: { id: string; title: string; content_type: string; similarity: number }) => ({
-          id: r.id,
-          title: r.title,
-          content_type: r.content_type,
-          similarity: r.similarity,
-        }));
-
-        // 2d. Direct query for recent activity in state/date window
-        // Use alert's expected signals if available, fall back to defaults
-        const queryContentTypes = (Array.isArray(alert.predicted_outcome?.expected_signals) && alert.predicted_outcome.expected_signals.length > 0)
-          ? alert.predicted_outcome.expected_signals
-          : DIRECT_QUERY_CONTENT_TYPES;
-
-        let directQuery = supabase
-          .from('hunt_knowledge')
-          .select('id, title, content_type, effective_date')
-          .in('content_type', queryContentTypes)
-          .gte('created_at', alert.alert_date)
-          .lte('created_at', alert.outcome_deadline)
-          .order('created_at', { ascending: false })
-          .limit(20);
-
-        if (alert.state_abbr) {
-          directQuery = directQuery.eq('state_abbr', alert.state_abbr);
-        }
-
-        const { data: directResults } = await directQuery;
-
-        const directMatches = (directResults || []).map((r: { id: string; title: string; content_type: string; effective_date?: string }) => ({
-          id: r.id,
-          title: r.title,
-          content_type: r.content_type,
-          effective_date: r.effective_date,
-        }));
-
-        // 2e. Grade
-        const severity = alert.predicted_outcome?.severity as string | undefined;
-        const { grade, reasoning } = gradeAlert(vectorMatches, directMatches, severity);
-        gradeCounts[grade]++;
-
-        // Build signals found list (deduplicate by id)
-        const seenIds = new Set<string>();
-        const signalsFound: SignalFound[] = [];
-        for (const m of vectorMatches) {
-          if (!seenIds.has(m.id)) {
-            seenIds.add(m.id);
-            signalsFound.push({ id: m.id, title: m.title, content_type: m.content_type, source: 'vector', similarity: m.similarity });
-          }
-        }
-        for (const m of directMatches) {
-          if (!seenIds.has(m.id)) {
-            seenIds.add(m.id);
-            signalsFound.push({ id: m.id, title: m.title, content_type: m.content_type, source: 'direct', effective_date: m.effective_date });
-          }
-        }
-
-        // 2f. Build grade text for embedding
-        const signalList = signalsFound.length > 0
-          ? signalsFound.map(s => `- [${s.content_type}] ${s.title}${s.similarity ? ` (sim: ${s.similarity.toFixed(2)})` : ''}`).join('\n')
-          : 'None found.';
+        const domainBreakdown = domainResults.length > 0
+          ? `\nDomain breakdown:\n${domainResults.map(d => `  ${d.domain}: ${d.signals_found} signals — ${d.confirmed ? 'CONFIRMED' : 'MISSED'} (checked: ${d.content_types_checked.join(', ')})`).join('\n')}`
+          : '';
 
         let gradeContent = `On ${alert.alert_date}, ${alert.alert_source} fired for ${alert.state_abbr || 'national'}: '${originalClaim.slice(0, 500)}'.\n`;
         gradeContent += `Outcome window: ${alert.alert_date} to ${deadlineDate}.\n`;
-        gradeContent += `Signals found:\n${signalList}\n`;
-        gradeContent += `Grade: ${grade}. Reasoning: ${reasoning}`;
+        gradeContent += `Grade: ${grade}. ${reasoning}${domainBreakdown}`;
 
         if (grade === 'false_alarm') {
-          gradeContent += `\nConditions that were present but did NOT lead to predicted outcome. This suggests the ${alert.alert_source} threshold may need adjustment for ${alert.state_abbr || 'this region'}.`;
+          gradeContent += `\nHigh-severity claim did not materialize. The ${alert.alert_source} threshold may need adjustment for ${alert.state_abbr || 'this region'}.`;
         } else if (grade === 'confirmed') {
-          gradeContent += `\nPattern validated. Conditions that preceded this outcome are reinforced as reliable predictors.`;
+          gradeContent += `\nPattern validated across claimed domains. Conditions reinforced as reliable predictors.`;
         }
 
         const gradeTitle = `Alert Grade: ${grade} — ${alert.state_abbr || 'national'} ${alert.alert_date}`;
-
-        // 2g. Embed grade text into hunt_knowledge
         const gradeEmbedding = await generateEmbedding(gradeContent, 'document');
 
         const { data: insertedGrade, error: insertErr } = await supabase
@@ -295,9 +428,13 @@ serve(async (req) => {
               outcome_grade: grade,
               original_claim: originalClaim.slice(0, 500),
               signals_found_count: signalsFound.length,
-              signals_found: signalsFound.slice(0, 10),
+              signals_found: signalsFound.slice(0, 15),
+              domain_results: domainResults.length > 0 ? domainResults.map(d => ({
+                domain: d.domain,
+                signals_found: d.signals_found,
+                confirmed: d.confirmed,
+              })) : undefined,
               alert_knowledge_id: alert.alert_knowledge_id,
-              accuracy_context: reasoning,
             },
           })
           .select('id')
@@ -309,9 +446,7 @@ serve(async (req) => {
           continue;
         }
 
-        const gradeKnowledgeId = insertedGrade?.id || null;
-
-        // 2h. Update hunt_alert_outcomes
+        // Update hunt_alert_outcomes
         const { error: updateErr } = await supabase
           .from('hunt_alert_outcomes')
           .update({
@@ -319,7 +454,7 @@ serve(async (req) => {
             outcome_grade: grade,
             outcome_signals_found: signalsFound,
             outcome_reasoning: reasoning,
-            grade_knowledge_id: gradeKnowledgeId,
+            grade_knowledge_id: insertedGrade?.id || null,
             graded_at: new Date().toISOString(),
           })
           .eq('id', alert.id);
@@ -331,20 +466,22 @@ serve(async (req) => {
           console.log(`[hunt-alert-grader] Graded ${alert.id}: ${grade}`);
         }
 
-        // === ARC REACTOR: Transition arc to grade ===
+        // Arc reactor: transition arc to grade
         try {
-          const { data: linkedArc } = await supabase
-            .from('hunt_state_arcs')
-            .select('id, current_act')
-            .eq('state_abbr', alert.state_abbr)
-            .in('current_act', ['recognition', 'outcome'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+          if (alert.state_abbr) {
+            const { data: linkedArc } = await supabase
+              .from('hunt_state_arcs')
+              .select('id, current_act')
+              .eq('state_abbr', alert.state_abbr)
+              .in('current_act', ['recognition', 'outcome'])
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
 
-          if (linkedArc) {
-            await transitionArc(supabase, linkedArc.id, 'grade', { grade });
-            fireNarrator(alert.state_abbr || 'US', 'grade_assigned', { arc_id: linkedArc.id, use_opus: true });
+            if (linkedArc) {
+              await transitionArc(supabase, linkedArc.id, 'grade', { grade });
+              fireNarrator(alert.state_abbr, 'grade_assigned', { arc_id: linkedArc.id, use_opus: true });
+            }
           }
         } catch (arcErr) {
           console.error('[hunt-alert-grader] Arc reactor error:', arcErr);
@@ -355,21 +492,16 @@ serve(async (req) => {
       }
     }
 
-    // -----------------------------------------------------------------
     // 3. Log summary
-    // -----------------------------------------------------------------
     const totalGraded = gradeCounts.confirmed + gradeCounts.partially_confirmed + gradeCounts.false_alarm + gradeCounts.missed;
     const summary = {
       graded: totalGraded,
-      confirmed: gradeCounts.confirmed,
-      partially_confirmed: gradeCounts.partially_confirmed,
-      false_alarm: gradeCounts.false_alarm,
-      missed: gradeCounts.missed,
+      ...gradeCounts,
       errors,
       run_at: new Date().toISOString(),
     };
 
-    console.log(`[hunt-alert-grader] Graded ${totalGraded} alerts. Confirmed: ${gradeCounts.confirmed}, Partial: ${gradeCounts.partially_confirmed}, False alarm: ${gradeCounts.false_alarm}, Missed: ${gradeCounts.missed}, Errors: ${errors}`);
+    console.log(`[hunt-alert-grader] Graded ${totalGraded}. Confirmed: ${gradeCounts.confirmed}, Partial: ${gradeCounts.partially_confirmed}, False alarm: ${gradeCounts.false_alarm}, Missed: ${gradeCounts.missed}, Errors: ${errors}`);
 
     await logCronRun({
       functionName: 'hunt-alert-grader',
@@ -378,7 +510,7 @@ serve(async (req) => {
       durationMs: Date.now() - startTime,
     });
 
-    return successResponse(req, summary);
+    return cronResponse(summary);
   } catch (error) {
     console.error('[hunt-alert-grader] Fatal error:', error);
     await logCronRun({
@@ -387,6 +519,6 @@ serve(async (req) => {
       errorMessage: error instanceof Error ? error.message : String(error),
       durationMs: Date.now() - startTime,
     });
-    return errorResponse(req, 'Internal server error', 500);
+    return cronErrorResponse('Internal server error');
   }
 });
