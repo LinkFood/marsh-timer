@@ -15,25 +15,24 @@ import { logCronRun } from '../_shared/cronLog.ts';
 //
 // This returns the top ~20 daily trending searches per region.
 // We fetch national + top environmental monitoring state feeds, then filter for terms
-// related to wildlife, environmental, migration, and outdoor activity.
+// related to weather, hazards, and environmental disruption.
 //
-// When people search "duck migration", "deer season", "cold front",
-// etc., it's a crowdsourced leading indicator of animal movement.
+// When people search "cold front", "flood warning", "wildfire smoke",
+// etc., it's a crowdsourced leading indicator of environmental disruption.
 // ---------------------------------------------------------------------------
 
 const ENVIRONMENTAL_KEYWORDS = [
-  "duck season", "goose season", "deer season", "turkey season",
-  "dove season", "waterfowl", "migration", "duck blind", "decoy",
-  "wader", "shotgun season", "archery season", "muzzleloader",
-  "bag limit", "flyway", "duck call", "goose call", "upland",
-  "teal season", "snow goose", "light goose", "pintail",
-  "mallard", "wood duck", "canvasback", "redhead duck",
-  "whitetail", "white-tailed deer", "mule deer",
-  "wildlife", "game warden", "dnr", "fish and game",
-  "duck stamp", "federal duck stamp",
-  "bird migration", "bird watching", "birding",
-  "cold front", "drought", "flooding", "wildfire", "earthquake",
-  "severe weather", "environmental", "climate change", "water levels",
+  "drought", "flood", "flooding", "heat wave", "heat advisory",
+  "air quality", "air quality index", "aqi", "wildfire", "wildfire smoke",
+  "extreme weather", "severe weather", "cold front", "warm front",
+  "tornado", "tornado warning", "hurricane", "tropical storm",
+  "blizzard", "ice storm", "hail", "thunderstorm", "lightning",
+  "earthquake", "tsunami", "landslide", "mudslide",
+  "water levels", "river levels", "reservoir", "snowpack",
+  "climate change", "climate", "environmental", "pollution",
+  "wind advisory", "frost warning", "freeze warning", "dense fog",
+  "dust storm", "haboob", "derecho", "atmospheric river",
+  "el nino", "la nina", "jet stream", "polar vortex",
 ];
 
 // Top monitored states — keeps request count manageable (~15 states + national)
@@ -186,7 +185,7 @@ serve(async (req) => {
               content_type: "search-trends",
               tags: [region, "search-trends", "google-trends", ...allMatches],
               state_abbr: feed.abbr || null,
-              species: inferSpecies(allMatches),
+              species: null,
               effective_date: today,
               metadata: {
                 source: "google-trends-rss",
@@ -330,18 +329,3 @@ serve(async (req) => {
     return cronErrorResponse(String(err));
   }
 });
-
-/**
- * Infer species from matched keywords.
- * Returns the most specific species, or null if generic.
- */
-function inferSpecies(matches: string[]): string | null {
-  const joined = matches.join(" ");
-  if (/duck|teal|pintail|mallard|wood duck|canvasback|redhead duck|duck blind|duck call|duck stamp|federal duck stamp|waterfowl|decoy/.test(joined)) return "duck";
-  if (/goose|snow goose|light goose|goose call/.test(joined)) return "goose";
-  if (/deer|whitetail|white-tailed deer|mule deer|archery season|muzzleloader/.test(joined)) return "deer";
-  if (/turkey/.test(joined)) return "turkey";
-  if (/dove/.test(joined)) return "dove";
-  if (/elk/.test(joined)) return "deer"; // close enough for search context
-  return null;
-}
