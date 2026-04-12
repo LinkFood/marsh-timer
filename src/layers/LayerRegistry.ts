@@ -19,7 +19,7 @@ export const LAYER_REGISTRY: LayerDef[] = [
   { id: 'flyway-flow', label: 'Flyway Flow', category: 'migration', description: 'Directional migration flow', mapboxLayers: ['flyway-flow-lines'] },
   { id: 'migration-front', label: 'Migration Front', category: 'migration', description: 'Leading edge of migration wave', mapboxLayers: ['migration-front-line', 'migration-front-label', 'migration-front-glow'] },
   { id: 'du-pins', label: 'DU Pins', category: 'migration', description: 'Ducks Unlimited report pins', mapboxLayers: ['du-pins-dots', 'du-pins-clusters', 'du-pins-cluster-count'] },
-  { id: 'birdcast', label: 'BirdCast', category: 'migration', description: 'Radar migration intensity by state', mapboxLayers: ['birdcast-fill'] },
+  { id: 'birdcast', label: 'Birds', category: 'migration', description: 'Radar migration intensity by state', mapboxLayers: ['birdcast-fill'] },
 
   // === Weather ===
   { id: 'radar', label: 'Radar', category: 'weather', description: 'NEXRAD precipitation radar', mapboxLayers: ['radar-overlay'] },

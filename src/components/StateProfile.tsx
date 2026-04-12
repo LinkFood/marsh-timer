@@ -328,9 +328,9 @@ function ComponentBars({ score }: { score: NonNullable<StateProfileProps['conver
   const components = [
     { key: 'weather', label: 'Weather', value: score.weather_component, color: '#f97316', max: 30 },
     { key: 'migration', label: 'Migration', value: score.migration_component, color: '#22c55e', max: 25 },
-    { key: 'solunar', label: 'Solunar', value: score.solunar_component, color: '#3b82f6', max: 15 },
+    { key: 'solunar', label: 'Lunar', value: score.solunar_component, color: '#3b82f6', max: 15 },
     { key: 'pattern', label: 'Pattern', value: score.pattern_component, color: '#a855f7', max: 15 },
-    { key: 'birdcast', label: 'BirdCast', value: score.birdcast_component ?? 0, color: '#eab308', max: 10 },
+    { key: 'birdcast', label: 'Birds', value: score.birdcast_component ?? 0, color: '#eab308', max: 10 },
     { key: 'water', label: 'Water', value: score.water_component ?? 0, color: '#06b6d4', max: 10 },
     { key: 'photoperiod', label: 'Photoperiod', value: score.photoperiod_component ?? 0, color: '#f59e0b', max: 5 },
     { key: 'tide', label: 'Tide', value: score.tide_component ?? 0, color: '#0ea5e9', max: 5 },

@@ -105,7 +105,7 @@ export const CONTENT_TYPE_GROUPS: ContentTypeGroup[] = [
   },
   {
     key: 'solunar',
-    label: 'Solunar',
+    label: 'Lunar',
     icon: Moon,
     color: 'text-yellow-400 bg-yellow-400/10',
     description: 'Moon phase, feeding windows, photoperiod',

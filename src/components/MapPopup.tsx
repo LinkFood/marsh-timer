@@ -18,7 +18,7 @@ export interface PopupConvergence {
 
 
 function getScoreTierColor(score: number): string {
-  if (score >= 81) return "#ef4444";
+  if (score >= 50) return "#ef4444";
   if (score >= 61) return "#fb923c";
   if (score >= 41) return "#facc15";
   if (score >= 21) return "#3b82f6";

@@ -17,7 +17,7 @@ export const DATA_SOURCE_CATALOG: DataSourceDef[] = [
 
   // Migration
   { id: 'ebird', name: 'eBird Sightings', provider: 'Cornell Lab', category: 'migration', cronFunction: 'hunt-migration-monitor', refreshInterval: 'daily', description: 'eBird spike detection across 50 states' },
-  { id: 'birdcast', name: 'BirdCast Radar', provider: 'BirdCast', category: 'migration', cronFunction: 'hunt-birdcast', refreshInterval: 'daily', description: 'Radar migration intensity' },
+  { id: 'birdcast', name: 'BirdCast Radar', provider: 'Birds', category: 'migration', cronFunction: 'hunt-birdcast', refreshInterval: 'daily', description: 'Radar migration intensity' },
   { id: 'du-map', name: 'DU Migration Map', provider: 'Ducks Unlimited', category: 'migration', cronFunction: 'hunt-du-map', refreshInterval: 'weekly', description: 'Migration map pins' },
   { id: 'du-alerts', name: 'DU Alert Articles', provider: 'Ducks Unlimited', category: 'migration', cronFunction: 'hunt-du-alerts', refreshInterval: 'weekly', description: 'Migration alert articles' },
   { id: 'inaturalist', name: 'iNaturalist Obs', provider: 'iNaturalist', category: 'migration', cronFunction: 'hunt-inaturalist', refreshInterval: 'on-demand', description: 'Deer/turkey/dove observations' },

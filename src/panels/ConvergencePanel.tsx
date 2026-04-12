@@ -14,8 +14,8 @@ const FLYWAYS: FlywayName[] = ['Atlantic', 'Mississippi', 'Central', 'Pacific'];
 const COMPONENTS = [
   { key: 'weather_component', label: 'Weather', max: 25, color: 'bg-amber-400' },
   { key: 'migration_component', label: 'Migration', max: 25, color: 'bg-cyan-400' },
-  { key: 'birdcast_component', label: 'BirdCast', max: 20, color: 'bg-emerald-400' },
-  { key: 'solunar_component', label: 'Solunar', max: 15, color: 'bg-yellow-400' },
+  { key: 'birdcast_component', label: 'Birds', max: 20, color: 'bg-emerald-400' },
+  { key: 'solunar_component', label: 'Lunar', max: 15, color: 'bg-yellow-400' },
   { key: 'pattern_component', label: 'Pattern', max: 15, color: 'bg-purple-400' },
   { key: 'water_component', label: 'Water', max: 15, color: 'bg-blue-400' },
   { key: 'photoperiod_component', label: 'Photoperiod', max: 10, color: 'bg-orange-400' },
@@ -23,7 +23,7 @@ const COMPONENTS = [
 ] as const;
 
 function scoreColor(score: number): string {
-  if (score >= 80) return 'text-red-400';
+  if (score >= 50) return 'text-red-400';
   if (score >= 60) return 'text-orange-400';
   if (score >= 40) return 'text-yellow-400';
   if (score >= 20) return 'text-blue-400';
@@ -31,7 +31,7 @@ function scoreColor(score: number): string {
 }
 
 function barColor(score: number): string {
-  if (score >= 80) return 'bg-red-400';
+  if (score >= 50) return 'bg-red-400';
   if (score >= 60) return 'bg-orange-400';
   if (score >= 40) return 'bg-yellow-400';
   if (score >= 20) return 'bg-blue-400';

@@ -1,8 +1,8 @@
 const DM: Record<string, { c: string; l: string; i: string; m: number }> = {
   weather: { c: '#f87171', l: 'Weather', i: 'W', m: 25 },
   migration: { c: '#60a5fa', l: 'Migration', i: 'M', m: 25 },
-  birdcast: { c: '#34d399', l: 'BirdCast', i: 'B', m: 20 },
-  solunar: { c: '#fbbf24', l: 'Solunar', i: 'S', m: 15 },
+  birdcast: { c: '#34d399', l: 'Birds', i: 'B', m: 20 },
+  solunar: { c: '#fbbf24', l: 'Lunar', i: 'S', m: 15 },
   water: { c: '#38bdf8', l: 'Water', i: 'H', m: 15 },
   pattern: { c: '#c084fc', l: 'Pattern', i: 'P', m: 15 },
   photo: { c: '#94a3b8', l: 'Photo', i: 'L', m: 10 },

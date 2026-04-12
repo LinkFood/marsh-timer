@@ -1667,7 +1667,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
               hotspotFeatures.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: centroid },
-                properties: { abbr, score: data.score, tier: data.score >= 81 ? 'fire' : 'hot' },
+                properties: { abbr, score: data.score, tier: data.score >= 50 ? 'fire' : 'hot' },
               });
             }
           }
@@ -3018,7 +3018,7 @@ const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(
           hotspotFeatures.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: centroid },
-            properties: { abbr, score: data.score, tier: data.score >= 81 ? 'fire' : 'hot' },
+            properties: { abbr, score: data.score, tier: data.score >= 50 ? 'fire' : 'hot' },
           });
         }
       }

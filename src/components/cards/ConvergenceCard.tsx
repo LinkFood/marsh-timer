@@ -3,7 +3,7 @@ import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useFeedback } from '../../hooks/useFeedback';
 
 function scoreColor(score: number): string {
-  if (score >= 81) return '#ef4444';
+  if (score >= 50) return '#ef4444';
   if (score >= 61) return '#fb923c';
   if (score >= 41) return '#facc15';
   if (score >= 21) return '#3b82f6';
@@ -11,7 +11,7 @@ function scoreColor(score: number): string {
 }
 
 function scoreTextClass(score: number): string {
-  if (score >= 81) return 'text-red-400';
+  if (score >= 50) return 'text-red-400';
   if (score >= 61) return 'text-orange-400';
   if (score >= 41) return 'text-yellow-400';
   if (score >= 21) return 'text-blue-400';
@@ -35,9 +35,9 @@ interface ConvergenceCardProps {
 
 const COMPONENTS = [
   { label: 'Weather', max: 25, key: 'weatherComponent', color: '#60a5fa' },
-  { label: 'Solunar', max: 15, key: 'solunarComponent', color: '#a78bfa' },
+  { label: 'Lunar', max: 15, key: 'solunarComponent', color: '#a78bfa' },
   { label: 'Migration', max: 25, key: 'migrationComponent', color: '#34d399' },
-  { label: 'BirdCast', max: 20, key: 'birdcastComponent', color: '#06b6d4' },
+  { label: 'Birds', max: 20, key: 'birdcastComponent', color: '#06b6d4' },
   { label: 'Pattern', max: 15, key: 'patternComponent', color: '#f59e0b' },
   { label: 'Water', max: 15, key: 'waterComponent', color: '#3b82f6' },
   { label: 'Photoperiod', max: 10, key: 'photoperiodComponent', color: '#eab308' },

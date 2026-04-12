@@ -5,7 +5,7 @@ import { useDeck } from '@/contexts/DeckContext';
 import type { PanelComponentProps } from './PanelTypes';
 
 function indexColor(val: number): string {
-  if (val >= 80) return 'text-red-400';
+  if (val >= 50) return 'text-red-400';
   if (val >= 60) return 'text-orange-400';
   if (val >= 40) return 'text-yellow-400';
   if (val >= 20) return 'text-blue-400';

@@ -15,8 +15,8 @@ import AutopsyDrawer from '@/components/AutopsyDrawer';
 const DOMAINS = [
   { key: 'weather_component' as const, color: '#ef4444', label: 'Weather', max: 25 },
   { key: 'migration_component' as const, color: '#3b82f6', label: 'Migration', max: 25 },
-  { key: 'birdcast_component' as const, color: '#22c55e', label: 'BirdCast', max: 20 },
-  { key: 'solunar_component' as const, color: '#f59e0b', label: 'Solunar', max: 15 },
+  { key: 'birdcast_component' as const, color: '#22c55e', label: 'Birds', max: 20 },
+  { key: 'solunar_component' as const, color: '#f59e0b', label: 'Lunar', max: 15 },
   { key: 'water_component' as const, color: '#06b6d4', label: 'Water', max: 15 },
   { key: 'pattern_component' as const, color: '#a855f7', label: 'Pattern', max: 15 },
   { key: 'photoperiod_component' as const, color: '#6b7280', label: 'Photo', max: 10 },
@@ -75,7 +75,7 @@ export default function StateDetailPanel({ state, score, arc, brief, briefLoadin
   const { links: patternLinks, loading: linksLoading } = usePatternLinks(state);
   const { entries: alertEntries, loading: alertsLoading } = useBrainJournal(state, 'alerts', 5);
 
-  const tier = score ? (score.score >= 80 ? 'CRITICAL' : score.score >= 50 ? 'ELEVATED' : 'NORMAL') : 'NORMAL';
+  const tier = score ? (score.score >= 35 ? 'CRITICAL' : score.score >= 35 ? 'ELEVATED' : 'NORMAL') : 'NORMAL';
   const tierColor = tier === 'CRITICAL' ? 'text-red-400' : tier === 'ELEVATED' ? 'text-amber-400' : 'text-white/50';
 
   return (

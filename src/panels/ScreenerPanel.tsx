@@ -14,7 +14,7 @@ const TIERS: Tier[] = ['ALL', 'HOT', 'WARM', 'MILD', 'COOL'];
 
 function tierFilter(score: number, tier: Tier): boolean {
   if (tier === 'ALL') return true;
-  if (tier === 'HOT') return score >= 80;
+  if (tier === 'HOT') return score >= 50;
   if (tier === 'WARM') return score >= 60 && score < 80;
   if (tier === 'MILD') return score >= 40 && score < 60;
   return score < 40; // COOL
@@ -29,7 +29,7 @@ function tierColor(tier: Tier): string {
 }
 
 function scoreBg(score: number): string {
-  if (score >= 80) return 'bg-red-400/10';
+  if (score >= 50) return 'bg-red-400/10';
   if (score >= 60) return 'bg-orange-400/10';
   if (score >= 40) return 'bg-yellow-400/10';
   if (score >= 20) return 'bg-blue-400/10';
@@ -37,7 +37,7 @@ function scoreBg(score: number): string {
 }
 
 function scoreText(score: number): string {
-  if (score >= 80) return 'text-red-400';
+  if (score >= 50) return 'text-red-400';
   if (score >= 60) return 'text-orange-400';
   if (score >= 40) return 'text-yellow-400';
   if (score >= 20) return 'text-blue-400';

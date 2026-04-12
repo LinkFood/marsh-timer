@@ -40,7 +40,7 @@ export default function PressureDifferential({ scores, historyMap, arcMap, selec
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
-  const maxScore = 135;
+  const maxScore = 120;
   const maxDelta = Math.max(20, ...points.map(p => Math.abs(p.delta)));
 
   const scaleX = (score: number) => PAD.left + (score / maxScore) * plotW;

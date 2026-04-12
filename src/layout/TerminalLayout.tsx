@@ -431,8 +431,8 @@ export default function TerminalLayout({
 const MINI_BAR_DOMAINS = [
   { key: 'weather_component', color: '#ef4444', label: 'Weather', max: 25 },
   { key: 'migration_component', color: '#3b82f6', label: 'Migration', max: 25 },
-  { key: 'birdcast_component', color: '#22c55e', label: 'BirdCast', max: 20 },
-  { key: 'solunar_component', color: '#f59e0b', label: 'Solunar', max: 15 },
+  { key: 'birdcast_component', color: '#22c55e', label: 'Birds', max: 20 },
+  { key: 'solunar_component', color: '#f59e0b', label: 'Lunar', max: 15 },
   { key: 'water_component', color: '#06b6d4', label: 'Water', max: 15 },
   { key: 'pattern_component', color: '#a855f7', label: 'Pattern', max: 15 },
 ] as const;
@@ -597,7 +597,7 @@ function EmptyStatePreview({ scores, arcs, onSelectState }: { scores: Map<string
       </div>
       <div>
         {top5.map(s => {
-          const tierColor = s.score >= 80 ? 'text-red-400' : s.score >= 50 ? 'text-amber-400' : 'text-white/50';
+          const tierColor = s.score >= 35 ? 'text-red-400' : s.score >= 35 ? 'text-amber-400' : 'text-white/50';
           const actColor = s.arc ? ACT_COLORS[s.arc.current_act] || '#6b7280' : undefined;
           return (
             <button

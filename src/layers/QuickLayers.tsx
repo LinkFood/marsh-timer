@@ -21,7 +21,7 @@ interface QuickButton {
 
 const QUICK_BUTTONS: QuickButton[] = [
   { label: 'Weather', presetId: 'weather' },
-  { label: 'BirdCast', layerId: 'birdcast' },
+  { label: 'Birds', layerId: 'birdcast' },
   { label: '24h Change', layerId: 'convergence-delta' },
   { label: 'Scores', layerId: 'convergence-scores' },
 ];

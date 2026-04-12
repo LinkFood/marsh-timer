@@ -14,8 +14,8 @@ interface ComponentDef {
 const COMPONENTS: ComponentDef[] = [
   { key: 'weather_component', label: 'Weather', max: 25 },
   { key: 'migration_component', label: 'Migration', max: 25 },
-  { key: 'birdcast_component', label: 'BirdCast', max: 20 },
-  { key: 'solunar_component', label: 'Solunar', max: 15 },
+  { key: 'birdcast_component', label: 'Birds', max: 20 },
+  { key: 'solunar_component', label: 'Lunar', max: 15 },
   { key: 'water_component', label: 'Water', max: 15 },
   { key: 'pattern_component', label: 'Pattern', max: 15 },
   { key: 'photoperiod_component', label: 'Photoperiod', max: 10 },
