@@ -4,7 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
