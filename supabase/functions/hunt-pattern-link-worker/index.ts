@@ -17,7 +17,7 @@ import { classifyContentType } from '../_shared/contentTypes.ts';
 // Only processes EXTERNAL content types (no alert-grade/convergence-score bookkeeping).
 // ---------------------------------------------------------------------------
 
-const MAX_ENTRIES_PER_RUN = 3; // ultra-conservative — pool is stressed
+const MAX_ENTRIES_PER_RUN = 1; // one at a time — edge function timeout is tight
 const MIN_SIMILARITY = 0.55;
 const MATCH_LIMIT = 3;
 
@@ -66,7 +66,7 @@ serve(async (req) => {
     const alreadyLinked = new Set<string>((existing || []).map((r: any) => r.source_id));
     const toProcess = externalIds.filter((e: any) => !alreadyLinked.has(e.id)).slice(0, MAX_ENTRIES_PER_RUN);
 
-    console.log(`[${fnName}] Processing ${toProcess.length} unlinked external entries (${externalEntries.length} total external, ${externalEntries.length - toProcess.length} already linked)`);
+    console.log(`[${fnName}] Processing ${toProcess.length} unlinked external entries (${externalIds.length} total external, ${externalIds.length - toProcess.length} already linked)`);
 
     if (toProcess.length === 0) {
       await logCronRun({ functionName: fnName, status: 'success', summary: { linked: 0, message: 'all recent external entries already linked' }, durationMs: Date.now() - startTime });
@@ -76,6 +76,7 @@ serve(async (req) => {
     let linksWritten = 0;
     let entriesWithMatches = 0;
     let errors = 0;
+    const errorDetails: string[] = [];
 
     for (const entry of toProcess) {
       try {
@@ -86,24 +87,52 @@ serve(async (req) => {
           .eq('id', entry.id)
           .single();
 
-        if (fetchErr || !entryWithEmbedding) { errors++; continue; }
-
-        let embedding: number[];
-        if (typeof entryWithEmbedding.embedding === 'string') {
-          embedding = JSON.parse(entryWithEmbedding.embedding);
-        } else if (Array.isArray(entryWithEmbedding.embedding)) {
-          embedding = entryWithEmbedding.embedding;
-        } else {
+        if (fetchErr) {
+          console.error(`[${fnName}] Fetch embedding error for ${entry.id}:`, fetchErr.message);
+          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errors++;
+          continue;
+        }
+        if (!entryWithEmbedding || !entryWithEmbedding.embedding) {
+          console.warn(`[${fnName}] No embedding for ${entry.id}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errors++;
           continue;
         }
 
-        // Vector search — use same params as alert-grader (proven to work)
+        let embedding: number[];
+        if (typeof entryWithEmbedding.embedding === 'string') {
+          try {
+            embedding = JSON.parse(entryWithEmbedding.embedding);
+          } catch (e) {
+            console.error(`[${fnName}] Failed to parse embedding for ${entry.id}:`, e);
+            errors++;
+            continue;
+          }
+        } else if (Array.isArray(entryWithEmbedding.embedding)) {
+          embedding = entryWithEmbedding.embedding;
+        } else {
+          console.warn(`[${fnName}] Unknown embedding format for ${entry.id}: ${typeof entryWithEmbedding.embedding}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errors++;
+          continue;
+        }
+
+        if (embedding.length !== 512) {
+          console.warn(`[${fnName}] Wrong embedding dims for ${entry.id}: ${embedding.length}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errors++;
+          continue;
+        }
+
+        // Vector search — narrow filter to EXTERNAL types only (faster than null filter).
+        // This still allows all real-world cross-domain matches.
         const { data: matches, error: rpcErr } = await supabase.rpc('search_hunt_knowledge_v3', {
           query_embedding: embedding,
           match_threshold: 0.40,
           match_count: 10,
           filter_state_abbr: entry.state_abbr || null,
-          filter_content_types: null,
+          filter_content_types: ['weather-event', 'nws-alert', 'birdcast-daily', 'migration-spike-significant', 'migration-spike-extreme', 'drought-weekly', 'air-quality', 'soil-conditions', 'ocean-buoy', 'space-weather', 'river-discharge', 'usgs-water', 'climate-index', 'storm-event', 'wildfire-perimeter', 'solunar-weekly'],
           filter_species: null,
           filter_date_from: null,
           filter_date_to: null,
@@ -112,11 +141,17 @@ serve(async (req) => {
         });
 
         if (rpcErr) {
+          console.error(`[${fnName}] Vector search error for ${entry.id}:`, rpcErr.message);
+          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
           errors++;
           continue;
         }
 
-        if (!matches || matches.length === 0) continue;
+        if (!matches || matches.length === 0) {
+          console.log(`[${fnName}] No matches above threshold for ${entry.id} (${entry.content_type})`);
+          continue;
+        }
+        console.log(`[${fnName}] ${entry.id}: ${matches.length} raw matches`);
 
         // Filter: cross-domain only (different content_type), skip self
         const filtered = matches
@@ -137,6 +172,7 @@ serve(async (req) => {
 
         const { error: insertErr } = await supabase.from('hunt_pattern_links').insert(rows);
         if (insertErr) {
+          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
           errors++;
           continue;
         }
@@ -144,6 +180,8 @@ serve(async (req) => {
         linksWritten += rows.length;
         entriesWithMatches++;
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errorDetails.push(`${entry.id.slice(0,8)}: ${msg.slice(0, 100)}`);
         errors++;
       }
     }
@@ -153,6 +191,7 @@ serve(async (req) => {
       entries_with_matches: entriesWithMatches,
       links_written: linksWritten,
       errors,
+      error_details: errorDetails,
       run_at: new Date().toISOString(),
     };
 
