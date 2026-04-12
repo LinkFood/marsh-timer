@@ -1,11 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
-// Macro climate oscillation indices — upstream predictors for animal movement
+// Macro climate oscillation indices — upstream predictors for environmental pattern shifts
 // All from NOAA PSL (psl.noaa.gov) — monthly resolution, freely accessible via HTTPS
 const MONTHLY_INDICES = [
   {
@@ -13,8 +13,8 @@ const MONTHLY_INDICES = [
     name: "Arctic Oscillation",
     url: "https://psl.noaa.gov/data/correlation/ao.data",
     impact: {
-      negative: "Cold air outbreak pattern — arctic air pushing south. Strong migration trigger for waterfowl. Negative AO correlates with freeze events forcing birds off staging areas.",
-      positive: "Mild arctic pattern — reduced cold intrusions. Migration may stall. Staging areas ice-free.",
+      negative: "Cold air outbreak pattern — arctic air pushing south. Strong atmospheric disruption signal — cold air intrusions affect biological systems, agriculture, and energy demand.",
+      positive: "Mild arctic pattern — reduced cold intrusions. Ecological timing shifts delayed. Growing seasons and frost dates track warmer baseline.",
       neutral: "Neutral arctic — no strong cold or mild signal.",
     },
   },
@@ -23,8 +23,8 @@ const MONTHLY_INDICES = [
     name: "North Atlantic Oscillation",
     url: "https://psl.noaa.gov/data/correlation/nao.data",
     impact: {
-      negative: "Stormy eastern US — cold, wet. Atlantic flyway migration enhanced. Cold fronts push coastal waterfowl south.",
-      positive: "Mild, dry eastern US. Atlantic flyway migration may slow. Coastal staging areas stable.",
+      negative: "Stormy eastern US — cold, wet. Enhanced meridional flow affects precipitation, temperature patterns, and ecological timing across the eastern seaboard.",
+      positive: "Mild, dry eastern US. Reduced storminess. Stable temperature patterns and minimal precipitation anomalies along the coast.",
       neutral: "Neutral Atlantic — no strong storm signal.",
     },
   },
@@ -33,8 +33,8 @@ const MONTHLY_INDICES = [
     name: "Pacific Decadal Oscillation",
     url: "https://psl.noaa.gov/data/correlation/pdo.data",
     impact: {
-      negative: "Cool Pacific phase — cooler/wetter Pacific Northwest, warmer Southeast. Pacific flyway waterfowl may stage farther south. Multi-year to decadal cycle affects seasonal routing.",
-      positive: "Warm Pacific phase — warmer/drier Pacific Northwest, cooler Southeast. Pacific flyway staging shifts north.",
+      negative: "Cool Pacific phase — cooler/wetter Pacific Northwest, warmer Southeast. Multi-year to decadal cycle shifts regional precipitation and temperature regimes.",
+      positive: "Warm Pacific phase — warmer/drier Pacific Northwest, cooler Southeast. Drought risk elevated in the West, altered growing seasons.",
       neutral: "Neutral Pacific — no strong decadal signal.",
     },
   },
@@ -44,7 +44,7 @@ const MONTHLY_INDICES = [
     url: "https://psl.noaa.gov/data/correlation/nina34.anom.data",
     impact: {
       negative: "La Niña — cooler tropical Pacific. Typically drier South, wetter North. Can amplify cold outbreaks when combined with negative AO. Affects continental storm tracks.",
-      positive: "El Niño — warmer tropical Pacific. Wetter South, milder North. Suppresses cold outbreaks. Waterfowl staging may extend later into season.",
+      positive: "El Niño — warmer tropical Pacific. Wetter South, milder North. Suppresses cold outbreaks. Extended warm seasons affect agriculture and water resources.",
       neutral: "ENSO-neutral — no strong tropical Pacific forcing on continental weather.",
     },
   },
@@ -53,8 +53,8 @@ const MONTHLY_INDICES = [
     name: "Pacific North American Pattern",
     url: "https://psl.noaa.gov/data/correlation/pna.data",
     impact: {
-      negative: "Negative PNA — ridge over eastern Pacific, trough over western US. Wet/cool West, dry/mild East. Pacific flyway gets weather.",
-      positive: "Positive PNA — ridge over western North America, trough in East. Classic cold outbreak setup for Central/Mississippi flyways.",
+      negative: "Negative PNA — ridge over eastern Pacific, trough over western US. Wet/cool West, dry/mild East. Enhanced precipitation and cooler temperatures across western regions.",
+      positive: "Positive PNA — ridge over western North America, trough in East. Classic cold outbreak setup — strong temperature gradients across central and eastern regions.",
       neutral: "Neutral PNA — no strong ridge/trough pattern.",
     },
   },
@@ -100,28 +100,51 @@ serve(async (req) => {
     let totalEmbedded = 0;
     let errors = 0;
 
-    const now = new Date();
-    const currentYear = now.getUTCFullYear();
-    const currentMonth = now.getUTCMonth() + 1;
+    // Optional batch param: comma-separated index IDs (e.g. "ao,nao,pdo")
+    // If not provided, processes all indices
+    const url = new URL(req.url);
+    const batchParam = url.searchParams.get("batch");
+    let indices = MONTHLY_INDICES;
+    if (batchParam) {
+      const ids = batchParam.split(",").map(s => s.trim().toLowerCase());
+      indices = MONTHLY_INDICES.filter(idx => ids.includes(idx.id));
+      if (indices.length === 0) {
+        return cronResponse({ error: "No matching indices", valid_ids: MONTHLY_INDICES.map(i => i.id) }, 400);
+      }
+    }
 
-    for (const index of MONTHLY_INDICES) {
-      try {
-        console.log(`Fetching ${index.name}...`);
-
+    // Phase 1: Fetch all NOAA data in parallel (fast — each URL returns in <2s)
+    console.log(`Fetching ${indices.length} indices in parallel...`);
+    const fetchResults = await Promise.allSettled(
+      indices.map(async (index) => {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-        const res = await fetch(index.url, { signal: controller.signal });
-        clearTimeout(timeout);
-
-        if (!res.ok) {
-          console.warn(`  ${index.name}: HTTP ${res.status}`);
-          errors++;
-          continue;
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        try {
+          const res = await fetch(index.url, { signal: controller.signal });
+          clearTimeout(timeout);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          return { index, text };
+        } catch (err) {
+          clearTimeout(timeout);
+          throw { index, err };
         }
+      })
+    );
 
-        const text = await res.text();
+    // Phase 2: Process each fetched result sequentially (embed + insert)
+    for (const result of fetchResults) {
+      if (result.status === "rejected") {
+        const { index, err } = result.reason;
+        console.error(`  ${index.name} fetch: ${err}`);
+        errors++;
+        continue;
+      }
+
+      const { index, text } = result.value;
+
+      try {
         const all = parseMonthlyPSL(text);
-
         if (all.length === 0) {
           console.warn(`  ${index.name}: no data parsed`);
           continue;
@@ -150,7 +173,6 @@ serve(async (req) => {
 
         const impact = index.impact[phase];
         const dateStr = `${latest.year}-${String(latest.month).padStart(2, "0")}-01`;
-
         const entryTitle = `climate-index ${index.id} ${dateStr}`;
 
         // Skip if this entry already exists in the brain
@@ -181,7 +203,7 @@ serve(async (req) => {
             title: entryTitle,
             content: entryText,
             content_type: "climate-index",
-            tags: [index.id, "climate", "oscillation", "macro-weather", "migration-predictor"],
+            tags: [index.id, "climate", "oscillation", "macro-weather", "environmental-index"],
             species: null,
             state_abbr: null,
             effective_date: dateStr,
@@ -207,8 +229,6 @@ serve(async (req) => {
           totalEmbedded++;
           console.log(`  ${index.name}: ${MONTH_NAMES[latest.month-1]} ${latest.year} = ${latest.value.toFixed(2)} (${phase}, ${trend})`);
         }
-
-        await new Promise(r => setTimeout(r, 1000));
       } catch (err) {
         console.error(`  ${index.name} error: ${err}`);
         errors++;
@@ -219,11 +239,11 @@ serve(async (req) => {
     await logCronRun({
       functionName: "hunt-climate-indices",
       status: errors > 0 ? "partial" : "success",
-      summary: { embedded: totalEmbedded, indices: MONTHLY_INDICES.length, errors },
+      summary: { embedded: totalEmbedded, indices: indices.length, errors },
       durationMs,
     });
 
-    return successResponse(req, { embedded: totalEmbedded, errors, durationMs });
+    return cronResponse({ embedded: totalEmbedded, errors, durationMs });
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
@@ -234,6 +254,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(req, String(err), 500);
+    return cronErrorResponse(String(err));
   }
 });
