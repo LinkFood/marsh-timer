@@ -38,16 +38,16 @@ function classifySnowCover(avgDepth: number, pctWithSnow: number): string {
   return "no_snow";
 }
 
-function migrationImpact(avgDepth: number, pctWithSnow: number, maxDepth: number): string {
+function environmentalImpact(avgDepth: number, pctWithSnow: number, maxDepth: number): string {
   if (avgDepth >= 12 && pctWithSnow >= 60)
-    return "heavy snow/ice lockout — strong push trigger, waterfowl forced south to open water";
+    return "heavy snow/ice lockout — strong environmental disruption trigger, terrestrial foraging blocked, open water concentrated";
   if (avgDepth >= 6 && pctWithSnow >= 40)
-    return "significant snow cover — moderate migration pressure, field feeding limited, birds concentrating on open water";
+    return "significant snow cover — moderate biological timing pressure, field access limited, shallow wetlands freezing";
   if (avgDepth >= 2 && pctWithSnow >= 20)
-    return "light snow cover — mild migration influence, some field access restricted, shallow wetlands may ice over";
+    return "light snow cover — mild ecosystem influence, some field access restricted, shallow wetlands may ice over";
   if (pctWithSnow > 5)
-    return "minimal snow — negligible migration impact, most habitat accessible";
-  return "no snow — no snow-driven migration pressure";
+    return "minimal snow — negligible environmental impact, most habitat accessible";
+  return "no snow — no snow-driven environmental pressure";
 }
 
 interface StationFeature {
@@ -160,7 +160,7 @@ serve(async (req) => {
           }
 
           const classification = classifySnowCover(stats.avgDepth, stats.pctWithSnow);
-          const impact = migrationImpact(stats.avgDepth, stats.pctWithSnow, stats.maxDepth);
+          const impact = environmentalImpact(stats.avgDepth, stats.pctWithSnow, stats.maxDepth);
 
           const text = `snow-cover-daily | ${abbr} | ${dateStr} | avg_depth:${stats.avgDepth}in | max_depth:${stats.maxDepth}in | stations_reporting:${stats.stationsReporting} | stations_with_snow:${stats.stationsWithSnow} | pct_with_snow:${stats.pctWithSnow}% | class:${classification} | impact: ${impact}`;
 
@@ -170,7 +170,7 @@ serve(async (req) => {
               title: `${abbr} snow-cover ${dateStr}`,
               content: text,
               content_type: "snow-cover-daily",
-              tags: [abbr, "snow", "ice", "snow-cover", "migration-trigger", "freeze"],
+              tags: [abbr, "snow", "ice", "snow-cover", "environmental-trigger", "freeze"],
               state_abbr: abbr,
               species: null,
               effective_date: dateStr,
