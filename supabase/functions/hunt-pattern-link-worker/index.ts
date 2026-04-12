@@ -31,16 +31,14 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
-    // Single content_type query — simplest test
-    console.log(`[${fnName}] Querying weather-event entries...`);
-    const q1Start = Date.now();
+    // Query lower-volume content types first — vector search is fast when
+    // there's less data to compare against. drought/air/soil/ocean are small.
     const { data: recentIds, error: idsErr } = await supabase
       .from('hunt_knowledge')
       .select('id, content_type, state_abbr')
-      .eq('content_type', 'weather-event')
+      .eq('content_type', 'drought-weekly')
       .order('created_at', { ascending: false })
       .limit(5);
-    console.log(`[${fnName}] weather-event query took ${Date.now() - q1Start}ms, got ${recentIds?.length ?? 0} rows`);
 
     if (idsErr) {
       console.error(`[${fnName}] IDs query error:`, idsErr);
@@ -88,14 +86,17 @@ serve(async (req) => {
           .single();
 
         if (fetchErr) {
-          console.error(`[${fnName}] Fetch embedding error for ${entry.id}:`, fetchErr.message);
-          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: fetchErr=${(fetchErr.message || String(fetchErr)).slice(0, 80)}`);
           errors++;
           continue;
         }
-        if (!entryWithEmbedding || !entryWithEmbedding.embedding) {
-          console.warn(`[${fnName}] No embedding for ${entry.id}`);
-          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+        if (!entryWithEmbedding) {
+          errorDetails.push(`${entry.id.slice(0,8)}: null row`);
+          errors++;
+          continue;
+        }
+        if (!entryWithEmbedding.embedding) {
+          errorDetails.push(`${entry.id.slice(0,8)}: null embedding field`);
           errors++;
           continue;
         }
@@ -105,44 +106,43 @@ serve(async (req) => {
           try {
             embedding = JSON.parse(entryWithEmbedding.embedding);
           } catch (e) {
-            console.error(`[${fnName}] Failed to parse embedding for ${entry.id}:`, e);
+            errorDetails.push(`${entry.id.slice(0,8)}: parse fail`);
             errors++;
             continue;
           }
         } else if (Array.isArray(entryWithEmbedding.embedding)) {
           embedding = entryWithEmbedding.embedding;
         } else {
-          console.warn(`[${fnName}] Unknown embedding format for ${entry.id}: ${typeof entryWithEmbedding.embedding}`);
-          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: bad type ${typeof entryWithEmbedding.embedding}`);
           errors++;
           continue;
         }
 
         if (embedding.length !== 512) {
-          console.warn(`[${fnName}] Wrong embedding dims for ${entry.id}: ${embedding.length}`);
-          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: wrong dims ${embedding.length}`);
           errors++;
           continue;
         }
 
-        // Vector search — narrow filter to EXTERNAL types only (faster than null filter).
-        // This still allows all real-world cross-domain matches.
+        // Vector search — use date filter to narrow search window (last 30 days).
+        // This hits the date-filter fast path in search_hunt_knowledge_v3.
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+        const today = new Date().toISOString().split('T')[0];
         const { data: matches, error: rpcErr } = await supabase.rpc('search_hunt_knowledge_v3', {
           query_embedding: embedding,
           match_threshold: 0.40,
           match_count: 10,
           filter_state_abbr: entry.state_abbr || null,
-          filter_content_types: ['weather-event', 'nws-alert', 'birdcast-daily', 'migration-spike-significant', 'migration-spike-extreme', 'drought-weekly', 'air-quality', 'soil-conditions', 'ocean-buoy', 'space-weather', 'river-discharge', 'usgs-water', 'climate-index', 'storm-event', 'wildfire-perimeter', 'solunar-weekly'],
+          filter_content_types: null,
           filter_species: null,
-          filter_date_from: null,
-          filter_date_to: null,
-          recency_weight: 0.1,
+          filter_date_from: thirtyDaysAgo,
+          filter_date_to: today,
+          recency_weight: 0.0,
           exclude_du_report: true,
         });
 
         if (rpcErr) {
-          console.error(`[${fnName}] Vector search error for ${entry.id}:`, rpcErr.message);
-          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: rpc=${(rpcErr.message || String(rpcErr)).slice(0, 80)}`);
           errors++;
           continue;
         }
@@ -172,7 +172,7 @@ serve(async (req) => {
 
         const { error: insertErr } = await supabase.from('hunt_pattern_links').insert(rows);
         if (insertErr) {
-          errorDetails.push(`${entry.id.slice(0,8)}: ${errorDetails.length === errors ? 'embed-fetch' : 'other'}`);
+          errorDetails.push(`${entry.id.slice(0,8)}: insert=${(insertErr.message || String(insertErr)).slice(0, 80)}`);
           errors++;
           continue;
         }

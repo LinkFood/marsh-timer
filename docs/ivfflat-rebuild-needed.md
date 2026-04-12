@@ -1,0 +1,47 @@
+# IVFFlat Index Rebuild Required
+
+## Problem
+
+The IVFFlat index on `hunt_knowledge.embedding` is sized for 3.2M rows (lists=1000).
+The brain is now at 7M rows. Vector searches via `search_hunt_knowledge_v3` are
+slow enough to hit the RPC's internal 30s statement timeout on most queries.
+
+## Symptoms
+
+- `hunt-pattern-link-worker` can't complete — every vector search times out
+- `rpc=canceling statement due to statement timeout` errors
+- `rpc=upstream request timeout` (Supabase pooler giving up after 2 min)
+- Running the worker exhausts the connection pool, blocking REST API for 10-30 min
+
+## Fix
+
+Rebuild the IVFFlat index with proper sizing for current brain size:
+
+```sql
+-- sqrt(7M) ≈ 2645, round to 2500
+DROP INDEX CONCURRENTLY IF EXISTS hunt_knowledge_embedding_ivfflat_idx;
+
+CREATE INDEX CONCURRENTLY hunt_knowledge_embedding_ivfflat_idx
+  ON hunt_knowledge
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 2500);
+```
+
+**Warning:** Rebuild takes 30-60 minutes on a 7M-row brain with 512-dim vectors.
+Run during low-traffic window. Cannot be done inside a transaction.
+
+## Post-rebuild
+
+1. Re-schedule `hunt-pattern-link-worker` cron (currently unscheduled via migration 20260414100013)
+2. Test one run: `curl supabase-functions/hunt-pattern-link-worker`
+3. Verify new pattern links are being written to `hunt_pattern_links`
+4. Monitor `hunt_cron_log` for pattern-link-worker health
+
+## Why it matters for the filament test
+
+Without working pattern links, the narrator can't speak about cross-domain discoveries.
+The whole point of the filament test is to see if the 512-dim embedding space reveals
+real cross-domain connections. That requires the vector search to actually work.
+
+The daily digest continues to run (it reads narrator outputs and arc grades) but
+the "INTERESTING BUT UNCONFIRMED" section stays empty until pattern links flow again.
