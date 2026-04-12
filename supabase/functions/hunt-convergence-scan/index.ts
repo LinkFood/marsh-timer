@@ -125,11 +125,55 @@ serve(async (req: Request) => {
         .eq('state_abbr', state_abbr)
         .order('date', { ascending: false })
         .limit(1),
+
+      // Air quality (last 48h)
+      supabase.from('hunt_knowledge')
+        .select('title, content_type, metadata')
+        .eq('state_abbr', state_abbr)
+        .eq('content_type', 'air-quality')
+        .gte('created_at', fortyEightHours)
+        .order('created_at', { ascending: false })
+        .limit(3),
+
+      // Soil conditions (last 7 days)
+      supabase.from('hunt_knowledge')
+        .select('title, content_type, metadata')
+        .eq('state_abbr', state_abbr)
+        .eq('content_type', 'soil-conditions')
+        .gte('created_at', sevenDays)
+        .order('created_at', { ascending: false })
+        .limit(3),
+
+      // Ocean buoy (last 48h, coastal only)
+      supabase.from('hunt_knowledge')
+        .select('title, content_type, metadata')
+        .eq('state_abbr', state_abbr)
+        .eq('content_type', 'ocean-buoy')
+        .gte('created_at', fortyEightHours)
+        .order('created_at', { ascending: false })
+        .limit(3),
+
+      // Space weather (last 48h, global)
+      supabase.from('hunt_knowledge')
+        .select('title, content_type, metadata')
+        .eq('content_type', 'space-weather')
+        .gte('created_at', fortyEightHours)
+        .order('created_at', { ascending: false })
+        .limit(3),
+
+      // River discharge (last 7 days)
+      supabase.from('hunt_knowledge')
+        .select('title, content_type, metadata')
+        .eq('state_abbr', state_abbr)
+        .eq('content_type', 'river-discharge')
+        .gte('created_at', sevenDays)
+        .order('created_at', { ascending: false })
+        .limit(3),
     ]);
 
     // 2. Count converging domains
     const domains: Record<string, { count: number; summary: string }> = {};
-    const labels = ['weather', 'drought', 'birds', 'water', 'nws', 'climate', 'storms', 'convergence'];
+    const labels = ['weather', 'drought', 'biological', 'water', 'nws', 'climate', 'storms', 'convergence', 'air_quality', 'soil', 'ocean', 'space_weather', 'river'];
 
     for (let i = 0; i < domainQueries.length; i++) {
       const { data } = domainQueries[i];
@@ -273,6 +317,27 @@ Never predict outcomes. State what signals are converging and what happened hist
       .limit(1)
       .maybeSingle();
 
+    // Build expected_signals from the actual converging domains
+    const DOMAIN_SIGNAL_MAP: Record<string, string[]> = {
+      weather: ['weather-event', 'nws-alert'],
+      biological: ['birdcast-daily', 'migration-spike-significant', 'migration-spike-extreme'],
+      drought: ['drought-weekly'],
+      water: ['usgs-water', 'river-discharge'],
+      nws: ['nws-alert'],
+      climate: ['climate-index'],
+      storms: ['storm-event'],
+      air_quality: ['air-quality'],
+      soil: ['soil-conditions'],
+      ocean: ['ocean-buoy'],
+      space_weather: ['space-weather'],
+      river: ['river-discharge'],
+    };
+    const expectedSignals = [...new Set(
+      Object.keys(domains).flatMap(d => DOMAIN_SIGNAL_MAP[d] || [])
+    )];
+    // Fallback if empty
+    if (expectedSignals.length === 0) expectedSignals.push('weather-event', 'nws-alert');
+
     if (!existingOutcome) {
       const outcomeDeadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
@@ -281,7 +346,7 @@ Never predict outcomes. State what signals are converging and what happened hist
         alert_date: today,
         predicted_outcome: {
           claim: `${convergingCount} domains converging in ${state_abbr}: ${Object.keys(domains).join(', ')}`,
-          expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
+          expected_signals: expectedSignals,
           severity: trigger_severity,
           converging_domains: convergingCount,
         },
@@ -307,7 +372,7 @@ Never predict outcomes. State what signals are converging and what happened hist
           },
           recognition_claim: {
             claim: `${convergingCount} domains converging in ${state_abbr}`,
-            expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
+            expected_signals: expectedSignals,
             pattern_type: 'compound-risk',
           },
           outcome_deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -318,7 +383,7 @@ Never predict outcomes. State what signals are converging and what happened hist
         await transitionArc(supabase, existingArc.id, 'recognition', {
           recognition_claim: {
             claim: `${convergingCount} domains converging in ${state_abbr}`,
-            expected_signals: ['nws-alert', 'weather-event', 'storm-event'],
+            expected_signals: expectedSignals,
             pattern_type: 'compound-risk',
           },
           outcome_deadline: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
