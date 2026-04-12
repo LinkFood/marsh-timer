@@ -59,7 +59,13 @@ async function fetchJson(url: string): Promise<unknown> {
     throw new Error(`SWPC ${url} returned ${res.status}`);
   }
 
-  return res.json();
+  // Wrap JSON parse — NOAA SWPC sometimes returns truncated JSON during outages
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (parseErr) {
+    throw new Error(`SWPC ${url} returned malformed JSON (${text.length} chars): ${parseErr instanceof Error ? parseErr.message : 'parse error'}`);
+  }
 }
 
 function getDateKey(timeTag: string | undefined | null): string {

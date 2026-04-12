@@ -278,6 +278,11 @@ Never predict outcomes. State what signals are converging and what happened hist
     const alertText = parseTextContent(synthesisResponse);
 
     // 7. Embed and insert compound risk alert
+    if (!alertText || alertText.trim().length === 0) {
+      console.warn(`[${FUNCTION_NAME}] Empty alertText for ${state_abbr}, skipping embed`);
+      await logCronRun({ functionName: FUNCTION_NAME, status: 'partial', summary: { state: state_abbr, reason: 'empty alert text' }, durationMs: Date.now() - startTime });
+      return successResponse(req, { state: state_abbr, alert: false, reason: 'empty alert text' });
+    }
     const alertEmbedding = await generateEmbedding(alertText, 'document');
 
     const { error: insertErr } = await supabase.from('hunt_knowledge').insert({
