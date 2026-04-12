@@ -1,5 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 
+export interface DomainScores {
+  weather?: number;
+  biological?: number;
+  lunar?: number;
+  water?: number;
+  drought?: number;
+  air_quality?: number;
+  soil?: number;
+  ocean?: number;
+  space_weather?: number;
+  photoperiod?: number;
+  tide?: number;
+}
+
 export interface ConvergenceScore {
   state_abbr: string;
   score: number;
@@ -13,6 +27,7 @@ export interface ConvergenceScore {
   tide_component: number;
   reasoning: string;
   national_rank: number;
+  domain_scores?: DomainScores;
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -82,6 +97,7 @@ export function useConvergenceScores() {
           tide_component: row.tide_component ?? 0,
           reasoning: row.reasoning,
           national_rank: i + 1,
+          domain_scores: row.signals?.domain_scores ?? undefined,
         }));
 
         for (const entry of ranked) {

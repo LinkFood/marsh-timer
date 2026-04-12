@@ -112,17 +112,22 @@ serve(async (req) => {
     let convergence = null;
     const convRow = convergenceRes.data?.[0];
     if (convRow) {
+      // Read domain scores from signals JSON (new engine) or fall back to legacy columns
+      const ds = convRow.signals?.domain_scores;
       convergence = {
         total_score: convRow.score ?? 0,
         components: [
-          { domain: 'weather', score: convRow.weather_component ?? 0, max_score: 25, label: 'Weather' },
-          { domain: 'migration', score: convRow.migration_component ?? 0, max_score: 25, label: 'Migration' },
-          { domain: 'birdcast', score: convRow.birdcast_component ?? 0, max_score: 20, label: 'BirdCast' },
-          { domain: 'solunar', score: convRow.solunar_component ?? 0, max_score: 15, label: 'Solunar' },
-          { domain: 'water', score: convRow.water_component ?? 0, max_score: 15, label: 'Water' },
-          { domain: 'pattern', score: convRow.pattern_component ?? 0, max_score: 15, label: 'Pattern' },
-          { domain: 'photoperiod', score: convRow.photoperiod_component ?? 0, max_score: 10, label: 'Photoperiod' },
-          { domain: 'tide', score: convRow.tide_component ?? 0, max_score: 10, label: 'Tide' },
+          { domain: 'weather', score: ds?.weather ?? convRow.weather_component ?? 0, max_score: 20, label: 'Weather' },
+          { domain: 'biological', score: ds?.biological ?? (convRow.migration_component + convRow.birdcast_component) ?? 0, max_score: 15, label: 'Bio' },
+          { domain: 'water', score: ds?.water ?? convRow.water_component ?? 0, max_score: 15, label: 'Water' },
+          { domain: 'drought', score: ds?.drought ?? 0, max_score: 15, label: 'Drought' },
+          { domain: 'air_quality', score: ds?.air_quality ?? 0, max_score: 15, label: 'Air' },
+          { domain: 'soil', score: ds?.soil ?? 0, max_score: 10, label: 'Soil' },
+          { domain: 'ocean', score: ds?.ocean ?? 0, max_score: 10, label: 'Ocean' },
+          { domain: 'space_weather', score: ds?.space_weather ?? 0, max_score: 10, label: 'Space' },
+          { domain: 'lunar', score: ds?.lunar ?? convRow.solunar_component ?? 0, max_score: 10, label: 'Lunar' },
+          { domain: 'photoperiod', score: ds?.photoperiod ?? convRow.photoperiod_component ?? 0, max_score: 8, label: 'Photo' },
+          { domain: 'tide', score: ds?.tide ?? convRow.tide_component ?? 0, max_score: 8, label: 'Tide' },
         ],
       };
     }

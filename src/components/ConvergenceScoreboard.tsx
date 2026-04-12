@@ -6,18 +6,22 @@ import { useDeck } from '@/contexts/DeckContext';
 import { useConvergenceTimeline } from '@/hooks/useConvergenceTimeline';
 import PressureDifferential from '@/components/PressureDifferential';
 
-const DOMAINS = [
-  { key: 'weather_component' as const, color: '#ef4444', label: 'Weather' },
-  { key: 'migration_component' as const, color: '#3b82f6', label: 'Migration' },
-  { key: 'birdcast_component' as const, color: '#22c55e', label: 'BirdCast' },
-  { key: 'solunar_component' as const, color: '#f59e0b', label: 'Solunar' },
-  { key: 'water_component' as const, color: '#06b6d4', label: 'Water' },
-  { key: 'pattern_component' as const, color: '#a855f7', label: 'Pattern' },
-  { key: 'photoperiod_component' as const, color: '#6b7280', label: 'Photo' },
-  { key: 'tide_component' as const, color: '#9ca3af', label: 'Tide' },
+// Domain-agnostic scoring — 11 environmental domains, equal weight
+const DOMAINS: { key: string; color: string; label: string; fromSignals?: boolean }[] = [
+  { key: 'weather_component', color: '#ef4444', label: 'Weather' },
+  { key: 'biological', color: '#3b82f6', label: 'Bio', fromSignals: true },
+  { key: 'water', color: '#06b6d4', label: 'Water', fromSignals: true },
+  { key: 'drought', color: '#d97706', label: 'Drought', fromSignals: true },
+  { key: 'air_quality', color: '#84cc16', label: 'Air', fromSignals: true },
+  { key: 'soil', color: '#a3764b', label: 'Soil', fromSignals: true },
+  { key: 'ocean', color: '#0ea5e9', label: 'Ocean', fromSignals: true },
+  { key: 'space_weather', color: '#c084fc', label: 'Space', fromSignals: true },
+  { key: 'lunar', color: '#f59e0b', label: 'Lunar', fromSignals: true },
+  { key: 'photoperiod_component', color: '#6b7280', label: 'Photo' },
+  { key: 'tide_component', color: '#9ca3af', label: 'Tide' },
 ];
 
-const MAX_SCORE = 135;
+const MAX_SCORE = 120;
 
 function Spark({ data, w = 32, h = 10 }: { data: number[]; w?: number; h?: number }) {
   if (!data || data.length < 2) return null;
@@ -216,7 +220,9 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
               {/* Mini-bars */}
               <div className="flex-1 h-3 flex gap-px rounded-sm overflow-hidden bg-white/[0.03]">
                 {DOMAINS.map(d => {
-                  const val = s[d.key] || 0;
+                  const val = d.fromSignals
+                    ? (s.domain_scores?.[d.key as keyof typeof s.domain_scores] ?? 0) as number
+                    : (s[d.key as keyof typeof s] as number) || 0;
                   if (val <= 0) return null;
                   return (
                     <div
