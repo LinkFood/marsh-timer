@@ -8,14 +8,14 @@ import { logCronRun } from '../_shared/cronLog.ts';
 const NASS_API_URL = "https://quickstats.nass.usda.gov/api/api_GET";
 const NASS_API_KEY = "25B05F81-1582-3D5D-A4F1-D13D00FCE7D1";
 
-// Crops that create flooded/worked fields attracting waterfowl
+// Crops that create flooded fields supporting wetland ecosystems
 const CROPS = ["RICE", "CORN", "SOYBEANS", "WINTER WHEAT"];
 
 // Progress stages relevant to field conditions (planted=worked, emerged=flooded/growing, harvested=stubble/flood)
 const PROGRESS_UNITS = ["PCT PLANTED", "PCT EMERGED", "PCT HARVESTED"];
 
-// Mississippi + Central flyway states where crop fields overlap waterfowl habitat
-const FLYWAY_STATES = [
+// Mississippi valley + Central region states where crop fields overlap wetland ecosystems
+const MONITORED_STATES = [
   "AR", "LA", "TX", "MO", "MS", "CA", "IL", "IN", "IA", "KS",
   "KY", "MN", "NE", "ND", "OH", "OK", "SD", "TN", "WI",
 ];
@@ -99,13 +99,13 @@ serve(async (req) => {
           const json = await res.json();
           const records: NassRecord[] = json.data || [];
 
-          // Filter to flyway states only
+          // Filter to monitored states only
           const filtered = records.filter((r) =>
-            FLYWAY_STATES.includes(r.state_alpha) && r.Value && r.Value !== "(D)" && r.Value !== "(NA)"
+            MONITORED_STATES.includes(r.state_alpha) && r.Value && r.Value !== "(D)" && r.Value !== "(NA)"
           );
 
           if (filtered.length === 0) {
-            console.log(`  ${crop} ${unit}: no flyway state data`);
+            console.log(`  ${crop} ${unit}: no monitored state data`);
             continue;
           }
 
@@ -130,7 +130,7 @@ serve(async (req) => {
                 content_type: "crop-progress-weekly",
                 tags: [r.state_alpha, cropLower, "crop-progress", unitShort, "nass"],
                 state_abbr: r.state_alpha,
-                species: "duck", // Crop conditions primarily affect waterfowl
+                species: null,
                 effective_date: weekEnding,
                 metadata: {
                   source: "usda-nass",
