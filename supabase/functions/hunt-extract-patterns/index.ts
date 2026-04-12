@@ -47,7 +47,6 @@ async function fetchJoinedData(
     .from('hunt_migration_history')
     .select('date,sighting_count,location_count')
     .eq('state_abbr', stateAbbr)
-    .eq('species', 'duck')
     .order('date');
 
   const { data: wxData } = await supabase
@@ -90,14 +89,14 @@ function formatDataForClaude(
       const w = d.weather as Record<string, unknown>;
       return `${d.date}: ${d.sighting_count} sightings at ${d.location_count} locations | ${w.temp_avg_f}F (${w.temp_low_f}-${w.temp_high_f}) | wind ${w.wind_speed_avg_mph}mph max ${w.wind_speed_max_mph}mph dir ${w.wind_direction_dominant} | pressure ${w.pressure_avg_msl}mb change ${w.pressure_change_12h}mb | precip ${w.precipitation_total_mm}mm | cloud ${w.cloud_cover_avg}%`;
     });
-    return `State: ${stateName}\nDuck season weather + migration data (${data.withMigration.length} days with sightings, Sept-Feb over 5 years):\n\n${rows.join("\n")}`;
+    return `State: ${stateName}\nWeather + biological activity data (${data.withMigration.length} days with sightings, 5 years):\n\n${rows.join("\n")}`;
   }
 
   const sample = sampleData(data.weatherOnly);
   const rows = sample.map((w) =>
     `${w.date}: ${w.temp_avg_f}F (${w.temp_low_f}-${w.temp_high_f}) | wind ${w.wind_speed_avg_mph}mph max ${w.wind_speed_max_mph}mph dir ${w.wind_direction_dominant} | pressure ${w.pressure_avg_msl}mb change ${w.pressure_change_12h}mb | precip ${w.precipitation_total_mm}mm | cloud ${w.cloud_cover_avg}%`
   );
-  return `State: ${stateName}\nDuck season weather data (${data.weatherOnly.length} days, Sept-Feb over 5 years, NO migration sighting data yet):\n\n${rows.join("\n")}`;
+  return `State: ${stateName}\nHistorical weather data (${data.weatherOnly.length} days across 5 years, NO biological activity data yet):\n\n${rows.join("\n")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,27 +104,27 @@ function formatDataForClaude(
 // ---------------------------------------------------------------------------
 
 async function extractPatterns(stateName: string, dataText: string, weatherOnly: boolean): Promise<string[]> {
-  const migrationPrompt = `You are a waterfowl migration analyst. Analyze this historical duck sighting + weather data for ${stateName} and extract actionable environmental intelligence patterns.
+  const migrationPrompt = `You are an environmental pattern analyst. Analyze this historical biological activity + weather data for ${stateName} and extract actionable environmental intelligence patterns.
 
 ${dataText}
 
-Extract 5-10 specific, data-backed patterns. Each pattern should be a standalone insight an observer could use. Focus on:
-- Weather conditions that correlate with high sighting counts (cold fronts, pressure drops, wind direction, temperature)
+Extract 5-10 specific, data-backed patterns. Each pattern should be a standalone insight. Focus on:
+- Weather conditions that correlate with spikes in biological activity (cold fronts, pressure drops, wind direction, temperature)
 - Timing patterns (which weeks/months peak, how they shift year to year)
-- Notable migration triggers (first hard freeze, sustained cold, wind shifts)
+- Notable environmental disruption triggers (first hard freeze, sustained cold, wind shifts, pressure swings)
 
 Format: Return ONLY a JSON array of pattern strings. Each string should be 1-2 sentences, specific and quantitative where possible.
 Return ONLY the JSON array, no other text.`;
 
-  const weatherOnlyPrompt = `You are a waterfowl weather analyst. Analyze this historical weather data for ${stateName} during duck season months (Sept-Feb). Based on your knowledge of how waterfowl respond to weather, extract patterns that observers should know about.
+  const weatherOnlyPrompt = `You are an environmental pattern analyst. Analyze this historical weather data for ${stateName}. Extract patterns in the atmospheric record that an observer tracking environmental change should know about.
 
 ${dataText}
 
 Extract 5-8 specific, actionable patterns. Focus on:
 - Cold front patterns and timing (pressure drops, temp crashes, wind shifts)
-- Typical weather windows that correlate with waterfowl movement
-- Month-by-month weather progression and what it means for duck movement
-- Wind direction patterns and what they signal
+- Typical weather windows that tend to precede biological timing shifts
+- Month-by-month weather progression and what it signals for the broader ecosystem
+- Wind direction patterns and what they indicate
 
 Format: Return ONLY a JSON array of pattern strings. Each string should be 1-2 sentences.
 Return ONLY the JSON array, no other text.`;
@@ -221,8 +220,8 @@ serve(async (req) => {
         const contentType = data.withMigration.length > 0 ? "weather-pattern" : "weather-insight";
 
         for (const pattern of patterns) {
-          const title = `Weather-migration pattern: ${stateName}`;
-          const richText = `${title} | ${contentType} | duck, ${stateName.toLowerCase()}, weather, migration | ${pattern}`;
+          const title = `Weather-environment pattern: ${stateName}`;
+          const richText = `${title} | ${contentType} | ${stateName.toLowerCase()}, weather, environment, biological-timing | ${pattern}`;
 
           const embedding = await generateEmbedding(richText, 'document');
 
@@ -232,8 +231,8 @@ serve(async (req) => {
               title: `${contentType} | ${stateAbbr} | ${pattern.substring(0, 60)}`,
               content: pattern,
               content_type: contentType,
-              tags: ["duck", stateName.toLowerCase(), "weather", "migration", "pattern"],
-              species: "duck",
+              tags: [stateName.toLowerCase(), "weather", "environment", "biological-timing", "pattern"],
+              species: null,
               state_abbr: stateAbbr,
               effective_date: null,
               embedding,
