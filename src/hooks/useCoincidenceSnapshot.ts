@@ -16,11 +16,11 @@ export function useCoincidenceSnapshot() {
     if (!supabase) { setLoading(false); return; }
 
     Promise.all([
-      // States with convergence score > 50 (meaningful activity)
+      // States with convergence score > 30 (meaningful activity — balanced 11-domain scoring)
       supabase
         .from('hunt_convergence_scores')
         .select('state_abbr,score')
-        .gt('score', 50)
+        .gt('score', 30)
         .order('score', { ascending: false })
         .limit(50),
       // Active arcs (not closed)

@@ -22,25 +22,45 @@ function formatDate(): string {
 }
 
 const DOMAIN_COLORS: Record<string, string> = {
-  weather: 'bg-orange-400',
-  migration: 'bg-cyan-400',
-  birdcast: 'bg-cyan-300',
-  solunar: 'bg-yellow-300',
-  water: 'bg-blue-400',
-  pattern: 'bg-violet-400',
-  photoperiod: 'bg-yellow-500',
-  tide: 'bg-teal-400',
+  weather: 'bg-red-400',
+  biological: 'bg-blue-400',
+  water: 'bg-cyan-400',
+  drought: 'bg-amber-500',
+  air_quality: 'bg-lime-400',
+  soil: 'bg-amber-700',
+  ocean: 'bg-sky-400',
+  space_weather: 'bg-purple-400',
+  lunar: 'bg-yellow-400',
+  photoperiod: 'bg-gray-400',
+  tide: 'bg-gray-500',
 };
 
 const DOMAIN_TEXT_COLORS: Record<string, string> = {
-  weather: 'text-orange-400',
-  migration: 'text-cyan-400',
-  birdcast: 'text-cyan-300',
-  solunar: 'text-yellow-300',
-  water: 'text-blue-400',
-  pattern: 'text-violet-400',
-  photoperiod: 'text-yellow-500',
-  tide: 'text-teal-400',
+  weather: 'text-red-400',
+  biological: 'text-blue-400',
+  water: 'text-cyan-400',
+  drought: 'text-amber-500',
+  air_quality: 'text-lime-400',
+  soil: 'text-amber-700',
+  ocean: 'text-sky-400',
+  space_weather: 'text-purple-400',
+  lunar: 'text-yellow-400',
+  photoperiod: 'text-gray-400',
+  tide: 'text-gray-500',
+};
+
+const DOMAIN_SHORT_LABELS: Record<string, string> = {
+  weather: 'WEAT',
+  biological: 'BIO',
+  water: 'WATR',
+  drought: 'DRHT',
+  air_quality: 'AIR',
+  soil: 'SOIL',
+  ocean: 'OCEN',
+  space_weather: 'SPCE',
+  lunar: 'LUNA',
+  photoperiod: 'PHOT',
+  tide: 'TIDE',
 };
 
 function contentTypeIcon(ct: string): string {
@@ -258,7 +278,7 @@ function ConvergencePulse({ convergence }: { convergence: TodayBriefingData['con
       <div className="flex items-center justify-between mb-2">
         <span className="text-[9px] font-mono text-white/20 tracking-wider">CONVERGENCE</span>
         <span className="text-[10px] font-mono text-cyan-400/50">
-          {convergence.total_score}<span className="text-white/15">/120</span>
+          {convergence.total_score}<span className="text-white/15">/100</span>
         </span>
       </div>
       <div className="flex gap-1.5">
@@ -275,7 +295,7 @@ function ConvergencePulse({ convergence }: { convergence: TodayBriefingData['con
                 />
               </div>
               <p className={`text-[7px] font-mono ${textColor} text-center mt-1 truncate`}>
-                {c.domain.slice(0, 4).toUpperCase()}
+                {DOMAIN_SHORT_LABELS[c.domain] || c.label?.slice(0, 4).toUpperCase() || c.domain.slice(0, 4).toUpperCase()}
               </p>
             </div>
           );

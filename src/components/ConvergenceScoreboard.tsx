@@ -6,19 +6,19 @@ import { useDeck } from '@/contexts/DeckContext';
 import { useConvergenceTimeline } from '@/hooks/useConvergenceTimeline';
 import PressureDifferential from '@/components/PressureDifferential';
 
-// Domain-agnostic scoring — 11 environmental domains, equal weight
-const DOMAINS: { key: string; color: string; label: string; fromSignals?: boolean }[] = [
-  { key: 'weather_component', color: '#ef4444', label: 'Weather' },
-  { key: 'biological', color: '#3b82f6', label: 'Bio', fromSignals: true },
-  { key: 'water', color: '#06b6d4', label: 'Water', fromSignals: true },
-  { key: 'drought', color: '#d97706', label: 'Drought', fromSignals: true },
-  { key: 'air_quality', color: '#84cc16', label: 'Air', fromSignals: true },
-  { key: 'soil', color: '#a3764b', label: 'Soil', fromSignals: true },
-  { key: 'ocean', color: '#0ea5e9', label: 'Ocean', fromSignals: true },
-  { key: 'space_weather', color: '#c084fc', label: 'Space', fromSignals: true },
-  { key: 'lunar', color: '#f59e0b', label: 'Lunar', fromSignals: true },
-  { key: 'photoperiod_component', color: '#6b7280', label: 'Photo' },
-  { key: 'tide_component', color: '#9ca3af', label: 'Tide' },
+// Domain-agnostic scoring — 11 environmental domains, balanced weight
+const DOMAINS: { key: string; color: string; label: string; short: string; fromSignals?: boolean }[] = [
+  { key: 'weather_component', color: '#ef4444', label: 'Weather', short: 'WEAT' },
+  { key: 'biological', color: '#3b82f6', label: 'Biological', short: 'BIO', fromSignals: true },
+  { key: 'water', color: '#06b6d4', label: 'Water', short: 'WATR', fromSignals: true },
+  { key: 'drought', color: '#d97706', label: 'Drought', short: 'DRHT', fromSignals: true },
+  { key: 'air_quality', color: '#84cc16', label: 'Air Quality', short: 'AIR', fromSignals: true },
+  { key: 'soil', color: '#92642d', label: 'Soil', short: 'SOIL', fromSignals: true },
+  { key: 'ocean', color: '#0ea5e9', label: 'Ocean', short: 'OCEN', fromSignals: true },
+  { key: 'space_weather', color: '#c084fc', label: 'Space Weather', short: 'SPCE', fromSignals: true },
+  { key: 'lunar', color: '#f59e0b', label: 'Lunar Cycle', short: 'LUNA', fromSignals: true },
+  { key: 'photoperiod_component', color: '#6b7280', label: 'Photoperiod', short: 'PHOT' },
+  { key: 'tide_component', color: '#9ca3af', label: 'Tide', short: 'TIDE' },
 ];
 
 const MAX_SCORE = 120;
@@ -157,7 +157,7 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
         {DOMAINS.map(d => (
           <div key={d.key} className="flex items-center gap-1">
             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color, opacity: 0.8 }} />
-            <span className="text-[8px] font-mono text-white/25">{d.label}</span>
+            <span className="text-[8px] font-mono text-white/25">{d.short}</span>
           </div>
         ))}
       </div>
@@ -179,7 +179,7 @@ export default function ConvergenceScoreboard({ scores, selectedState, onSelectS
       <div className={`flex-1 overflow-y-auto ${viewMode === 'scatter' ? 'hidden' : ''}`}>
         {sorted.map((s, i) => {
           const isSelected = s.state_abbr === selectedState;
-          const tier = s.score >= 80 ? 'critical' : s.score >= 50 ? 'elevated' : 'normal';
+          const tier = s.score >= 60 ? 'critical' : s.score >= 35 ? 'elevated' : 'normal';
           const sparkData = historyMap?.get(s.state_abbr);
           const arc = arcMap?.get(s.state_abbr);
           const calAccuracy = calibrationMap?.get(s.state_abbr);
