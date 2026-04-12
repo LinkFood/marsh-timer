@@ -137,8 +137,9 @@ const Index = ({ legacyLayout }: IndexProps = {}) => {
   // "Perfect Storm" states
   const perfectStormStates = useMemo(() => {
     const states = new Set<string>();
+    // Recalibrated for balanced 11-domain scoring (max realistic ~55)
     for (const [abbr, data] of convergenceScores) {
-      if (data.score >= 80 && data.weather_component >= 20 && data.migration_component >= 20) {
+      if (data.score >= 50 && data.weather_component >= 15) {
         states.add(abbr);
       }
     }

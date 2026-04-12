@@ -136,17 +136,17 @@ function tempToColor(tempF: number): string {
 }
 
 function convergenceToColor(score: number): string {
-  // Calibrated for actual score range (30-65 typical, max ~80)
-  // Must be dramatically visible — the fill IS the data
-  if (score >= 70) return 'rgba(220, 38, 38, 0.60)';     // deep red — extreme
-  if (score >= 60) return 'rgba(239, 68, 68, 0.50)';     // red — very hot
-  if (score >= 55) return 'rgba(249, 115, 22, 0.42)';    // orange — hot
-  if (score >= 50) return 'rgba(251, 146, 60, 0.35)';    // amber — elevated
-  if (score >= 45) return 'rgba(245, 158, 11, 0.28)';    // yellow-amber — warm
-  if (score >= 40) return 'rgba(234, 179, 8, 0.22)';     // yellow — moderate
-  if (score >= 35) return 'rgba(132, 204, 22, 0.15)';    // lime — mild
-  if (score >= 30) return 'rgba(34, 197, 94, 0.10)';     // green — low
-  if (score >= 20) return 'rgba(20, 184, 166, 0.05)';    // teal — very low
+  // Calibrated for domain-agnostic balanced scoring (20-55 typical, max ~65)
+  // 11 domains competing means max scores are tighter than old bird-weighted system
+  if (score >= 55) return 'rgba(220, 38, 38, 0.60)';     // deep red — extreme
+  if (score >= 48) return 'rgba(239, 68, 68, 0.50)';     // red — very hot
+  if (score >= 43) return 'rgba(249, 115, 22, 0.42)';    // orange — hot
+  if (score >= 38) return 'rgba(251, 146, 60, 0.35)';    // amber — elevated
+  if (score >= 34) return 'rgba(245, 158, 11, 0.28)';    // yellow-amber — warm
+  if (score >= 30) return 'rgba(234, 179, 8, 0.22)';     // yellow — moderate
+  if (score >= 26) return 'rgba(132, 204, 22, 0.15)';    // lime — mild
+  if (score >= 22) return 'rgba(34, 197, 94, 0.10)';     // green — low
+  if (score >= 15) return 'rgba(20, 184, 166, 0.05)';    // teal — very low
   return 'rgba(100, 100, 100, 0.02)';                     // nearly invisible
 }
 
@@ -161,17 +161,18 @@ function convergenceDeltaToColor(delta: number): string {
 }
 
 function convergenceScoreColor(score: number): string {
-  if (score >= 90) return '#dc2626';
-  if (score >= 80) return '#ef4444';
-  if (score >= 75) return '#f97316';
-  if (score >= 70) return '#fb923c';
-  if (score >= 65) return '#f59e0b';
-  if (score >= 60) return '#eab308';
-  if (score >= 55) return '#84cc16';
-  if (score >= 50) return '#22c55e';
-  if (score >= 40) return '#14b8a6';
-  if (score >= 30) return '#3b82f6';
-  if (score >= 20) return '#6366f1';
+  // Recalibrated for balanced 11-domain scoring
+  if (score >= 60) return '#dc2626';
+  if (score >= 55) return '#ef4444';
+  if (score >= 50) return '#f97316';
+  if (score >= 45) return '#fb923c';
+  if (score >= 42) return '#f59e0b';
+  if (score >= 38) return '#eab308';
+  if (score >= 35) return '#84cc16';
+  if (score >= 32) return '#22c55e';
+  if (score >= 28) return '#14b8a6';
+  if (score >= 22) return '#3b82f6';
+  if (score >= 15) return '#6366f1';
   return '#6b7280';
 }
 
