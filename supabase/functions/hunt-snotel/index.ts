@@ -16,7 +16,7 @@ const SNOTEL_STATES = [
 ];
 
 // States with SCAN stations that report soil temperature
-// Reduced to key flyway/hunting states to stay under 150s edge function limit.
+// Reduced to key monitored states to stay under 150s edge function limit.
 // Full 50-state coverage was causing 180s+ runs.
 const SCAN_STATES = [
   "AL", "AR", "CA", "CO", "GA", "ID", "IL", "IN", "IA",
