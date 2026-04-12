@@ -532,16 +532,8 @@ serve(async (req) => {
         } else {
           embeddingsCreated += batchRows.length;
           // Fire-and-forget scan+link for each inserted entry (writes to hunt_pattern_links)
-          if (inserted && inserted.length === batchRows.length) {
-            for (let k = 0; k < inserted.length; k++) {
-              const entryIdx = i + k;
-              const sourceId = inserted[k].id;
-              scanAndLink(sourceId, embeddings[entryIdx], {
-                state_abbr: embedMeta[entryIdx].state_abbr,
-                source_content_type: 'weather-realtime',
-              }).catch(() => {});
-            }
-          }
+          // Pattern linking is done by a separate cron (hunt-pattern-link-worker),
+          // not inline — too much load on the connection pool.
         }
       }
     } else {
