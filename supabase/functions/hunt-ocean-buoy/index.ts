@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
@@ -294,26 +294,26 @@ serve(async (req) => {
           };
         });
 
-        const { error: insertError } = await supabase
+        const { data: inserted, error: insertError } = await supabase
           .from("hunt_knowledge")
-          .insert(rows);
+          .insert(rows)
+          .select('id');
 
         if (insertError) {
           console.error(`  Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded += rows.length;
-        }
 
-        // Brain scan on first entry of each batch (best-effort)
-        if (embeddings.length > 0) {
-          try {
-            await scanBrainOnWrite(embeddings[0], {
-              state_abbr: entries[0].station.state,
-              exclude_content_type: "ocean-buoy",
-              limit: 5,
-            });
-          } catch (_) { /* scanning is best-effort */ }
+          // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
+          if (inserted && inserted.length === rows.length) {
+            for (let k = 0; k < inserted.length; k++) {
+              scanAndLink(inserted[k].id, embeddings[k], {
+                state_abbr: entries[k].station.state,
+                source_content_type: "ocean-buoy",
+              }).catch(() => {});
+            }
+          }
         }
       } catch (err) {
         console.error(`  Embed/upsert batch error: ${err}`);

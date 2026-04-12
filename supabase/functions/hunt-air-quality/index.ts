@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
@@ -184,23 +184,25 @@ serve(async (req) => {
         embedding: embeddings[i],
       }));
 
-      const { error: insertErr } = await supabase.from("hunt_knowledge").insert(rows);
+      const { data: inserted, error: insertErr } = await supabase
+        .from("hunt_knowledge")
+        .insert(rows)
+        .select('id');
       if (insertErr) {
         console.error(`Insert error batch ${batch[0]}: ${insertErr.message}`);
         errors++;
       } else {
         totalAirQuality += rows.length;
-      }
 
-      // Brain scan on first batch only
-      if (s === 0 && embeddings.length > 0) {
-        try {
-          await scanBrainOnWrite(embeddings[0], {
-            state_abbr: aqEntries[0].abbr,
-            exclude_content_type: "air-quality",
-            limit: 5,
-          });
-        } catch (_) { /* best-effort */ }
+        // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
+        if (inserted && inserted.length === rows.length) {
+          for (let k = 0; k < inserted.length; k++) {
+            scanAndLink(inserted[k].id, embeddings[k], {
+              state_abbr: aqEntries[k].abbr,
+              source_content_type: "air-quality",
+            }).catch(() => {});
+          }
+        }
       }
     }
 

@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
@@ -170,27 +170,27 @@ serve(async (req) => {
         embedding: embeddings[i],
       }));
 
-      // Upsert
-      const { error: upsertError } = await supabase
+      // Insert, return IDs so we can scan+link each entry
+      const { data: inserted, error: upsertError } = await supabase
         .from("hunt_knowledge")
-        .insert(rows);
+        .insert(rows)
+        .select('id');
 
       if (upsertError) {
         console.error(`Upsert error for batch starting ${stateChunk[0]}: ${upsertError.message}`);
         errors++;
       } else {
         totalEmbedded += rows.length;
-      }
 
-      // Brain scan on first entry of each batch (best-effort)
-      if (embeddings.length > 0) {
-        try {
-          await scanBrainOnWrite(embeddings[0], {
-            state_abbr: entries[0].abbr,
-            exclude_content_type: CONTENT_TYPE,
-            limit: 5,
-          });
-        } catch (_) { /* scanning is best-effort */ }
+        // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
+        if (inserted && inserted.length === rows.length) {
+          for (let k = 0; k < inserted.length; k++) {
+            scanAndLink(inserted[k].id, embeddings[k], {
+              state_abbr: entries[k].abbr,
+              source_content_type: CONTENT_TYPE,
+            }).catch(() => {});
+          }
+        }
       }
     }
 

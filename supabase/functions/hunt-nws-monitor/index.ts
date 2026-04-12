@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 import { getOpenArc, addOutcomeSignal, fireNarrator } from '../_shared/arcReactor.ts';
 
@@ -246,24 +246,6 @@ async function embedAlerts(
 
   const embeddings = await batchEmbed(texts, 'document');
 
-  // Query-on-write: scan brain for pattern matches on NWS alerts
-  const patternScans: Record<number, { pattern_matches: unknown[]; pattern_scan_at: string }> = {};
-  for (let idx = 0; idx < meta.length; idx++) {
-    try {
-      const scan = await scanBrainOnWrite(embeddings[idx], {
-        state_abbr: meta[idx].states[0] || undefined,
-        exclude_content_type: 'nws-alert',
-      });
-      if (scan.matches.length > 0) {
-        patternScans[idx] = {
-          pattern_matches: scan.matches,
-          pattern_scan_at: new Date().toISOString(),
-        };
-        console.log(`[hunt-nws-monitor] Brain scan: ${meta[idx].title} → ${scan.matches.length} pattern matches`);
-      }
-    } catch { /* scanning is best-effort */ }
-  }
-
   const knowledgeRows = meta.map((item, idx) => ({
     title: item.title,
     content: texts[idx],
@@ -278,20 +260,31 @@ async function embedAlerts(
       severity: item.severity,
       onset: item.onset,
       expires: item.expires,
-      ...(patternScans[idx] || {}),
     },
   }));
 
-  // Insert in batches of 50
+  // Insert in batches of 50, returning IDs so we can scan+link each entry
   for (let i = 0; i < knowledgeRows.length; i += 50) {
     const batch = knowledgeRows.slice(i, i + 50);
-    const { error: kErr } = await supabase
+    const { data: inserted, error: kErr } = await supabase
       .from('hunt_knowledge')
-      .insert(batch);
+      .insert(batch)
+      .select('id');
     if (kErr) {
       console.error(`[hunt-nws-monitor] Knowledge insert error (batch ${i}):`, kErr);
     } else {
       console.log(`[hunt-nws-monitor] Embedded ${batch.length} alerts into hunt_knowledge`);
+
+      // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
+      if (inserted && inserted.length === batch.length) {
+        for (let k = 0; k < inserted.length; k++) {
+          const entryIdx = i + k;
+          scanAndLink(inserted[k].id, embeddings[entryIdx], {
+            state_abbr: meta[entryIdx].states[0] || undefined,
+            source_content_type: 'nws-alert',
+          }).catch(() => {});
+        }
+      }
     }
   }
 

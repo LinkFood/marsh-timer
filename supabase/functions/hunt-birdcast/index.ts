@@ -4,6 +4,7 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
@@ -345,9 +346,18 @@ serve(async (req) => {
             } else {
               embeddingsCreated += batchRows.length;
 
-              // Skip enrichWithPatternScan — at 3.2M brain entries, each vector
-              // search takes 5-10s and was pushing this function past the 150s limit.
-              // Cross-domain patterns are discovered by hunt-correlation-engine instead.
+              // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links).
+              // Runs async so it won't push the function past the 150s limit.
+              const inserted = insertResult.data;
+              if (inserted && inserted.length === batchRows.length) {
+                for (let k = 0; k < inserted.length; k++) {
+                  const entryIdx = i + k;
+                  scanAndLink(inserted[k].id, embeddings[entryIdx], {
+                    state_abbr: embedMeta[entryIdx].state_abbr,
+                    source_content_type: 'birdcast-daily',
+                  }).catch(() => {});
+                }
+              }
             }
           }
         } else {

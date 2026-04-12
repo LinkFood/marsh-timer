@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
@@ -216,15 +216,26 @@ serve(async (req) => {
           embedding: embeddings[j],
         }));
 
-        const { error: insertError } = await supabase
+        const { data: inserted, error: insertError } = await supabase
           .from("hunt_knowledge")
-          .insert(rows);
+          .insert(rows)
+          .select('id');
 
         if (insertError) {
           console.error(`  Insert error: ${insertError.message}`);
           errors++;
         } else {
           totalEmbedded += rows.length;
+
+          // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
+          if (inserted && inserted.length === rows.length) {
+            for (let k = 0; k < inserted.length; k++) {
+              scanAndLink(inserted[k].id, embeddings[k], {
+                state_abbr: chunk[k].abbr,
+                source_content_type: CONTENT_TYPE,
+              }).catch(() => {});
+            }
+          }
         }
       } catch (err) {
         console.error(`  Embed/upsert batch error: ${err}`);

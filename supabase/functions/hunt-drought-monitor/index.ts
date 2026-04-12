@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // State FIPS codes
@@ -202,28 +202,27 @@ serve(async (req) => {
         };
       });
 
-      // Insert
-      const { error: insertError } = await supabase
+      // Insert, return IDs so we can scan+link each entry
+      const { data: inserted, error: insertError } = await supabase
         .from("hunt_knowledge")
-        .insert(rows);
+        .insert(rows)
+        .select('id');
 
       if (insertError) {
         console.error(`Insert error for batch starting ${stateChunk[0]}: ${insertError.message}`);
         errors++;
       } else {
         totalEmbedded += rows.length;
-      }
 
-      // Brain scan on the first entry of each batch
-      if (embeddings.length > 0) {
-        try {
-          await scanBrainOnWrite(embeddings[0], {
-            contentType: "drought-weekly",
-            stateAbbr: filteredEntries[0].abbr,
-            excludeContentTypes: ["drought-weekly"],
-            limit: 5,
-          });
-        } catch (_) { /* scanning is best-effort */ }
+        // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
+        if (inserted && inserted.length === rows.length) {
+          for (let k = 0; k < inserted.length; k++) {
+            scanAndLink(inserted[k].id, embeddings[k], {
+              state_abbr: filteredEntries[k].abbr,
+              source_content_type: "drought-weekly",
+            }).catch(() => {});
+          }
+        }
       }
     }
 
