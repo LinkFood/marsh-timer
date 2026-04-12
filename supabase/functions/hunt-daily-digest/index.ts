@@ -188,6 +188,43 @@ serve(async (req) => {
       }
     }
 
+    // Per-domain performance — what is the brain actually good at?
+    // Parse outcome_reasoning from compound-risk grades to count per-domain hit rates
+    const { data: gradedOutcomes } = await supabase
+      .from('hunt_alert_outcomes')
+      .select('outcome_reasoning')
+      .eq('alert_source', 'compound-risk')
+      .eq('outcome_checked', true)
+      .not('outcome_reasoning', 'is', null)
+      .limit(600);
+
+    const domainStats: Record<string, { confirmed: number; missed: number }> = {};
+    if (gradedOutcomes) {
+      for (const o of gradedOutcomes) {
+        const reasoning = o.outcome_reasoning || '';
+        // Parse: "drought: 5 signals (CONFIRMED); birds: 5 signals (CONFIRMED); water: 0 signals (MISSED)"
+        const parts = reasoning.split(';');
+        for (const part of parts) {
+          const trimmed = part.trim();
+          const m = trimmed.match(/^(\w+):\s*\d+\s*signals?\s*\((CONFIRMED|MISSED)\)/i);
+          if (m) {
+            const domain = m[1].toLowerCase();
+            const status = m[2].toUpperCase();
+            if (!domainStats[domain]) domainStats[domain] = { confirmed: 0, missed: 0 };
+            if (status === 'CONFIRMED') domainStats[domain].confirmed++;
+            else domainStats[domain].missed++;
+          }
+        }
+      }
+    }
+    const domainLines: string[] = [];
+    const sortedDomains = Object.entries(domainStats)
+      .map(([d, s]) => ({ domain: d, ...s, total: s.confirmed + s.missed, rate: s.confirmed / (s.confirmed + s.missed) }))
+      .sort((a, b) => b.total - a.total);
+    for (const d of sortedDomains) {
+      domainLines.push(`${d.domain}: ${(d.rate * 100).toFixed(1)}% (${d.confirmed}/${d.total} claims)`);
+    }
+
     // -----------------------------------------------------------------
     // 6. Compile the digest
     // -----------------------------------------------------------------
@@ -196,7 +233,7 @@ serve(async (req) => {
     sections.push(`DDC DAILY DIGEST — ${today}`);
     sections.push('='.repeat(40));
 
-    sections.push('\nWHAT THE BRAIN FOUND YESTERDAY:');
+    sections.push('\nNARRATOR OUTPUTS (last 24h):');
     if (narrativeSection.length > 0) {
       sections.push(narrativeSection.join('\n\n'));
     } else {
@@ -204,6 +241,13 @@ serve(async (req) => {
       sections.push('This means the embedding space is not yet surfacing connections between');
       sections.push('different external data types (weather <-> migration, soil <-> water, etc.).');
       sections.push('The narrative bridge layer may need more density.');
+    }
+
+    sections.push('\nWHAT THE BRAIN IS GOOD AT (per-domain hit rates):');
+    if (domainLines.length > 0) {
+      sections.push(domainLines.join('\n'));
+    } else {
+      sections.push('No graded compound-risk outcomes to analyze.');
     }
 
     sections.push('\nINTERESTING BUT UNCONFIRMED:');
