@@ -8,17 +8,23 @@ import { logCronRun } from '../_shared/cronLog.ts';
 
 const LOG_PREFIX = '[hunt-migration-monitor]';
 
-const DUCK_SPECIES = [
-  'mallard', 'wood duck', 'pintail', 'teal', 'wigeon', 'shoveler',
-  'gadwall', 'canvasback', 'redhead', 'scaup', 'bufflehead',
-  'goldeneye', 'merganser', 'scoter', 'eider', 'ring-necked duck',
-  'ruddy duck', 'black duck', 'mottled duck', 'duck sp.',
-  'whistling-duck', 'long-tailed duck',
+// Bird group classifier — categorize any eBird observation
+type BirdGroup = 'waterfowl' | 'raptor' | 'shorebird' | 'songbird' | 'waterbird' | 'other';
+
+const BIRD_GROUP_PATTERNS: { group: BirdGroup; patterns: string[] }[] = [
+  { group: 'waterfowl', patterns: ['duck', 'mallard', 'pintail', 'teal', 'wigeon', 'shoveler', 'gadwall', 'canvasback', 'redhead', 'scaup', 'bufflehead', 'goldeneye', 'merganser', 'scoter', 'eider', 'whistling-duck', 'goose', 'geese', 'swan', 'brant'] },
+  { group: 'raptor', patterns: ['hawk', 'eagle', 'falcon', 'kite', 'osprey', 'harrier', 'kestrel', 'merlin', 'vulture', 'owl', 'accipiter', 'buteo'] },
+  { group: 'shorebird', patterns: ['sandpiper', 'plover', 'dowitcher', 'godwit', 'curlew', 'whimbrel', 'turnstone', 'sanderling', 'dunlin', 'yellowlegs', 'willet', 'phalarope', 'avocet', 'stilt', 'snipe', 'woodcock', 'oystercatcher', 'killdeer'] },
+  { group: 'songbird', patterns: ['warbler', 'sparrow', 'thrush', 'vireo', 'tanager', 'bunting', 'oriole', 'grosbeak', 'wren', 'kinglet', 'flycatcher', 'swallow', 'martin', 'robin', 'bluebird', 'catbird', 'mockingbird', 'thrasher', 'cedar waxwing', 'chickadee', 'nuthatch', 'creeper', 'finch', 'siskin', 'crossbill', 'redpoll', 'junco', 'towhee'] },
+  { group: 'waterbird', patterns: ['heron', 'egret', 'ibis', 'spoonbill', 'pelican', 'cormorant', 'anhinga', 'bittern', 'crane', 'rail', 'gallinule', 'moorhen', 'coot', 'loon', 'grebe', 'tern', 'gull', 'skimmer', 'jaeger', 'gannet', 'booby', 'frigatebird', 'tropicbird', 'petrel', 'shearwater', 'storm-petrel', 'albatross'] },
 ];
 
-function isDuck(comName: string): boolean {
+function classifyBird(comName: string): BirdGroup {
   const lower = comName.toLowerCase();
-  return DUCK_SPECIES.some(sp => lower.includes(sp));
+  for (const { group, patterns } of BIRD_GROUP_PATTERNS) {
+    if (patterns.some(p => lower.includes(p))) return group;
+  }
+  return 'other';
 }
 
 function getISOWeek(d: Date): number {
@@ -50,6 +56,7 @@ interface StateResult {
   sightingCount: number;
   locationCount: number;
   notableLocations: { name: string; count: number }[];
+  groupCounts: Record<BirdGroup, number>;
   baselineAvg: number;
   deviationPct: number;
   severity: SpikeSeverity;
@@ -86,8 +93,8 @@ serve(async (req) => {
         break;
       }
       try {
-        // 1. Fetch recent duck observations from eBird
-        const url = `https://api.ebird.org/v2/data/obs/US-${state}/recent?back=1&cat=domestic,species`;
+        // 1. Fetch recent bird observations from eBird (ALL species, not just ducks)
+        const url = `https://api.ebird.org/v2/data/obs/US-${state}/recent?back=1&cat=species`;
         const resp = await fetch(url, {
           headers: {
             'X-eBirdApiToken': ebirdKey,
@@ -104,19 +111,22 @@ serve(async (req) => {
 
         const observations: EBirdObs[] = await resp.json();
 
-        // 2. Filter to duck/waterfowl species
-        const duckObs = observations.filter(o => isDuck(o.comName));
+        // 2. Process ALL bird species — no filtering
+        const sightingCount = observations.reduce((sum, o) => sum + (o.howMany ?? 1), 0);
 
-        // 3. Count total sightings (default howMany to 1 if null)
-        const sightingCount = duckObs.reduce((sum, o) => sum + (o.howMany ?? 1), 0);
+        // 3. Count by bird group for richer brain entries
+        const groupCounts: Record<BirdGroup, number> = { waterfowl: 0, raptor: 0, shorebird: 0, songbird: 0, waterbird: 0, other: 0 };
+        for (const o of observations) {
+          groupCounts[classifyBird(o.comName)] += (o.howMany ?? 1);
+        }
 
         // 4. Count unique locations
-        const uniqueLocations = new Set(duckObs.map(o => o.locName));
+        const uniqueLocations = new Set(observations.map(o => o.locName));
         const locationCount = uniqueLocations.size;
 
         // 5. Extract notable locations: top 5 by sighting count
         const locationCounts = new Map<string, number>();
-        for (const o of duckObs) {
+        for (const o of observations) {
           locationCounts.set(o.locName, (locationCounts.get(o.locName) || 0) + (o.howMany ?? 1));
         }
         const notableLocations = Array.from(locationCounts.entries())
@@ -129,7 +139,7 @@ serve(async (req) => {
           .from('hunt_migration_history')
           .select('date,sighting_count')
           .eq('state_abbr', state)
-          .eq('species', 'duck');
+          .eq('species', 'all-birds');
 
         const baselineData = (historical || []).filter(h => {
           const d = new Date(h.date);
@@ -169,6 +179,7 @@ serve(async (req) => {
           sightingCount,
           locationCount,
           notableLocations,
+          groupCounts,
           baselineAvg,
           deviationPct,
           severity,
@@ -188,7 +199,7 @@ serve(async (req) => {
     // 8. Upsert into hunt_migration_history
     const historyRows = results.map(r => ({
       state_abbr: r.state,
-      species: 'duck',
+      species: 'all-birds',
       date: today,
       sighting_count: r.sightingCount,
       location_count: r.locationCount,
@@ -211,7 +222,7 @@ serve(async (req) => {
         sighting_count: r.sightingCount,
         baseline_avg: r.baselineAvg,
         deviation_pct: r.deviationPct,
-        species: 'duck',
+        species: 'all-birds',
         notable_locations: r.notableLocations,
       }));
 
@@ -228,6 +239,13 @@ serve(async (req) => {
     for (const r of results) {
       const stateName = STATE_NAMES[r.state] || r.state;
       const topLocs = r.notableLocations.map(l => l.name).join(', ');
+
+      // Build group breakdown string for richer embeddings
+      const groupBreakdown = Object.entries(r.groupCounts)
+        .filter(([, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([group, count]) => `${group}:${count}`)
+        .join(' ');
 
       let prefix = 'migration';
       let contentType = 'migration-daily';
@@ -246,16 +264,16 @@ serve(async (req) => {
         tag = 'spike';
       }
 
-      const text = `${prefix} | ${stateName} | ${today} | species:duck sightings:${r.sightingCount} baseline:${r.baselineAvg.toFixed(1)} deviation:${r.deviationPct.toFixed(1)}% | ${topLocs}`;
+      const text = `${prefix} | ${stateName} | ${today} | all-birds sightings:${r.sightingCount} ${groupBreakdown} baseline:${r.baselineAvg.toFixed(1)} deviation:${r.deviationPct.toFixed(1)}% | ${topLocs}`;
 
       embedTexts.push(text);
       embedRows.push({
-        title: `${titlePrefix}Duck migration ${stateName} ${today}`,
+        title: `${titlePrefix}Bird migration ${stateName} ${today}`,
         content: text,
         content_type: contentType,
-        tags: ['migration', r.state.toLowerCase(), 'duck', tag],
+        tags: ['migration', r.state.toLowerCase(), 'all-birds', tag],
         state_abbr: r.state,
-        species: 'duck',
+        species: 'all-birds',
         effective_date: today,
       });
     }
