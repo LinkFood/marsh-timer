@@ -48,13 +48,14 @@ serve(async (req) => {
 
     // ONLY query small dedicated tables — NO hunt_knowledge (7M rows, too slow)
     // History comes from frontend useThisDayInHistory hook instead
-    const [weatherRes, solunarRes, convergenceRes, claimsRes, anomaliesRes] = await Promise.all([
+    const [weatherRes, solunarRes, convergenceRes, claimsRes, anomaliesRes, entriesTodayRes] = await Promise.all([
       T('weather', supabase.from('hunt_weather_forecast').select('date, temp_high_f, temp_low_f, wind_speed_max_mph, wind_direction_dominant, pressure_msl, precipitation_mm, weather_code, cloud_cover_pct, updated_at').eq('state_abbr', stateAbbr).eq('date', today).limit(1)),
       T('solunar', supabase.from('hunt_solunar_cache').select('data').eq('date', today).limit(1)),
       T('convergence', supabase.from('hunt_convergence_scores').select('score, date, weather_component, solunar_component, migration_component, pattern_component, birdcast_component, water_component, photoperiod_component, tide_component').eq('state_abbr', stateAbbr).order('date', { ascending: false }).limit(1)),
       T('claims', supabase.from('hunt_alert_outcomes').select('id, alert_source, state_abbr, alert_date, predicted_outcome, outcome_deadline, outcome_checked, outcome_grade, outcome_reasoning, created_at').or(`state_abbr.eq.${stateAbbr},state_abbr.is.null`).order('created_at', { ascending: false }).limit(10)),
       // Anomalies from convergence_alerts (small table) instead of hunt_knowledge
       T('anomalies', supabase.from('hunt_convergence_alerts').select('id, state_abbr, score, domains_active, alert_type, created_at').eq('state_abbr', stateAbbr).order('created_at', { ascending: false }).limit(5)),
+      T('entries_today', supabase.from('hunt_knowledge').select('id', { count: 'estimated', head: true }).gte('created_at', todayStart)),
     ]);
     console.log('[hunt-today-briefing] Timings:', JSON.stringify(t));
 
@@ -162,11 +163,11 @@ serve(async (req) => {
       detected_at: a.created_at,
     }));
 
-    // --- Brain stats (from header BrainHeartbeat, no slow hunt_knowledge query) ---
+    // --- Brain stats ---
     const brain_stats = {
       total_entries: 6955000, // approximate, updated by BrainHeartbeat component
       content_types: 83,
-      entries_today: 0,
+      entries_today: entriesTodayRes.count ?? 0,
     };
 
     return new Response(JSON.stringify({
