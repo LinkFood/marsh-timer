@@ -37,6 +37,19 @@ Run during low-traffic window. Cannot be done inside a transaction.
 3. Verify new pattern links are being written to `hunt_pattern_links`
 4. Monitor `hunt_cron_log` for pattern-link-worker health
 
+## What I tried (all failed with 30s+ timeouts)
+
+1. `search_hunt_knowledge_v3` with full filters and recency_weight
+2. Same RPC with no content_type filter, no recency_weight
+3. Same RPC with date filters (alert-grader uses these successfully)
+4. New `simple_vector_search` RPC stripped of all wrapping logic
+5. Same simple RPC with no `NOT IN` content_type exclusions
+6. Same simple RPC with `SET LOCAL ivfflat.probes = 5` (faster but less accurate)
+
+All hit the same wall: vector search on 7M rows with current index sizing
+exceeds the 30s statement_timeout. There is no workaround at the application
+layer. The index must be rebuilt.
+
 ## Why it matters for the filament test
 
 Without working pattern links, the narrator can't speak about cross-domain discoveries.

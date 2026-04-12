@@ -124,21 +124,12 @@ serve(async (req) => {
           continue;
         }
 
-        // Vector search — use date filter to narrow search window (last 30 days).
-        // This hits the date-filter fast path in search_hunt_knowledge_v3.
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-        const today = new Date().toISOString().split('T')[0];
-        const { data: matches, error: rpcErr } = await supabase.rpc('search_hunt_knowledge_v3', {
+        // Use simple_vector_search — minimal RPC, no recency_boost or signal_weight overhead
+        const { data: matches, error: rpcErr } = await supabase.rpc('simple_vector_search', {
           query_embedding: embedding,
-          match_threshold: 0.40,
           match_count: 10,
           filter_state_abbr: entry.state_abbr || null,
-          filter_content_types: null,
-          filter_species: null,
-          filter_date_from: thirtyDaysAgo,
-          filter_date_to: today,
-          recency_weight: 0.0,
-          exclude_du_report: true,
+          exclude_id: entry.id,
         });
 
         if (rpcErr) {
@@ -153,9 +144,9 @@ serve(async (req) => {
         }
         console.log(`[${fnName}] ${entry.id}: ${matches.length} raw matches`);
 
-        // Filter: cross-domain only (different content_type), skip self
+        // Filter: above threshold + cross-domain
         const filtered = matches
-          .filter((m: any) => m.id !== entry.id && m.content_type !== entry.content_type)
+          .filter((m: any) => m.similarity >= MIN_SIMILARITY && m.content_type !== entry.content_type)
           .slice(0, MATCH_LIMIT);
 
         if (filtered.length === 0) continue;
