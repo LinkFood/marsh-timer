@@ -45,7 +45,7 @@ const ENV_TYPES = [
   "space-weather",
 ];
 
-const MAX_BIRD_ENTRIES_PER_RUN = 30; // process at most 30 bird entries per cron run
+const MAX_BIRD_ENTRIES_PER_RUN = 100; // bumped after parallelization (5 concurrent x faster runs)
 const TIME_BUDGET_MS = 110000; // stop at 110s to leave headroom under 150s limit
 
 serve(async (req) => {
@@ -136,20 +136,16 @@ serve(async (req) => {
     }
 
     // 3. For each bird entry, find env events in same state within 72hr window
+    // Process 5 bird entries concurrently to speed up the run
     const correlationEntries: Array<{ text: string; meta: Record<string, any> }> = [];
     let envQueriesDone = 0;
+    const PARALLEL = 5;
 
-    for (const bird of toProcess) {
-      if (Date.now() - startTime > TIME_BUDGET_MS) {
-        console.log(`[${fnName}] Time budget reached, stopping`);
-        break;
-      }
-
+    async function processBird(bird: any): Promise<{ envEvents: any[]; envQueries: number } | null> {
       const dateObj = new Date(bird.effective_date);
       const dateFrom = new Date(dateObj.getTime() - 3 * 86400000).toISOString().split('T')[0];
       const dateTo = new Date(dateObj.getTime() + 3 * 86400000).toISOString().split('T')[0];
 
-      // Per-type parallel queries (NEVER IN-clause hunt_knowledge — see CLAUDE.md)
       const envQueries = ENV_TYPES.map(ct =>
         supabase
           .from('hunt_knowledge')
@@ -161,14 +157,32 @@ serve(async (req) => {
           .limit(3)
       );
       const envResults = await Promise.all(envQueries);
-      envQueriesDone += ENV_TYPES.length;
 
       const envEvents: any[] = [];
       for (const r of envResults) {
         if (r.data) envEvents.push(...r.data);
       }
 
-      if (envEvents.length === 0) continue;
+      return { envEvents, envQueries: ENV_TYPES.length };
+    }
+
+    for (let i = 0; i < toProcess.length; i += PARALLEL) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) {
+        console.log(`[${fnName}] Time budget reached, stopping at index ${i}`);
+        break;
+      }
+
+      const batch = toProcess.slice(i, i + PARALLEL);
+      const results = await Promise.all(batch.map(b => processBird(b)));
+
+      for (let j = 0; j < batch.length; j++) {
+        const bird = batch[j];
+        const result = results[j];
+        if (!result) continue;
+        envQueriesDone += result.envQueries;
+        const envEvents = result.envEvents;
+
+        if (envEvents.length === 0) continue;
 
       // Build correlation text
       const envSummary = envEvents
@@ -212,6 +226,7 @@ serve(async (req) => {
           },
         },
       });
+      }
     }
 
     if (correlationEntries.length === 0) {
