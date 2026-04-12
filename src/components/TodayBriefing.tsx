@@ -5,6 +5,7 @@ import {
   Cloud, Gauge, ChevronRight,
 } from 'lucide-react';
 import { useTodayBriefing } from '@/hooks/useTodayBriefing';
+import { useEntriesToday } from '@/hooks/useEntriesToday';
 import type {
   TodayBriefingData, ConvergenceComponent, ThisDayEntry, ClaimGrade, Anomaly,
 } from '@/hooks/useTodayBriefing';
@@ -467,6 +468,7 @@ export default function TodayBriefing() {
   const [showDropdown, setShowDropdown] = useState(false);
   const { data, loading, error } = useTodayBriefing(state);
   const { entries: historyEntries } = useThisDayInHistory();
+  const { count: entriesToday } = useEntriesToday();
 
   // Skeleton vs. data
   const showSkeleton = loading && !data;
@@ -557,7 +559,7 @@ export default function TodayBriefing() {
           </span>
           <span className="text-white/10">·</span>
           <span className="text-[9px] font-mono text-emerald-400/30">
-            +{data.brain_stats.entries_today.toLocaleString()} today
+            +{entriesToday.toLocaleString()} today
           </span>
         </div>
       )}
