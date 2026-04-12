@@ -80,18 +80,18 @@ serve(async (req) => {
     // Backfill mode: if not enough recent entries, pull older ones too.
     // This grows the bridge layer toward the v3 spec target of ~20,000 entries.
     if (birdEntries.length < MAX_BIRD_ENTRIES_PER_RUN) {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
       const backfillQueries = BIRD_TYPES.map(ct =>
         supabase
           .from('hunt_knowledge')
           .select('id, title, content, content_type, state_abbr, effective_date')
           .eq('content_type', ct)
-          .gte('created_at', sevenDaysAgo)
+          .gte('created_at', thirtyDaysAgo)
           .lt('created_at', twentyFourHoursAgo)
           .not('state_abbr', 'is', null)
           .not('effective_date', 'is', null)
           .order('created_at', { ascending: false })
-          .limit(20)
+          .limit(50)
       );
       const backfillResults = await Promise.all(backfillQueries);
       for (const r of backfillResults) {
@@ -105,14 +105,15 @@ serve(async (req) => {
       return cronResponse({ correlations: 0, message: 'no recent bird entries' });
     }
 
-    // 2. Skip entries that already have a correlation written
-    const birdIds = birdEntries.map(b => b.id);
+    // 2. Skip entries that already have a correlation written.
+    // Look back 30 days to dedup against backfill entries.
+    const dedupCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
     const { data: existingCorrelations } = await supabase
       .from('hunt_knowledge')
       .select('metadata')
       .eq('content_type', 'bio-environmental-correlation')
-      .gte('created_at', twentyFourHoursAgo)
-      .limit(500);
+      .gte('created_at', dedupCutoff)
+      .limit(2000);
 
     const alreadyCorrelated = new Set<string>();
     if (existingCorrelations) {
