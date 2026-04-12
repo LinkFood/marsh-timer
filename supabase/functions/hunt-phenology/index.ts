@@ -8,8 +8,8 @@ import { logCronRun } from '../_shared/cronLog.ts';
 // USA-NPN API base
 const NPN_BASE = "https://services.usanpn.org/npn_portal";
 
-// Indicator plant species whose phenological stages correlate with animal behavior.
-// Green-up timing affects deer rut, waterfowl staging, turkey nesting, etc.
+// Indicator plant species whose phenological stages correlate with ecosystem behavior.
+// Green-up timing shapes biological timing and ecological staging across regions.
 const INDICATOR_SPECIES = [
   { id: 3, name: "red maple", slug: "red-maple" },
   { id: 12, name: "flowering dogwood", slug: "flowering-dogwood" },
