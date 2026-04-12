@@ -1,8 +1,37 @@
 # IVFFlat Index Rebuild Required
 
-## Problem
+## ROOT CAUSE FOUND
 
-The IVFFlat index on `hunt_knowledge.embedding` is sized for 3.2M rows (lists=1000).
+The current IVFFlat index `hunt_knowledge_embedding_idx` has `lists=1414`
+(sized for ~2M rows). The brain is now 7M rows. Each query scans 5x more
+candidates than the index was tuned for, causing 30s+ timeouts.
+
+The April 9 rebuild migration (`20260409_rebuild_ivfflat_index.sql`) tried
+to create a new index `idx_hunt_knowledge_embedding` with lists=2636 but
+that name doesn't exist — the migration must have failed silently or the
+new index was dropped. The OLD undersized index is still active.
+
+## Ready-to-push migration
+
+`supabase/migrations/20260414100018_rebuild_ivfflat_for_7m.sql.READY_TO_PUSH`
+
+To execute (during low-traffic window — locks writes for 30-60 min):
+
+```bash
+mv supabase/migrations/20260414100018_rebuild_ivfflat_for_7m.sql.READY_TO_PUSH \
+   supabase/migrations/20260414100018_rebuild_ivfflat_for_7m.sql
+npx supabase db push
+```
+
+What it does:
+1. Drops the existing undersized `hunt_knowledge_embedding_idx`
+2. Creates a new one with lists=2645 (sqrt(7M))
+3. Updates `search_hunt_knowledge_v3` probes to 51 (sqrt(2645))
+4. Re-schedules `hunt-pattern-link-worker` cron (currently paused)
+
+## Original symptoms
+
+The IVFFlat index on `hunt_knowledge.embedding` is sized for ~2M rows (lists=1414).
 The brain is now at 7M rows. Vector searches via `search_hunt_knowledge_v3` are
 slow enough to hit the RPC's internal 30s statement timeout on most queries.
 
