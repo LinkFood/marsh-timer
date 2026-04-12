@@ -4,7 +4,7 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_ABBRS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
@@ -345,19 +345,7 @@ serve(async (req) => {
               console.error(`[hunt-birdcast] Knowledge insert error (batch ${i / KNOWLEDGE_BATCH}):`, insertResult.error);
             } else {
               embeddingsCreated += batchRows.length;
-
-              // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links).
-              // Runs async so it won't push the function past the 150s limit.
-              const inserted = insertResult.data;
-              if (inserted && inserted.length === batchRows.length) {
-                for (let k = 0; k < inserted.length; k++) {
-                  const entryIdx = i + k;
-                  scanAndLink(inserted[k].id, embeddings[entryIdx], {
-                    state_abbr: embedMeta[entryIdx].state_abbr,
-                    source_content_type: 'birdcast-daily',
-                  }).catch(() => {});
-                }
-              }
+              // Pattern linking done by hunt-pattern-link-worker cron
             }
           }
         } else {

@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // State FIPS codes
@@ -213,16 +213,7 @@ serve(async (req) => {
         errors++;
       } else {
         totalEmbedded += rows.length;
-
-        // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
-        if (inserted && inserted.length === rows.length) {
-          for (let k = 0; k < inserted.length; k++) {
-            scanAndLink(inserted[k].id, embeddings[k], {
-              state_abbr: filteredEntries[k].abbr,
-              source_content_type: "drought-weekly",
-            }).catch(() => {});
-          }
-        }
+        // Pattern linking done by hunt-pattern-link-worker cron
       }
     }
 

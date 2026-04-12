@@ -4,7 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 import { getOpenArc, addOutcomeSignal, fireNarrator } from '../_shared/arcReactor.ts';
 
@@ -448,28 +448,14 @@ serve(async (req) => {
               embedding: embeddings[j],
             });
           }
-          const { data: inserted, error: knErr } = await supabase
+          const { error: knErr } = await supabase
             .from('hunt_knowledge')
-            .insert(batchRows)
-            .select('id');
+            .insert(batchRows);
           if (knErr) {
             console.error(`[hunt-weather-watchdog] Knowledge upsert error (batch ${i / KNOWLEDGE_BATCH}):`, knErr);
           } else {
             embeddingsCreated += batchRows.length;
-
-            // Fire-and-forget scan+link for weather-event entries only (highest signal).
-            // Skipped entirely in batch mode to stay within 150s timeout.
-            if (batch === null && inserted && inserted.length === batchRows.length) {
-              for (let k = 0; k < inserted.length; k++) {
-                const entryIdx = i + k;
-                const meta = embedMeta[entryIdx];
-                if (meta.content_type !== 'weather-event') continue;
-                scanAndLink(inserted[k].id, embeddings[entryIdx], {
-                  state_abbr: meta.state_abbr,
-                  source_content_type: 'weather-event',
-                }).catch(() => {});
-              }
-            }
+            // Pattern linking done by hunt-pattern-link-worker cron
           }
         }
       } else {

@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
@@ -304,16 +304,7 @@ serve(async (req) => {
           errors++;
         } else {
           totalEmbedded += rows.length;
-
-          // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
-          if (inserted && inserted.length === rows.length) {
-            for (let k = 0; k < inserted.length; k++) {
-              scanAndLink(inserted[k].id, embeddings[k], {
-                state_abbr: entries[k].station.state,
-                source_content_type: "ocean-buoy",
-              }).catch(() => {});
-            }
-          }
+          // Pattern linking done by hunt-pattern-link-worker cron
         }
       } catch (err) {
         console.error(`  Embed/upsert batch error: ${err}`);

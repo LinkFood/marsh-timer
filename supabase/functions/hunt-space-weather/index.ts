@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
@@ -244,7 +244,7 @@ serve(async (req) => {
     const embedding = embeddings[0];
 
     // Insert into hunt_knowledge (dedup check above prevents duplicates)
-    const { data: inserted, error: insertError } = await supabase
+    const { error: insertError } = await supabase
       .from("hunt_knowledge")
       .insert({
         title: `space-weather ${summary.date}`,
@@ -269,9 +269,7 @@ serve(async (req) => {
           flags: summary.flags,
         },
         embedding,
-      })
-      .select('id')
-      .single();
+      });
 
     if (insertError) {
       throw new Error(`hunt_knowledge insert failed: ${insertError.message}`);
@@ -279,18 +277,7 @@ serve(async (req) => {
 
     console.log(`Stored space weather for ${today}`);
 
-    // Scan + link — writes cross-domain pattern matches to hunt_pattern_links
-    let linksWritten = 0;
-    if (inserted) {
-      linksWritten = await scanAndLink(inserted.id, embedding, {
-        source_content_type: "space-weather",
-        min_similarity: 0.55,
-        limit: 5,
-      });
-      if (linksWritten > 0) {
-        console.log(`[brainScan] ${linksWritten} cross-domain matches linked`);
-      }
-    }
+    // Pattern linking done by hunt-pattern-link-worker cron
 
     const durationMs = Date.now() - startTime;
     await logCronRun({
@@ -304,7 +291,6 @@ serve(async (req) => {
         storm_level: summary.stormLevel,
         xray_class: summary.xrayClass,
         flags: summary.flags,
-        brain_matches: linksWritten,
       },
       durationMs,
     });
@@ -323,7 +309,6 @@ serve(async (req) => {
         xray_class: summary.xrayClass,
         flags: summary.flags,
       },
-      brain_matches: linksWritten,
       durationMs,
     });
 

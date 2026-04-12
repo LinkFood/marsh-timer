@@ -3,7 +3,7 @@ import { handleCors } from '../_shared/cors.ts';
 import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanAndLink } from '../_shared/brainScan.ts';
+// Pattern linking done by hunt-pattern-link-worker cron
 import { logCronRun } from '../_shared/cronLog.ts';
 import { getOpenArc, addOutcomeSignal, fireNarrator } from '../_shared/arcReactor.ts';
 
@@ -263,28 +263,17 @@ async function embedAlerts(
     },
   }));
 
-  // Insert in batches of 50, returning IDs so we can scan+link each entry
+  // Insert in batches of 50
   for (let i = 0; i < knowledgeRows.length; i += 50) {
     const batch = knowledgeRows.slice(i, i + 50);
-    const { data: inserted, error: kErr } = await supabase
+    const { error: kErr } = await supabase
       .from('hunt_knowledge')
-      .insert(batch)
-      .select('id');
+      .insert(batch);
     if (kErr) {
       console.error(`[hunt-nws-monitor] Knowledge insert error (batch ${i}):`, kErr);
     } else {
       console.log(`[hunt-nws-monitor] Embedded ${batch.length} alerts into hunt_knowledge`);
-
-      // Fire-and-forget scan+link for every inserted entry (writes hunt_pattern_links)
-      if (inserted && inserted.length === batch.length) {
-        for (let k = 0; k < inserted.length; k++) {
-          const entryIdx = i + k;
-          scanAndLink(inserted[k].id, embeddings[entryIdx], {
-            state_abbr: meta[entryIdx].states[0] || undefined,
-            source_content_type: 'nws-alert',
-          }).catch(() => {});
-        }
-      }
+      // Pattern linking done by hunt-pattern-link-worker cron
     }
   }
 
