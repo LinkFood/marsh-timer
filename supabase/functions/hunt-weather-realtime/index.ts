@@ -4,7 +4,7 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { STATE_CENTROIDS } from '../_shared/states.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
-import { scanBrainOnWrite } from '../_shared/brainScan.ts';
+import { scanAndLink } from '../_shared/brainScan.ts';
 import { logCronRun } from '../_shared/cronLog.ts';
 
 // ---------------------------------------------------------------------------
@@ -505,20 +505,7 @@ serve(async (req) => {
     const embeddings = await batchEmbed(embedTexts, 'document');
 
     if (embeddings && embeddings.length === embedTexts.length) {
-      // Fire-and-forget brain scans — don't await, these are the timeout killer
-      for (let j = 0; j < embedMeta.length; j++) {
-        const idx = j;
-        scanBrainOnWrite(embeddings[idx], {
-          state_abbr: embedMeta[idx].state_abbr,
-          exclude_content_type: 'weather-realtime',
-        }).then(scan => {
-          if (scan.matches.length > 0) {
-            console.log(`[hunt-weather-realtime] Brain scan: ${embedMeta[idx].title} -> ${scan.matches.length} pattern matches`);
-          }
-        }).catch(() => {});
-      }
-
-      // Insert into hunt_knowledge in batches of 50
+      // Insert into hunt_knowledge in batches of 50, returning IDs so we can scan+link
       const KNOWLEDGE_BATCH = 50;
       for (let i = 0; i < embeddings.length; i += KNOWLEDGE_BATCH) {
         const batchRows = [];
@@ -536,13 +523,25 @@ serve(async (req) => {
             embedding: embeddings[j],
           });
         }
-        const { error: knErr } = await supabase
+        const { data: inserted, error: knErr } = await supabase
           .from('hunt_knowledge')
-          .insert(batchRows);
+          .insert(batchRows)
+          .select('id');
         if (knErr) {
           console.error(`[hunt-weather-realtime] Knowledge insert error (batch ${i / KNOWLEDGE_BATCH}):`, knErr);
         } else {
           embeddingsCreated += batchRows.length;
+          // Fire-and-forget scan+link for each inserted entry (writes to hunt_pattern_links)
+          if (inserted && inserted.length === batchRows.length) {
+            for (let k = 0; k < inserted.length; k++) {
+              const entryIdx = i + k;
+              const sourceId = inserted[k].id;
+              scanAndLink(sourceId, embeddings[entryIdx], {
+                state_abbr: embedMeta[entryIdx].state_abbr,
+                source_content_type: 'weather-realtime',
+              }).catch(() => {});
+            }
+          }
         }
       }
     } else {

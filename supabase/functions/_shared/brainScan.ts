@@ -161,6 +161,43 @@ export async function enrichWithPatternScan(
 }
 
 /**
+ * Scan + link in one call. Use this when you have the source entry ID.
+ * Writes pattern links to hunt_pattern_links for every match above threshold.
+ * This is the function fire-and-forget data ingestion should use.
+ */
+export async function scanAndLink(
+  sourceId: string,
+  embedding: number[],
+  opts: {
+    state_abbr?: string;
+    source_content_type: string;
+    min_similarity?: number;
+    limit?: number;
+  }
+): Promise<number> {
+  try {
+    const result = await scanBrainOnWrite(embedding, {
+      state_abbr: opts.state_abbr,
+      exclude_content_type: opts.source_content_type,
+      min_similarity: opts.min_similarity ?? 0.50,
+      limit: opts.limit ?? 5,
+    });
+
+    if (!result.scanned || result.matches.length === 0) return 0;
+
+    await writePatternLinks(sourceId, result.matches, {
+      state_abbr: opts.state_abbr,
+      source_content_type: opts.source_content_type,
+    });
+
+    return result.matches.length;
+  } catch (err) {
+    console.warn('[brainScan] scanAndLink failed (non-fatal):', err);
+    return 0;
+  }
+}
+
+/**
  * Write pattern links to hunt_pattern_links.
  * One row per match linking the new entry to the historical match.
  * Best-effort — failures are logged but don't block the pipeline.
