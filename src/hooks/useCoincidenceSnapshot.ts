@@ -15,11 +15,15 @@ export function useCoincidenceSnapshot() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
 
+    // Use today's date — old bird-era scores (90+) from March pollute score.desc queries
+    const today = new Date().toISOString().slice(0, 10);
+
     Promise.all([
-      // States with convergence score > 30 (meaningful activity — balanced 11-domain scoring)
+      // Today's states with convergence score > 30 (balanced 11-domain scoring)
       supabase
         .from('hunt_convergence_scores')
         .select('state_abbr,score')
+        .eq('date', today)
         .gt('score', 30)
         .order('score', { ascending: false })
         .limit(50),
