@@ -40,11 +40,11 @@ function classifyDrought(d0: number, d1: number, d2: number, d3: number, d4: num
 
 function droughtImpact(none: number, d0: number, d2: number, d3: number, d4: number): string {
   const severeTotal = d2 + d3 + d4;
-  if (severeTotal > 50) return "critical — over half of state in severe+ drought, water sources depleted, wildlife concentrated at remaining water";
-  if (severeTotal > 25) return "significant — quarter+ of state in severe drought, reduced wetland habitat, altered migration staging";
-  if (d0 > 60) return "moderate — majority of state abnormally dry, shallow water areas drying, game movement shifting to water sources";
-  if (none > 80) return "minimal — adequate moisture, normal habitat conditions";
-  return "mixed — patchy drought conditions, localized impacts on habitat";
+  if (severeTotal > 50) return "critical — over half of state in severe+ drought, water sources depleted, ecosystems stressed, agriculture impacted";
+  if (severeTotal > 25) return "significant — quarter+ of state in severe drought, reduced water availability, soil moisture declining";
+  if (d0 > 60) return "moderate — majority of state abnormally dry, shallow water areas declining, ecological stress increasing";
+  if (none > 80) return "minimal — adequate moisture, normal environmental conditions";
+  return "mixed — patchy drought conditions, localized environmental impacts";
 }
 
 serve(async (req) => {
@@ -95,14 +95,23 @@ serve(async (req) => {
       const stateChunk = abbrs.slice(s, s + 10);
       const allEntries: { abbr: string; week: DroughtWeek; prevWeek: DroughtWeek | null }[] = [];
 
-      // Fetch all states in this chunk in parallel (USDM API is slow sequentially)
+      // Fetch all states in this chunk in parallel with per-state timeout
+      // USDM API is slow — 20s timeout per state prevents one slow state from killing the run
       const fetchResults = await Promise.allSettled(stateChunk.map(async (abbr) => {
         const fips = STATE_FIPS[abbr];
         const url = `https://usdmdataservices.unl.edu/api/StateStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=${fips}&startdate=${startDate}&enddate=${endDate}&statisticsType=1`;
-        const res = await fetch(url, { headers: { Accept: "application/json" } });
-        if (!res.ok) throw new Error(`API error ${res.status}`);
-        const weeks: DroughtWeek[] = await res.json();
-        return { abbr, weeks };
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        try {
+          const res = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+          clearTimeout(timeout);
+          if (!res.ok) throw new Error(`API error ${res.status}`);
+          const weeks: DroughtWeek[] = await res.json();
+          return { abbr, weeks };
+        } catch (err) {
+          clearTimeout(timeout);
+          throw err;
+        }
       }));
 
       for (const result of fetchResults) {
@@ -167,7 +176,7 @@ serve(async (req) => {
           title: `${abbr} drought ${dateStr}`,
           content: texts[i],
           content_type: "drought-weekly",
-          tags: [abbr, "drought", "water", "habitat", "migration-trigger"],
+          tags: [abbr, "drought", "water", "environment"],
           state_abbr: abbr,
           species: null,
           effective_date: dateStr,
