@@ -83,6 +83,29 @@ serve(async (req) => {
       }
     }
 
+    // Recent bridge entries (bio-environmental-correlation) — the narrative
+    // density layer that enables cross-domain pattern formation
+    const { data: bridgeEntries } = await supabase
+      .from('hunt_knowledge')
+      .select('title, state_abbr, metadata, created_at')
+      .eq('content_type', 'bio-environmental-correlation')
+      .gte('created_at', yesterday)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    const bridgeSection: string[] = [];
+    if (bridgeEntries) {
+      // Sort by env_matches count — most interesting first
+      const sorted = bridgeEntries
+        .map((b: any) => ({ ...b, matches: (b.metadata as any)?.env_matches || 0 }))
+        .sort((a: any, b: any) => b.matches - a.matches);
+      for (const b of sorted.slice(0, 8)) {
+        const meta = b.metadata as any;
+        const types = (meta?.env_types || []).slice(0, 5).join(', ');
+        bridgeSection.push(`${b.state_abbr}: ${b.matches} env signals — ${types}`);
+      }
+    }
+
     // -----------------------------------------------------------------
     // 3. Arcs graded in the last 24h
     // -----------------------------------------------------------------
@@ -250,11 +273,20 @@ serve(async (req) => {
       sections.push('No graded compound-risk outcomes to analyze.');
     }
 
-    sections.push('\nINTERESTING BUT UNCONFIRMED:');
+    sections.push('\nBRIDGE LAYER (last 24h cross-domain correlations):');
+    if (bridgeSection.length > 0) {
+      sections.push(bridgeSection.join('\n'));
+      sections.push(`Total bridge entries created in 24h: ${bridgeEntries?.length ?? 0}`);
+    } else {
+      sections.push('No bridge entries created. hunt-bio-correlator may be paused.');
+    }
+
+    sections.push('\nINTERESTING BUT UNCONFIRMED (pattern links):');
     if (interestingLinks.length > 0) {
       sections.push(interestingLinks.join('\n'));
     } else {
       sections.push('No notable cross-domain pattern links formed in the last 24h.');
+      sections.push('(Pattern-link-worker is paused pending IVFFlat index rebuild.)');
     }
 
     sections.push('\nHOW THE BRAIN GRADED ITSELF:');
