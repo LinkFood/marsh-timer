@@ -8,6 +8,14 @@ import { logCronRun } from '../_shared/cronLog.ts';
 import { getOpenArc, createArc, transitionArc } from '../_shared/arcReactor.ts';
 
 // ---------------------------------------------------------------------------
+// DOMAIN-AGNOSTIC CONVERGENCE ENGINE
+//
+// Scores 50 states daily across ALL environmental domains with fresh data.
+// No domain gets preferential weight. The score reflects how many independent
+// environmental systems are active in a state, not how good the hunting is.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -31,38 +39,128 @@ interface ScoreResult {
   birdcastDetails: string;
 }
 
-// Coastal states that have tide data
 const COASTAL_STATES = new Set([
   'ME','NH','MA','RI','CT','NY','NJ','DE','MD','VA','NC','SC','GA','FL',
   'AL','MS','LA','TX','CA','OR','WA','AK',
 ]);
 
-// Batch-fetched data caches (populated once, used per-state)
+// ---------------------------------------------------------------------------
+// Batch-fetched data for ALL domains (populated once, used per-state)
+// ---------------------------------------------------------------------------
+
 interface BatchData {
   water: Map<string, { trend: string }>;
   photoperiod: Map<string, { below_13h: boolean; below_11h: boolean }>;
   tide: Map<string, { avg_tidal_range_ft: number }>;
+  // New domains
+  drought: Map<string, { class: string; d2_pct: number }>;
+  air_quality: Map<string, { aqi: number; pm25: number }>;
+  soil: Map<string, { moisture: number; temp: number }>;
+  ocean: Map<string, { wave_height: number; water_temp: number }>;
+  space_weather: Map<string, { kp: number; storm_level: string }>;
+  river: Map<string, { discharge_class: string }>;
+}
+
+async function fetchBatchData(
+  supabase: ReturnType<typeof createSupabaseClient>,
+): Promise<BatchData> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+  const [waterRes, photoRes, tideRes, droughtRes, aqRes, soilRes, oceanRes, spaceRes, riverRes] = await Promise.all([
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'usgs-water').gte('created_at', sevenDaysAgo)
+      .order('effective_date', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'photoperiod')
+      .order('effective_date', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'noaa-tide').gte('created_at', sevenDaysAgo)
+      .order('effective_date', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata, content')
+      .eq('content_type', 'drought-weekly').gte('created_at', sevenDaysAgo)
+      .order('effective_date', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'air-quality').gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'soil-conditions').gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'ocean-buoy').gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: false }).limit(200),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'space-weather').gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: false }).limit(100),
+    supabase.from('hunt_knowledge').select('state_abbr, metadata')
+      .eq('content_type', 'river-discharge').gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: false }).limit(200),
+  ]);
+
+  // Build per-state maps (first match = most recent)
+  const buildMap = <T>(res: { data: any[] | null }, extract: (row: any) => T | null): Map<string, T> => {
+    const map = new Map<string, T>();
+    if (res.data) {
+      for (const row of res.data) {
+        if (!map.has(row.state_abbr)) {
+          const val = extract(row);
+          if (val !== null) map.set(row.state_abbr, val);
+        }
+      }
+    }
+    return map;
+  };
+
+  return {
+    water: buildMap(waterRes, r => r.metadata?.trend ? { trend: r.metadata.trend } : null),
+    photoperiod: buildMap(photoRes, r => r.metadata ? { below_13h: !!r.metadata.below_13h, below_11h: !!r.metadata.below_11h } : null),
+    tide: buildMap(tideRes, r => r.metadata?.avg_tidal_range_ft != null ? { avg_tidal_range_ft: r.metadata.avg_tidal_range_ft } : null),
+    drought: buildMap(droughtRes, r => {
+      const meta = r.metadata;
+      const content = r.content || '';
+      const d2Match = content.match(/D2:([\d.]+)%/);
+      const classMatch = content.match(/class:(\S+)/);
+      return {
+        class: classMatch?.[1] || meta?.drought_class || 'unknown',
+        d2_pct: d2Match ? parseFloat(d2Match[1]) : (meta?.d2_pct || 0),
+      };
+    }),
+    air_quality: buildMap(aqRes, r => {
+      const m = r.metadata;
+      return m ? { aqi: m.aqi || m.us_aqi || 0, pm25: m.pm25 || m.pm2_5 || 0 } : null;
+    }),
+    soil: buildMap(soilRes, r => {
+      const m = r.metadata;
+      return m ? { moisture: m.soil_moisture_avg || m.moisture || 0, temp: m.soil_temp_avg || m.temp || 0 } : null;
+    }),
+    ocean: buildMap(oceanRes, r => {
+      const m = r.metadata;
+      return m ? { wave_height: m.wave_height || m.wvht || 0, water_temp: m.water_temp || m.wtmp || 0 } : null;
+    }),
+    space_weather: buildMap(spaceRes, r => {
+      const m = r.metadata;
+      return m ? { kp: m.kp_index || m.kp || 0, storm_level: m.storm_level || 'none' } : null;
+    }),
+    river: buildMap(riverRes, r => {
+      const m = r.metadata;
+      return m ? { discharge_class: m.discharge_class || m.classification || 'normal' } : null;
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Component Scorers
+// Per-State Scorers (require individual DB queries)
 // ---------------------------------------------------------------------------
 
 async function scoreWeather(
   supabase: ReturnType<typeof createSupabaseClient>,
-  stateAbbr: string,
-  today: string,
-  endDate: string,
+  stateAbbr: string, today: string, endDate: string,
 ): Promise<{ score: number; details: string; signals: Record<string, unknown> }> {
-  // Query weather events for this state, today through +3 days
   const { data: events } = await supabase
     .from('hunt_weather_events')
     .select('event_type, severity, details')
     .eq('state_abbr', stateAbbr)
-    .gte('event_date', today)
-    .lte('event_date', endDate);
+    .gte('event_date', today).lte('event_date', endDate);
 
-  // Query active NWS alerts for this state
   const { data: alerts } = await supabase
     .from('hunt_nws_alerts')
     .select('event_type, severity, headline')
@@ -79,7 +177,7 @@ async function scoreWeather(
     if (types.has('pressure_drop')) { score += 10; parts.push('pressure drop'); }
     if (types.has('high_wind')) { score += 5; parts.push('high wind'); }
     if (types.has('first_freeze')) { score += 10; parts.push('first freeze'); }
-    if (types.has('heavy_precip')) { score -= 5; parts.push('heavy precip (-)'); }
+    if (types.has('heavy_precip')) { score += 5; parts.push('heavy precip'); }
     signalData.weather_events = events.length;
     signalData.event_types = [...types];
   }
@@ -90,30 +188,80 @@ async function scoreWeather(
       if (et.includes('winter storm')) { score += 10; parts.push('NWS winter storm'); }
       else if (et.includes('wind')) { score += 5; parts.push('NWS wind advisory'); }
       else if (et.includes('freeze')) { score += 8; parts.push('NWS freeze warning'); }
+      else if (et.includes('flood')) { score += 8; parts.push('NWS flood warning'); }
+      else if (et.includes('fire')) { score += 8; parts.push('NWS fire weather'); }
     }
     signalData.nws_alerts = alerts.length;
   }
 
-  // No events = stable weather penalty
   if ((!events || events.length === 0) && (!alerts || alerts.length === 0)) {
-    score -= 10;
-    parts.push('stable (no events)');
+    score = 0; parts.push('stable');
   }
 
-  score = Math.min(25, Math.max(0, score));
-  return { score, details: parts.join(', ') || 'none', signals: signalData };
+  return { score: Math.min(20, Math.max(0, score)), details: parts.join(', ') || 'none', signals: signalData };
 }
 
-async function scoreSolunar(
+async function scoreBiological(
   supabase: ReturnType<typeof createSupabaseClient>,
-  today: string,
-  endDate: string,
+  stateAbbr: string, today: string,
+): Promise<{ score: number; migrationDetails: string; birdcastDetails: string; migrationScore: number; birdcastScore: number; signals: Record<string, unknown> }> {
+  const sevenDaysAgo = new Date(new Date(today).getTime() - 7 * 86400000).toISOString().split('T')[0];
+  const threeDaysAgo = new Date(new Date(today).getTime() - 3 * 86400000).toISOString().split('T')[0];
+
+  const [spikesRes, birdcastRes] = await Promise.all([
+    supabase.from('hunt_migration_spikes')
+      .select('deviation_pct, sighting_count, date')
+      .eq('state_abbr', stateAbbr)
+      .gte('date', sevenDaysAgo)
+      .order('deviation_pct', { ascending: false }),
+    supabase.from('hunt_birdcast')
+      .select('cumulative_birds, is_high')
+      .eq('state_abbr', stateAbbr)
+      .gte('date', threeDaysAgo).lte('date', today)
+      .order('date', { ascending: false }),
+  ]);
+
+  let migrationScore = 0;
+  let migrationDetails = 'no data';
+  let birdcastScore = 0;
+  let birdcastDetails = 'no data';
+  const signalData: Record<string, unknown> = {};
+
+  // Migration spikes
+  const spikes = spikesRes.data;
+  if (spikes && spikes.length > 0) {
+    const dev = spikes[0].deviation_pct;
+    signalData.top_deviation_pct = dev;
+    if (dev > 100) { migrationScore = 15; migrationDetails = `spike ${Math.round(dev)}% above baseline`; }
+    else if (dev > 50) { migrationScore = 10; migrationDetails = `elevated ${Math.round(dev)}%`; }
+    else if (dev > 25) { migrationScore = 5; migrationDetails = `above baseline ${Math.round(dev)}%`; }
+    else { migrationDetails = 'at baseline'; }
+  }
+
+  // BirdCast
+  const birdcast = birdcastRes.data;
+  if (birdcast && birdcast.length > 0) {
+    const latest = birdcast[0];
+    if (latest.is_high) { birdcastScore += 5; birdcastDetails = 'high intensity'; }
+    const birds = latest.cumulative_birds || 0;
+    if (birds > 1000000) { birdcastScore += 5; birdcastDetails += ` ${(birds / 1e6).toFixed(1)}M birds`; }
+    else if (birds > 100000) { birdcastScore += 2; birdcastDetails += ` ${(birds / 1e3).toFixed(0)}K birds`; }
+    birdcastDetails = birdcastDetails.trim() || 'low activity';
+  }
+
+  // Combined biological score — capped at 15 (was 45 when migration+birdcast were separate)
+  const combined = Math.min(15, migrationScore + birdcastScore);
+  return { score: combined, migrationDetails, birdcastDetails, migrationScore, birdcastScore, signals: signalData };
+}
+
+async function scoreLunar(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  today: string, endDate: string,
 ): Promise<{ score: number; moonPhase: string; signals: Record<string, unknown> }> {
   const { data: solunar } = await supabase
     .from('hunt_solunar_calendar')
-    .select('date, moon_phase, illumination_pct, is_prime')
-    .gte('date', today)
-    .lte('date', endDate)
+    .select('date, moon_phase, illumination_pct')
+    .gte('date', today).lte('date', endDate)
     .order('date');
 
   let score = 0;
@@ -121,346 +269,213 @@ async function scoreSolunar(
   const signalData: Record<string, unknown> = {};
 
   if (solunar && solunar.length > 0) {
-    // Use today's entry as primary
     const todayEntry = solunar[0];
     moonPhase = todayEntry.moon_phase || 'unknown';
     const illum = todayEntry.illumination_pct ?? 50;
     signalData.illumination_pct = illum;
     signalData.moon_phase = moonPhase;
-
-    // New moon bonus
-    if (illum < 5) { score += 10; }
-    else if (illum < 15) { score += 5; }
-
-    // Full moon penalty
-    if (illum > 95) { score -= 5; }
-
-    // Check if any day in window is prime
-    const hasPrime = solunar.some((s: { is_prime: boolean }) => s.is_prime);
-    if (hasPrime) { score += 15; signalData.is_prime = true; }
+    // New/crescent moon = high tidal variation, biological activity trigger
+    if (illum < 5) score = 10;
+    else if (illum < 15) score = 5;
+    else if (illum > 95) score = 8; // Full moon also drives tidal + nocturnal activity
+    else score = 2;
   }
 
-  score = Math.min(15, Math.max(0, score));
-  return { score, moonPhase, signals: signalData };
+  return { score: Math.min(10, score), moonPhase, signals: signalData };
 }
 
-async function scoreMigration(
-  supabase: ReturnType<typeof createSupabaseClient>,
-  stateAbbr: string,
-  today: string,
-): Promise<{ score: number; details: string; signals: Record<string, unknown> }> {
-  // Query migration spikes for this state, last 7 days
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+// ---------------------------------------------------------------------------
+// Batch-Data Scorers (no per-state queries, use pre-fetched data)
+// ---------------------------------------------------------------------------
 
-  const { data: spikes } = await supabase
-    .from('hunt_migration_spikes')
-    .select('deviation_pct, sighting_count, baseline_avg, date')
-    .eq('state_abbr', stateAbbr)
-    .gte('date', sevenDaysAgoStr)
-    .order('deviation_pct', { ascending: false });
-
-  // Query recent migration history for trend
-  const threeDaysAgo = new Date(today);
-  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-  const threeDaysAgoStr = threeDaysAgo.toISOString().split('T')[0];
-
-  const { data: history } = await supabase
-    .from('hunt_migration_history')
-    .select('sighting_count, date')
-    .eq('state_abbr', stateAbbr)
-    .gte('date', threeDaysAgoStr)
-    .order('date', { ascending: false })
-    .limit(10);
-
+function scoreWater(bd: BatchData, st: string): number {
+  const w = bd.water.get(st);
+  const r = bd.river.get(st);
   let score = 0;
-  let details = 'no recent data';
-  const signalData: Record<string, unknown> = {};
-
-  if (spikes && spikes.length > 0) {
-    const topSpike = spikes[0];
-    const dev = topSpike.deviation_pct;
-    signalData.top_deviation_pct = dev;
-    signalData.spike_count = spikes.length;
-
-    if (dev > 100) {
-      score = 30;
-      details = `spike ${Math.round(dev)}% above baseline`;
-    } else if (dev > 50) {
-      score = 20;
-      details = `elevated ${Math.round(dev)}% above baseline`;
-    } else if (dev > 25) {
-      score = 10;
-      details = `above baseline ${Math.round(dev)}%`;
-    } else {
-      details = 'at baseline';
-    }
-  } else if (history && history.length > 0) {
-    signalData.recent_sightings = history.length;
-    details = `${history.length} recent observations, no spikes`;
+  if (w) {
+    if (w.trend === 'rising') score += 8;
+    else if (w.trend === 'stable') score += 3;
+    else if (w.trend === 'falling') score += 5; // falling water is also a signal
   }
-
-  score = Math.min(25, Math.max(0, score));
-  return { score, details, signals: signalData };
+  if (r) {
+    if (r.discharge_class === 'flood' || r.discharge_class === 'flood conditions') score += 7;
+    else if (r.discharge_class === 'elevated' || r.discharge_class === 'elevated flow') score += 4;
+    else if (r.discharge_class === 'low flow' || r.discharge_class === 'drought conditions') score += 5;
+    else score += 1;
+  }
+  return Math.min(15, score);
 }
 
-async function scorePattern(
-  supabase: ReturnType<typeof createSupabaseClient>,
-  stateAbbr: string,
-  stateName: string,
-  weatherDetails: string,
-  moonPhase: string,
-  migrationDetails: string,
-): Promise<{ score: number; summary: string; signals: Record<string, unknown> }> {
-  const searchText = `${stateName} environmental conditions: ${weatherDetails}, ${moonPhase}, ${migrationDetails}`;
+function scoreDrought(bd: BatchData, st: string): number {
+  const d = bd.drought.get(st);
+  if (!d) return 0; // no data = no score (not neutral)
+  if (d.class === 'exceptional_drought' || d.d2_pct > 50) return 15;
+  if (d.class === 'extreme_drought' || d.d2_pct > 25) return 12;
+  if (d.class === 'severe_drought') return 10;
+  if (d.class === 'moderate_drought') return 7;
+  if (d.class === 'abnormally_dry') return 4;
+  if (d.class === 'normal') return 1;
+  return 2;
+}
 
+function scoreAirQuality(bd: BatchData, st: string): number {
+  const a = bd.air_quality.get(st);
+  if (!a) return 0;
+  if (a.aqi > 200) return 15; // Very unhealthy — major environmental event
+  if (a.aqi > 150) return 12; // Unhealthy
+  if (a.aqi > 100) return 8;  // Unhealthy for sensitive
+  if (a.aqi > 50) return 4;   // Moderate
+  return 1; // Good
+}
+
+function scoreSoil(bd: BatchData, st: string): number {
+  const s = bd.soil.get(st);
+  if (!s) return 0;
+  // Extremes in either direction are signals
   let score = 0;
-  let summary = 'no historical match';
-  const signalData: Record<string, unknown> = {};
-
-  try {
-    const embedding = await generateEmbedding(searchText, 'query');
-
-    const { data: matches } = await supabase.rpc('search_hunt_knowledge_v3', {
-      query_embedding: embedding,
-      match_threshold: 0.3,
-      match_count: 5,
-      filter_content_types: null,
-      filter_state_abbr: stateAbbr,
-      filter_species: null,
-      filter_date_from: null,
-      filter_date_to: null,
-      recency_weight: 0.1,
-      exclude_du_report: true,
-    });
-
-    if (matches && matches.length > 0) {
-      const bestSim = matches[0].similarity;
-      signalData.best_similarity = bestSim;
-      signalData.match_count = matches.length;
-
-      if (bestSim > 0.5) {
-        score = 20;
-        summary = matches[0].content?.substring(0, 200) || 'strong pattern match';
-      } else {
-        score = 10;
-        summary = matches[0].content?.substring(0, 200) || 'moderate pattern match';
-      }
-    }
-  } catch (err) {
-    console.error(`[hunt-convergence-engine] Pattern search error for ${stateAbbr}:`, err);
-  }
-
-  score = Math.min(15, Math.max(0, score));
-  return { score, summary, signals: signalData };
+  if (s.temp < 0 || s.temp > 35) score += 5; // Freeze or extreme heat
+  if (s.moisture < 0.1 || s.moisture > 0.5) score += 5; // Very dry or saturated
+  return Math.min(10, score) || 2; // Baseline of 2 if data exists
 }
 
-async function getBirdCastScore(
-  supabase: ReturnType<typeof createSupabaseClient>,
-  stateAbbr: string,
-  date: string,
-): Promise<{ score: number; detail: string }> {
-  const threeDaysAgo = new Date(new Date(date).getTime() - 3 * 86400000).toISOString().split('T')[0];
-
-  const { data } = await supabase
-    .from('hunt_birdcast')
-    .select('cumulative_birds, is_high, avg_direction, avg_speed')
-    .eq('state_abbr', stateAbbr)
-    .gte('date', threeDaysAgo)
-    .lte('date', date)
-    .order('date', { ascending: false });
-
-  if (!data || data.length === 0) return { score: 0, detail: 'No BirdCast data' };
-
+function scoreOcean(bd: BatchData, st: string): number {
+  if (!COASTAL_STATES.has(st)) return 0;
+  const o = bd.ocean.get(st);
+  if (!o) return 0;
   let score = 0;
-  const latest = data[0];
-  const details: string[] = [];
+  if (o.wave_height > 3) score += 7; // High seas
+  else if (o.wave_height > 1.5) score += 4;
+  else score += 1;
+  // Water temp anomalies (simplified — would need historical baseline for real anomaly detection)
+  if (o.water_temp > 0) score += 2;
+  return Math.min(10, score);
+}
 
-  // High intensity flag
-  if (latest.is_high) { score += 10; details.push('high intensity'); }
+function scoreSpaceWeather(bd: BatchData, _st: string): number {
+  // Space weather is global, not per-state. Use the first entry.
+  const entries = [...bd.space_weather.values()];
+  if (entries.length === 0) return 0;
+  const sw = entries[0];
+  if (sw.storm_level !== 'none' && sw.storm_level !== 'quiet') return 10;
+  if (sw.kp >= 5) return 10; // Geomagnetic storm
+  if (sw.kp >= 4) return 6;
+  if (sw.kp >= 3) return 3;
+  return 1;
+}
 
-  // Volume-based scoring
-  const birds = latest.cumulative_birds || 0;
-  if (birds > 1000000) { score += 5; details.push(`${(birds / 1e6).toFixed(1)}M birds`); }
-  else if (birds > 500000) { score += 3; details.push(`${(birds / 1e3).toFixed(0)}K birds`); }
-  else if (birds > 100000) { score += 1; details.push(`${(birds / 1e3).toFixed(0)}K birds`); }
+function scorePhotoperiod(bd: BatchData, st: string): number {
+  const p = bd.photoperiod.get(st);
+  if (!p) return 2;
+  if (p.below_13h && !p.below_11h) return 8; // Transitional — highest biological activity trigger
+  if (p.below_11h) return 5; // Deep winter
+  return 2;
+}
 
-  // Multi-day activity bonus
-  const activeDays = data.filter((d: { cumulative_birds: number | null }) => (d.cumulative_birds || 0) > 50000).length;
-  if (activeDays >= 3) { score += 5; details.push('3-day streak'); }
-  else if (activeDays >= 2) { score += 3; details.push('2-day activity'); }
-
-  return { score: Math.min(score, 20), detail: details.join(', ') || 'Low activity' };
+function scoreTide(bd: BatchData, st: string): number {
+  if (!COASTAL_STATES.has(st)) return 0;
+  const t = bd.tide.get(st);
+  if (!t) return 2;
+  if (t.avg_tidal_range_ft > 6) return 8;
+  if (t.avg_tidal_range_ft >= 3) return 5;
+  return 2;
 }
 
 // ---------------------------------------------------------------------------
-// Batch fetch new data sources (3 queries total for all states)
-// ---------------------------------------------------------------------------
-
-async function fetchBatchData(
-  supabase: ReturnType<typeof createSupabaseClient>,
-): Promise<BatchData> {
-  const [waterRes, photoRes, tideRes] = await Promise.all([
-    supabase
-      .from('hunt_knowledge')
-      .select('state_abbr, metadata')
-      .eq('content_type', 'usgs-water')
-      .order('effective_date', { ascending: false })
-      .limit(500),
-    supabase
-      .from('hunt_knowledge')
-      .select('state_abbr, metadata')
-      .eq('content_type', 'photoperiod')
-      .order('effective_date', { ascending: false })
-      .limit(500),
-    supabase
-      .from('hunt_knowledge')
-      .select('state_abbr, metadata')
-      .eq('content_type', 'noaa-tide')
-      .order('effective_date', { ascending: false })
-      .limit(500),
-  ]);
-
-  // Build per-state maps (first match = most recent due to ordering)
-  const water = new Map<string, { trend: string }>();
-  if (waterRes.data) {
-    for (const row of waterRes.data) {
-      if (!water.has(row.state_abbr) && row.metadata?.trend) {
-        water.set(row.state_abbr, { trend: row.metadata.trend });
-      }
-    }
-  }
-
-  const photoperiod = new Map<string, { below_13h: boolean; below_11h: boolean }>();
-  if (photoRes.data) {
-    for (const row of photoRes.data) {
-      if (!photoperiod.has(row.state_abbr) && row.metadata) {
-        photoperiod.set(row.state_abbr, {
-          below_13h: !!row.metadata.below_13h,
-          below_11h: !!row.metadata.below_11h,
-        });
-      }
-    }
-  }
-
-  const tide = new Map<string, { avg_tidal_range_ft: number }>();
-  if (tideRes.data) {
-    for (const row of tideRes.data) {
-      if (!tide.has(row.state_abbr) && row.metadata?.avg_tidal_range_ft != null) {
-        tide.set(row.state_abbr, { avg_tidal_range_ft: row.metadata.avg_tidal_range_ft });
-      }
-    }
-  }
-
-  return { water, photoperiod, tide };
-}
-
-// ---------------------------------------------------------------------------
-// New component scorers (use batch data, no per-state queries)
-// ---------------------------------------------------------------------------
-
-function scoreWater(batchData: BatchData, stateAbbr: string): number {
-  const entry = batchData.water.get(stateAbbr);
-  if (!entry) return 5; // no data = neutral
-  if (entry.trend === 'rising') return 15;
-  if (entry.trend === 'stable') return 8;
-  if (entry.trend === 'falling') return 3;
-  return 5;
-}
-
-function scorePhotoperiod(batchData: BatchData, stateAbbr: string): number {
-  const entry = batchData.photoperiod.get(stateAbbr);
-  if (!entry) return 2;
-  if (entry.below_13h && !entry.below_11h) return 10; // fall migration trigger
-  if (entry.below_11h) return 5; // deep winter
-  return 2; // spring/summer
-}
-
-function scoreTide(batchData: BatchData, stateAbbr: string): number {
-  if (!COASTAL_STATES.has(stateAbbr)) return 0; // non-coastal, don't penalize
-  const entry = batchData.tide.get(stateAbbr);
-  if (!entry) return 4; // coastal but no data
-  if (entry.avg_tidal_range_ft > 6) return 10;
-  if (entry.avg_tidal_range_ft >= 3) return 7;
-  return 4;
-}
-
-// ---------------------------------------------------------------------------
-// Score a single state
+// Score a single state — ALL domains
 // ---------------------------------------------------------------------------
 
 async function scoreState(
   supabase: ReturnType<typeof createSupabaseClient>,
-  stateAbbr: string,
-  today: string,
-  endDate: string,
+  stateAbbr: string, today: string, endDate: string,
   batchData: BatchData,
 ): Promise<ScoreResult> {
-  const stateName = STATE_NAMES[stateAbbr] || stateAbbr;
-
-  // Run weather, solunar, migration, birdcast in parallel
-  // Pattern search skipped — too slow on 3.2M brain (embedding + vector search per state)
-  // Worth only 15/135 points, not worth the 150s timeout risk
-  const [weatherResult, solunarResult, migrationResult, birdcastResult] = await Promise.all([
+  // Per-state async queries (weather, biology, lunar)
+  const [weatherResult, bioResult, lunarResult] = await Promise.all([
     scoreWeather(supabase, stateAbbr, today, endDate),
-    scoreSolunar(supabase, today, endDate),
-    scoreMigration(supabase, stateAbbr, today),
-    getBirdCastScore(supabase, stateAbbr, today),
+    scoreBiological(supabase, stateAbbr, today),
+    scoreLunar(supabase, today, endDate),
   ]);
 
-  const patternResult = { score: 0, summary: 'skipped (performance)', signals: {} };
-
-  // New components from batch data (no async, already fetched)
+  // Batch-data domain scores (no async, already fetched)
   const waterScore = scoreWater(batchData, stateAbbr);
-  const photoperiodScore = scorePhotoperiod(batchData, stateAbbr);
+  const droughtScore = scoreDrought(batchData, stateAbbr);
+  const airScore = scoreAirQuality(batchData, stateAbbr);
+  const soilScore = scoreSoil(batchData, stateAbbr);
+  const oceanScore = scoreOcean(batchData, stateAbbr);
+  const spaceScore = scoreSpaceWeather(batchData, stateAbbr);
+  const photoScore = scorePhotoperiod(batchData, stateAbbr);
   const tideScore = scoreTide(batchData, stateAbbr);
 
-  // Old 5 components max ~100, new 3 max ~35. Normalize to 0-100.
-  const rawSum = weatherResult.score + solunarResult.score + migrationResult.score
-    + patternResult.score + birdcastResult.score
-    + waterScore + photoperiodScore + tideScore;
+  // Total: all domains contribute equally
+  // Max possible: weather(20) + bio(15) + lunar(10) + water(15) + drought(15)
+  //             + air(15) + soil(10) + ocean(10) + space(10) + photo(8) + tide(8)
+  //             = 136 theoretical max (coastal), ~118 non-coastal
+  const rawSum = weatherResult.score + bioResult.score + lunarResult.score
+    + waterScore + droughtScore + airScore + soilScore + oceanScore
+    + spaceScore + photoScore + tideScore;
   const total = Math.min(100, Math.max(0, Math.round(rawSum * 100 / 120)));
 
   // Build reasoning
   const parts: string[] = [];
-  if (weatherResult.score > 10) parts.push(`Weather active: ${weatherResult.details}`);
-  if (solunarResult.score > 10) parts.push(`Moon favorable: ${solunarResult.moonPhase}`);
-  if (migrationResult.score > 10) parts.push(`Migration elevated: ${migrationResult.details}`);
-  if (birdcastResult.score > 5) parts.push(`BirdCast: ${birdcastResult.detail}`);
-  if (patternResult.score > 5) parts.push(`Historical match: ${patternResult.summary}`);
-  if (waterScore >= 10) parts.push(`Water rising`);
-  if (photoperiodScore >= 8) parts.push(`Daylight in migration trigger zone`);
-  if (tideScore >= 7) parts.push(`Strong tidal range`);
+  if (weatherResult.score > 5) parts.push(`Weather: ${weatherResult.details}`);
+  if (bioResult.score > 5) parts.push(`Biology: ${bioResult.migrationDetails}`);
+  if (droughtScore > 5) parts.push(`Drought active`);
+  if (waterScore > 5) parts.push(`Water signal`);
+  if (airScore > 5) parts.push(`Air quality notable`);
+  if (soilScore > 4) parts.push(`Soil conditions extreme`);
+  if (oceanScore > 5) parts.push(`Ocean active`);
+  if (spaceScore > 3) parts.push(`Space weather elevated`);
+  if (lunarResult.score > 5) parts.push(`Lunar: ${lunarResult.moonPhase}`);
+  if (photoScore > 5) parts.push(`Photoperiod transitional`);
+  if (tideScore > 5) parts.push(`Strong tidal range`);
   const reasoning = `Score ${total}/100. ${parts.join('. ')}.`;
 
   return {
     state_abbr: stateAbbr,
+    // Map back to legacy column names for backward compatibility
     weather: weatherResult.score,
-    solunar: solunarResult.score,
-    migration: migrationResult.score,
-    pattern: patternResult.score,
-    birdcast: birdcastResult.score,
+    migration: bioResult.migrationScore,
+    birdcast: bioResult.birdcastScore,
+    solunar: lunarResult.score,
     water: waterScore,
-    photoperiod: photoperiodScore,
+    photoperiod: photoScore,
     tide: tideScore,
+    pattern: 0, // still disabled
     score: total,
     reasoning,
     signals: {
       weather: weatherResult.signals,
-      solunar: solunarResult.signals,
-      migration: migrationResult.signals,
-      pattern: patternResult.signals,
-      birdcast: { detail: birdcastResult.detail },
+      biological: bioResult.signals,
+      lunar: lunarResult.signals,
       water: batchData.water.get(stateAbbr) || null,
+      river: batchData.river.get(stateAbbr) || null,
+      drought: batchData.drought.get(stateAbbr) || null,
+      air_quality: batchData.air_quality.get(stateAbbr) || null,
+      soil: batchData.soil.get(stateAbbr) || null,
+      ocean: batchData.ocean.get(stateAbbr) || null,
+      space_weather: batchData.space_weather.get(stateAbbr) || null,
       photoperiod: batchData.photoperiod.get(stateAbbr) || null,
       tide: batchData.tide.get(stateAbbr) || null,
+      // Domain scores for the new domains (not in legacy columns)
+      domain_scores: {
+        weather: weatherResult.score,
+        biological: bioResult.score,
+        lunar: lunarResult.score,
+        water: waterScore,
+        drought: droughtScore,
+        air_quality: airScore,
+        soil: soilScore,
+        ocean: oceanScore,
+        space_weather: spaceScore,
+        photoperiod: photoScore,
+        tide: tideScore,
+      },
     },
     weatherDetails: weatherResult.details,
-    moonPhase: solunarResult.moonPhase,
-    migrationDetails: migrationResult.details,
-    patternSummary: patternResult.summary,
-    birdcastDetails: birdcastResult.detail,
+    moonPhase: lunarResult.moonPhase,
+    migrationDetails: bioResult.migrationDetails,
+    patternSummary: 'skipped (performance)',
+    birdcastDetails: bioResult.birdcastDetails,
   };
 }
 
@@ -469,16 +484,8 @@ async function scoreState(
 // ---------------------------------------------------------------------------
 
 serve(async (req) => {
-  // Cache request data before any async work — request object can become invalid
-  // when concurrent calls arrive
-  try {
-    req.headers.get('authorization');
-  } catch {
-    console.error('[hunt-convergence-engine] Cannot read headers: request closed before processing');
-    return new Response(JSON.stringify({ error: 'Request closed before processing' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  try { req.headers.get('authorization'); } catch {
+    return new Response(JSON.stringify({ error: 'Request closed' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
   }
 
   const corsResponse = handleCors(req);
@@ -487,210 +494,127 @@ serve(async (req) => {
   const startTime = Date.now();
   try {
     let body: Record<string, any> = {};
-    try {
-      body = await req.json().catch(() => ({}));
-    } catch {
-      await logCronRun({ functionName: 'hunt-convergence-engine', status: 'error', errorMessage: 'Request body unreadable (connection closed)', durationMs: Date.now() - startTime });
-      return new Response(JSON.stringify({ error: 'Request body unreadable' }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    try { body = await req.json().catch(() => ({})); } catch {
+      await logCronRun({ functionName: 'hunt-convergence-engine', status: 'error', errorMessage: 'Request body unreadable', durationMs: Date.now() - startTime });
+      return new Response(JSON.stringify({ error: 'Request body unreadable' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
     }
+
     const trigger = body.trigger || 'daily';
     const requestedStates: string[] | undefined = body.states;
-    const batch: number | null = body.batch ?? null; // 1-5, or null for all
+    const batch: number | null = body.batch ?? null;
 
     let statesToScore: string[];
     if (requestedStates && requestedStates.length > 0) {
       statesToScore = requestedStates.filter((s: string) => STATE_ABBRS.includes(s));
     } else if (batch !== null && batch >= 1 && batch <= 5) {
       const batchSize = Math.ceil(STATE_ABBRS.length / 5);
-      const start = (batch - 1) * batchSize;
-      statesToScore = STATE_ABBRS.slice(start, start + batchSize);
+      statesToScore = STATE_ABBRS.slice((batch - 1) * batchSize, (batch - 1) * batchSize + batchSize);
     } else {
       statesToScore = STATE_ABBRS;
     }
 
-    console.log(`[hunt-convergence-engine] Starting. trigger=${trigger}, batch=${batch ?? 'all'}, states=${statesToScore.length} (${statesToScore.join(',')})`);
+    console.log(`[convergence-engine] Starting. trigger=${trigger}, batch=${batch ?? 'all'}, states=${statesToScore.length}`);
 
     const supabase = createSupabaseClient();
     const today = new Date().toISOString().split('T')[0];
-    const endDateObj = new Date();
-    endDateObj.setDate(endDateObj.getDate() + 3);
+    const endDateObj = new Date(); endDateObj.setDate(endDateObj.getDate() + 3);
     const endDate = endDateObj.toISOString().split('T')[0];
 
-    // -----------------------------------------------------------------------
-    // 0. Batch-fetch new data sources (water, photoperiod, tide) — 3 queries
-    // -----------------------------------------------------------------------
-    console.log(`[hunt-convergence-engine] Batch-fetching water/photoperiod/tide data`);
+    // Batch-fetch ALL domain data (9 queries, covers all states)
+    console.log(`[convergence-engine] Batch-fetching all domain data`);
     const batchData = await fetchBatchData(supabase);
-    console.log(`[hunt-convergence-engine] Batch data: water=${batchData.water.size} states, photoperiod=${batchData.photoperiod.size} states, tide=${batchData.tide.size} states`);
+    console.log(`[convergence-engine] Batch data: water=${batchData.water.size} drought=${batchData.drought.size} air=${batchData.air_quality.size} soil=${batchData.soil.size} ocean=${batchData.ocean.size} space=${batchData.space_weather.size} river=${batchData.river.size}`);
 
-    // -----------------------------------------------------------------------
-    // 1. Score states in parallel batches of 10
-    // -----------------------------------------------------------------------
+    // Score states in batches of 3
     const allResults: ScoreResult[] = [];
-    const BATCH_SIZE = 3; // Reduced from 10 — 3.2M brain makes concurrent vector searches too slow
-
+    const BATCH_SIZE = 3;
     for (let i = 0; i < statesToScore.length; i += BATCH_SIZE) {
-      const batch = statesToScore.slice(i, i + BATCH_SIZE);
-      console.log(`[hunt-convergence-engine] Scoring batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.join(',')}`);
-      const batchResults = await Promise.all(
-        batch.map(abbr => scoreState(supabase, abbr, today, endDate, batchData))
-      );
-      allResults.push(...batchResults);
+      const b = statesToScore.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(b.map(abbr => scoreState(supabase, abbr, today, endDate, batchData)));
+      allResults.push(...results);
     }
 
-    // -----------------------------------------------------------------------
-    // 2. Compute national rankings
-    // -----------------------------------------------------------------------
+    // National rankings
     allResults.sort((a, b) => b.score - a.score);
     for (let i = 0; i < allResults.length; i++) {
       (allResults[i] as ScoreResult & { national_rank: number }).national_rank = i + 1;
     }
 
-    // -----------------------------------------------------------------------
-    // 3. Fetch previous scores for history tracking
-    // -----------------------------------------------------------------------
+    // Previous scores for delta tracking
     const { data: prevScores } = await supabase
-      .from('hunt_convergence_scores')
-      .select('state_abbr, score')
-      .eq('date', today)
-      .in('state_abbr', statesToScore);
-
+      .from('hunt_convergence_scores').select('state_abbr, score')
+      .eq('date', today).in('state_abbr', statesToScore);
     const prevMap = new Map<string, number>();
-    if (prevScores) {
-      for (const p of prevScores) {
-        prevMap.set(p.state_abbr, p.score);
-      }
-    }
+    if (prevScores) for (const p of prevScores) prevMap.set(p.state_abbr, p.score);
 
-    // -----------------------------------------------------------------------
-    // 4. Upsert convergence scores
-    // -----------------------------------------------------------------------
+    // Upsert convergence scores
     const upsertRows = allResults.map(r => ({
-      state_abbr: r.state_abbr,
-      date: today,
-      score: r.score,
-      weather_component: r.weather,
-      solunar_component: r.solunar,
-      migration_component: r.migration,
-      pattern_component: r.pattern,
-      birdcast_component: r.birdcast,
-      water_component: r.water,
-      photoperiod_component: r.photoperiod,
-      tide_component: r.tide,
-      reasoning: r.reasoning,
-      signals: r.signals,
+      state_abbr: r.state_abbr, date: today, score: r.score,
+      weather_component: r.weather, solunar_component: r.solunar,
+      migration_component: r.migration, pattern_component: r.pattern,
+      birdcast_component: r.birdcast, water_component: r.water,
+      photoperiod_component: r.photoperiod, tide_component: r.tide,
+      reasoning: r.reasoning, signals: r.signals,
       national_rank: (r as ScoreResult & { national_rank?: number }).national_rank ?? null,
     }));
 
-    console.log(`[hunt-convergence-engine] Upserting ${upsertRows.length} convergence scores`);
     const { error: upsertErr } = await supabase
-      .from('hunt_convergence_scores')
-      .upsert(upsertRows, { onConflict: 'state_abbr,date' });
+      .from('hunt_convergence_scores').upsert(upsertRows, { onConflict: 'state_abbr,date' });
+    if (upsertErr) console.error('[convergence-engine] Upsert error:', upsertErr);
 
-    if (upsertErr) {
-      console.error('[hunt-convergence-engine] Upsert error:', upsertErr);
-    }
-
-    // -----------------------------------------------------------------------
-    // 5. Insert score history
-    // -----------------------------------------------------------------------
+    // Score history
     const historyRows = allResults.map(r => ({
-      state_abbr: r.state_abbr,
-      score: r.score,
-      trigger,
+      state_abbr: r.state_abbr, score: r.score, trigger,
       previous_score: prevMap.get(r.state_abbr) ?? null,
     }));
+    const { error: histErr } = await supabase.from('hunt_score_history').insert(historyRows);
+    if (histErr) console.error('[convergence-engine] History error:', histErr);
 
-    console.log(`[hunt-convergence-engine] Inserting ${historyRows.length} history rows`);
-    const { error: histErr } = await supabase
-      .from('hunt_score_history')
-      .insert(historyRows);
-
-    if (histErr) {
-      console.error('[hunt-convergence-engine] History insert error:', histErr);
-    }
-
-    // -----------------------------------------------------------------------
-    // 6. Embed top 10 states into hunt_knowledge
-    // -----------------------------------------------------------------------
+    // Embed top 10
     const top10 = allResults.slice(0, 10);
     if (top10.length > 0) {
-      console.log(`[hunt-convergence-engine] Embedding top ${top10.length} states`);
       const embedTexts = top10.map(r =>
-        `convergence | ${r.state_abbr} | ${today} | score:${r.score}/100 | birdcast:${r.birdcastDetails} | ${r.reasoning}`
+        `convergence | ${r.state_abbr} | ${today} | score:${r.score}/100 | ${r.reasoning}`
       );
-
       try {
         const embeddings = await batchEmbed(embedTexts, 'document');
-
         if (embeddings && embeddings.length === embedTexts.length) {
           const knowledgeRows = top10.map((r, idx) => ({
             title: `${r.state_abbr} convergence ${today}`,
             content: embedTexts[idx],
             content_type: 'convergence-score',
             tags: [r.state_abbr, 'convergence', today],
-            state_abbr: r.state_abbr,
-            species: null,
+            state_abbr: r.state_abbr, species: null,
             effective_date: today,
             metadata: { score: r.score, trigger, date: today },
             embedding: embeddings[idx],
           }));
-
-          const { error: knErr } = await supabase
-            .from('hunt_knowledge')
-            .insert(knowledgeRows);
-
-          if (knErr) {
-            console.error('[hunt-convergence-engine] Knowledge insert error:', knErr);
-          }
+          const { error: knErr } = await supabase.from('hunt_knowledge').insert(knowledgeRows);
+          if (knErr) console.error('[convergence-engine] Knowledge error:', knErr);
         }
-      } catch (embedErr) {
-        console.error('[hunt-convergence-engine] Embedding error:', embedErr);
-      }
+      } catch (embedErr) { console.error('[convergence-engine] Embed error:', embedErr); }
     }
 
-    // -----------------------------------------------------------------------
-    // 7. Return summary
-    // -----------------------------------------------------------------------
-    const top5 = allResults.slice(0, 5).map(r => ({
-      state: r.state_abbr,
-      score: r.score,
-      reasoning: r.reasoning,
-    }));
-
-    const summary = {
-      batch: batch ?? 'all',
-      states_scored: allResults.length,
-      top_5: top5,
-      trigger,
-      run_at: new Date().toISOString(),
-    };
-
-    console.log('[hunt-convergence-engine] Complete:', JSON.stringify(summary));
-    await logCronRun({
-      functionName: 'hunt-convergence-engine',
-      status: 'success',
-      summary,
-      durationMs: Date.now() - startTime,
-    });
-
-    // === ARC REACTOR: Detect buildup conditions ===
+    // Arc reactor: detect buildup
     try {
       for (const r of allResults) {
         const prev = prevMap.get(r.state_abbr);
         const scoreDelta = prev ? r.score - prev : 0;
-
-        // Count converging domains (components > 0)
         const activeDomains: string[] = [];
-        if (r.weather > 0) activeDomains.push('weather');
-        if (r.migration > 0) activeDomains.push('migration');
-        if (r.birdcast > 0) activeDomains.push('birdcast');
-        if (r.solunar > 0) activeDomains.push('solunar');
-        if (r.pattern > 0) activeDomains.push('pattern');
-        if (r.water > 0) activeDomains.push('water');
+        const ds = (r.signals as any)?.domain_scores;
+        if (ds) {
+          if (ds.weather > 5) activeDomains.push('weather');
+          if (ds.biological > 5) activeDomains.push('biological');
+          if (ds.drought > 5) activeDomains.push('drought');
+          if (ds.water > 5) activeDomains.push('water');
+          if (ds.air_quality > 5) activeDomains.push('air_quality');
+          if (ds.soil > 4) activeDomains.push('soil');
+          if (ds.ocean > 5) activeDomains.push('ocean');
+          if (ds.space_weather > 3) activeDomains.push('space_weather');
+          if (ds.lunar > 5) activeDomains.push('lunar');
+          if (ds.photoperiod > 5) activeDomains.push('photoperiod');
+          if (ds.tide > 5) activeDomains.push('tide');
+        }
 
         if (scoreDelta > 15 && activeDomains.length >= 2) {
           const existingArc = await getOpenArc(supabase, r.state_abbr);
@@ -700,63 +624,42 @@ serve(async (req) => {
                 domains: activeDomains,
                 convergence_score: r.score,
                 score_trend: [prev || 0, r.score],
-                trigger: `Score rose ${scoreDelta} points, ${activeDomains.length} domains converging`,
-              },
-            });
-          } else if (existingArc.current_act === 'buildup') {
-            // Update existing buildup with latest signals
-            await transitionArc(supabase, existingArc.id, 'buildup', {
-              buildup_signals: {
-                domains: activeDomains,
-                convergence_score: r.score,
-                score_trend: [prev || 0, r.score],
-                trigger: `Score rose ${scoreDelta} points, ${activeDomains.length} domains converging`,
+                trigger: `Score rose ${scoreDelta} points, ${activeDomains.length} domains converging: ${activeDomains.join(', ')}`,
               },
             });
           }
         }
       }
-    } catch (arcErr) {
-      console.error('[hunt-convergence-engine] Arc reactor error:', arcErr);
-    }
+    } catch (arcErr) { console.error('[convergence-engine] Arc error:', arcErr); }
 
-    // Fire-and-forget: generate briefs for top 20 states
+    // Briefs for top 20
     try {
-      const topStates = allResults
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 20)
-        .map(r => r.state_abbr);
-
+      const topStates = allResults.slice(0, 20).map(r => r.state_abbr);
       const briefUrl = `${Deno.env.get('SUPABASE_URL') || 'https://rvhyotvklfowklzjahdd.supabase.co'}/functions/v1/hunt-state-brief`;
       const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-
       for (const abbr of topStates) {
         fetch(briefUrl, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ state_abbr: abbr }),
-        }).catch(() => {}); // fire-and-forget
+        }).catch(() => {});
       }
-      console.log(`[hunt-convergence-engine] Triggered briefs for ${topStates.length} states`);
     } catch { /* best-effort */ }
 
+    const summary = {
+      batch: batch ?? 'all', states_scored: allResults.length,
+      top_5: allResults.slice(0, 5).map(r => ({ state: r.state_abbr, score: r.score, reasoning: r.reasoning })),
+      trigger, run_at: new Date().toISOString(),
+    };
+
+    console.log('[convergence-engine] Complete:', JSON.stringify(summary));
+    await logCronRun({ functionName: 'hunt-convergence-engine', status: 'success', summary, durationMs: Date.now() - startTime });
     return successResponse(req, summary);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('[hunt-convergence-engine] Fatal error:', errMsg);
-    await logCronRun({
-      functionName: 'hunt-convergence-engine',
-      status: 'error',
-      errorMessage: errMsg,
-      durationMs: Date.now() - startTime,
-    }).catch(() => {});
-    try {
-      return errorResponse(req, 'Internal server error', 500);
-    } catch {
-      return new Response(JSON.stringify({ error: errMsg }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    console.error('[convergence-engine] Fatal:', errMsg);
+    await logCronRun({ functionName: 'hunt-convergence-engine', status: 'error', errorMessage: errMsg, durationMs: Date.now() - startTime }).catch(() => {});
+    try { return errorResponse(req, 'Internal server error', 500); }
+    catch { return new Response(JSON.stringify({ error: errMsg }), { status: 500, headers: { 'Content-Type': 'application/json' } }); }
   }
 });
