@@ -17,9 +17,9 @@ import { classifyContentType } from '../_shared/contentTypes.ts';
 // Only processes EXTERNAL content types (no alert-grade/convergence-score bookkeeping).
 // ---------------------------------------------------------------------------
 
-const MAX_ENTRIES_PER_RUN = 30; // conservative — each entry = 1 vector search + up to 5 link inserts
+const MAX_ENTRIES_PER_RUN = 3; // ultra-conservative — pool is stressed
 const MIN_SIMILARITY = 0.55;
-const MATCH_LIMIT = 5;
+const MATCH_LIMIT = 3;
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
@@ -31,42 +31,40 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
-    // Find recent entries that don't have pattern links yet.
-    // We use the absence of a row in hunt_pattern_links with source_id = entry.id
-    // Approach: get the most recent 200 entries, then filter in memory to only
-    // those without any existing source_id link.
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-
-    const { data: recentEntries, error: entriesErr } = await supabase
+    // Single content_type query — simplest test
+    console.log(`[${fnName}] Querying weather-event entries...`);
+    const q1Start = Date.now();
+    const { data: recentIds, error: idsErr } = await supabase
       .from('hunt_knowledge')
-      .select('id, content_type, state_abbr, embedding')
-      .gte('created_at', twentyFourHoursAgo)
+      .select('id, content_type, state_abbr')
+      .eq('content_type', 'weather-event')
       .order('created_at', { ascending: false })
-      .limit(200);
+      .limit(5);
+    console.log(`[${fnName}] weather-event query took ${Date.now() - q1Start}ms, got ${recentIds?.length ?? 0} rows`);
 
-    if (entriesErr) {
-      console.error(`[${fnName}] Query error:`, entriesErr);
-      await logCronRun({ functionName: fnName, status: 'error', errorMessage: entriesErr.message, durationMs: Date.now() - startTime });
-      return cronErrorResponse(entriesErr.message);
+    if (idsErr) {
+      console.error(`[${fnName}] IDs query error:`, idsErr);
+      await logCronRun({ functionName: fnName, status: 'error', errorMessage: idsErr.message, durationMs: Date.now() - startTime });
+      return cronErrorResponse(idsErr.message);
     }
 
-    if (!recentEntries || recentEntries.length === 0) {
+    if (!recentIds || recentIds.length === 0) {
       await logCronRun({ functionName: fnName, status: 'success', summary: { message: 'no recent entries' }, durationMs: Date.now() - startTime });
       return cronResponse({ linked: 0, message: 'no recent entries' });
     }
 
     // Filter to EXTERNAL content types only
-    const externalEntries = recentEntries.filter((e: any) => classifyContentType(e.content_type) === 'EXTERNAL');
+    const externalIds = recentIds.filter((e: any) => classifyContentType(e.content_type) === 'EXTERNAL');
 
-    // Get IDs that already have source_id entries in hunt_pattern_links
-    const entryIds = externalEntries.map((e: any) => e.id);
+    // Check which already have links (small query with just source_id)
+    const idList = externalIds.map((e: any) => e.id);
     const { data: existing } = await supabase
       .from('hunt_pattern_links')
       .select('source_id')
-      .in('source_id', entryIds);
+      .in('source_id', idList);
 
     const alreadyLinked = new Set<string>((existing || []).map((r: any) => r.source_id));
-    const toProcess = externalEntries.filter((e: any) => !alreadyLinked.has(e.id)).slice(0, MAX_ENTRIES_PER_RUN);
+    const toProcess = externalIds.filter((e: any) => !alreadyLinked.has(e.id)).slice(0, MAX_ENTRIES_PER_RUN);
 
     console.log(`[${fnName}] Processing ${toProcess.length} unlinked external entries (${externalEntries.length} total external, ${externalEntries.length - toProcess.length} already linked)`);
 
@@ -81,27 +79,35 @@ serve(async (req) => {
 
     for (const entry of toProcess) {
       try {
-        // Parse embedding (stored as JSON string in hunt_knowledge)
+        // Fetch the embedding one at a time (avoiding the bulk-select timeout)
+        const { data: entryWithEmbedding, error: fetchErr } = await supabase
+          .from('hunt_knowledge')
+          .select('embedding')
+          .eq('id', entry.id)
+          .single();
+
+        if (fetchErr || !entryWithEmbedding) { errors++; continue; }
+
         let embedding: number[];
-        if (typeof entry.embedding === 'string') {
-          embedding = JSON.parse(entry.embedding);
-        } else if (Array.isArray(entry.embedding)) {
-          embedding = entry.embedding;
+        if (typeof entryWithEmbedding.embedding === 'string') {
+          embedding = JSON.parse(entryWithEmbedding.embedding);
+        } else if (Array.isArray(entryWithEmbedding.embedding)) {
+          embedding = entryWithEmbedding.embedding;
         } else {
           continue;
         }
 
-        // Vector search
+        // Vector search — use same params as alert-grader (proven to work)
         const { data: matches, error: rpcErr } = await supabase.rpc('search_hunt_knowledge_v3', {
           query_embedding: embedding,
-          match_threshold: MIN_SIMILARITY,
-          match_count: MATCH_LIMIT + 5, // over-fetch, we'll filter same-type
+          match_threshold: 0.40,
+          match_count: 10,
           filter_state_abbr: entry.state_abbr || null,
           filter_content_types: null,
           filter_species: null,
           filter_date_from: null,
           filter_date_to: null,
-          recency_weight: 0.3,
+          recency_weight: 0.1,
           exclude_du_report: true,
         });
 

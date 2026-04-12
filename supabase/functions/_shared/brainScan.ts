@@ -103,64 +103,6 @@ export async function scanBrainOnWrite(
 }
 
 /**
- * Enrich a hunt_knowledge metadata object with pattern scan results.
- * Call this AFTER inserting the new entry, then update its metadata.
- */
-export async function enrichWithPatternScan(
-  entryId: string,
-  embedding: number[],
-  opts: {
-    state_abbr?: string;
-    exclude_content_type?: string;
-  } = {}
-): Promise<void> {
-  try {
-    const result = await scanBrainOnWrite(embedding, {
-      state_abbr: opts.state_abbr,
-      exclude_content_type: opts.exclude_content_type,
-      min_similarity: 0.50,
-      limit: 5,
-    });
-
-    if (!result.scanned || result.matches.length === 0) return;
-
-    const supabase = createSupabaseClient();
-
-    // Get current metadata
-    const { data: entry } = await supabase
-      .from('hunt_knowledge')
-      .select('metadata')
-      .eq('id', entryId)
-      .single();
-
-    if (!entry) return;
-
-    // Merge pattern_matches into existing metadata
-    const updatedMetadata = {
-      ...(entry.metadata || {}),
-      pattern_matches: result.matches,
-      pattern_scan_at: new Date().toISOString(),
-    };
-
-    await supabase
-      .from('hunt_knowledge')
-      .update({ metadata: updatedMetadata })
-      .eq('id', entryId);
-
-    // Write pattern links to hunt_pattern_links
-    await writePatternLinks(entryId, result.matches, {
-      state_abbr: opts.state_abbr,
-      source_content_type: opts.exclude_content_type,
-    });
-
-    console.log(`[brainScan] ${entryId}: ${result.matches.length} pattern matches found`);
-  } catch (err) {
-    // Non-fatal — scanning is best-effort
-    console.warn('[brainScan] enrich failed (non-fatal):', err);
-  }
-}
-
-/**
  * Scan + link in one call. Use this when you have the source entry ID.
  * Writes pattern links to hunt_pattern_links for every match above threshold.
  * This is the function fire-and-forget data ingestion should use.
