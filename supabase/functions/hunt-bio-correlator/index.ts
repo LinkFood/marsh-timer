@@ -77,6 +77,29 @@ serve(async (req) => {
       if (r.data) birdEntries.push(...r.data);
     }
 
+    // Backfill mode: if not enough recent entries, pull older ones too.
+    // This grows the bridge layer toward the v3 spec target of ~20,000 entries.
+    if (birdEntries.length < MAX_BIRD_ENTRIES_PER_RUN) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+      const backfillQueries = BIRD_TYPES.map(ct =>
+        supabase
+          .from('hunt_knowledge')
+          .select('id, title, content, content_type, state_abbr, effective_date')
+          .eq('content_type', ct)
+          .gte('created_at', sevenDaysAgo)
+          .lt('created_at', twentyFourHoursAgo)
+          .not('state_abbr', 'is', null)
+          .not('effective_date', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(20)
+      );
+      const backfillResults = await Promise.all(backfillQueries);
+      for (const r of backfillResults) {
+        if (r.data) birdEntries.push(...r.data);
+      }
+      console.log(`[${fnName}] Backfill: added older entries, total now ${birdEntries.length}`);
+    }
+
     if (birdEntries.length === 0) {
       await logCronRun({ functionName: fnName, status: 'success', summary: { processed: 0, message: 'no recent bird entries' }, durationMs: Date.now() - startTime });
       return cronResponse({ correlations: 0, message: 'no recent bird entries' });
