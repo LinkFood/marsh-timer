@@ -53,6 +53,7 @@ serve(async (req: Request) => {
     const now = new Date();
     const fortyEightHours = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
     const sevenDays = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const today = now.toISOString().split('T')[0];
 
     // 1. Pull current data across ALL domains for this state
@@ -66,11 +67,12 @@ serve(async (req: Request) => {
         .order('created_at', { ascending: false })
         .limit(10),
 
-      // Drought (latest)
+      // Drought (last 7 days)
       supabase.from('hunt_knowledge')
         .select('title, content, content_type, metadata')
         .eq('state_abbr', state_abbr)
         .eq('content_type', 'drought-weekly')
+        .gte('effective_date', sevenDays)
         .order('effective_date', { ascending: false })
         .limit(1),
 
@@ -83,11 +85,12 @@ serve(async (req: Request) => {
         .order('created_at', { ascending: false })
         .limit(10),
 
-      // Water levels (latest)
+      // Water levels (last 7 days)
       supabase.from('hunt_knowledge')
         .select('title, content_type, metadata')
         .eq('state_abbr', state_abbr)
         .eq('content_type', 'usgs-water')
+        .gte('effective_date', sevenDays)
         .order('effective_date', { ascending: false })
         .limit(3),
 
@@ -99,10 +102,11 @@ serve(async (req: Request) => {
         .gte('created_at', fortyEightHours)
         .limit(5),
 
-      // Climate indices (latest)
+      // Climate indices (last 30 days)
       supabase.from('hunt_knowledge')
         .select('title, content, content_type')
         .eq('content_type', 'climate-index')
+        .gte('effective_date', thirtyDaysAgo)
         .order('effective_date', { ascending: false })
         .limit(3),
 
