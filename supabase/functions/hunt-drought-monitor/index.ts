@@ -56,6 +56,15 @@ serve(async (req) => {
   try {
     const supabase = createSupabaseClient();
 
+    // Parse optional batch parameter (1-5, each = 10 states)
+    let batch: number | null = null;
+    try {
+      const body = await req.json();
+      if (body.batch && typeof body.batch === "number" && body.batch >= 1 && body.batch <= 5) {
+        batch = body.batch;
+      }
+    } catch (_) { /* no body or invalid JSON — process all */ }
+
     // Get the most recent Thursday (USDM updates Thursdays)
     const now = new Date();
     const daysSinceThursday = (now.getUTCDay() + 3) % 7;
@@ -69,45 +78,46 @@ serve(async (req) => {
     const startDate = `${twoWeeksAgo.getUTCMonth() + 1}/${twoWeeksAgo.getUTCDate()}/${twoWeeksAgo.getUTCFullYear()}`;
     const endDate = `${now.getUTCMonth() + 1}/${now.getUTCDate()}/${now.getUTCFullYear()}`;
 
-    console.log(`Fetching drought data: ${startDate} to ${endDate}`);
+    const allAbbrs = Object.keys(STATE_FIPS).sort();
 
-    const abbrs = Object.keys(STATE_FIPS).sort();
+    // If batch specified, slice to that batch's 10 states; otherwise process all
+    const abbrs = batch
+      ? allAbbrs.slice((batch - 1) * 10, batch * 10)
+      : allAbbrs;
+
+    console.log(`Fetching drought data: ${startDate} to ${endDate} | batch=${batch ?? "all"} | states=${abbrs.join(",")}`);
+
     let totalEmbedded = 0;
     let errors = 0;
 
-    // Process states in batches of 10 to avoid timeout
+    // Process states in chunks of 10 for embedding batches
     for (let s = 0; s < abbrs.length; s += 10) {
       const stateChunk = abbrs.slice(s, s + 10);
       const allEntries: { abbr: string; week: DroughtWeek; prevWeek: DroughtWeek | null }[] = [];
 
-      for (const abbr of stateChunk) {
-        try {
-          const fips = STATE_FIPS[abbr];
-          const url = `https://usdmdataservices.unl.edu/api/StateStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=${fips}&startdate=${startDate}&enddate=${endDate}&statisticsType=1`;
+      // Fetch all states in this chunk in parallel (USDM API is slow sequentially)
+      const fetchResults = await Promise.allSettled(stateChunk.map(async (abbr) => {
+        const fips = STATE_FIPS[abbr];
+        const url = `https://usdmdataservices.unl.edu/api/StateStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=${fips}&startdate=${startDate}&enddate=${endDate}&statisticsType=1`;
+        const res = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error(`API error ${res.status}`);
+        const weeks: DroughtWeek[] = await res.json();
+        return { abbr, weeks };
+      }));
 
-          const res = await fetch(url, { headers: { Accept: "application/json" } });
-          if (!res.ok) {
-            console.warn(`${abbr}: API error ${res.status}`);
-            errors++;
-            continue;
-          }
-
-          const weeks: DroughtWeek[] = await res.json();
-          if (!weeks || weeks.length === 0) continue;
-
-          // Sort ascending, take the latest
-          weeks.sort((a, b) => a.mapDate.localeCompare(b.mapDate));
-          const latest = weeks[weeks.length - 1];
-          const prev = weeks.length > 1 ? weeks[weeks.length - 2] : null;
-
-          allEntries.push({ abbr, week: latest, prevWeek: prev });
-        } catch (err) {
-          console.warn(`${abbr}: ${err}`);
+      for (const result of fetchResults) {
+        if (result.status === "rejected") {
+          console.warn(`Fetch failed: ${result.reason}`);
           errors++;
+          continue;
         }
+        const { abbr, weeks } = result.value;
+        if (!weeks || weeks.length === 0) continue;
 
-        // Small delay between API calls
-        await new Promise(r => setTimeout(r, 200));
+        weeks.sort((a, b) => a.mapDate.localeCompare(b.mapDate));
+        const latest = weeks[weeks.length - 1];
+        const prev = weeks.length > 1 ? weeks[weeks.length - 2] : null;
+        allEntries.push({ abbr, week: latest, prevWeek: prev });
       }
 
       if (allEntries.length === 0) continue;
@@ -212,11 +222,11 @@ serve(async (req) => {
     await logCronRun({
       functionName: "hunt-drought-monitor",
       status: errors > 0 ? "partial" : "success",
-      summary: { states_embedded: totalEmbedded, errors },
+      summary: { batch: batch ?? "all", states_processed: abbrs.length, states_embedded: totalEmbedded, errors },
       durationMs,
     });
 
-    return cronResponse({ embedded: totalEmbedded, errors, durationMs });
+    return cronResponse({ batch: batch ?? "all", embedded: totalEmbedded, errors, durationMs });
 
   } catch (err) {
     const durationMs = Date.now() - startTime;
