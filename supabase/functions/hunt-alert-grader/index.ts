@@ -55,17 +55,29 @@ interface SignalFound {
 const DOMAIN_CONTENT_TYPES: Record<string, string[]> = {
   // Weather — ASOS observations, NWS warnings, detected weather events, storm reports
   weather: ['weather-event', 'nws-alert', 'weather-realtime', 'storm-event'],
-  // Birds — eBird migration spikes, BirdCast radar data, daily migration counts
+  // Biological — all bird/migration data (eBird, BirdCast)
   birds: ['birdcast-daily', 'migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate', 'migration-daily'],
-  // Water — USGS stream gauges
-  water: ['usgs-water'],
+  biological: ['birdcast-daily', 'migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate', 'migration-daily'],
+  // Water — USGS stream gauges + river discharge
+  water: ['usgs-water', 'river-discharge'],
   // Drought — weekly drought monitor data
   drought: ['drought-weekly'],
   // Climate — climate indices (NAO, AO, ENSO, etc.)
   climate: ['climate-index'],
-  // Solunar — lunar phase and feeding windows
+  // Air Quality — EPA AQI + pollen
+  air_quality: ['air-quality'],
+  air: ['air-quality'],
+  // Soil — moisture and temperature
+  soil: ['soil-conditions'],
+  // Ocean — NOAA buoy data
+  ocean: ['ocean-buoy'],
+  // Space Weather — geomagnetic/solar
+  space_weather: ['space-weather'],
+  space: ['space-weather'],
+  // Lunar cycle (was solunar)
+  lunar: ['solunar-weekly'],
   solunar: ['solunar-weekly'],
-  // Photoperiod — day length calculations
+  // Photoperiod — day length
   photoperiod: ['photoperiod'],
   // Tide — NOAA tidal stations
   tide: ['noaa-tide'],
