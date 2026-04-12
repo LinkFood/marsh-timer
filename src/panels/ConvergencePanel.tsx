@@ -24,16 +24,16 @@ const COMPONENTS = [
 
 function scoreColor(score: number): string {
   if (score >= 50) return 'text-red-400';
-  if (score >= 60) return 'text-orange-400';
-  if (score >= 40) return 'text-yellow-400';
+  if (score >= 40) return 'text-orange-400';
+  if (score >= 30) return 'text-yellow-400';
   if (score >= 20) return 'text-blue-400';
   return 'text-gray-400';
 }
 
 function barColor(score: number): string {
   if (score >= 50) return 'bg-red-400';
-  if (score >= 60) return 'bg-orange-400';
-  if (score >= 40) return 'bg-yellow-400';
+  if (score >= 40) return 'bg-orange-400';
+  if (score >= 30) return 'bg-yellow-400';
   if (score >= 20) return 'bg-blue-400';
   return 'bg-gray-500';
 }
