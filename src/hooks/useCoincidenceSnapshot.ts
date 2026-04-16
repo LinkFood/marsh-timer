@@ -15,16 +15,21 @@ export function useCoincidenceSnapshot() {
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
 
-    // Use today's date — old bird-era scores (90+) from March pollute score.desc queries
-    const today = new Date().toISOString().slice(0, 10);
+    // Convergence engine scores at 8am UTC. After midnight UTC and before the
+    // next run, "today" in UTC is a date with no scores yet. Use yesterday as
+    // fallback so the display never shows 0 states in that window.
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const yesterday = new Date(now.getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
 
     Promise.all([
-      // Today's states with convergence score > 30 (balanced 11-domain scoring)
+      // Try today first, fall back to yesterday
       supabase
         .from('hunt_convergence_scores')
         .select('state_abbr,score')
-        .eq('date', today)
+        .gte('date', yesterday)
         .gt('score', 30)
+        .order('date', { ascending: false })
         .order('score', { ascending: false })
         .limit(50),
       // Active arcs (not closed)
@@ -34,8 +39,18 @@ export function useCoincidenceSnapshot() {
         .neq('current_act', 'closed')
         .limit(50),
     ]).then(([scoresRes, arcsRes]) => {
-      const scores = scoresRes.data || [];
+      const rawScores = scoresRes.data || [];
       const arcs = arcsRes.data || [];
+
+      // Dedup by state_abbr — ordered by date desc so the most recent wins
+      const seen = new Set<string>();
+      const scores: typeof rawScores = [];
+      for (const s of rawScores) {
+        if (!seen.has(s.state_abbr)) {
+          seen.add(s.state_abbr);
+          scores.push(s);
+        }
+      }
 
       const pendingOutcomes = arcs.filter(a => a.current_act === 'outcome').length;
 
