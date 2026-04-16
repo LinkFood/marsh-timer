@@ -105,6 +105,12 @@ const NATIONAL_DOMAINS = new Set([
 // We skip it in domain checks.
 const SKIP_DOMAINS = new Set(['convergence']);
 
+// Domains that confirm >80% of the time regardless of prediction quality.
+// They're still checked (a grade needs to reflect all claimed domains) but
+// we track them separately so the digest can report "discriminating" accuracy
+// (how well did we predict things that DON'T always happen).
+const ALWAYS_ON_DOMAINS = new Set(['water', 'nws']);
+
 // Domain-specific confirmation thresholds.
 // Weekly/monthly signals can only produce 1 entry in a 7-day window — force
 // threshold of 1 or they're unconfirmable by design.
@@ -486,7 +492,17 @@ serve(async (req) => {
                 domain: d.domain,
                 signals_found: d.signals_found,
                 confirmed: d.confirmed,
+                always_on: ALWAYS_ON_DOMAINS.has(d.domain),
               })) : undefined,
+              // Split grades: "discriminating" domains (birds, climate, drought, etc.)
+              // vs "always-on" domains (water, nws) so the digest can report both.
+              discriminating: domainResults.length > 0 ? (() => {
+                const disc = domainResults.filter(d => !ALWAYS_ON_DOMAINS.has(d.domain));
+                return {
+                  confirmed: disc.filter(d => d.confirmed).length,
+                  total: disc.length,
+                };
+              })() : undefined,
               alert_knowledge_id: alert.alert_knowledge_id,
             },
           })
