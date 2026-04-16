@@ -19,16 +19,57 @@ export function useDailyDiscovery() {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // Prefer brain-narrative (narrator output with fact-checking), fall back to daily-discovery
+    // Show something about the real world, not the brain grading itself.
+    // Prefer bio-environmental-correlation (bridge layer — actual cross-domain
+    // findings), then non-self-referential brain-narratives, then daily-discovery.
     const fetchDiscovery = async () => {
-      // Try brain-narrative first (narrator output)
-      const { data: narrative } = await supabase
+      // Try bio-environmental-correlation first — these are real cross-domain
+      // findings from the bridge layer (e.g., "WA: 18 environmental signals
+      // correlated with bird migration patterns")
+      const { data: bridge } = await supabase
+        .from('hunt_knowledge')
+        .select('title,content,metadata,state_abbr,effective_date')
+        .eq('content_type', 'bio-environmental-correlation')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      // Pick the one with the most env_matches — most interesting correlation
+      if (bridge && bridge.length > 0) {
+        const best = bridge.reduce((a, b) => {
+          const aMatches = ((a.metadata as Record<string, unknown>)?.env_matches as number) || 0;
+          const bMatches = ((b.metadata as Record<string, unknown>)?.env_matches as number) || 0;
+          return bMatches > aMatches ? b : a;
+        });
+        const meta = (best.metadata || {}) as Record<string, unknown>;
+        const envTypes = (meta.env_types as string[]) || [];
+        const envMatches = (meta.env_matches as number) || 0;
+        setData({
+          headline: `${best.state_abbr}: ${envMatches} environmental signals correlating`,
+          discovery: `Cross-domain pattern detected: ${envTypes.slice(0, 4).join(', ')}${envTypes.length > 4 ? ` and ${envTypes.length - 4} more` : ''} are aligning in ${best.state_abbr}. ${(best.content || '').slice(0, 200)}`,
+          state: best.state_abbr || null,
+          domains: envTypes,
+          dejaVu: null,
+          date: best.effective_date || today,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Fall back to brain-narrative, but skip self-assessment narratives
+      // (those with 'alert-grade' or 'self-assessment' in domains)
+      const { data: narratives } = await supabase
         .from('hunt_knowledge')
         .select('title,content,metadata,state_abbr,effective_date')
         .eq('content_type', 'brain-narrative')
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
+
+      const narrative = (narratives || []).find(n => {
+        const meta = (n.metadata || {}) as Record<string, unknown>;
+        const domains = (meta.domains_involved as string[]) || [];
+        // Skip self-referential narratives
+        return !domains.some(d => d === 'alert-grade' || d === 'self-assessment' || d === 'arc-grade-reasoning');
+      });
 
       if (narrative) {
         const meta = (narrative.metadata || {}) as Record<string, unknown>;
