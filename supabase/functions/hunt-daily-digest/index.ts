@@ -291,9 +291,24 @@ serve(async (req) => {
       sections.push('The narrative bridge layer may need more density.');
     }
 
+    // Split domains into discriminating vs always-on for a cleaner read.
+    // "Always-on" domains (water, nws) confirm >80% of the time — they test
+    // whether the data pipeline ran, not whether the prediction was right.
+    const ALWAYS_ON = new Set(['water', 'nws']);
+    const discDomains = sortedDomains.filter(d => !ALWAYS_ON.has(d.domain));
+    const aoDomains = sortedDomains.filter(d => ALWAYS_ON.has(d.domain));
+    const discConf = discDomains.reduce((s, d) => s + d.confirmed, 0);
+    const discTotal = discDomains.reduce((s, d) => s + d.total, 0);
+    const discRate = discTotal > 0 ? (discConf / discTotal * 100).toFixed(1) : 'n/a';
+
     sections.push('\nWHAT THE BRAIN IS GOOD AT (per-domain hit rates):');
     if (domainLines.length > 0) {
       sections.push(domainLines.join('\n'));
+      sections.push(`\nDISCRIMINATING ACCURACY (excluding water/nws which always confirm):`);
+      sections.push(`${discRate}% (${discConf}/${discTotal} discriminating domain claims confirmed)`);
+      if (aoDomains.length > 0) {
+        sections.push(`Always-on domains: ${aoDomains.map(d => `${d.domain} ${(d.rate * 100).toFixed(0)}%`).join(', ')}`);
+      }
     } else {
       sections.push('No graded compound-risk outcomes to analyze.');
     }
