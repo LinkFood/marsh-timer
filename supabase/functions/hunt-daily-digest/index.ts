@@ -170,10 +170,31 @@ serve(async (req) => {
     // -----------------------------------------------------------------
     // 5. Brain stats
     // -----------------------------------------------------------------
-    const { count: todayCount } = await supabase
-      .from('hunt_knowledge')
-      .select('id', { count: 'estimated', head: true })
-      .gte('created_at', today);
+    // Estimated count on hunt_knowledge with a created_at filter returns 0
+    // because Postgres planner can't estimate selectivity on 7M rows.
+    // Instead, sum up the embedded/inserted counts from today's cron_log
+    // which each function reports accurately.
+    const { data: todayCronLogs } = await supabase
+      .from('hunt_cron_log')
+      .select('summary')
+      .eq('status', 'success')
+      .gte('created_at', today)
+      .limit(500);
+
+    let todayCount = 0;
+    if (todayCronLogs) {
+      for (const log of todayCronLogs) {
+        const s = (log.summary as Record<string, unknown>) || {};
+        // Each function reports embeddings under one of these keys
+        for (const key of ['embedded', 'embeddings_created', 'inserted', 'states_embedded']) {
+          const v = s[key];
+          if (typeof v === 'number' && v > 0) {
+            todayCount += v;
+            break; // only count one field per log entry to avoid double-counting
+          }
+        }
+      }
+    }
 
     const { data: cronHealth } = await supabase
       .from('hunt_cron_log')
