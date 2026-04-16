@@ -187,14 +187,15 @@ serve(async (req) => {
 
       let confidenceModifier = '';
       if (calibration && calibration.total_alerts >= 5) {
+        // accuracy_rate is stored as a percentage (0-100), not a fraction
         const accuracy = Number(calibration.accuracy_rate);
-        if (accuracy < 0.4) {
-          console.log(`[hunt-convergence-alerts-pm] Suppressing ${candidate.state_abbr} — 90d accuracy only ${(accuracy * 100).toFixed(0)}%`);
+        if (accuracy < 40) {
+          console.log(`[hunt-convergence-alerts-pm] Suppressing ${candidate.state_abbr} — 90d accuracy only ${accuracy.toFixed(0)}%`);
           continue; // skip this alert
-        } else if (accuracy > 0.75) {
-          confidenceModifier = `\nHistorical accuracy for this pattern in ${candidate.state_abbr}: ${(accuracy * 100).toFixed(0)}% (${calibration.total_alerts} alerts).`;
+        } else if (accuracy > 75) {
+          confidenceModifier = `\nHistorical accuracy for this pattern in ${candidate.state_abbr}: ${accuracy.toFixed(0)}% (${calibration.total_alerts} alerts).`;
         } else {
-          confidenceModifier = `\nHistorical accuracy: ${(accuracy * 100).toFixed(0)}% over ${calibration.total_alerts} alerts.`;
+          confidenceModifier = `\nHistorical accuracy: ${accuracy.toFixed(0)}% over ${calibration.total_alerts} alerts.`;
         }
       }
 
