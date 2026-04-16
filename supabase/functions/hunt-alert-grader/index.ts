@@ -52,17 +52,23 @@ interface SignalFound {
 // in hunt_knowledge that represent real external signals for that domain.
 // ---------------------------------------------------------------------------
 
+//
+// Only conditional/discriminating signal types are allowed.
+// Daily-always-present types (birdcast-daily, migration-daily, weather-realtime)
+// are EXCLUDED — they confirm nothing because they always exist.
 const DOMAIN_CONTENT_TYPES: Record<string, string[]> = {
-  // Weather — ASOS observations, NWS warnings, detected weather events, storm reports
-  weather: ['weather-event', 'nws-alert', 'weather-realtime', 'storm-event'],
-  // Biological — all bird/migration data (eBird, BirdCast)
-  birds: ['birdcast-daily', 'migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate', 'migration-daily'],
-  biological: ['birdcast-daily', 'migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate', 'migration-daily'],
+  // Weather — real events and NWS alerts only. weather-realtime is a metar dump
+  // that exists constantly; excluding it forces the grader to see actual weather.
+  weather: ['weather-event', 'nws-alert', 'storm-event'],
+  // Biological — only migration SPIKES count. Daily birdcast/migration entries
+  // are tautologies (they exist every day for every state).
+  birds: ['migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate'],
+  biological: ['migration-spike-extreme', 'migration-spike-significant', 'migration-spike-moderate'],
   // Water — USGS stream gauges + river discharge
   water: ['usgs-water', 'river-discharge'],
-  // Drought — weekly drought monitor data
+  // Drought — weekly drought monitor
   drought: ['drought-weekly'],
-  // Climate — climate indices (NAO, AO, ENSO, etc.)
+  // Climate — climate indices (NAO, AO, ENSO, etc.) — NATIONAL
   climate: ['climate-index'],
   // Air Quality — EPA AQI + pollen
   air_quality: ['air-quality'],
@@ -71,13 +77,13 @@ const DOMAIN_CONTENT_TYPES: Record<string, string[]> = {
   soil: ['soil-conditions'],
   // Ocean — NOAA buoy data
   ocean: ['ocean-buoy'],
-  // Space Weather — geomagnetic/solar
+  // Space Weather — geomagnetic/solar — NATIONAL
   space_weather: ['space-weather'],
   space: ['space-weather'],
-  // Lunar cycle (was solunar)
+  // Lunar cycle — NATIONAL
   lunar: ['solunar-weekly'],
   solunar: ['solunar-weekly'],
-  // Photoperiod — day length
+  // Photoperiod — day length — NATIONAL
   photoperiod: ['photoperiod'],
   // Tide — NOAA tidal stations
   tide: ['noaa-tide'],
@@ -85,13 +91,36 @@ const DOMAIN_CONTENT_TYPES: Record<string, string[]> = {
   nws: ['nws-alert', 'weather-event', 'storm-event'],
 };
 
+// Domains whose source data has NO state_abbr (national/global signals).
+// For these, don't filter by state when counting signals.
+const NATIONAL_DOMAINS = new Set([
+  'climate',
+  'space_weather', 'space',
+  'lunar', 'solunar',
+  'photoperiod',
+]);
+
 // "convergence" appears as a claimed domain but it's self-referential —
 // a convergence score changing IS the claim, not something to confirm externally.
 // We skip it in domain checks.
 const SKIP_DOMAINS = new Set(['convergence']);
 
-// Minimum signals per domain to count it as confirmed
-const DOMAIN_CONFIRM_THRESHOLD = 2;
+// Domain-specific confirmation thresholds.
+// Weekly/monthly signals can only produce 1 entry in a 7-day window — force
+// threshold of 1 or they're unconfirmable by design.
+const DOMAIN_THRESHOLDS: Record<string, number> = {
+  drought: 1,    // drought monitor releases weekly
+  climate: 1,    // climate indices release monthly
+  solunar: 1,
+  lunar: 1,
+  photoperiod: 1,
+  space_weather: 1,
+  space: 1,
+};
+const DEFAULT_DOMAIN_THRESHOLD = 2;
+function thresholdFor(domain: string): number {
+  return DOMAIN_THRESHOLDS[domain] ?? DEFAULT_DOMAIN_THRESHOLD;
+}
 
 // ---------------------------------------------------------------------------
 // Parse domains from claim text
@@ -126,16 +155,24 @@ async function checkDomain(
   dateFrom: string,
   dateTo: string,
 ): Promise<DomainResult> {
+  // Filter by effective_date (when the signal occurred in the real world),
+  // NOT created_at (when the backfill happened to land in the DB).
+  // This fixes the climate/drought 0% bug — those content types are bulk-loaded
+  // so created_at has no temporal meaning.
   let query = supabase
     .from('hunt_knowledge')
-    .select('id, title, content_type')
+    .select('id, title, content_type, effective_date')
     .in('content_type', contentTypes)
-    .gte('created_at', dateFrom)
-    .lte('created_at', dateTo)
-    .order('created_at', { ascending: false })
-    .limit(5);
+    .gte('effective_date', dateFrom)
+    .lte('effective_date', dateTo)
+    .not('effective_date', 'is', null)
+    .order('effective_date', { ascending: false })
+    .limit(10);
 
-  if (stateAbbr) {
+  // National-scope domains (climate indices, space weather, lunar, photoperiod)
+  // have state_abbr=null by design — filtering by state zeros them out.
+  const isNational = NATIONAL_DOMAINS.has(domain);
+  if (stateAbbr && !isNational) {
     query = query.eq('state_abbr', stateAbbr);
   }
 
@@ -145,11 +182,12 @@ async function checkDomain(
   }
 
   const signals = data || [];
+  const threshold = thresholdFor(domain);
   return {
     domain,
     content_types_checked: contentTypes,
     signals_found: signals.length,
-    confirmed: signals.length >= DOMAIN_CONFIRM_THRESHOLD,
+    confirmed: signals.length >= threshold,
     samples: signals.slice(0, 3).map(s => ({ id: s.id, title: s.title, content_type: s.content_type })),
   };
 }
