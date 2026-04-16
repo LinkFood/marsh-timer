@@ -383,16 +383,19 @@ serve(async (req) => {
             ? alert.predicted_outcome.expected_signals
             : ['migration-spike-extreme', 'migration-spike-significant', 'weather-event', 'nws-alert'];
 
-          // Direct query — limit per content type to avoid weather flooding
+          // Direct query — limit per content type to avoid weather flooding.
+          // Use effective_date to match the real-world date, consistent with
+          // checkDomain fix (same bug: created_at ≠ when signal occurred).
           const directMatches: { id: string; title: string; content_type: string }[] = [];
           for (const ct of queryContentTypes) {
             let q = supabase
               .from('hunt_knowledge')
               .select('id, title, content_type')
               .eq('content_type', ct)
-              .gte('created_at', alert.alert_date)
-              .lte('created_at', alert.outcome_deadline)
-              .order('created_at', { ascending: false })
+              .not('effective_date', 'is', null)
+              .gte('effective_date', alert.alert_date)
+              .lte('effective_date', deadlineDate)
+              .order('effective_date', { ascending: false })
               .limit(5);
 
             if (alert.state_abbr) q = q.eq('state_abbr', alert.state_abbr);

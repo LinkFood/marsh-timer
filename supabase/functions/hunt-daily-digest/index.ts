@@ -194,10 +194,14 @@ serve(async (req) => {
       }
     }
 
-    // Current accuracy from calibration
+    // Current accuracy from calibration.
+    // We print BOTH metrics side-by-side because they measure different things:
+    //   accuracy = (confirmed + partial) / total — lenient, rewards "some domains hit"
+    //   precision = confirmed / (confirmed + false_alarm) — strict, "when we fire, do we land?"
+    // Lenient alone is misleading; strict alone is cruel on sources with 0 false-alarms.
     const { data: calibration } = await supabase
       .from('hunt_alert_calibration')
-      .select('alert_source, total_alerts, confirmed, partially_confirmed, missed, false_alarm, accuracy_rate')
+      .select('alert_source, total_alerts, confirmed, partially_confirmed, missed, false_alarm, accuracy_rate, precision_rate')
       .is('state_abbr', null)
       .eq('window_days', 30);
 
@@ -205,8 +209,8 @@ serve(async (req) => {
     if (calibration) {
       for (const c of calibration) {
         accuracyLines.push(
-          `${c.alert_source}: ${c.accuracy_rate}% accuracy (${c.total_alerts} graded: ` +
-          `${c.confirmed} confirmed, ${c.partially_confirmed} partial, ${c.missed} missed, ${c.false_alarm} false alarm)`
+          `${c.alert_source}: acc=${c.accuracy_rate}% / precision=${c.precision_rate}% ` +
+          `(${c.total_alerts} graded → ${c.confirmed} confirmed, ${c.partially_confirmed} partial, ${c.missed} missed, ${c.false_alarm} false alarm)`
         );
       }
     }
