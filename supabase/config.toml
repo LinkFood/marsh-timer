@@ -387,9 +387,6 @@ verify_jwt = false
 [functions.hunt-migration-monitor]
 verify_jwt = false
 
-[functions.hunt-forum-ingest]
-verify_jwt = false
-
 [functions.hunt-convergence-engine]
 verify_jwt = false
 
