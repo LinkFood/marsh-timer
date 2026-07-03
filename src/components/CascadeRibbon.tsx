@@ -40,7 +40,7 @@ function useMeasuredWidth(fallback = 375) {
 /* Mini variant — stacked lanes, lines only, for the teaser strip      */
 /* ------------------------------------------------------------------ */
 
-function MiniRibbon({ dataset, height = 64 }: { dataset: RibbonDataset; height?: number }) {
+function MiniRibbon({ dataset, height = 80 }: { dataset: RibbonDataset; height?: number }) {
   const { ref, w } = useMeasuredWidth();
   const rows = dataset.rows;
   const n = rows.length;
@@ -48,15 +48,25 @@ function MiniRibbon({ dataset, height = 64 }: { dataset: RibbonDataset; height?:
   const plotW = w - padX * 2;
   const laneH = height / dataset.bands.length;
   const xFor = (i: number) => padX + (i / (n - 1)) * plotW;
+  const peakX = xFor(Math.max(0, rows.findIndex(r => r.date === dataset.peakDate)));
 
   return (
     <div ref={ref} className="w-full">
       <svg width={w} height={height} className="block" aria-hidden>
+        {/* thin red marker at the 0-line date — the event arrives */}
+        <line x1={peakX} y1={0} x2={peakX} y2={height} stroke="rgb(248 113 113)" strokeWidth={1} opacity={0.55} />
         {dataset.bands.map((band, li) => {
           const top = li * laneH;
           const pad = 3;
           const h = laneH - pad * 2;
-          const acc = (r: RibbonRow) => norm(r.values[band.key], band.domain[0], band.domain[1]);
+          // Mini-mode normalization is PER-LINE (each line to its own min-max)
+          // so every layer reads as a SHAPE in a ~20px lane — the band domains
+          // flatten most lines at this size. The receipted true-scale version
+          // lives on the cascade page (full ribbon below).
+          const vals = rows.map(r => r.values[band.key]);
+          const lo = Math.min(...vals);
+          const hi = Math.max(...vals);
+          const acc = (r: RibbonRow) => (hi > lo ? norm(r.values[band.key], lo, hi) : 0.5);
           const pts = rows.map((r, i) => `${xFor(i).toFixed(1)},${(top + pad + (1 - acc(r)) * h).toFixed(1)}`).join(' ');
           return (
             <polyline
@@ -64,7 +74,7 @@ function MiniRibbon({ dataset, height = 64 }: { dataset: RibbonDataset; height?:
               points={pts}
               fill="none"
               stroke={band.color}
-              strokeWidth={1.5}
+              strokeWidth={1.75}
               strokeLinejoin="round"
               strokeLinecap="round"
               opacity={0.85}

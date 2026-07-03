@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Send, Flame, Loader2, RotateCcw, Waves, Scale, CalendarDays } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useTodayBriefing } from '@/hooks/useTodayBriefing';
+import { useSolunarToday, formatSolunarLine } from '@/hooks/useSolunarToday';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { useLatestLayers, type LayerItem } from '@/hooks/useLatestLayers';
 import { useClaims, useClaimFires, type ClaimFire } from '@/hooks/useClaims';
@@ -163,6 +164,7 @@ export default function ExplorerLanding() {
 
   // --- Data on load: cheap REST only, zero LLM ---
   const { data: briefing } = useTodayBriefing(state);            // hunt-today-briefing (table reads)
+  const solunarRow = useSolunarToday();                          // hunt_solunar_calendar direct (briefing's cache is stale)
   const { latest: birdLatest, history: birdHistory } = useBirdActivity(state);
   const anomaly = useTodayAnomaly(state);
   const { years: historyYears } = useThisDayInHistory(undefined, state);
@@ -252,7 +254,6 @@ export default function ExplorerLanding() {
   ];
 
   const weather = briefing?.current_weather ?? null;
-  const solunar = briefing?.solunar ?? null;
   const birdValues = birdHistory.map(d => d.cumulative_birds ?? 0);
   const docketCount = claimsStatus === 'ready' && claims.length > 0 ? claims.length : 4;
 
@@ -355,15 +356,14 @@ export default function ExplorerLanding() {
                   <Sparkline values={birdValues} />
                 </p>
               )}
+              {solunarRow && (
+                <p className="font-body text-sm text-white/45 leading-snug">
+                  {formatSolunarLine(solunarRow)}
+                </p>
+              )}
               {anomaly && (
                 <p className="font-body text-sm text-amber-300/70 leading-snug">
                   {anomaly.checkName} here is {Math.abs(anomaly.zScore).toFixed(1)}σ {anomaly.direction} normal — statistically unusual.
-                </p>
-              )}
-              {solunar && solunar.moon_phase && (
-                <p className="font-body text-sm text-white/45 leading-snug">
-                  {solunar.moon_phase}, {solunar.moon_illumination}% lit
-                  {solunar.next_major ? ` — next major feeding window ${solunar.next_major}` : ''}.
                 </p>
               )}
             </div>
