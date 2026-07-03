@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Scale, Gavel, Flame, CheckCircle2, XCircle, FlaskConical, Landmark } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Scale, Gavel, Flame, CheckCircle2, XCircle, FlaskConical, Landmark, Copy, Check } from 'lucide-react';
 import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import Denominator from '@/components/Denominator';
@@ -59,13 +59,19 @@ function ClaimCard({ claim }: { claim: Claim }) {
         <p className="text-xs font-body text-white/60 leading-relaxed mb-2">{hypothesis}</p>
       )}
 
+      <p className="text-[11px] font-body italic text-white/35 leading-snug mb-2">
+        {isBenchmark
+          ? "The easy case. If the court can't confirm known physics, nothing else here deserves trust."
+          : 'If this pattern fails to hold, the miss is published here — permanently.'}
+      </p>
+
       {isBenchmark && (
         <div className="flex items-start gap-1.5 mb-2">
           <span className="shrink-0 text-[8px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 mt-px">
             Benchmark
           </span>
           <span className="text-[10px] font-body text-white/35 leading-snug">
-            known physics — if the court can't confirm this, the court is broken
+            known physics
           </span>
         </div>
       )}
@@ -140,6 +146,60 @@ function OpeningStatements() {
   );
 }
 
+const TOMBSTONE_TEXT = `HERE LIES
+THE CONVERGENCE INDEX
+2026-03-08 — 2026-07-02
+
+It summed eleven domains and predicted nothing.
+Tested five ways. Killed by its own court.
+
+"A seasonal calendar wearing a costume."
+
+We publish our dead ideas. That's the point.
+duckcountdown.com/court`;
+
+/** The killed index, rendered as a monument. Shareable as plain text. */
+function Tombstone() {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(TOMBSTONE_TEXT);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
+  };
+
+  return (
+    <div className="max-w-sm mx-auto">
+      <div className="border-2 border-white/15 rounded-t-[3rem] rounded-b-md bg-gray-900/70 px-5 pt-8 pb-6 text-center">
+        <p className="text-[9px] font-mono uppercase tracking-[0.35em] text-white/40">Here lies</p>
+        <p className="font-display text-lg text-white/90 mt-2 leading-snug">The Convergence Index</p>
+        <p className="text-[10px] font-mono tabular-nums text-white/40 mt-1.5">2026-03-08 — 2026-07-02</p>
+        <div className="w-8 h-px bg-white/15 mx-auto my-4" />
+        <p className="text-xs font-body text-white/55 leading-relaxed">
+          It summed eleven domains and predicted nothing.
+          Tested five ways. Killed by its own court.
+        </p>
+        <p className="text-xs font-body italic text-white/70 mt-3 leading-snug">
+          "A seasonal calendar wearing a costume."
+        </p>
+        <div className="w-8 h-px bg-white/15 mx-auto my-4" />
+        <p className="text-[11px] font-body text-white/45 leading-snug">
+          We publish our dead ideas. That's the point.
+        </p>
+        <button
+          onClick={copy}
+          className="mt-4 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-white/10 hover:border-cyan-400/30 transition-colors text-[10px] font-mono text-cyan-400/80"
+        >
+          {copied ? <Check size={11} className="text-teal-400" /> : <Copy size={11} />}
+          {copied ? 'Copied' : 'Copy as text'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TheRecord() {
   return (
     <section>
@@ -173,6 +233,8 @@ function TheRecord() {
             registered as claims above — on trial now, graded the same way everything else is.
           </p>
         </div>
+
+        <Tombstone />
       </div>
     </section>
   );
