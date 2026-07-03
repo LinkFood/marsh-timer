@@ -193,7 +193,11 @@ async function fetchStateYear(state: string, year: number): Promise<GhcnRow[]> {
     `&order=effective_date.asc` +
     `&limit=400`;
 
-  for (let attempt = 0; attempt < 4; attempt++) {
+  // 8 attempts, backoff up to 2 min — rides out sustained DB pressure
+  // (e.g. an index rebuild) instead of dying on Cloudflare 522s.
+  const MAX_ATTEMPTS = 8;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const backoff = Math.min(120_000, (attempt + 1) * 15_000);
     try {
       const res = await fetch(url, { headers: supaHeaders });
       if (res.ok) return (await res.json()) as GhcnRow[];
@@ -205,16 +209,16 @@ async function fetchStateYear(state: string, year: number): Promise<GhcnRow[]> {
       if (res.status >= 400 && res.status < 500 && !isStmtTimeout) {
         throw new Error(`fetch 4xx (not retrying): ${res.status} ${text}`);
       }
-      if (attempt < 3) {
-        console.log(`    ${state} ${year}: ${res.status}${isStmtTimeout ? " (57014)" : ""}, retry ${attempt + 1}/4...`);
-        await delay((attempt + 1) * 5000);
+      if (attempt < MAX_ATTEMPTS - 1) {
+        console.log(`    ${state} ${year}: ${res.status}${isStmtTimeout ? " (57014)" : ""}, retry ${attempt + 1}/${MAX_ATTEMPTS}...`);
+        await delay(backoff);
         continue;
       }
-      throw new Error(`fetch failed after retries: ${res.status} ${text}`);
+      throw new Error(`fetch failed after retries: ${res.status} ${text.slice(0, 300)}`);
     } catch (err: any) {
       if (err.message?.startsWith("fetch 4xx")) throw err;
-      if (attempt < 3) {
-        await delay((attempt + 1) * 5000);
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await delay(backoff);
         continue;
       }
       throw err;
