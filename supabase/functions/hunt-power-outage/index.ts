@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { handleCors } from '../_shared/cors.ts';
-import { successResponse, errorResponse } from '../_shared/response.ts';
+import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 import { createSupabaseClient } from '../_shared/supabase.ts';
 import { batchEmbed } from '../_shared/embedding.ts';
 import { scanBrainOnWrite } from '../_shared/brainScan.ts';
@@ -71,7 +71,8 @@ serve(async (req) => {
         aggData = await aggRes.json();
         break;
       } catch (err) {
-        if (attempt === 0) {
+        // Never retry 4xx — only 5xx and network errors
+        if (attempt === 0 && !/ODIN API error 4\d\d/.test(String(err))) {
           console.warn(`ODIN fetch failed (${err}), retrying...`);
           await new Promise(r => setTimeout(r, 2000));
           continue;
@@ -91,7 +92,7 @@ serve(async (req) => {
         summary: { date: dateStr, time: timeStr, states: 0, embedded: 0, note: "no_active_outages" },
         durationMs,
       });
-      return successResponse(req, { date: dateStr, time: timeStr, states: 0, embedded: 0 });
+      return cronResponse({ date: dateStr, time: timeStr, states: 0, embedded: 0 });
     }
 
     // Step 2: Get county-level detail for top outage states (top 10 by meters affected)
@@ -296,7 +297,7 @@ serve(async (req) => {
       durationMs,
     });
 
-    return successResponse(req, {
+    return cronResponse({
       date: dateStr,
       time: timeStr,
       states_reporting: stateResults.length,
@@ -315,6 +316,6 @@ serve(async (req) => {
       errorMessage: String(err),
       durationMs,
     });
-    return errorResponse(req, String(err), 500);
+    return cronErrorResponse(String(err), 500);
   }
 });
