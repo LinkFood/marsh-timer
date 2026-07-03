@@ -4,6 +4,9 @@
 - See `audit_strategic_2026_04_11.md` — THE definitive audit. Self-knowledge = the company. Three moves: /accuracy page, narrative blitz 10x, forensic report. Frontend = 4 dead visions taped together. Chat = cost center. Grading loop (204 claims) = only real moat. Kill Intelligence page + RegimeDetector + CollisionFeed + DeckLayout + 25 panels.
 - See `audit_2026_03_14.md` — March audit. Vision vs reality gap (superseded by April 11 audit).
 
+## Landing / First-Impression Design
+- See `brainstorm_first_60_seconds_2026_07_02.md` — 7 opening-frame ideas for the "how we show it is hard" problem. Top combo (all ~buildable today, no new deps): Birthday Cold Open (front door), 11-Day Rewind heat-wave cascade replay (proof shot), Receipt Printer (honesty flex). Novelty sleeper: Absence Meter (lead with silence/the void, not activity). Wildcard: Sonify the Cascade (Web Audio). Generated 2026-07-02.
+
 ## Data Source Research
 - See `data_source_recon_v2.md` — 30 untapped free public data sources for wildlife movement intelligence. Tiered by impact. Generated 2026-03-14.
 - See `data_source_recon_v3_beyond.md` (in `~/.claude/agent-memory/idea-machine/`) — 43 unconventional/proxy sources. FAA strikes, deer-vehicle, power grid, phenocam, acoustic, Canada/Mexico. Generated 2026-03-14.
@@ -58,6 +61,7 @@
 - See `/Users/jameschellis/marsh-timer/docs/brainstorm-what-is-this.md` — THE identity document (written to project docs/). 8 sections: 6 framings (Bloomberg for Earth, fusion center, self-assembling encyclopedia, Wayback+pattern completion, domain-agnostic environmental memory, hypothesis-free causal discovery), 5 metaphors (core sample, seismograph for everything, palimpsest, multi-wavelength telescope, crime board), 5 intellectual breakthroughs (narrative as universal schema, write-time autonomous discovery, self-grading = Popperian falsificationism, temporal holography, embedding topology as discovery), 10 one-liners, 10 named personas, 5 at-scale discoveries, 6 moats, 10 missing pieces. Key NEW insights: "witness" framing for legal/insurance markets, "printing press for environmental data" analogy, Metcalfe's Law for domain count, temporal embedding as feature not filter, "null result as feature" product concept. Generated 2026-04-10.
 
 ## Brainstorm History
+- See `brainstorm_layer_viz_2026_07_02.md` — 7 inline-SVG ideas for showing many domains at once so cross-domain coincidence is visible honestly. Layer Loom, Coincidence Columns, Lead-Lag Ribbon, Core Sample (vertical geological strata — the novel one), Domain Heartbeat, State Strips, Echo Layer (ghost of prior years). Core insight: DatePage already merges all domains into one dot-row; un-merge into per-domain bands = the crime board. #1+#2 buildable today as DatePage swap-in.
 - See `brainstorm_ux_visualization_2026_03_19.md` — 15 specific ideas for surfacing 213K data points. Core problem: data trapped in vectors, UI is 6 static cards. Top recommendations: sparklines everywhere, convergence decomposition chart, brain activity monitor.
 - See `brainstorm_synthesis_agent_2026_03_26.md` — 40+ ideas across 8 categories for the synthesis agent. Architecture, arc data model, narrative gen, visualization, v1 scope, embedding tricks, grading visibility, wild novelty. Top picks: Arc Reactor Lite, Dual-Loop, Heartbeat model, Arc Fingerprinting, Hindsight Machine.
 - See `brainstorm_ux_architecture_2026_03_27.md` — 8 UX architecture proposals for front door problem. Recommended sequence: Swap (now) -> Cascade state pages -> Radar Scope -> Newsroom.

@@ -2,38 +2,35 @@
 
 ## Project
 - **Location:** `/Users/jameschellis/marsh-timer`
-- **Map component:** `src/components/MapView.tsx` (~2200 lines) — the monolith. All map layers, sources, mode switching, animations.
+- **STATUS 2026-07-02:** Fully redesigned. Mapbox + MapView.tsx monolith + 25-panel workbench are GONE. Now 3 surfaces + inline SVG only.
 
-## Key Architecture Patterns
+## Current Architecture (2026-07-02 redesign)
+- **Routes (`src/App.tsx`):** `/` ExplorerLanding, `/date/:dateStr` DatePage, `/state/:stateAbbr` StatePage, `/court` CourtPage, `/ops`, `/auth`.
+- **ExplorerLanding** (`src/pages/ExplorerLanding.tsx`, ~595 lines) — Today page. Left column narrative + right sticky rail (EventMap tile grid, layers feed, latest verdict). All load-time data is cheap REST or non-LLM edge fn; LLM chat fires only on user action.
+- **DatePage** (`src/pages/DatePage.tsx`) — ±14-day archaeology timeline (merged dot-row), domain cards ("The record"), "Tell the story" LLM button, this-day-in-other-years precedents.
+- **CourtPage** (`src/pages/CourtPage.tsx`) — docket (claims), live fires, verdict feed, "The Record" convergence-index postmortem (killed-index text lives here).
+- **EventMap** (`src/components/EventMap.tsx`) — inline-SVG US tile grid (11×8), no Mapbox. Baseline fill = entries ingested today; overlay colors = event categories. NEVER renders convergence scores.
 
-### MapView Layer System
-- `LAYER_MODES` dict (line 43-83) controls which layers show in which modes
-- Mode switching effect (line 1928-2062) handles: layer visibility, state fill coloring, wind/isobar data
-- Default mode fill uses `buildFillExpression()` which maps season status to species colors
-- Intel mode overrides fill with convergence score colors
-- Weather mode overrides fill with temperature colors
+### Doctrine (hard rules)
+- Inline SVG only. No chart libs (recharts is in package.json but do NOT use it). No Mapbox.
+- Show don't predict. Denominators always (`Denominator` component). Dead convergence score never rendered.
+- Every card headline goes through `src/lib/humanize.ts` first.
 
-### Adding a New Map Layer (recipe)
-1. Add source in `addSourcesAndLayers()` callback
-2. Add layer in same callback
-3. Register layer ID in `LAYER_MODES` dict with which modes show it
-4. If data-driven: add GeoJSON source update in a `useEffect`
-5. If animated: add to `startPulse()` animation loop
+### Key data hooks
+- `useDayArchive` — DOMAIN_GROUPS (10 groups), per-group bounded REST (content_type IN + effective_date eq + optional state). `useArchaeologyTimeline` — 4 PROBES (storm/migration/anomaly/alert) × ±14d, presence-only per-day cats, 1000-row saturation fallback.
+- `useClaims` / `useClaimFires` — raw PostgREST reads of `hunt_claims` / `hunt_claim_fires`. Degrade to status 'unavailable' on 404 (tables may not exist yet). No retry.
+- `useLatestLayers`, `useThisDayInHistory`, `useTodayEventMap`, `useTodaySignals` (bird/anomaly), `useTodayBriefing`.
 
-### Data Flow to Map
-- `useNationalWeather` → `weatherCache` (Map<string, StateWeather>) — current weather for 50 states
-- `useConvergenceScores` → full ConvergenceScore objects in Index.tsx, but only `Map<string, number>` passed to MapView
-- State centroids computed from TopoJSON, stored in `centroidsRef`
+### Temporal data state (decays — reverify)
+- `hunt_claims` / `hunt_claim_fires` migration landing ~2026-07-02 night. **Verdicts (evaluated=true fires w/ hit/lift/control_n) empty for ~1-2 weeks** until windows close. Anything on rich verdict HISTORY renders thin/empty initially.
+- `hunt_pattern_links` STALE since May 2026 — "Strings Draw Themselves" idea has no fresh data.
 
 ## Scoping Calibration
-- (2026-03-07) Scoped 5 map features. No actuals yet to compare against.
-- Color tuning: truly small (<30 min). Just paint property changes.
-- New data-driven layer with existing data: 2-3 hours (source + layer + mode registration + legend)
-- New data-driven layer needing API changes: 3-5 hours
-- Canvas/WebGL custom rendering: 8+ hours minimum, mobile perf risk
+- (2026-03-07, STALE — pre-redesign Mapbox era) map-feature estimates no longer apply.
+- **Cascade synergy insight (2026-07-02):** The July-2026 heat-wave cascade (drought -11d / ocean -9d / bird-silence -7d / heat day 0) is a hardcodable const. Build `src/data/cascade.ts` ONCE and 5 ideas become views on it (Lead-Lag Ribbon, 11-Day Rewind, Cascade Strip PNG, Sonify, Absence band). Always look for the shared-dataset spine before scoping a cluster of ideas separately.
+- Verdict/court artifacts (Verdict Card, Receipt Printer, honesty scoreboard, Wall of Misses, Prove-Me-Wrong) all sit on `useClaimFires` — same data spine, all blocked/thin until verdicts accumulate.
+- Layer-viz ideas (Loom, Coincidence Columns, Core Sample, Heartbeat, Echo) all = "un-merge the archaeology dot-row" on DatePage. One build covers several.
+- OG images (Birthday / Prove-Me-Wrong unfurl) need `@vercel/og` (NOT installed; only `@vercel/edge`) + middleware currently redirect-only (no meta injection). Real new-dep work → defer.
 
-## Files That Always Change Together
-- `MapView.tsx` + `LAYER_MODES` dict when adding any visual layer
-- `Index.tsx` when new data hooks need to flow to MapView
-- `MapLegend.tsx` when any new visual needs explanation
-- `speciesConfig.ts` when changing species color palettes
+## S/M/L convention (file-count)
+- S = 1-2 files, M = 3-5 files, L = 6+ files.

@@ -119,7 +119,7 @@ serve(async (req) => {
         total_score: convRow.score ?? 0,
         components: [
           { domain: 'weather', score: ds?.weather ?? convRow.weather_component ?? 0, max_score: 20, label: 'Weather' },
-          { domain: 'biological', score: ds?.biological ?? (convRow.migration_component + convRow.birdcast_component) ?? 0, max_score: 15, label: 'Bio' },
+          { domain: 'biological', score: ds?.biological ?? ((convRow.migration_component ?? 0) + (convRow.birdcast_component ?? 0)), max_score: 15, label: 'Bio' },
           { domain: 'water', score: ds?.water ?? convRow.water_component ?? 0, max_score: 15, label: 'Water' },
           { domain: 'drought', score: ds?.drought ?? 0, max_score: 15, label: 'Drought' },
           { domain: 'air_quality', score: ds?.air_quality ?? 0, max_score: 15, label: 'Air' },
