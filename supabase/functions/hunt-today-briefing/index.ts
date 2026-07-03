@@ -51,7 +51,8 @@ serve(async (req) => {
     // entries_today removed — count with date filter on 7M rows takes 23s. Frontend computes separately.
     const [weatherRes, solunarRes, convergenceRes, claimsRes, anomaliesRes] = await Promise.all([
       T('weather', supabase.from('hunt_weather_forecast').select('date, temp_high_f, temp_low_f, wind_speed_max_mph, wind_direction_dominant, pressure_msl, precipitation_mm, weather_code, cloud_cover_pct, updated_at').eq('state_abbr', stateAbbr).eq('date', today).limit(1)),
-      T('solunar', supabase.from('hunt_solunar_cache').select('data').eq('date', today).limit(1)),
+      // hunt_solunar_cache went stale 2026-04-10; the precompute cron writes hunt_solunar_calendar
+      T('solunar', supabase.from('hunt_solunar_calendar').select('moon_phase, illumination_pct, major_start_1, major_end_1, minor_start_1, minor_end_1, is_prime, prime_reason').eq('date', today).limit(1)),
       T('convergence', supabase.from('hunt_convergence_scores').select('score, date, weather_component, solunar_component, migration_component, pattern_component, birdcast_component, water_component, photoperiod_component, tide_component, signals').eq('state_abbr', stateAbbr).order('date', { ascending: false }).limit(1)),
       T('claims', supabase.from('hunt_alert_outcomes').select('id, alert_source, state_abbr, alert_date, predicted_outcome, outcome_deadline, outcome_checked, outcome_grade, outcome_reasoning, created_at').or(`state_abbr.eq.${stateAbbr},state_abbr.is.null`).order('created_at', { ascending: false }).limit(10)),
       // Anomalies from convergence_alerts (small table) instead of hunt_knowledge
@@ -94,17 +95,17 @@ serve(async (req) => {
       };
     }
 
-    // --- Parse solunar from cache ---
+    // --- Parse solunar from hunt_solunar_calendar ---
     let solunar = null;
-    const solRow = solunarRes.data?.[0];
+    const solRow = solunarRes.data?.[0] as Record<string, any> | undefined;
     if (solRow) {
-      const solData = typeof solRow.data === 'string' ? JSON.parse(solRow.data) : (solRow.data || {});
       solunar = {
-        moon_phase: solData.moon_phase ?? solData.phase ?? '',
-        moon_illumination: solData.moon_illumination ?? solData.illumination ?? 0,
-        next_major: solData.major_1 ?? solData.next_major ?? '',
-        next_minor: solData.minor_1 ?? solData.next_minor ?? '',
-        rating: solData.rating ?? solData.overall_rating ?? 'fair',
+        moon_phase: solRow.moon_phase ?? '',
+        moon_illumination: solRow.illumination_pct ?? 0,
+        next_major: solRow.major_start_1 && solRow.major_end_1 ? `${solRow.major_start_1}–${solRow.major_end_1}` : '',
+        next_minor: solRow.minor_start_1 && solRow.minor_end_1 ? `${solRow.minor_start_1}–${solRow.minor_end_1}` : '',
+        rating: solRow.is_prime ? 'prime' : 'fair',
+        prime_reason: solRow.prime_reason ?? null,
       };
     }
 
