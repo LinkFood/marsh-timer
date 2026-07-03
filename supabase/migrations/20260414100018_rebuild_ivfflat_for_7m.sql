@@ -6,13 +6,18 @@
 -- while the new index builds. All ingestion crons will fail during the rebuild.
 -- Run during a low-traffic window.
 --
--- TO PUSH: rename to .sql extension, then `npx supabase db push`
+-- Apply manually with `npx supabase db push` during a low-traffic window.
 
 SET statement_timeout = '0';
 SET maintenance_work_mem = '512MB';
 SET search_path = public, extensions;
 
--- Drop the existing undersized index
+-- Drop the existing undersized index.
+-- BOTH historical names — the April rebuild silently no-oped because it
+-- dropped idx_hunt_knowledge_embedding while the live index was named
+-- hunt_knowledge_embedding_idx. Dropping both makes this rebuild robust
+-- regardless of which name is live.
+DROP INDEX IF EXISTS idx_hunt_knowledge_embedding;
 DROP INDEX IF EXISTS hunt_knowledge_embedding_idx;
 
 -- Build with proper sizing for 7M rows
@@ -85,21 +90,30 @@ BEGIN
 END;
 $$;
 
--- Reschedule pattern-link-worker after rebuild completes
-SELECT cron.schedule(
-  'hunt-pattern-link-worker',
-  '*/15 * * * *',
-  $cron$
-  SELECT net.http_post(
-    url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'project_url') || '/functions/v1/hunt-pattern-link-worker',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key'),
-      'Content-Type', 'application/json'
-    ),
-    body := '{}'::jsonb
+-- Reschedule pattern-link-worker after rebuild completes.
+-- Idempotent unschedule-then-schedule — bare cron.schedule is NOT idempotent
+-- and an error here would roll back the 30-60 min index build.
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'hunt-pattern-link-worker') THEN
+    PERFORM cron.unschedule('hunt-pattern-link-worker');
+  END IF;
+  PERFORM cron.schedule(
+    'hunt-pattern-link-worker',
+    '*/15 * * * *',
+    $cron$
+    SELECT net.http_post(
+      url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'project_url') || '/functions/v1/hunt-pattern-link-worker',
+      headers := jsonb_build_object(
+        'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key'),
+        'Content-Type', 'application/json'
+      ),
+      body := '{}'::jsonb
+    );
+    $cron$
   );
-  $cron$
-);
+END;
+$do$;
 
 RESET search_path;
 RESET maintenance_work_mem;
