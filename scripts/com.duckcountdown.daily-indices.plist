@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily climate-index push (AO/NAO/PNA) — runs push-daily-indices.ts locally
+  because NOAA CPC FTP is unreachable from edge functions.
+
+  Install:
+    cp scripts/com.duckcountdown.daily-indices.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.duckcountdown.daily-indices.plist
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.duckcountdown.daily-indices
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.duckcountdown.daily-indices</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jameschellis/marsh-timer/scripts/run-daily-indices.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/duck-daily-indices.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/duck-daily-indices.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

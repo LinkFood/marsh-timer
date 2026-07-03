@@ -9,6 +9,19 @@
  *
  * Resume support:
  *   START_YEAR=2005  — skip years before 2005
+ *   END_YEAR=2024    — stop after 2024 (default 2025)
+ *
+ * Hardening (2026-07-02): a previous version made a SINGLE download attempt
+ * per year with a 2-minute abort and silently skipped the year on failure —
+ * post-2016 detail files are the largest, so the run rotted exactly there
+ * (~90% of storm-event labels missing after 2016). Downloads now retry on
+ * 5xx/network with a 10-minute timeout, CSV parsing handles multi-line quoted
+ * narratives (previously chopped records), insert failures are counted, and
+ * the script exits non-zero if any year failed.
+ *
+ * NOTE: re-running over a year with partial data will re-insert those events
+ * (hunt_knowledge has no unique constraint). Run scripts/dedup-storm-events.ts
+ * afterwards — it groups by effective_date + state + normalized title.
  */
 
 import { gunzipSync } from "node:zlib";
@@ -29,6 +42,9 @@ if (!VOYAGE_KEY) {
 
 const START_YEAR = process.env.START_YEAR
   ? parseInt(process.env.START_YEAR, 10)
+  : null;
+const END_YEAR = process.env.END_YEAR
+  ? parseInt(process.env.END_YEAR, 10)
   : null;
 
 const supaHeaders = {
@@ -173,8 +189,35 @@ interface StormEvent {
   eventNarrative: string;
 }
 
+/**
+ * Split CSV text into records, respecting quoted fields that contain
+ * embedded newlines (NCEI EPISODE_NARRATIVE/EVENT_NARRATIVE frequently do —
+ * splitting on "\n" chopped those records and silently dropped events).
+ */
+function splitCSVRecords(csvText: string): string[] {
+  const records: string[] = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let i = 0; i < csvText.length; i++) {
+    const ch = csvText[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === "\n" && !inQuotes) {
+      let end = i;
+      if (end > start && csvText[end - 1] === "\r") end--;
+      if (end > start) records.push(csvText.slice(start, end));
+      start = i + 1;
+    }
+  }
+  if (start < csvText.length) {
+    const tail = csvText.slice(start).replace(/\r$/, "");
+    if (tail) records.push(tail);
+  }
+  return records;
+}
+
 function parseCSV(csvText: string): StormEvent[] {
-  const lines = csvText.split("\n");
+  const lines = splitCSVRecords(csvText);
   if (lines.length < 2) return [];
 
   // Find header indices
@@ -303,22 +346,48 @@ async function findFileForYear(year: number): Promise<string | null> {
 
 async function downloadAndDecompress(filename: string): Promise<string> {
   const url = `${NCEI_BASE}${filename}`;
-  console.log(`  Downloading ${filename}...`);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+  for (let attempt = 0; attempt < 3; attempt++) {
+    console.log(`  Downloading ${filename}...${attempt > 0 ? ` (attempt ${attempt + 1}/3)` : ""}`);
+    const controller = new AbortController();
+    // 10 min — post-2016 detail files are large; the old 2-min abort is what
+    // killed every year after 2016.
+    const timeout = setTimeout(() => controller.abort(), 600000);
 
-  const res = await fetch(url, { signal: controller.signal });
-  clearTimeout(timeout);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
 
-  if (!res.ok) {
-    throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+      if (!res.ok) {
+        // Never retry 4xx
+        if (res.status >= 400 && res.status < 500) {
+          throw new Error(`Download 4xx (not retrying): ${res.status} ${res.statusText}`);
+        }
+        // 5xx (NCEI throttles bulk sequential downloads) — retry with backoff
+        if (attempt < 2) {
+          console.log(`    NCEI ${res.status}, backing off ${(attempt + 1) * 30}s...`);
+          await delay((attempt + 1) * 30000);
+          continue;
+        }
+        throw new Error(`Download failed after retries: ${res.status} ${res.statusText}`);
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const decompressed = gunzipSync(buffer);
+      return decompressed.toString("utf-8");
+    } catch (err: any) {
+      if (err.message?.startsWith("Download 4xx")) throw err;
+      if (attempt < 2) {
+        console.log(`    Download error (${err.name || err}), backing off ${(attempt + 1) * 30}s...`);
+        await delay((attempt + 1) * 30000);
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
-
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const decompressed = gunzipSync(buffer);
-  return decompressed.toString("utf-8");
+  throw new Error("Exhausted retries");
 }
 
 // ---------- Build hunt_knowledge entries ----------
@@ -427,19 +496,37 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
   throw new Error("Exhausted retries");
 }
 
-// ---------- Supabase upsert ----------
+// ---------- Failure accounting ----------
 
-async function insertBatch(rows: Record<string, unknown>[]) {
+let insertFailures = 0;
+let embedFailures = 0;
+const failedYears: number[] = [];
+
+// ---------- Supabase insert ----------
+
+/** Returns the number of rows that actually landed. Failures are counted. */
+async function insertBatch(rows: Record<string, unknown>[]): Promise<number> {
+  let landed = 0;
   for (let i = 0; i < rows.length; i += 20) {
     const chunk = rows.slice(i, i + 20);
+    let chunkOk = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
           method: "POST",
-          headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+          headers: supaHeaders,
           body: JSON.stringify(chunk),
         });
-        if (res.ok) break;
+        if (res.ok) {
+          chunkOk = true;
+          break;
+        }
+        // Never retry 4xx
+        if (res.status >= 400 && res.status < 500) {
+          const text = await res.text();
+          console.error(`  Insert 4xx (not retrying): ${res.status} ${text}`);
+          break;
+        }
         if (attempt < 2) {
           console.log(`  Insert retry ${attempt + 1}/3...`);
           await delay(5000);
@@ -455,7 +542,10 @@ async function insertBatch(rows: Record<string, unknown>[]) {
         console.error(`  Insert fetch failed after retries: ${err}`);
       }
     }
+    if (chunkOk) landed += chunk.length;
+    else insertFailures += chunk.length;
   }
+  return landed;
 }
 
 // ---------- Process entries (embed + insert) ----------
@@ -475,6 +565,7 @@ async function processEntries(entries: PreparedEntry[]): Promise<number> {
       console.error(
         `    Embed batch failed, skipping ${batch.length} entries: ${err}`,
       );
+      embedFailures += batch.length;
       continue;
     }
 
@@ -490,8 +581,7 @@ async function processEntries(entries: PreparedEntry[]): Promise<number> {
       embedding: JSON.stringify(embeddings[idx]),
     }));
 
-    await insertBatch(rows);
-    inserted += rows.length;
+    inserted += await insertBatch(rows);
 
     // Pause between embed batches
     await delay(500);
@@ -502,25 +592,46 @@ async function processEntries(entries: PreparedEntry[]): Promise<number> {
 
 // ---------- Main ----------
 
+async function fetchDirectoryListing(): Promise<string> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const dirRes = await fetch(NCEI_BASE, { signal: controller.signal });
+      if (dirRes.ok) return await dirRes.text();
+      if (dirRes.status >= 400 && dirRes.status < 500) {
+        throw new Error(`Directory listing 4xx: ${dirRes.status}`);
+      }
+      if (attempt < 2) {
+        await delay((attempt + 1) * 15000);
+        continue;
+      }
+      throw new Error(`Failed to fetch directory listing: ${dirRes.status}`);
+    } catch (err: any) {
+      if (err.message?.startsWith("Directory listing 4xx")) throw err;
+      if (attempt < 2) {
+        await delay((attempt + 1) * 15000);
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
 async function main() {
   const startYear = START_YEAR || 1990;
-  const endYear = 2025;
+  const endYear = END_YEAR || 2025;
 
   console.log("=== NOAA Storm Events Backfill ===");
   console.log(`Years: ${startYear} to ${endYear}`);
 
-  // Fetch directory listing once
+  // Fetch directory listing once (filenames carry a creation-date suffix that
+  // changes when NCEI regenerates files — always resolved live, never hardcoded)
   console.log("Fetching NCEI directory listing...");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  const dirRes = await fetch(NCEI_BASE, { signal: controller.signal });
-  clearTimeout(timeout);
-
-  if (!dirRes.ok) {
-    throw new Error(`Failed to fetch directory listing: ${dirRes.status}`);
-  }
-
-  const dirHtml = await dirRes.text();
+  const dirHtml = await fetchDirectoryListing();
 
   let totalInserted = 0;
 
@@ -536,6 +647,7 @@ async function main() {
 
     if (!matches || matches.length === 0) {
       console.log(`  No file found for ${year}, skipping`);
+      failedYears.push(year);
       continue;
     }
 
@@ -549,6 +661,7 @@ async function main() {
       csvText = await downloadAndDecompress(filename);
     } catch (err) {
       console.error(`  Download failed for ${year}: ${err}`);
+      failedYears.push(year);
       continue;
     }
 
@@ -566,8 +679,10 @@ async function main() {
       const inserted = await processEntries(entries);
       totalInserted += inserted;
       console.log(`  ${year}: ${inserted}/${entries.length} entries embedded and inserted`);
+      if (inserted < entries.length) failedYears.push(year);
     } catch (err) {
       console.error(`  ${year}: embed/insert failed (continuing): ${err}`);
+      failedYears.push(year);
     }
 
     // Rate limit between year downloads
@@ -575,6 +690,14 @@ async function main() {
   }
 
   console.log(`\n=== Done! Total: ${totalInserted} entries inserted ===`);
+  if (failedYears.length > 0 || insertFailures > 0 || embedFailures > 0) {
+    console.error(
+      `=== FAILURES: years incomplete: [${[...new Set(failedYears)].join(", ")}] | ` +
+        `${insertFailures} insert failures, ${embedFailures} embed failures — ` +
+        `re-run with START_YEAR=<first failed year> ===`,
+    );
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

@@ -9,6 +9,19 @@
  *
  * Resume support:
  *   START_STATE=CO START_YEAR=1985  — skip to Colorado starting at 1985
+ *   ONLY_STATES=SC,SD,TN            — run ONLY these states (comma list)
+ *   YEAR_FROM=2005 YEAR_TO=2024     — bound the year range (default 1950-2025)
+ *
+ * Idempotency: before inserting a state/year, the script fetches the
+ * effective_dates already present in hunt_knowledge for that state/year and
+ * only inserts the missing dates. Re-running never duplicates existing data
+ * (hunt_knowledge has no unique constraint, so merge-duplicates is a no-op —
+ * the diff against existing dates is the real idempotency mechanism).
+ *
+ * Failure accounting: insert/embed failures are COUNTED and the script exits
+ * non-zero if any occurred. A previous version swallowed insert 4xx errors,
+ * reported failed batches as "embedded", and exited 0 — which is how the
+ * SC-WY gap went unnoticed.
  */
 
 const SUPABASE_URL =
@@ -29,6 +42,11 @@ const START_STATE = process.env.START_STATE?.toUpperCase() || null;
 const START_YEAR = process.env.START_YEAR
   ? parseInt(process.env.START_YEAR, 10)
   : null;
+const ONLY_STATES = process.env.ONLY_STATES
+  ? process.env.ONLY_STATES.toUpperCase().split(",").map((s) => s.trim()).filter(Boolean)
+  : null;
+const YEAR_FROM = process.env.YEAR_FROM ? parseInt(process.env.YEAR_FROM, 10) : 1950;
+const YEAR_TO = process.env.YEAR_TO ? parseInt(process.env.YEAR_TO, 10) : 2025;
 
 const supaHeaders = {
   Authorization: `Bearer ${SERVICE_KEY}`,
@@ -431,19 +449,68 @@ async function batchEmbed(texts: string[], retries = 3): Promise<number[][]> {
   throw new Error("Exhausted retries");
 }
 
-// ---------- Supabase upsert ----------
+// ---------- Failure accounting ----------
 
-async function insertBatch(rows: Record<string, unknown>[]) {
+let insertFailures = 0;
+let embedFailures = 0;
+
+// ---------- Idempotency: fetch dates already present for a state/year ----------
+
+async function fetchExistingDates(state: string, year: number): Promise<Set<string>> {
+  const url =
+    `${SUPABASE_URL}/rest/v1/hunt_knowledge` +
+    `?select=effective_date` +
+    `&content_type=eq.ghcn-daily` +
+    `&state_abbr=eq.${state}` +
+    `&effective_date=gte.${year}-01-01` +
+    `&effective_date=lte.${year}-12-31` +
+    `&limit=400`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, { headers: supaHeaders });
+      if (res.ok) {
+        const rows = (await res.json()) as { effective_date: string }[];
+        return new Set(rows.map((r) => r.effective_date));
+      }
+      if (res.status >= 400 && res.status < 500) {
+        throw new Error(`Existing-dates check 4xx: ${res.status} ${await res.text()}`);
+      }
+      if (attempt < 2) {
+        await delay((attempt + 1) * 5000);
+        continue;
+      }
+      throw new Error(`Existing-dates check failed: ${res.status}`);
+    } catch (err: any) {
+      if (err.message?.startsWith("Existing-dates check 4xx")) throw err;
+      if (attempt < 2) {
+        await delay((attempt + 1) * 5000);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
+// ---------- Supabase insert ----------
+
+/** Returns the number of rows that actually landed. Failures are counted. */
+async function insertBatch(rows: Record<string, unknown>[]): Promise<number> {
+  let landed = 0;
   for (let i = 0; i < rows.length; i += 20) {
     const chunk = rows.slice(i, i + 20);
+    let chunkOk = false;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/hunt_knowledge`, {
           method: "POST",
-          headers: { ...supaHeaders, Prefer: "resolution=merge-duplicates" },
+          headers: supaHeaders,
           body: JSON.stringify(chunk),
         });
-        if (res.ok) break;
+        if (res.ok) {
+          chunkOk = true;
+          break;
+        }
         if (res.status >= 400 && res.status < 500) {
           const text = await res.text();
           console.error(`    Insert 4xx (not retrying): ${res.status} ${text}`);
@@ -464,7 +531,10 @@ async function insertBatch(rows: Record<string, unknown>[]) {
         console.error(`    Insert fetch failed after retries: ${err}`);
       }
     }
+    if (chunkOk) landed += chunk.length;
+    else insertFailures += chunk.length;
   }
+  return landed;
 }
 
 // ---------- Process entries (embed + insert) ----------
@@ -483,6 +553,7 @@ async function processEntries(entries: PreparedEntry[]): Promise<number> {
       console.error(
         `    Embed batch failed, skipping ${batch.length} entries: ${err}`,
       );
+      embedFailures += batch.length;
       continue;
     }
 
@@ -498,8 +569,7 @@ async function processEntries(entries: PreparedEntry[]): Promise<number> {
       embedding: JSON.stringify(embeddings[idx]),
     }));
 
-    await insertBatch(rows);
-    inserted += rows.length;
+    inserted += await insertBatch(rows);
 
     // Pause between embed batches
     await delay(500);
@@ -511,15 +581,21 @@ async function processEntries(entries: PreparedEntry[]): Promise<number> {
 // ---------- Main ----------
 
 async function main() {
+  const states = ONLY_STATES
+    ? STATES.filter((s) => ONLY_STATES.includes(s))
+    : STATES;
+
   console.log("=== NOAA GHCN-Daily Historical Weather Backfill ===");
-  console.log("States: 50 | Years: 1950-2025");
+  console.log(`States: ${states.length} | Years: ${YEAR_FROM}-${YEAR_TO}`);
+  if (ONLY_STATES) console.log(`Only states: ${states.join(",")}`);
   if (START_STATE) console.log(`Resuming from state: ${START_STATE}`);
   if (START_YEAR) console.log(`Resuming from year: ${START_YEAR}`);
 
   let totalInserted = 0;
+  let totalSkipped = 0;
   let pastStartState = !START_STATE;
 
-  for (const state of STATES) {
+  for (const state of states) {
     // Resume support: skip states before START_STATE
     if (!pastStartState) {
       if (state === START_STATE) {
@@ -532,9 +608,19 @@ async function main() {
     console.log(`\n--- ${state} ---`);
     let stateTotal = 0;
 
-    for (let year = 1950; year <= 2025; year++) {
+    for (let year = YEAR_FROM; year <= YEAR_TO; year++) {
       // Resume support: skip years before START_YEAR (only for START_STATE)
       if (state === START_STATE && START_YEAR && year < START_YEAR) {
+        continue;
+      }
+
+      // Idempotency: fetch dates already in hunt_knowledge for this state/year
+      let existingDates: Set<string>;
+      try {
+        existingDates = await fetchExistingDates(state, year);
+      } catch (err) {
+        console.error(`  ${year}: existing-dates check failed, skipping year to avoid duplicates — ${err}`);
+        insertFailures += 1; // count so the run exits non-zero and the gap is visible
         continue;
       }
 
@@ -544,6 +630,7 @@ async function main() {
         acisData = await fetchAcisYear(state, year);
       } catch (err) {
         console.error(`  ${year}: ACIS fetch failed — ${err}`);
+        insertFailures += 1;
         continue;
       }
 
@@ -563,11 +650,22 @@ async function main() {
         continue;
       }
 
-      // Build entries (filter nulls from invalid dates)
+      // Build entries (filter nulls from invalid dates + already-present dates)
       const entries: PreparedEntry[] = [];
+      let skippedExisting = 0;
       for (const [, summary] of summaries) {
+        if (existingDates.has(summary.date)) {
+          skippedExisting++;
+          continue;
+        }
         const entry = buildEntry(state, summary);
         if (entry) entries.push(entry);
+      }
+      totalSkipped += skippedExisting;
+
+      if (entries.length === 0) {
+        console.log(`  ${year}: all ${summaries.size} days already present, skipped`);
+        continue;
       }
 
       // Sort by date for consistent output
@@ -578,7 +676,8 @@ async function main() {
         const inserted = await processEntries(entries);
         stateTotal += inserted;
         totalInserted += inserted;
-        console.log(`  ${year}: ${summaries.size} days -> ${inserted} embedded`);
+        const skipNote = skippedExisting > 0 ? ` (${skippedExisting} already present)` : "";
+        console.log(`  ${year}: ${summaries.size} days -> ${inserted} embedded${skipNote}`);
       } catch (err) {
         console.error(`  ${year}: embed/insert failed (continuing): ${err}`);
       }
@@ -587,7 +686,13 @@ async function main() {
     console.log(`  ${state} total: ${stateTotal} entries`);
   }
 
-  console.log(`\n=== Done! Total: ${totalInserted} entries inserted ===`);
+  console.log(`\n=== Done! Total: ${totalInserted} inserted, ${totalSkipped} skipped (already present) ===`);
+  if (insertFailures > 0 || embedFailures > 0) {
+    console.error(
+      `=== FAILURES: ${insertFailures} insert failures/skipped years, ${embedFailures} embed failures — DATA IS INCOMPLETE, re-run to fill gaps ===`,
+    );
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {
