@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
-  MapPin, ChevronDown, Thermometer, Wind, Droplets, Eye, Moon,
-  Activity, Clock, AlertTriangle, Brain, CheckCircle, XCircle, Timer,
-  Cloud, Gauge, ChevronRight,
+  MapPin, ChevronDown, Wind, Droplets, Moon,
+  AlertTriangle, Brain, CheckCircle, XCircle, Timer,
+  Cloud, Gauge,
 } from 'lucide-react';
 import { useTodayBriefing } from '@/hooks/useTodayBriefing';
 import { useEntriesToday } from '@/hooks/useEntriesToday';
 import type {
-  TodayBriefingData, ConvergenceComponent, ThisDayEntry, ClaimGrade, Anomaly,
+  TodayBriefingData, ThisDayEntry, ClaimGrade, Anomaly,
 } from '@/hooks/useTodayBriefing';
 import { useUserLocation, US_STATES, getStateName } from '@/hooks/useUserLocation';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
@@ -21,48 +21,6 @@ function formatDate(): string {
   const d = new Date();
   return `${FULL_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
-
-const DOMAIN_COLORS: Record<string, string> = {
-  weather: 'bg-red-400',
-  biological: 'bg-blue-400',
-  water: 'bg-cyan-400',
-  drought: 'bg-amber-500',
-  air_quality: 'bg-lime-400',
-  soil: 'bg-amber-700',
-  ocean: 'bg-sky-400',
-  space_weather: 'bg-purple-400',
-  lunar: 'bg-yellow-400',
-  photoperiod: 'bg-gray-400',
-  tide: 'bg-gray-500',
-};
-
-const DOMAIN_TEXT_COLORS: Record<string, string> = {
-  weather: 'text-red-400',
-  biological: 'text-blue-400',
-  water: 'text-cyan-400',
-  drought: 'text-amber-500',
-  air_quality: 'text-lime-400',
-  soil: 'text-amber-700',
-  ocean: 'text-sky-400',
-  space_weather: 'text-purple-400',
-  lunar: 'text-yellow-400',
-  photoperiod: 'text-gray-400',
-  tide: 'text-gray-500',
-};
-
-const DOMAIN_SHORT_LABELS: Record<string, string> = {
-  weather: 'WEAT',
-  biological: 'BIO',
-  water: 'WATR',
-  drought: 'DRHT',
-  air_quality: 'AIR',
-  soil: 'SOIL',
-  ocean: 'OCEN',
-  space_weather: 'SPCE',
-  lunar: 'LUNA',
-  photoperiod: 'PHOT',
-  tide: 'TIDE',
-};
 
 function contentTypeIcon(ct: string): string {
   if (ct.includes('storm')) return '⚡';
@@ -109,16 +67,6 @@ function SolunarSkeleton() {
       <div className="h-3 w-20 bg-white/[0.03] rounded" />
       <div className="h-3 w-32 bg-white/[0.03] rounded" />
       <div className="h-3 w-32 bg-white/[0.03] rounded" />
-    </div>
-  );
-}
-
-function ConvergenceSkeleton() {
-  return (
-    <div className="animate-pulse flex gap-1.5">
-      {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-        <div key={i} className="flex-1 h-8 bg-white/[0.03] rounded" />
-      ))}
     </div>
   );
 }
@@ -267,41 +215,6 @@ function SolunarStrip({ solunar }: { solunar: TodayBriefingData['solunar'] }) {
       }`}>
         {solunar.rating?.toUpperCase()}
       </span>
-    </div>
-  );
-}
-
-function ConvergencePulse({ convergence }: { convergence: TodayBriefingData['convergence'] }) {
-  if (!convergence) return null;
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[9px] font-mono text-white/20 tracking-wider">CONVERGENCE</span>
-        <span className="text-[10px] font-mono text-cyan-400/50">
-          {convergence.total_score}<span className="text-white/15">/100</span>
-        </span>
-      </div>
-      <div className="flex gap-1.5">
-        {convergence.components.map((c) => {
-          const pct = c.max_score > 0 ? (c.score / c.max_score) * 100 : 0;
-          const bg = DOMAIN_COLORS[c.domain] || 'bg-white/30';
-          const textColor = DOMAIN_TEXT_COLORS[c.domain] || 'text-white/30';
-          return (
-            <div key={c.domain} className="flex-1 min-w-0" title={`${c.label}: ${c.score}/${c.max_score}`}>
-              <div className="h-8 bg-white/[0.03] rounded relative overflow-hidden">
-                <div
-                  className={`absolute bottom-0 left-0 right-0 ${bg} opacity-40 rounded transition-all duration-500`}
-                  style={{ height: `${Math.max(4, pct)}%` }}
-                />
-              </div>
-              <p className={`text-[7px] font-mono ${textColor} text-center mt-1 truncate`}>
-                {DOMAIN_SHORT_LABELS[c.domain] || c.label?.slice(0, 4).toUpperCase() || c.domain.slice(0, 4).toUpperCase()}
-              </p>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -463,8 +376,15 @@ function AnomaliesStrip({ anomalies }: { anomalies: Anomaly[] }) {
 
 // --- Main Component ---
 
-export default function TodayBriefing() {
-  const { state, stateName, detecting, setUserState } = useUserLocation();
+export default function TodayBriefing({ stateOverride }: { stateOverride?: string | null }) {
+  const { state: detectedState, detecting, setUserState } = useUserLocation();
+  // ?state=XX overrides geolocation until the user picks a state manually
+  const [override, setOverride] = useState<string | null>(() => {
+    const s = stateOverride?.toUpperCase();
+    return s && US_STATES.some(st => st.abbr === s) ? s : null;
+  });
+  const state = override ?? detectedState;
+  const stateName = getStateName(state);
   const [showDropdown, setShowDropdown] = useState(false);
   const { data, loading, error } = useTodayBriefing(state);
   const { entries: historyEntries } = useThisDayInHistory();
@@ -487,6 +407,7 @@ export default function TodayBriefing() {
           <StateDropdown
             current={state}
             onSelect={(abbr) => {
+              setOverride(null);
               setUserState(abbr);
               setShowDropdown(false);
             }}
@@ -510,11 +431,6 @@ export default function TodayBriefing() {
       {/* Solunar Strip */}
       <section className="mb-5 py-2 border-y border-white/[0.04]">
         {showSkeleton ? <SolunarSkeleton /> : <SolunarStrip solunar={data?.solunar ?? null} />}
-      </section>
-
-      {/* Convergence Pulse */}
-      <section className="mb-5">
-        {showSkeleton ? <ConvergenceSkeleton /> : <ConvergencePulse convergence={data?.convergence ?? null} />}
       </section>
 
       {/* Anomalies — above timeline if something weird is happening */}

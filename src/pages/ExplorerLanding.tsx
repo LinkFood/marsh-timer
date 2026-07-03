@@ -1,15 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Brain, Settings, ChevronUp, ChevronDown, Search, Calendar, Loader2, Sparkles, RotateCcw, MapPin, Send, Zap, ThumbsUp, ThumbsDown, Clock, X } from 'lucide-react';
+import { Brain, ChevronUp, ChevronDown, Search, Calendar, Loader2, RotateCcw, Send, Clock, X } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
-import { useDailyDiscovery } from '@/hooks/useDailyDiscovery';
-import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { useChatHistory } from '@/hooks/useChatHistory';
-import { useBrainPulse, getDomainColor } from '@/hooks/useBrainPulse';
-import StateActivityMap from '@/components/StateActivityMap';
-import InlineStateMap, { extractStates } from '@/components/InlineStateMap';
 import BrainResponseCard from '@/components/BrainResponseCard';
-import { useCoincidenceSnapshot } from '@/hooks/useCoincidenceSnapshot';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import TodayBriefing from '@/components/TodayBriefing';
@@ -40,7 +34,11 @@ export default function ExplorerLanding() {
   const [month, setMonth] = useState(() => new Date().getMonth());
   const [day, setDay] = useState(() => new Date().getDate());
   const [year, setYear] = useState(() => new Date().getFullYear());
-  const [stateFilter, setStateFilter] = useState<string | null>(null);
+  // ?state=XX (from middleware redirects of /XX and /duck/XX) overrides geolocation
+  const [stateFilter, setStateFilter] = useState<string | null>(() => {
+    const s = new URLSearchParams(window.location.search).get('state')?.toUpperCase();
+    return s && STATES.some(st => st.abbr === s) ? s : null;
+  });
   const [question, setQuestion] = useState('');
   const [followUp, setFollowUp] = useState('');
   const navigate = useNavigate();
@@ -52,17 +50,6 @@ export default function ExplorerLanding() {
   const [year2, setYear2] = useState(() => new Date().getFullYear() - 1);
   const [showHistory, setShowHistory] = useState(false);
   const { sessions: historySessions } = useChatHistory();
-  const pulseEntries = useBrainPulse();
-  const [pulseIndex, setPulseIndex] = useState(0);
-
-  // Cycle pulse every 4 seconds
-  useEffect(() => {
-    if (pulseEntries.length === 0) return;
-    const interval = setInterval(() => {
-      setPulseIndex(i => (i + 1) % pulseEntries.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [pulseEntries.length]);
   const [searchParams, setSearchParams] = useSearchParams();
   const resultsRef = useRef<HTMLDivElement>(null);
   const followUpRef = useRef<HTMLInputElement>(null);
@@ -75,8 +62,6 @@ export default function ExplorerLanding() {
     onMapAction: () => {},
   });
 
-  const { discovery, loading: discoveryLoading } = useDailyDiscovery();
-
   // Auto-fire query from URL params (?q=...)
   useEffect(() => {
     if (autoFiredRef.current) return;
@@ -87,8 +72,6 @@ export default function ExplorerLanding() {
       sendMessage(q.trim());
     }
   }, [searchParams, sendMessage]);
-  const { entries: historyEntries } = useThisDayInHistory();
-  const { data: coincidence } = useCoincidenceSnapshot();
 
   useEffect(() => {
     if (!SUPABASE_URL) return;
@@ -204,9 +187,6 @@ export default function ExplorerLanding() {
               <Clock size={14} className={showHistory ? 'text-cyan-400' : 'text-white/40'} />
             </button>
           )}
-          <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Dashboard">
-            <Settings size={14} className="text-white/40" />
-          </Link>
           <UserMenu />
         </div>
       </header>
@@ -218,27 +198,9 @@ export default function ExplorerLanding() {
           {/* Today's Briefing — weather-first data dashboard */}
           {!hasSearched && (
             <div className="pt-4">
-              <TodayBriefing />
+              <TodayBriefing stateOverride={stateFilter} />
             </div>
           )}
-
-          {/* Brain Pulse — live ingestion ticker */}
-          {!hasSearched && pulseEntries.length > 0 && (() => {
-            const entry = pulseEntries[pulseIndex];
-            if (!entry) return null;
-            const age = Date.now() - new Date(entry.created_at).getTime();
-            const ageStr = age < 60000 ? 'just now' : age < 3600000 ? `${Math.floor(age / 60000)}m ago` : `${Math.floor(age / 3600000)}h ago`;
-            return (
-              <div className="flex items-center justify-center gap-2 py-2 transition-opacity duration-500">
-                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${getDomainColor(entry.content_type)}`} />
-                <span className="text-[9px] font-mono text-white/30">
-                  {entry.content_type}
-                </span>
-                {entry.state_abbr && <span className="text-[9px] font-mono text-white/20">{entry.state_abbr}</span>}
-                <span className="text-[9px] font-mono text-white/15">{ageStr}</span>
-              </div>
-            );
-          })()}
 
           {/* Search area */}
           <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-4 sm:pt-8 pb-4'}`}>
@@ -251,54 +213,6 @@ export default function ExplorerLanding() {
                 <p className="text-sm text-white/30 mb-4 font-body max-w-lg mx-auto">
                   Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
                 </p>
-
-                {/* State Activity Map — visual proof the brain is watching */}
-                <div className="mb-4">
-                  <StateActivityMap onStateClick={(abbr) => {
-                    navigate(`/state/${abbr.toLowerCase()}`);
-                  }} />
-                </div>
-
-                {/* Daily Discovery — skeleton while loading */}
-                {discoveryLoading && (
-                  <div className="max-w-2xl mx-auto mb-6">
-                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.05] px-4 sm:px-5 py-3.5 animate-pulse">
-                      <div className="h-3 w-32 bg-white/[0.06] rounded mb-3" />
-                      <div className="h-4 w-3/4 bg-white/[0.04] rounded mb-2" />
-                      <div className="h-3 w-full bg-white/[0.03] rounded mb-1" />
-                      <div className="h-3 w-5/6 bg-white/[0.03] rounded" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Daily Discovery — clickable to dig deeper */}
-                {!discoveryLoading && discovery && (
-                  <div className="max-w-2xl mx-auto mb-6">
-                    <button
-                      onClick={() => {
-                        setHasSearched(true);
-                        sendMessage(`Tell me more about this: ${discovery.headline}. ${discovery.discovery} Dig deeper into the cross-domain connections. What caused this? Has this combination happened before? What might follow?`);
-                      }}
-                      disabled={loading || streaming}
-                      className="w-full text-left rounded-xl bg-gradient-to-r from-cyan-400/[0.04] to-purple-400/[0.04] border border-cyan-400/10 hover:border-cyan-400/25 px-4 sm:px-5 py-3.5 transition-colors group"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Zap size={13} className="text-cyan-400" />
-                          <span className="text-[9px] font-mono text-cyan-400/70 tracking-wider">TODAY'S DISCOVERY</span>
-                        </div>
-                        <span className="text-[9px] font-mono text-white/20 group-hover:text-cyan-400/40 transition-colors">click to dig deeper →</span>
-                      </div>
-                      <p className="text-sm font-bold text-white/80 mb-1">{discovery.headline}</p>
-                      <p className="text-xs text-white/50 leading-relaxed">{discovery.discovery}</p>
-                      {discovery.dejaVu && (
-                        <p className="text-[10px] text-purple-400/60 mt-2 font-mono">
-                          Environmental déjà vu: Today most closely resembles {discovery.dejaVu.date} ({Math.round(discovery.dejaVu.similarity * 100)}% match)
-                        </p>
-                      )}
-                    </button>
-                  </div>
-                )}
               </>
             )}
 
@@ -326,38 +240,6 @@ export default function ExplorerLanding() {
               </form>
             </div>
 
-            {/* Coincidence Counter — links to /now */}
-            {!hasSearched && coincidence && coincidence.activeArcs > 0 && (
-              <Link to="/now" className="block max-w-2xl mx-auto mb-5 text-center hover:opacity-80 transition-opacity">
-                <p className="text-xs font-body text-white/40">
-                  Right now, the brain is tracking{' '}
-                  <span className="text-cyan-400/70 font-semibold">{coincidence.activeArcs} unusual patterns</span>
-                  {' '}across{' '}
-                  <span className="text-cyan-400/70 font-semibold">{coincidence.activeStates} states</span>.
-                  {coincidence.pendingOutcomes > 0 && (
-                    <span className="text-purple-400/50"> {coincidence.pendingOutcomes} investigations waiting for confirmation.</span>
-                  )}
-                </p>
-                {coincidence.hotStates.length > 0 && (
-                  <div className="flex items-center justify-center gap-1.5 mt-2">
-                    <span className="text-[8px] font-mono text-white/15">HOTTEST:</span>
-                    {coincidence.hotStates.map(s => (
-                      <button
-                        key={s.abbr}
-                        onClick={() => {
-                          setHasSearched(true);
-                          sendMessage(`What's the brain tracking in ${s.abbr} right now? What patterns are unusual?`);
-                        }}
-                        className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-400/[0.06] text-cyan-400/50 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors"
-                      >
-                        {s.abbr} {s.score}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </Link>
-            )}
-
             {/* Example queries — things Google can't answer */}
             {!hasSearched && (
               <div className="max-w-2xl mx-auto mb-6">
@@ -375,31 +257,6 @@ export default function ExplorerLanding() {
                       className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 transition-colors text-[11px] font-body text-white/40 hover:text-white/60 text-left"
                     >
                       {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* This Day in History — compact timeline */}
-            {!hasSearched && historyEntries.length > 0 && (
-              <div className="max-w-2xl mx-auto mb-6">
-                <p className="text-[9px] font-mono text-white/20 tracking-wider mb-2 text-center">
-                  THIS DAY IN THE BRAIN
-                </p>
-                <div className="flex gap-2 overflow-x-auto pb-1 justify-center flex-wrap">
-                  {historyEntries.map((entry, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setHasSearched(true);
-                        sendMessage(`What was happening on ${MONTHS[new Date().getMonth()]} ${new Date().getDate()}, ${entry.year}? Cross-reference all domains.`);
-                      }}
-                      className="shrink-0 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.05] hover:border-white/10 hover:bg-white/[0.04] transition-colors text-left"
-                    >
-                      <span className="text-[10px] font-mono text-cyan-400/50">{entry.year}</span>
-                      <span className="text-[9px] text-white/30 ml-1.5">{entry.state_abbr || ''}</span>
-                      <p className="text-[9px] text-white/25 truncate max-w-[140px]">{entry.content_type}</p>
                     </button>
                   ))}
                 </div>
@@ -443,19 +300,6 @@ export default function ExplorerLanding() {
                 )}
                 <span className="font-body text-xs text-white/50">{dateStr}</span>
                 {stateFilter && <span className="font-mono text-[10px] text-white/30">· {stateFilter}</span>}
-              </button>
-
-              <button
-                onClick={() => {
-                  if (loading || streaming) return;
-                  const dateIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  navigate(`/report/${dateIso}`);
-                }}
-                disabled={loading || streaming}
-                className="px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-400/20 hover:bg-purple-500/20 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-              >
-                <Sparkles size={14} className="text-purple-400/60" />
-                <span className="font-body text-xs text-purple-300/60">Grade</span>
               </button>
 
               <button

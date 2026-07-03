@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Brain, Settings, Calendar, Loader2, RotateCcw, Send, ChevronLeft } from 'lucide-react';
+import { Brain, Calendar, Loader2, RotateCcw, Send, ChevronLeft } from 'lucide-react';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import { useChat } from '@/hooks/useChat';
 import UserMenu from '@/components/UserMenu';
@@ -129,9 +129,6 @@ export default function DatePage() {
               <span className="text-[8px] font-mono text-emerald-400/40">LIVE</span>
             </div>
           )}
-          <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Dashboard">
-            <Settings size={14} className="text-white/40" />
-          </Link>
           <UserMenu />
         </div>
       </header>

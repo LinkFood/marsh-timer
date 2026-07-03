@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Brain, Settings, Loader2, Send, ChevronLeft, MapPin, Zap } from 'lucide-react';
+import { Brain, Loader2, Send, ChevronLeft, MapPin } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import UserMenu from '@/components/UserMenu';
@@ -121,9 +121,6 @@ export default function StatePage() {
               <span className="text-[8px] font-mono text-emerald-400/40">LIVE</span>
             </div>
           )}
-          <Link to="/dashboard" className="p-1.5 rounded hover:bg-white/[0.06] transition-colors">
-            <Settings size={14} className="text-white/40" />
-          </Link>
           <UserMenu />
         </div>
       </header>
