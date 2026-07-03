@@ -3,6 +3,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import ExplorerLanding from "./pages/ExplorerLanding";
 import DatePage from "./pages/DatePage";
 import StatePage from "./pages/StatePage";
+import CourtPage from "./pages/CourtPage";
 import Auth from "./pages/Auth";
 import OpsPage from "./pages/OpsPage";
 import NotFound from "./pages/NotFound";
@@ -14,6 +15,7 @@ const App = () => (
         <Route path="/" element={<ExplorerLanding />} />
         <Route path="/date/:dateStr" element={<DatePage />} />
         <Route path="/state/:stateAbbr" element={<StatePage />} />
+        <Route path="/court" element={<CourtPage />} />
         <Route path="/ops" element={<OpsPage />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="*" element={<NotFound />} />
