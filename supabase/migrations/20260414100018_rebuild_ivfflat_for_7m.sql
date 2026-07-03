@@ -9,7 +9,9 @@
 -- Apply manually with `npx supabase db push` during a low-traffic window.
 
 SET statement_timeout = '0';
-SET maintenance_work_mem = '512MB';
+-- pgvector requires ~1637MB to k-means-train lists=2645 on 7.6M x 512-dim vectors
+-- (build failed 2026-07-02 at the previous 512MB setting, SQLSTATE 54000)
+SET maintenance_work_mem = '2GB';
 SET search_path = public, extensions;
 
 -- Drop the existing undersized index.
