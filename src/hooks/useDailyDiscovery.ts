@@ -30,7 +30,10 @@ export function useDailyDiscovery() {
         .from('hunt_knowledge')
         .select('title,content,metadata,state_abbr,effective_date')
         .eq('content_type', 'bio-environmental-correlation')
-        .order('created_at', { ascending: false })
+        // order by effective_date, NOT created_at — with heavy columns selected
+        // the planner abandons the (content_type, created_at) index and the
+        // query statement-times-out on 7.6M rows (57014)
+        .order('effective_date', { ascending: false })
         .limit(5);
 
       // Pick the one with the most env_matches — most interesting correlation
@@ -61,7 +64,7 @@ export function useDailyDiscovery() {
         .from('hunt_knowledge')
         .select('title,content,metadata,state_abbr,effective_date')
         .eq('content_type', 'brain-narrative')
-        .order('created_at', { ascending: false })
+        .order('effective_date', { ascending: false })
         .limit(10);
 
       const narrative = (narratives || []).find(n => {

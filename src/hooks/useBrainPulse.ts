@@ -48,13 +48,29 @@ export function useBrainPulse() {
   useEffect(() => {
     if (!supabase) return;
 
+    // Backoff state: on failure, skip upcoming 60s ticks so a broken query
+    // never retries in a tight loop (never-retry-4xx / backoff-5xx rule).
+    let failures = 0;
+    let skipTicks = 0;
+
     const fetchRecent = () => {
+      // hunt_knowledge is 7.6M rows — an unbounded order=created_at.desc
+      // statement-times-out (57014). The effective_date btree bounds the scan;
+      // fresh entries always carry a current effective_date.
+      const sinceDate = new Date(Date.now() - 48 * 3600 * 1000).toISOString().split('T')[0];
       supabase
         .from('hunt_knowledge')
         .select('content_type,state_abbr,created_at,title')
+        .gte('effective_date', sinceDate)
         .order('created_at', { ascending: false })
         .limit(10)
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (error) {
+            failures++;
+            skipTicks = Math.min(2 ** failures, 30); // 2min, 4min... capped at 30min
+            return;
+          }
+          failures = 0;
           if (data) {
             setEntries(data.map(d => ({
               content_type: d.content_type || '',
@@ -64,11 +80,17 @@ export function useBrainPulse() {
             })));
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          failures++;
+          skipTicks = Math.min(2 ** failures, 30);
+        });
     };
 
     fetchRecent();
-    const interval = setInterval(fetchRecent, 60000); // refresh every 60s
+    const interval = setInterval(() => {
+      if (skipTicks > 0) { skipTicks--; return; }
+      fetchRecent();
+    }, 60000); // refresh every 60s
     return () => clearInterval(interval);
   }, []);
 
