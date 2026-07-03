@@ -1,346 +1,341 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ChevronUp, ChevronDown, Search, Calendar, Loader2, RotateCcw, Send, Clock, X } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ChevronDown, Send, Flame, Loader2, RotateCcw } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
-import { useChatHistory } from '@/hooks/useChatHistory';
+import { useTodayBriefing } from '@/hooks/useTodayBriefing';
+import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
+import { useClaims, useClaimFires, type ClaimFire } from '@/hooks/useClaims';
+import { useBirdActivity, useTodayAnomaly, degreesToCompass, type BirdDay } from '@/hooks/useTodaySignals';
+import { useUserLocation, US_STATES, getStateName } from '@/hooks/useUserLocation';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import TodayBriefing from '@/components/TodayBriefing';
+import Denominator from '@/components/Denominator';
+import PrecedentCard from '@/components/PrecedentCard';
+import CountdownClock from '@/components/salvage/CountdownClock';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DAYS_IN_MONTH = [31,29,31,30,31,30,31,31,30,31,30,31];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const STATES: { abbr: string; name: string }[] = [
-  {abbr:'AL',name:'Alabama'},{abbr:'AK',name:'Alaska'},{abbr:'AZ',name:'Arizona'},{abbr:'AR',name:'Arkansas'},
-  {abbr:'CA',name:'California'},{abbr:'CO',name:'Colorado'},{abbr:'CT',name:'Connecticut'},{abbr:'DE',name:'Delaware'},
-  {abbr:'FL',name:'Florida'},{abbr:'GA',name:'Georgia'},{abbr:'HI',name:'Hawaii'},{abbr:'ID',name:'Idaho'},
-  {abbr:'IL',name:'Illinois'},{abbr:'IN',name:'Indiana'},{abbr:'IA',name:'Iowa'},{abbr:'KS',name:'Kansas'},
-  {abbr:'KY',name:'Kentucky'},{abbr:'LA',name:'Louisiana'},{abbr:'ME',name:'Maine'},{abbr:'MD',name:'Maryland'},
-  {abbr:'MA',name:'Massachusetts'},{abbr:'MI',name:'Michigan'},{abbr:'MN',name:'Minnesota'},{abbr:'MS',name:'Mississippi'},
-  {abbr:'MO',name:'Missouri'},{abbr:'MT',name:'Montana'},{abbr:'NE',name:'Nebraska'},{abbr:'NV',name:'Nevada'},
-  {abbr:'NH',name:'New Hampshire'},{abbr:'NJ',name:'New Jersey'},{abbr:'NM',name:'New Mexico'},{abbr:'NY',name:'New York'},
-  {abbr:'NC',name:'North Carolina'},{abbr:'ND',name:'North Dakota'},{abbr:'OH',name:'Ohio'},{abbr:'OK',name:'Oklahoma'},
-  {abbr:'OR',name:'Oregon'},{abbr:'PA',name:'Pennsylvania'},{abbr:'RI',name:'Rhode Island'},{abbr:'SC',name:'South Carolina'},
-  {abbr:'SD',name:'South Dakota'},{abbr:'TN',name:'Tennessee'},{abbr:'TX',name:'Texas'},{abbr:'UT',name:'Utah'},
-  {abbr:'VT',name:'Vermont'},{abbr:'VA',name:'Virginia'},{abbr:'WA',name:'Washington'},{abbr:'WV',name:'West Virginia'},
-  {abbr:'WI',name:'Wisconsin'},{abbr:'WY',name:'Wyoming'},
-];
+/**
+ * The Today page. Single column, everything on load is a direct REST read
+ * or an existing non-LLM edge function. The dispatcher only fires when the
+ * user asks something. Show don't predict — precedents carry denominators.
+ */
+
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <h2 className="text-[10px] font-mono uppercase tracking-widest text-white/40 mb-3">{children}</h2>
+  );
+}
+
+/** Tiny inline SVG sparkline — no chart lib. */
+function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 3) return null;
+  const w = 72, h = 18;
+  const max = Math.max(...values), min = Math.min(...values);
+  const range = max - min || 1;
+  const pts = values
+    .map((v, i) => `${(i / (values.length - 1)) * w},${h - 2 - ((v - min) / range) * (h - 4)}`)
+    .join(' ');
+  return (
+    <svg width={w} height={h} className="inline-block align-middle opacity-70" aria-hidden>
+      <polyline points={pts} fill="none" stroke="rgb(34 211 238 / 0.6)" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** S3 — one unevaluated claim fire, rendered as a watch card with receipts. */
+function WatchCard({ fire, claimName }: { fire: ClaimFire; claimName: string }) {
+  const detail = (fire.detail && typeof fire.detail === 'object' ? fire.detail : null) as Record<string, unknown> | null;
+  const observation = String(detail?.observation || detail?.summary || detail?.text || claimName);
+  return (
+    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+      <div className="flex items-start gap-2 mb-2">
+        <Flame size={13} className="text-amber-400 mt-0.5 shrink-0" />
+        <p className="text-sm font-body text-white/80 leading-snug">{observation}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] mb-2">
+        <Denominator n={fire.control_n} k={fire.control_hits} label="controls" />
+        {fire.window_end && (
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono text-white/30">window closes</span>
+            <CountdownClock deadline={fire.window_end} />
+          </span>
+        )}
+      </div>
+      <Link to="/court" className="text-[10px] font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors">
+        Filed as claim → Court
+      </Link>
+    </div>
+  );
+}
+
+function birdLine(latest: BirdDay, stateName: string): string {
+  const n = latest.cumulative_birds;
+  const when = new Date(latest.date + 'T12:00:00').toDateString() === new Date().toDateString()
+    ? 'today' : 'last night';
+  const dir = latest.avg_direction != null ? `, moving ${degreesToCompass(latest.avg_direction)}` : '';
+  if (n == null || n === 0) return `Radar shows quiet skies over ${stateName} ${when}.`;
+  return `Radar counted ${n.toLocaleString()} birds over ${stateName} ${when}${dir}.`;
+}
 
 export default function ExplorerLanding() {
-  const [month, setMonth] = useState(() => new Date().getMonth());
-  const [day, setDay] = useState(() => new Date().getDate());
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  // ?state=XX (from middleware redirects of /XX and /duck/XX) overrides geolocation
-  const [stateFilter, setStateFilter] = useState<string | null>(() => {
+  const [searchParams] = useSearchParams();
+  const { state: locState, setUserState } = useUserLocation();
+  // ?state=XX (middleware redirects of /XX and /duck/XX) overrides geolocation
+  const [override, setOverride] = useState<string | null>(() => {
     const s = new URLSearchParams(window.location.search).get('state')?.toUpperCase();
-    return s && STATES.some(st => st.abbr === s) ? s : null;
+    return s && US_STATES.some(st => st.abbr === s) ? s : null;
   });
+  const state = override ?? locState;
+  const stateName = getStateName(state);
+  const [showStates, setShowStates] = useState(false);
   const [question, setQuestion] = useState('');
-  const [followUp, setFollowUp] = useState('');
-  const navigate = useNavigate();
-  const [brainCount, setBrainCount] = useState<number | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [compareMode, setCompareMode] = useState(false);
-  const [month2, setMonth2] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.getMonth(); });
-  const [day2, setDay2] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.getDate(); });
-  const [year2, setYear2] = useState(() => new Date().getFullYear() - 1);
-  const [showHistory, setShowHistory] = useState(false);
-  const { sessions: historySessions } = useChatHistory();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const resultsRef = useRef<HTMLDivElement>(null);
-  const followUpRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoFiredRef = useRef(false);
 
+  // --- Data on load: cheap REST only, zero LLM ---
+  const { data: briefing } = useTodayBriefing(state);            // hunt-today-briefing (table reads)
+  const { latest: birdLatest, history: birdHistory } = useBirdActivity(state);
+  const anomaly = useTodayAnomaly(state);
+  const { entries: historyEntries } = useThisDayInHistory();
+  const { claims, status: claimsStatus } = useClaims();
+  const { fires, status: firesStatus } = useClaimFires();
+
+  // --- Chat: fires ONLY on user action (or explicit ?q= deep link) ---
   const { messages, loading, streaming, sendMessage, clearMessages } = useChat({
     species: 'all',
-    stateAbbr: stateFilter,
+    stateAbbr: state,
     onMapAction: () => {},
   });
 
-  // Auto-fire query from URL params (?q=...)
+  const now = new Date();
+  const dateStr = `${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+
+  const ask = useCallback((q: string) => {
+    if (!q.trim() || loading || streaming) return;
+    sendMessage(q.trim());
+    setQuestion('');
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 150);
+  }, [loading, streaming, sendMessage]);
+
+  // Auto-fire deep-linked question (?q=...) — user intent, not a page-load call
   useEffect(() => {
     if (autoFiredRef.current) return;
     const q = searchParams.get('q');
     if (q && q.trim()) {
       autoFiredRef.current = true;
-      setHasSearched(true);
       sendMessage(q.trim());
     }
   }, [searchParams, sendMessage]);
 
+  // Keep the answer in view while streaming
   useEffect(() => {
-    if (!SUPABASE_URL) return;
-    fetch(`${SUPABASE_URL}/functions/v1/hunt-suggested-prompts`, { headers: { apikey: SUPABASE_KEY } })
-      .then(r => r.json())
-      .then(data => { if (data.stats?.total_entries) setBrainCount(data.stats.total_entries); })
-      .catch(() => {});
-  }, []);
-
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (messages.length > 0 && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    if (streaming) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streaming]);
 
-  // Embed completed responses back into brain
+  // Embed completed responses back into the brain (query-signal)
   const embeddedRef = useRef(new Set<string>());
   useEffect(() => {
-    if (!SUPABASE_URL || !SUPABASE_KEY) return;
+    if (!SUPABASE_URL || !SUPABASE_KEY || loading || streaming) return;
     for (const msg of messages) {
-      if (msg.role === 'assistant' && msg.content && msg.content.length > 50 && !embeddedRef.current.has(msg.id)) {
-        if (loading || streaming) continue;
-        embeddedRef.current.add(msg.id);
-        const msgIndex = messages.indexOf(msg);
-        const userMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
-        const queryText = userMsg?.role === 'user' ? userMsg.content : 'unknown query';
-        fetch(`${SUPABASE_URL}/functions/v1/hunt-embed-interaction`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}`, apikey: SUPABASE_KEY },
-          body: JSON.stringify({
-            content: `User asked: "${queryText}" — Brain responded with ${msg.content.length} chars of cross-domain analysis.`,
-            content_type: 'query-signal',
-            title: `Query: ${queryText.slice(0, 80)}`,
-            metadata: { query: queryText, response_length: msg.content.length, state: stateFilter, timestamp: new Date().toISOString() },
-          }),
-        }).catch(() => {});
-      }
+      if (msg.role !== 'assistant' || !msg.content || msg.content.length <= 50 || embeddedRef.current.has(msg.id)) continue;
+      embeddedRef.current.add(msg.id);
+      const userMsg = messages[messages.indexOf(msg) - 1];
+      const queryText = userMsg?.role === 'user' ? userMsg.content : 'unknown query';
+      fetch(`${SUPABASE_URL}/functions/v1/hunt-embed-interaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}`, apikey: SUPABASE_KEY },
+        body: JSON.stringify({
+          content: `User asked: "${queryText}" — Brain responded with ${msg.content.length} chars of cross-domain analysis.`,
+          content_type: 'query-signal',
+          title: `Query: ${queryText.slice(0, 80)}`,
+          metadata: { query: queryText, response_length: msg.content.length, state, timestamp: new Date().toISOString() },
+        }),
+      }).catch(() => {});
     }
-  }, [messages, loading, streaming, stateFilter]);
+  }, [messages, loading, streaming, state]);
 
-  const handleDateQuery = useCallback(() => {
-    if (loading || streaming) return;
-    const dateIso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    // Navigate to permanent date page
-    navigate(`/date/${dateIso}`);
-  }, [month, day, year, navigate, loading, streaming]);
+  // S3 — this state's unevaluated fires
+  const claimNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of claims) map.set(c.id, c.name || (c.claim_name as string) || 'Registered claim');
+    return map;
+  }, [claims]);
+  const watchFires = firesStatus === 'ready'
+    ? fires.filter(f => f.evaluated === false && f.state_abbr === state).slice(0, 2)
+    : [];
 
-  const handleFreeformSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (!question.trim() || loading || streaming) return;
-    setHasSearched(true);
-    setSearchParams({ q: question.trim() }, { replace: true });
-    sendMessage(question.trim());
-    setQuestion('');
-  }, [question, loading, streaming, sendMessage, setSearchParams]);
+  // S4 — 3-5 year cards spread across the archive span
+  const precedents = useMemo(() => {
+    if (historyEntries.length <= 5) return historyEntries;
+    const picks = new Set<number>();
+    for (let i = 0; i < 5; i++) picks.add(Math.round((i * (historyEntries.length - 1)) / 4));
+    return [...picks].map(i => historyEntries[i]);
+  }, [historyEntries]);
+  const mmdd = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-  const handleFollowUp = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (!followUp.trim() || loading || streaming) return;
-    sendMessage(followUp.trim());
-    setFollowUp('');
-  }, [followUp, loading, streaming, sendMessage]);
+  // S5 — four proven-good question shapes, state-substituted
+  const chips = [
+    `What was happening in ${stateName} on ${MONTHS[now.getMonth()]} ${now.getDate()}, 2012?`,
+    `Compare today to this day last year in ${stateName}`,
+    'Walk me back through the two weeks before the June heat wave',
+    `When has drought in ${stateName} coincided with unusual bird activity?`,
+  ];
 
-  const handleNewQuery = useCallback(() => {
-    clearMessages();
-    setHasSearched(false);
-    setQuestion('');
-    setFollowUp('');
-    setSearchParams({}, { replace: true });
-    autoFiredRef.current = false;
-  }, [clearMessages, setSearchParams]);
-
-  const dateStr = `${MONTHS[month]} ${day}, ${year}`;
-  const spinMonth = (dir: number) => setMonth(m => (m + dir + 12) % 12);
-  const spinDay = (dir: number) => setDay(d => {
-    const max = DAYS_IN_MONTH[month];
-    const next = d + dir;
-    if (next < 1) return max;
-    if (next > max) return 1;
-    return next;
-  });
-  const spinYear = (dir: number) => setYear(y => Math.max(1950, Math.min(2026, y + dir)));
-  const spinMonth2 = (dir: number) => setMonth2(m => (m + dir + 12) % 12);
-  const spinDay2 = (dir: number) => setDay2(d => { const max = DAYS_IN_MONTH[month2]; const next = d + dir; if (next < 1) return max; if (next > max) return 1; return next; });
-  const spinYear2 = (dir: number) => setYear2(y => Math.max(1950, Math.min(2026, y + dir)));
-  const dateStr2 = `${MONTHS[month2]} ${day2}, ${year2}`;
-
-  const assistantMessages = messages.filter(m => m.role === 'assistant' && m.content);
+  const weather = briefing?.current_weather ?? null;
+  const solunar = briefing?.solunar ?? null;
+  const birdValues = birdHistory.map(d => d.cumulative_birds ?? 0);
+  const docketCount = claimsStatus === 'ready' && claims.length > 0 ? claims.length : 4;
 
   return (
-    <div className="h-[100dvh] w-screen overflow-hidden bg-[#0a0f1a] flex flex-col">
-      {/* Header */}
+    <div className="min-h-[100dvh] bg-gray-950 flex flex-col">
       <AppHeader>
-        {historySessions.length > 0 && (
-          <button onClick={() => setShowHistory(!showHistory)} className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Query History">
-            <Clock size={14} className={showHistory ? 'text-cyan-400' : 'text-white/40'} />
-          </button>
-        )}
         <UserMenu />
       </AppHeader>
 
-      {/* Main */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="flex-1">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-10 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-10">
 
-          {/* Today's Briefing — weather-first data dashboard */}
-          {!hasSearched && (
-            <div className="pt-4">
-              <TodayBriefing stateOverride={stateFilter} />
-            </div>
-          )}
-
-          {/* Search area */}
-          <div className={`text-center transition-all duration-300 ${hasSearched ? 'pt-4 pb-3' : 'pt-4 sm:pt-8 pb-4'}`}>
-
-            {!hasSearched && (
-              <>
-                <h1 className="font-display text-2xl sm:text-4xl text-white/90 mb-2 leading-tight">
-                  Ask the brain anything.
-                </h1>
-                <p className="text-sm text-white/30 mb-4 font-body max-w-lg mx-auto">
-                  Cross-reference {brainCount ? brainCount.toLocaleString() + '+' : 'millions of'} environmental records across 83 domains. Questions Google can't answer.
-                </p>
-              </>
-            )}
-
-            {/* Primary: Question input — BIG */}
-            <div className="max-w-2xl mx-auto mb-4">
-              <form onSubmit={handleFreeformSubmit}>
-                <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
-                  <Search size={18} className="text-white/20 shrink-0" />
-                  <input
-                    value={question}
-                    onChange={e => setQuestion(e.target.value)}
-                    placeholder="Ask anything..."
-                    className="flex-1 bg-transparent text-base font-body text-white/90 placeholder:text-white/25 outline-none"
-                  />
-                  {question.trim() && (
+          {/* S2 — TODAY, HERE. */}
+          <section>
+            <div className="relative flex flex-wrap items-center gap-2 mb-4">
+              <h1 className="font-body text-2xl sm:text-3xl text-white/90 leading-tight">
+                {dateStr} — {stateName}
+              </h1>
+              <button
+                onClick={() => setShowStates(!showStates)}
+                className="flex items-center gap-1 px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] hover:border-cyan-400/30 transition-colors"
+              >
+                <span className="text-[10px] font-mono text-cyan-400/80">{state}</span>
+                <ChevronDown size={10} className={`text-white/30 transition-transform ${showStates ? 'rotate-180' : ''}`} />
+              </button>
+              {showStates && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-gray-900 border border-white/10 rounded-lg shadow-xl max-h-64 overflow-y-auto w-56">
+                  {US_STATES.map(s => (
                     <button
-                      type="submit"
-                      disabled={loading || streaming}
-                      className="px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 transition-colors"
+                      key={s.abbr}
+                      onClick={() => { setOverride(null); setUserState(s.abbr); setShowStates(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-white/[0.06] transition-colors ${
+                        s.abbr === state ? 'text-cyan-400 bg-cyan-400/[0.06]' : 'text-white/50'
+                      }`}
                     >
-                      <span className="font-body text-xs font-semibold text-white">Ask</span>
-                    </button>
-                  )}
-                </div>
-              </form>
-            </div>
-
-            {/* Example queries — things Google can't answer */}
-            {!hasSearched && (
-              <div className="max-w-2xl mx-auto mb-6">
-                <div className="flex flex-wrap justify-center gap-2">
-                  {[
-                    'Every time AO dropped below -2 during La Nina, what storms followed?',
-                    'What was happening across all domains on February 10, 2021?',
-                    'When has drought in Texas coincided with negative NAO?',
-                    'What were the climate indices doing before Hurricane Sandy in 2012?',
-                  ].map(q => (
-                    <button
-                      key={q}
-                      onClick={() => { setHasSearched(true); sendMessage(q); }}
-                      disabled={loading || streaming}
-                      className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 transition-colors text-[11px] font-body text-white/40 hover:text-white/60 text-left"
-                    >
-                      {q}
+                      <span className="font-bold mr-2">{s.abbr}</span>
+                      <span className="text-white/30">{s.name}</span>
                     </button>
                   ))}
                 </div>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              {weather && (
+                <p className="font-body text-xl sm:text-2xl text-white/70 leading-snug">
+                  {weather.temperature_f != null ? `${weather.temperature_f}°` : '—'} and {weather.conditions.toLowerCase()}
+                  {weather.wind_mph != null && weather.wind_mph > 0 ? `, wind ${weather.wind_direction} ${weather.wind_mph} mph` : ''}.
+                </p>
+              )}
+              {birdLatest && (
+                <p className="font-body text-sm text-white/55 leading-snug">
+                  {birdLine(birdLatest, stateName)}{' '}
+                  <Sparkline values={birdValues} />
+                </p>
+              )}
+              {anomaly && (
+                <p className="font-body text-sm text-amber-300/70 leading-snug">
+                  {anomaly.checkName} here is {Math.abs(anomaly.zScore).toFixed(1)}σ {anomaly.direction} normal — statistically unusual.
+                </p>
+              )}
+              {solunar && solunar.moon_phase && (
+                <p className="font-body text-sm text-white/45 leading-snug">
+                  {solunar.moon_phase}, {solunar.moon_illumination}% lit
+                  {solunar.next_major ? ` — next major feeding window ${solunar.next_major}` : ''}.
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* S3 — WHAT'S BUILDING */}
+          <section>
+            <SectionLabel>WHAT'S BUILDING</SectionLabel>
+            {watchFires.length > 0 ? (
+              <div className="space-y-3">
+                {watchFires.map(fire => (
+                  <WatchCard key={fire.id} fire={fire} claimName={claimNameById.get(fire.claim_id || '') || 'Registered claim'} />
+                ))}
+              </div>
+            ) : (
+              <p className="font-body text-sm text-white/40 leading-relaxed">
+                Nothing building. The layers are within seasonal range.
+              </p>
+            )}
+          </section>
+
+          {/* S4 — DAYS LIKE TODAY */}
+          <section>
+            <SectionLabel>This day in the archive</SectionLabel>
+            {precedents.length > 0 ? (
+              <div className="space-y-2.5">
+                {precedents.map(entry => (
+                  <PrecedentCard
+                    key={`${entry.year}-${entry.content_type}`}
+                    dateHeadline={`${MONTHS[now.getMonth()]} ${now.getDate()}, ${entry.year}`}
+                    whatHappened={entry.title || entry.content}
+                    stateTag={entry.state_abbr}
+                    to={`/date/${entry.year}-${mmdd}?state=${state}`}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="font-body text-sm text-white/30">Opening the archive for this day...</p>
+            )}
+            <p className="mt-3 text-[10px] font-mono text-white/25">
+              Nearest-day matching arrives when the similarity engine clears verification.
+            </p>
+          </section>
+
+          {/* S5 — ASK THE ARCHIVE */}
+          <section>
+            <SectionLabel>Ask the archive</SectionLabel>
+
+            <form onSubmit={e => { e.preventDefault(); ask(question); }} className="mb-3">
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-900 border border-white/10 focus-within:border-cyan-400/30 transition-colors">
+                <input
+                  value={question}
+                  onChange={e => setQuestion(e.target.value)}
+                  placeholder={messages.length > 0 ? 'Ask a follow-up...' : 'Ask the archive anything...'}
+                  className="flex-1 min-w-0 bg-transparent text-sm font-body text-white/90 placeholder:text-white/25 outline-none"
+                />
+                <button type="submit" disabled={!question.trim() || loading || streaming} className="p-1.5 rounded hover:bg-white/[0.06] transition-colors disabled:opacity-20">
+                  {loading && !streaming ? <Loader2 size={14} className="text-cyan-400 animate-spin" /> : <Send size={14} className="text-cyan-400" />}
+                </button>
+              </div>
+            </form>
+
+            {messages.length === 0 && (
+              <div className="flex flex-wrap gap-2">
+                {chips.map(q => (
+                  <button
+                    key={q}
+                    onClick={() => ask(q)}
+                    disabled={loading || streaming}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 transition-colors text-[11px] font-body text-white/40 hover:text-white/60 text-left"
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
             )}
 
-            {/* Secondary: Date picker row */}
-            <div className={`flex items-center justify-center gap-2 sm:gap-3 ${hasSearched ? 'mb-2' : 'mb-3'}`}>
-              <Spinner label="MONTH" value={MONTHS[month]} onUp={() => spinMonth(1)} onDown={() => spinMonth(-1)} wide />
-              <Spinner label="DAY" value={String(day)} onUp={() => spinDay(1)} onDown={() => spinDay(-1)} />
-              <Spinner label="YEAR" value={String(year)} onUp={() => spinYear(1)} onDown={() => spinYear(-1)} onEdit={(v) => {
-                const n = parseInt(v, 10);
-                if (!isNaN(n) && n >= 1950 && n <= 2026) setYear(n);
-              }} />
-              <div className="flex flex-col items-center">
-                <div className="h-[28px]" />
-                <select
-                  value={stateFilter || ''}
-                  onChange={e => setStateFilter(e.target.value || null)}
-                  className="h-12 px-2 bg-[#0d1117] border border-white/[0.08] rounded-lg text-sm font-bold text-white appearance-none cursor-pointer outline-none w-20 sm:w-24 text-center"
-                >
-                  <option value="">US</option>
-                  {STATES.map(s => <option key={s.abbr} value={s.abbr}>{s.abbr}</option>)}
-                </select>
-                <div className="h-[28px]" />
-                <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">STATE</span>
-              </div>
-            </div>
-
-            {/* Date query + Grade + New buttons */}
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <button
-                onClick={handleDateQuery}
-                disabled={loading || streaming}
-                className="px-4 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
-              >
-                {(loading || streaming) ? (
-                  <Loader2 size={14} className="text-cyan-400 animate-spin" />
-                ) : (
-                  <Calendar size={14} className="text-white/40" />
-                )}
-                <span className="font-body text-xs text-white/50">{dateStr}</span>
-                {stateFilter && <span className="font-mono text-[10px] text-white/30">· {stateFilter}</span>}
-              </button>
-
-              <button
-                onClick={() => setCompareMode(!compareMode)}
-                className={`px-4 py-2 rounded-lg border transition-colors inline-flex items-center gap-2 ${
-                  compareMode ? 'bg-orange-500/10 border-orange-400/20' : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'
-                }`}
-              >
-                <span className="font-body text-xs text-white/40">Compare</span>
-              </button>
-
-              {hasSearched && (
-                <button
-                  onClick={handleNewQuery}
-                  className="px-3 py-2 rounded-lg border border-white/[0.06] hover:bg-white/[0.04] transition-colors inline-flex items-center gap-1.5"
-                >
-                  <RotateCcw size={12} className="text-white/30" />
-                  <span className="font-body text-xs text-white/30">New</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Compare mode — second date picker */}
-          {compareMode && (
-            <div className="text-center mb-4">
-              <p className="text-[9px] font-mono text-orange-400/40 tracking-wider mb-2">COMPARE WITH</p>
-              <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3">
-                <Spinner label="" value={MONTHS[month2]} onUp={() => spinMonth2(1)} onDown={() => spinMonth2(-1)} wide />
-                <Spinner label="" value={String(day2)} onUp={() => spinDay2(1)} onDown={() => spinDay2(-1)} />
-                <Spinner label="" value={String(year2)} onUp={() => spinYear2(1)} onDown={() => spinYear2(-1)} onEdit={(v) => {
-                  const n = parseInt(v, 10);
-                  if (!isNaN(n) && n >= 1950 && n <= 2026) setYear2(n);
-                }} />
-              </div>
-              <button
-                onClick={() => {
-                  if (loading || streaming) return;
-                  const dateIso1 = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const dateIso2 = `${year2}-${String(month2 + 1).padStart(2, '0')}-${String(day2).padStart(2, '0')}`;
-                  navigate(`/date/${dateIso1}?compare=${dateIso2}`);
-                }}
-                disabled={loading || streaming}
-                className="px-5 py-2 rounded-lg bg-orange-500/20 border border-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-              >
-                <span className="font-body text-xs font-semibold text-orange-300/70">Compare {dateStr} vs {dateStr2}</span>
-              </button>
-            </div>
-          )}
-
-          {/* Brain Responses — inline conversation */}
-          <div ref={resultsRef}>
             <ErrorBoundary fallback={<p className="text-xs text-white/40 text-center py-8">Error loading response.</p>}>
               {messages.map((msg, i) => {
                 if (msg.role === 'user') {
                   return (
-                    <div key={msg.id} className="mb-3 text-right">
+                    <div key={msg.id} className="mt-4 mb-3 text-right">
                       <span className="inline-block text-xs font-body text-white/70 bg-cyan-400/[0.08] rounded-lg px-3 py-2 max-w-[85%] text-left">
                         {msg.content}
                       </span>
@@ -353,201 +348,49 @@ export default function ExplorerLanding() {
                       key={msg.id}
                       message={msg}
                       isStreaming={streaming && i === messages.length - 1}
-                      onFollowUp={(q) => sendMessage(q)}
+                      onFollowUp={q => ask(q)}
                     />
                   );
                 }
                 return null;
               })}
-
               {loading && !streaming && (
-                <ThinkingIndicator />
+                <p className="text-xs font-mono text-cyan-400/40 text-center py-6 animate-pulse">
+                  Searching the archive...
+                </p>
               )}
             </ErrorBoundary>
-          </div>
 
-          {/* Follow-up input — appears after first response */}
-          {hasSearched && !loading && !streaming && assistantMessages.length > 0 && (
-            <form onSubmit={handleFollowUp} className="mt-4 mb-8">
-              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0d1117] border border-white/10 focus-within:border-cyan-400/30 transition-colors">
-                <input
-                  ref={followUpRef}
-                  value={followUp}
-                  onChange={e => setFollowUp(e.target.value)}
-                  placeholder="Ask a follow-up question..."
-                  className="flex-1 bg-transparent text-sm font-body text-white/90 placeholder:text-white/25 outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={!followUp.trim()}
-                  className="p-1.5 rounded hover:bg-white/[0.06] transition-colors disabled:opacity-20"
-                >
-                  <Send size={14} className="text-cyan-400" />
-                </button>
-              </div>
-            </form>
-          )}
+            {messages.length > 0 && !loading && !streaming && (
+              <button
+                onClick={clearMessages}
+                className="mt-3 px-3 py-1.5 rounded-lg border border-white/[0.06] hover:bg-white/[0.04] transition-colors inline-flex items-center gap-1.5"
+              >
+                <RotateCcw size={11} className="text-white/30" />
+                <span className="font-body text-[11px] text-white/30">New question</span>
+              </button>
+            )}
+            <div ref={bottomRef} />
+          </section>
 
-          <div ref={bottomRef} className="h-8" />
+          {/* S6 — Footer */}
+          <footer className="border-t border-white/[0.06] pt-5 space-y-2 text-center">
+            <p className="text-[10px] font-mono text-white/30">
+              7,600,000+ entries · 25+ data domains · every claim graded against matched controls
+            </p>
+            <p className="text-[10px] font-mono">
+              <Link to="/court" className="text-white/40 hover:text-cyan-400/70 transition-colors">
+                {docketCount} claims on the docket — first verdicts land as windows close → Court
+              </Link>
+            </p>
+            <p>
+              <Link to="/ops" className="text-[9px] font-mono text-white/20 hover:text-white/40 transition-colors">ops</Link>
+            </p>
+          </footer>
         </div>
       </main>
-
-      {/* History sidebar */}
-      {showHistory && (
-        <div className="fixed top-12 left-0 bottom-0 w-72 bg-[#0b1018] border-r border-white/[0.06] z-40 overflow-y-auto">
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/[0.06]">
-            <span className="text-[9px] font-mono text-white/30 tracking-wider">QUERY HISTORY</span>
-            <button onClick={() => setShowHistory(false)} className="p-1 rounded hover:bg-white/[0.06]">
-              <X size={12} className="text-white/30" />
-            </button>
-          </div>
-          {historySessions.map(session => {
-            const age = Date.now() - new Date(session.lastMessageAt).getTime();
-            const label = age < 3600000 ? 'just now' : age < 86400000 ? 'today' : age < 172800000 ? 'yesterday' : new Date(session.lastMessageAt).toLocaleDateString();
-            return (
-              <button
-                key={session.sessionId}
-                onClick={() => {
-                  setHasSearched(true);
-                  sendMessage(session.firstMessage);
-                  setShowHistory(false);
-                }}
-                className="w-full text-left px-3 py-2.5 border-b border-white/[0.03] hover:bg-white/[0.03] transition-colors"
-              >
-                <p className="text-[11px] text-white/60 font-body truncate">{session.firstMessage}</p>
-                <p className="text-[9px] text-white/20 font-mono mt-0.5">{label} · {session.messageCount} msgs</p>
-              </button>
-            );
-          })}
-          {historySessions.length === 0 && (
-            <p className="text-[10px] text-white/20 text-center py-8">No history yet</p>
-          )}
-        </div>
-      )}
 
       <div className="grain-overlay" />
     </div>
   );
 }
-
-/** Thinking indicator with elapsed time and timeout messaging */
-function ThinkingIndicator() {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const start = Date.now();
-    const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <div className="flex flex-col items-center gap-2 py-8">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1">
-          {[0, 1, 2].map(i => (
-            <span
-              key={i}
-              className="w-1.5 h-1.5 rounded-full bg-cyan-400"
-              style={{
-                animation: 'pulse 1.4s ease-in-out infinite',
-                animationDelay: `${i * 0.2}s`,
-              }}
-            />
-          ))}
-        </div>
-        <span className="text-xs font-mono text-cyan-400/40">
-          Brain is thinking
-          {elapsed > 5 && <span className="text-white/20 ml-1">· {elapsed}s</span>}
-        </span>
-      </div>
-      {elapsed > 15 && elapsed <= 45 && (
-        <span className="text-[10px] text-white/20">Searching across 83 domains — complex queries take longer</span>
-      )}
-      {elapsed > 45 && elapsed <= 90 && (
-        <span className="text-[10px] text-amber-400/40">Taking longer than usual — the brain is searching deep</span>
-      )}
-      {elapsed > 90 && (
-        <span className="text-[10px] text-red-400/40">This query may have timed out. Try a more specific question.</span>
-      )}
-    </div>
-  );
-}
-
-/** Date spinner with click-to-edit on year */
-function Spinner({ label, value, onUp, onDown, wide, onEdit }: {
-  label: string; value: string; onUp: () => void; onDown: () => void; wide?: boolean; onEdit?: (value: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const startHold = useCallback((fn: () => void) => {
-    fn();
-    timeoutRef.current = setTimeout(() => {
-      intervalRef.current = setInterval(fn, 100);
-    }, 400);
-  }, []);
-
-  const stopHold = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    timeoutRef.current = null;
-    intervalRef.current = null;
-  }, []);
-
-  useEffect(() => () => stopHold(), [stopHold]);
-
-  if (editing && onEdit) {
-    return (
-      <div className="flex flex-col items-center">
-        <div className="h-[28px]" />
-        <input
-          autoFocus
-          value={editValue}
-          onChange={e => setEditValue(e.target.value)}
-          onBlur={() => { onEdit(editValue); setEditing(false); }}
-          onKeyDown={e => { if (e.key === 'Enter') { onEdit(editValue); setEditing(false); } if (e.key === 'Escape') setEditing(false); }}
-          className="w-20 sm:w-24 h-12 bg-[#0d1117] border border-cyan-400/30 rounded-lg text-base sm:text-lg font-bold text-white text-center outline-none"
-        />
-        <div className="h-[28px]" />
-        <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">{label}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col items-center">
-      <button
-        onMouseDown={() => startHold(onUp)}
-        onMouseUp={stopHold}
-        onMouseLeave={stopHold}
-        onTouchStart={() => startHold(onUp)}
-        onTouchEnd={stopHold}
-        className="p-1.5 text-white/20 hover:text-white/50 transition-colors select-none"
-      >
-        <ChevronUp size={16} />
-      </button>
-      <div
-        className={`${wide ? 'w-28 sm:w-32' : 'w-16 sm:w-20'} h-12 flex items-center justify-center bg-[#0d1117] border border-white/[0.08] rounded-lg ${onEdit ? 'cursor-pointer hover:border-white/20' : ''}`}
-        onClick={() => { if (onEdit) { setEditValue(value); setEditing(true); } }}
-      >
-        <span className="text-base sm:text-lg font-bold text-white tracking-wide">{value}</span>
-      </div>
-      <button
-        onMouseDown={() => startHold(onDown)}
-        onMouseUp={stopHold}
-        onMouseLeave={stopHold}
-        onTouchStart={() => startHold(onDown)}
-        onTouchEnd={stopHold}
-        className="p-1.5 text-white/20 hover:text-white/50 transition-colors select-none"
-      >
-        <ChevronDown size={16} />
-      </button>
-      <span className="text-[7px] font-mono text-white/15 tracking-widest mt-0.5">{label}</span>
-    </div>
-  );
-}
-
