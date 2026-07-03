@@ -4,7 +4,7 @@
  */
 
 // Approximate centroids for 50 states (normalized 0-100 x/y)
-const STATE_COORDS: Record<string, [number, number]> = {
+export const STATE_COORDS: Record<string, [number, number]> = {
   AK:[12,8], HI:[22,78], WA:[14,18], OR:[12,28], CA:[10,45],
   NV:[15,42], ID:[18,28], MT:[25,18], WY:[27,30], UT:[20,40],
   CO:[30,42], AZ:[22,55], NM:[28,55], ND:[38,18], SD:[38,25],
