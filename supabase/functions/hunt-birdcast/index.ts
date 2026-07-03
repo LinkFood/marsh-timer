@@ -54,6 +54,17 @@ function isInMigrationSeason(): boolean {
   return false;
 }
 
+/** Next date the migration window opens (only called when out of season). */
+function nextSeasonStart(): string {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  // Jun 16 - Jul 31 → fall window opens Aug 1
+  if (month >= 6 && month < 8) return `${year}-08-01`;
+  // Nov 16 - Dec 31 → next spring; Jan 1 - Feb 28 → this spring
+  return `${month >= 11 ? year + 1 : year}-03-01`;
+}
+
 // ---------------------------------------------------------------------------
 // Parse BirdCast NUXT data from HTML via eval of the IIFE
 // ---------------------------------------------------------------------------
@@ -209,7 +220,14 @@ serve(async (req) => {
       await logCronRun({
         functionName: 'hunt-birdcast',
         status: 'success',
-        summary: { skipped: true, reason: 'outside_migration_season', batch: batch ?? 'all' },
+        summary: {
+          skipped: true,
+          reason: 'outside_migration_season',
+          states_with_data: 0,
+          upstream_empty: true, // BirdCast live product only runs Mar 1-Jun 15 + Aug 1-Nov 15; returns cumulativeBirds:0 + empty nightSeries off-season (verified 2026-07-03)
+          next_window_opens: nextSeasonStart(),
+          batch: batch ?? 'all',
+        },
         durationMs: Date.now() - startTime,
       });
       return cronResponse({ skipped: true, reason: 'outside_migration_season' });
@@ -301,12 +319,14 @@ serve(async (req) => {
     // Upsert rows into hunt_birdcast
     // -----------------------------------------------------------------------
     console.log(`[hunt-birdcast] Upserting ${rows.length} rows`);
+    let upsertError: string | null = null;
     if (rows.length > 0) {
       const { error: upsertErr } = await supabase
         .from('hunt_birdcast')
         .upsert(rows, { onConflict: 'date,state_abbr' });
       if (upsertErr) {
         console.error('[hunt-birdcast] Upsert error:', upsertErr);
+        upsertError = upsertErr.message;
       }
     }
 
@@ -380,6 +400,7 @@ serve(async (req) => {
       fetch_errors: fetchErrors,
       parse_errors: parseErrors,
       embeddings_created: embeddingsCreated,
+      upsert_error: upsertError,
       date: today,
       run_at: new Date().toISOString(),
     };
@@ -387,8 +408,9 @@ serve(async (req) => {
 
     await logCronRun({
       functionName: 'hunt-birdcast',
-      status: 'success',
+      status: upsertError ? 'error' : 'success',
       summary,
+      errorMessage: upsertError ?? undefined,
       durationMs: Date.now() - startTime,
     });
 
