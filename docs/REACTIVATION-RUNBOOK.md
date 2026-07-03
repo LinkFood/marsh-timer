@@ -191,3 +191,38 @@ Note: the cron is scheduled by the migration BEFORE the function is deployed
 (C1 before C2). A cron firing into an undeployed function 404s harmlessly and
 `hunt-claim-court` tolerates an empty docket — but do C2 immediately after C1
 anyway.
+
+## IVFFlat rebuild — options after the 2026-07-03 00:17 kill (DECISION NEEDED)
+
+The in-transaction rebuild (lists=2645, 2GB maintenance_work_mem) ran 3h04m
+without committing and was killed; rollback clean, old index (lists=1414)
+still serving. The write-lock cost is the problem, not the rebuild itself.
+Three ways forward, pick one:
+
+**Option A — CREATE INDEX CONCURRENTLY via a long-lived script (recommended).**
+No write lock; ingestion continues during the build. Cannot run inside a
+migration transaction, so it needs a direct Postgres connection:
+`scripts/rebuild-embedding-index-concurrent.ts` (to be written: postgres.js
+client, statement_timeout=0, CREATE INDEX CONCURRENTLY hunt_knowledge_embedding_idx_v2
+... lists=2645, then DROP old + RENAME in a fast follow-up statement, then
+apply the parked migration's RPC-probes + pattern-worker parts).
+NEEDS: the database password (Dashboard → Settings → Database), exported as
+SUPABASE_DB_PASSWORD for the script run. Runtime likely 4-6h, nohup overnight.
+Risk: a killed CONCURRENTLY build leaves an INVALID index to drop — cleanup is
+one statement, documented in the script.
+
+**Option B — temporary compute bump.** Upgrade the instance one tier in the
+Supabase dashboard (more RAM + IO), re-run the parked migration (rename
+.PENDING_CONCURRENT back to .sql, db push) in a deliberate window — likely
+completes in well under an hour on bigger hardware — then downgrade. Costs a
+few dollars, needs two dashboard clicks and a maintenance window (~15 min
+restart on resize).
+
+**Option C — scheduled blocking window.** Accept the write lock: re-run the
+parked migration deliberately at the lowest-traffic hour with ingestion
+expected to fail for however long it takes (3h+ observed; unbounded). Free
+but proven painful. Not recommended.
+
+Until one runs, vector search stays on the undersized index: the site chat's
+semantic recall and the future "days like today" engine remain degraded (this
+is the last blocker for both).
