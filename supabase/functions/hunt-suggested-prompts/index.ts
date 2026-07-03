@@ -19,7 +19,7 @@ serve(async (req: Request) => {
       .in('content_type', [
         'nws-alert', 'weather-event', 'migration-spike-extreme',
         'migration-spike-significant', 'anomaly-alert', 'disaster-watch',
-        'convergence-score', 'correlation-discovery'
+        'correlation-discovery'
       ])
       .gte('created_at', twentyFourHoursAgo.toISOString())
       .order('created_at', { ascending: false })
@@ -67,13 +67,15 @@ serve(async (req: Request) => {
       prompts.push(`An anomaly was detected — what's unusual right now?`);
     }
 
-    // Fill with evergreen
+    // Fill with evergreen — archive-proven question shapes only.
+    // No convergence/"strongest signals" prompts: the score was retired after
+    // failing validation and must never be presented as meaning.
     const evergreen = [
-      "What's the brain detecting right now?",
-      "Which states have the strongest signals today?",
-      "Show me the most interesting data from the last 24 hours",
-      "How accurate have the brain's predictions been?",
-      "What patterns are converging across the country?",
+      "What was happening in Maryland on 2010-07-07?",                          // date portrait
+      "What's on the docket?",                                                  // claim court
+      "Compare 2012-10-28 vs 2011-08-27 — how did those two weeks differ?",     // date-vs-date compare
+      "Walk me back through the two weeks before Hurricane Sandy made landfall", // event archaeology
+      "Every time the AO dropped below -2, what followed within 30 days?",      // conditional recall with denominators
     ];
     let idx = 0;
     while (prompts.length < 4 && idx < evergreen.length) {
@@ -111,7 +113,7 @@ serve(async (req: Request) => {
       stats: {
         total_entries: totalEntries || 0,
         sources: 21,
-        content_types: 55,  // Known count, grows slowly
+        content_types: 83,  // Known count, grows slowly
         active_crons: distinctCrons.size,
         high_signal_count: (recentSignals || []).length,
         alerts_active: nwsAlerts.length,
