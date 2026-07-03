@@ -26,8 +26,10 @@ export default function BrainResponseCard({ message, isStreaming, onFollowUp }: 
 
   const rendered = content.split('\n').map((line, i) => {
     const trimmed = line.trim();
-    if (trimmed.startsWith('## ')) return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{trimmed.slice(3)}</h3>;
-    if (trimmed.startsWith('# ')) return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{trimmed.slice(2)}</h2>;
+    if (trimmed.startsWith('#### ')) return <h4 key={i} className="text-xs font-bold text-white/70 mt-3 mb-1">{renderBold(trimmed.slice(5))}</h4>;
+    if (trimmed.startsWith('### ')) return <h4 key={i} className="text-[13px] font-bold text-white/75 mt-3 mb-1">{renderBold(trimmed.slice(4))}</h4>;
+    if (trimmed.startsWith('## ')) return <h3 key={i} className="text-sm font-bold text-white/80 mt-4 mb-1.5">{renderBold(trimmed.slice(3))}</h3>;
+    if (trimmed.startsWith('# ')) return <h2 key={i} className="text-base font-bold text-white/90 mt-4 mb-2">{renderBold(trimmed.slice(2))}</h2>;
     if (trimmed === '---') return <hr key={i} className="border-white/[0.06] my-3" />;
     if (trimmed.startsWith('- ')) {
       return (
@@ -187,9 +189,11 @@ function ResponseFeedback({ messageId, content }: { messageId: string; content: 
 }
 
 function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  // Bold allows a single inner '*' (e.g. **2 * 3**); italic is a conservative
+  // single-asterisk pair on one line (Sonnet uses *"question?"* for follow-ups).
+  const parts = text.split(/(\*\*(?:[^*]|\*(?!\*))+?\*\*|\*[^*\n]+\*)/g);
   return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       const inner = part.slice(2, -2);
       const scoreMatch = inner.match(/^(\d+)\/(\d+)$/);
       if (scoreMatch) {
@@ -213,6 +217,9 @@ function renderBold(text: string): React.ReactNode {
         return <span key={i} className={`font-semibold font-mono text-[11px] ${color}`}>{inner}</span>;
       }
       return <strong key={i} className="text-white/80 font-semibold">{inner}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={i} className="text-white/50">{part.slice(1, -1)}</em>;
     }
     return part;
   });
