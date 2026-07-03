@@ -1354,6 +1354,9 @@ async function handleDatePortrait(dateStr: string, query: string, stateAbbr: str
   const PORTRAIT_DOMAINS = [
     'weather-event', 'nws-alert', 'birdcast-daily',
     'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
+    // Historical-era types — the pre-2020 archive lives here; without these,
+    // date portraits/compares falsely report gaps for dates the archive covers
+    'storm-event', 'ghcn-daily', 'climate-index',
   ];
 
   // Per-type parallel queries (same pattern as date compare)
@@ -1442,6 +1445,9 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
   const COMPARE_DOMAINS = [
     'weather-event', 'nws-alert', 'birdcast-daily',
     'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
+    // Historical-era types — the pre-2020 archive lives here; without these,
+    // date portraits/compares falsely report gaps for dates the archive covers
+    'storm-event', 'ghcn-daily', 'climate-index',
   ];
 
   const fetchWindow = async (from: string, to: string) => {
