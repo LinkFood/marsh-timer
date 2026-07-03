@@ -50,6 +50,12 @@ Every piece of data that enters the system MUST be embedded via Voyage AI (voyag
 - **No auth wall** — terminal visible without sign-in
 - **Compound index** on (content_type, created_at DESC) — content_type queries <3s on 3.2M rows
 
+### Known state 2026-07-02
+
+- **hunt_knowledge is ~7.6M rows.** NEVER query it with `order=created_at.desc` unfiltered — statement timeout (57014), even with a `created_at >= now-48h` bound (BRIN doesn't save it). Bound with `effective_date >=` (btree-indexed) or order filtered queries by `effective_date`.
+- **IVFFlat rebuild migration pending manual push** — `20260414100018_rebuild_ivfflat_for_7m.sql` is committed (lists=2645, probes=51, drops both historical index names) but NOT applied. It locks writes on hunt_knowledge 30-60 min; run `npx supabase db push` manually during a low-traffic window.
+- **Convergence prediction postmortem verdict: no signal at index altitude.** Formula-discovery mining is in progress.
+
 ### 8-Component Convergence Scoring
 
 Each state gets a daily score from 0-135 across these weighted domains:
@@ -81,11 +87,12 @@ Each state gets a daily score from 0-135 across these weighted domains:
 - Opus daily web curator reviewing staged discoveries
 - Ops dashboard at /ops ("Intelligence Control") with cron health, brain growth, alert performance, intelligence feed
 
-### Frontend — Terminal Landing + Intelligence Command Center
+### Frontend — Chat-First Explorer
 - React 18 + TypeScript + Vite + Tailwind
 - Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets
-- **Terminal Landing (`/`)** — 3-zoom-level progressive disclosure: ConvergenceScoreboard (mini-bars, sparklines, conviction dots), RegimeDetector (QUIET/ACTIVE/SURGE), PressureDifferential scatter plot, FusionPanel (72h collision timeline), StateDetailPanel (arc, components, brief, conviction), SplitVerdict + AutopsyDrawer for graded arcs, enriched collision feed with brain narration
-- **Intelligence Page (`/intelligence`)** — deep-dive command center with FusionWeb SVG, rankings, brain recognition, outcome windows, live feed, METAR, chat overlay
+- **ExplorerLanding (`/`, `/:stateAbbr`)** — chat-first landing: ask-anything input over the brain (streamed answers via BrainResponseCard with markdown, inline state maps, follow-up questions, thumbs feedback embedded back into the brain), daily discovery card, brain pulse feed, state activity map, this-day-in-history, chat history sidebar
+- **Explorer pages** — `/date/:dateStr` (DatePage), `/now` (NowPage), `/state/:stateAbbr` (StatePage), `/report/:dateStr` (ReportPage)
+- **Legacy routes** — `/dashboard` (panel workbench, was the old `/`), `/map`, `/intelligence` (deep-dive command center with FusionWeb SVG, rankings, brain recognition, outcome windows, live feed, METAR, chat overlay)
 - **StateIntelView** — replaces panel dock when state selected, shows AI assessment + convergence + pattern links + alerts
 - 25 lazy-loaded panels in 4 categories (workbench mode)
 - Chat synthesis: answer-first, collapsible evidence, CrossDomainPatternCard
@@ -106,7 +113,7 @@ Each state gets a daily score from 0-135 across these weighted domains:
 | Styling | Tailwind CSS |
 | Map | Mapbox GL JS (satellite-streets-v12, globe projection, 3D terrain, fog/atmosphere) |
 | Panel Layout | CSS Grid 12-col |
-| Routing | React Router 6 (`/`, `/:stateAbbr`, `/intelligence`, `/map`, `/auth`, `/ops`) — `/` is the terminal landing, `/intelligence` is the deep-dive command center |
+| Routing | React Router 6 — `/` is the chat-first ExplorerLanding (`/:stateAbbr` variant), plus `/date/:dateStr`, `/now`, `/state/:stateAbbr`, `/report/:dateStr`, `/ops`, `/auth`; legacy: `/dashboard`, `/map`, `/intelligence` |
 | Icons | Lucide React |
 | Fonts | Playfair Display (headings), Lora (body) |
 | Auth | Supabase Auth (Google OAuth) |
@@ -143,20 +150,21 @@ All functions: `verify_jwt = false`, auth handled in code. Pin `supabase-js@2.84
 | Time (UTC) | Function | Purpose |
 |------------|----------|---------|
 | Every 15min | hunt-weather-realtime | ASOS 130-station monitoring |
-| Every 3hr | hunt-nws-monitor | NWS severe weather alerts |
-| 6:00 AM | hunt-weather-watchdog | 50-state forecast + events |
+| Hourly | hunt-nws-monitor | NWS severe weather alerts |
+| 5 staggered batches | hunt-weather-watchdog | 50-state forecast + events (states split across 5 batch runs) |
+| 5 staggered batches | hunt-convergence-engine | 50-state convergence scoring (states split across 5 batch runs) |
+| 5 staggered batches | hunt-birdcast | BirdCast radar migration + brain scan (states split across 5 batch runs) |
+| 5 staggered batches | hunt-brain-synthesizer | Cross-domain synthesis (states split across 5 batch runs) |
 | 6:30 AM | hunt-nasa-power | NASA POWER satellite |
 | 7:00 AM | hunt-migration-monitor | eBird spike detection (+ brain scan) |
 | 7:00 AM | hunt-web-curator | Opus reviews web discoveries |
-| 8:00 AM | hunt-convergence-engine | 50-state convergence scoring |
 | 8:15 AM | hunt-convergence-alerts | Score spike detection (grade-aware) |
 | 9:00 AM | hunt-scout-report | Daily environmental brief |
 | 9:30 AM | hunt-anomaly-detector | Statistical outlier detection (2σ) |
-| 10:00 AM | hunt-birdcast | BirdCast radar migration (+ brain scan) |
 | 10:00 AM | hunt-forecast-tracker | Forecast accuracy grading |
 | 10:30 AM | hunt-correlation-engine | Cross-domain pattern discovery |
 | 11:00 AM | hunt-migration-report-card | 7-day migration prediction grading |
-| 11:30 AM | hunt-alert-grader | Alert outcome grading |
+| 11:30 AM + 5:00 PM | hunt-alert-grader | Alert outcome grading (oldest-first, 120s time-budget batches) |
 | Mon 6am | hunt-du-alerts | DU migration articles |
 | Mon 12pm | hunt-du-map | DU migration map pins |
 | Sun 6am | hunt-solunar-precompute | 365-day solunar calendar |

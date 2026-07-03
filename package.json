@@ -10,10 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "validate-data": "node scripts/validate-data.mjs",
-    "generate-sitemap": "node scripts/generate-sitemap.mjs",
-    "import-csv": "node scripts/import-csv.mjs"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.84.0",
