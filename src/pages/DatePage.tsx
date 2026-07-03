@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Brain, Calendar, Loader2, RotateCcw, Send, ChevronLeft } from 'lucide-react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Calendar, Loader2, RotateCcw, Send } from 'lucide-react';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import { useChat } from '@/hooks/useChat';
+import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -25,7 +26,6 @@ export default function DatePage() {
   const isGrade = searchParams.get('grade') === 'true';
   const compareDate = searchParams.get('compare');
   const [followUp, setFollowUp] = useState('');
-  const [brainCount, setBrainCount] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoFiredRef = useRef(false);
 
@@ -34,15 +34,6 @@ export default function DatePage() {
     stateAbbr: null,
     onMapAction: () => {},
   });
-
-  // Fetch brain count
-  useEffect(() => {
-    if (!SUPABASE_URL) return;
-    fetch(`${SUPABASE_URL}/functions/v1/hunt-suggested-prompts`, { headers: { apikey: SUPABASE_KEY } })
-      .then(r => r.json())
-      .then(data => { if (data.stats?.total_entries) setBrainCount(data.stats.total_entries); })
-      .catch(() => {});
-  }, []);
 
   // Auto-fire the date query on mount
   useEffect(() => {
@@ -114,28 +105,13 @@ export default function DatePage() {
   return (
     <div className="h-[100dvh] w-screen overflow-hidden bg-[#0a0f1a] flex flex-col">
       {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-white/[0.06]">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <ChevronLeft size={14} className="text-white/40" />
-            <span className="text-sm font-bold text-white tracking-wider">DUCK COUNTDOWN</span>
-          </Link>
-        </div>
-        <div className="flex items-center gap-2">
-          {brainCount && (
-            <div className="hidden sm:flex items-center gap-1.5">
-              <Brain size={12} className="text-cyan-400/40" />
-              <span className="text-[9px] font-mono text-white/30">{brainCount.toLocaleString()}</span>
-              <span className="text-[8px] font-mono text-emerald-400/40">LIVE</span>
-            </div>
-          )}
-          <UserMenu />
-        </div>
-      </header>
+      <AppHeader>
+        <UserMenu />
+      </AppHeader>
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
           {/* Date header */}
           <div className="text-center mb-6">
             <div className="flex items-center justify-center gap-2 mb-2">

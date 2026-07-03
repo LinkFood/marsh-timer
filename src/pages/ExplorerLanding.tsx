@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Brain, ChevronUp, ChevronDown, Search, Calendar, Loader2, RotateCcw, Send, Clock, X } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { ChevronUp, ChevronDown, Search, Calendar, Loader2, RotateCcw, Send, Clock, X } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import BrainResponseCard from '@/components/BrainResponseCard';
+import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import TodayBriefing from '@/components/TodayBriefing';
@@ -165,35 +166,18 @@ export default function ExplorerLanding() {
   return (
     <div className="h-[100dvh] w-screen overflow-hidden bg-[#0a0f1a] flex flex-col">
       {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-4 sm:px-6 h-12 border-b border-white/[0.06]">
-        <div className="flex items-center gap-3">
-          <Link to="/" onClick={handleNewQuery} className="hover:opacity-80 transition-opacity">
-            <span className="text-sm font-bold text-white tracking-wider">DUCK COUNTDOWN</span>
-          </Link>
-          <span className="text-[9px] font-mono text-cyan-400/60 tracking-widest hidden sm:inline">
-            ENVIRONMENTAL INTELLIGENCE
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {brainCount && (
-            <div className="hidden sm:flex items-center gap-1.5">
-              <Brain size={12} className="text-cyan-400/40" />
-              <span className="text-[9px] font-mono text-white/30">{brainCount.toLocaleString()}</span>
-              <span className="text-[8px] font-mono text-emerald-400/40">LIVE</span>
-            </div>
-          )}
-          {historySessions.length > 0 && (
-            <button onClick={() => setShowHistory(!showHistory)} className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Query History">
-              <Clock size={14} className={showHistory ? 'text-cyan-400' : 'text-white/40'} />
-            </button>
-          )}
-          <UserMenu />
-        </div>
-      </header>
+      <AppHeader>
+        {historySessions.length > 0 && (
+          <button onClick={() => setShowHistory(!showHistory)} className="p-1.5 rounded hover:bg-white/[0.06] transition-colors" title="Query History">
+            <Clock size={14} className={showHistory ? 'text-cyan-400' : 'text-white/40'} />
+          </button>
+        )}
+        <UserMenu />
+      </AppHeader>
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
 
           {/* Today's Briefing — weather-first data dashboard */}
           {!hasSearched && (
