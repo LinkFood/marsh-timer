@@ -20,10 +20,16 @@ function todayDateStr(): string {
 }
 
 const TABS = [
-  { label: 'TODAY', icon: Sun, to: () => '/', isActive: (p: string) => p === '/' },
-  { label: 'ARCHIVE', icon: CalendarDays, to: () => `/date/${todayDateStr()}`, isActive: (p: string) => p.startsWith('/date') },
-  { label: 'COURT', icon: Scale, to: () => '/court', isActive: (p: string) => p.startsWith('/court') },
+  { label: 'TODAY', icon: Sun, to: () => '/', isActive: (p: string) => p === '/', anchor: 'top' },
+  { label: 'ARCHIVE', icon: CalendarDays, to: () => `/date/${todayDateStr()}`, isActive: (p: string) => p.startsWith('/date'), anchor: 'archive' },
+  { label: 'COURT', icon: Scale, to: () => '/court', isActive: (p: string) => p.startsWith('/court'), anchor: 'court' },
 ];
+
+/** On the one-page landing, desktop header links scroll to sections instead of navigating. */
+function scrollToAnchor(anchor: string) {
+  if (anchor === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
+  else document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export default function AppHeader({ children }: { children?: ReactNode }) {
   const { pathname } = useLocation();
@@ -41,17 +47,21 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
           <nav className="hidden md:flex items-center">
             {TABS.map((tab, i) => {
               const active = tab.isActive(pathname);
+              const linkClass = `text-[10px] font-mono tracking-widest transition-colors ${
+                active ? 'text-cyan-400' : 'text-white/40 hover:text-white/70'
+              }`;
               return (
                 <span key={tab.label} className="flex items-center">
                   {i > 0 && <span className="text-white/15 text-[10px] px-2 select-none">·</span>}
-                  <Link
-                    to={tab.to()}
-                    className={`text-[10px] font-mono tracking-widest transition-colors ${
-                      active ? 'text-cyan-400' : 'text-white/40 hover:text-white/70'
-                    }`}
-                  >
-                    {tab.label}
-                  </Link>
+                  {pathname === '/' ? (
+                    <button onClick={() => scrollToAnchor(tab.anchor)} className={linkClass}>
+                      {tab.label}
+                    </button>
+                  ) : (
+                    <Link to={tab.to()} className={linkClass}>
+                      {tab.label}
+                    </Link>
+                  )}
                 </span>
               );
             })}
