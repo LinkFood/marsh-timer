@@ -121,13 +121,18 @@ async function main() {
   if (needBuild) {
     log(`CREATE INDEX CONCURRENTLY ${NEW_INDEX} (lists=${LISTS}) — expect hours. Progress every 60s.`);
 
-    // Second connection for progress polling
+    // Second connection for progress polling. Give up after repeated
+    // failures — under heavy build load the reconnect attempts time out
+    // mid-handshake and trip the pooler's auth circuit breaker, blocking
+    // all new direct connections. Observability is not worth that.
     const mon = postgres(url, { max: 1, prepare: false, connect_timeout: 30, ssl: "require", onnotice: () => {} });
+    let pollFailures = 0;
     const poll = setInterval(async () => {
       try {
         const p = await mon`
           SELECT phase, blocks_done, blocks_total, tuples_done, tuples_total
           FROM pg_stat_progress_create_index LIMIT 1`;
+        pollFailures = 0;
         if (p.length) {
           const { phase, blocks_done, blocks_total, tuples_done, tuples_total } = p[0];
           const pct = Number(blocks_total) > 0
@@ -138,7 +143,13 @@ async function main() {
           log(`progress: no build row visible (still queued or between phases)`);
         }
       } catch (err) {
-        log(`progress poll error: ${err instanceof Error ? err.message : err}`);
+        pollFailures++;
+        log(`progress poll error (${pollFailures}/5): ${err instanceof Error ? err.message : err}`);
+        if (pollFailures >= 5) {
+          log(`progress polling disabled after 5 consecutive failures — build continues on its own connection.`);
+          clearInterval(poll);
+          mon.end({ timeout: 5 }).catch(() => {});
+        }
       }
     }, 60_000);
 
