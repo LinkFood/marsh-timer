@@ -299,7 +299,12 @@ function gradeFromSignalCount(
 // Main
 // ---------------------------------------------------------------------------
 
-const MAX_PER_RUN = 15;
+// Throughput: ~50 new alerts/day. A fixed cap of 15/run fell permanently
+// behind (~1,300 backlog). Grade oldest-first in batches until the wall-clock
+// budget is spent. Per-alert grading semantics are UNCHANGED.
+const BATCH_SIZE = 25;
+const TIME_BUDGET_MS = 120_000; // well under the 400s edge wall limit; the
+// function keeps executing even if the cron caller disconnects at 60s.
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
@@ -309,262 +314,284 @@ serve(async (req) => {
 
   try {
     const supabase = createSupabaseClient();
-    const now = new Date().toISOString();
 
     console.log('[hunt-alert-grader] Starting alert grading run');
 
-    // 1. Query ungraded alerts past their deadline
-    const { data: ungradedAlerts, error: queryErr } = await supabase
-      .from('hunt_alert_outcomes')
-      .select('id, alert_source, alert_knowledge_id, state_abbr, alert_date, predicted_outcome, outcome_window_hours, outcome_deadline')
-      .eq('outcome_checked', false)
-      .lt('outcome_deadline', now)
-      .order('outcome_deadline', { ascending: true })
-      .limit(MAX_PER_RUN);
-
-    if (queryErr) {
-      console.error('[hunt-alert-grader] Query error:', queryErr);
-      await logCronRun({ functionName: 'hunt-alert-grader', status: 'error', errorMessage: queryErr.message, durationMs: Date.now() - startTime });
-      return cronErrorResponse('Query failed');
-    }
-
-    if (!ungradedAlerts || ungradedAlerts.length === 0) {
-      console.log('[hunt-alert-grader] No alerts to grade');
-      await logCronRun({ functionName: 'hunt-alert-grader', status: 'success', summary: { graded: 0, message: 'No alerts past deadline' }, durationMs: Date.now() - startTime });
-      return cronResponse({ graded: 0, message: 'No alerts past deadline' });
-    }
-
-    console.log(`[hunt-alert-grader] Found ${ungradedAlerts.length} alerts to grade`);
-
-    // 2. Grade each alert
     const gradeCounts: Record<Grade, number> = { confirmed: 0, partially_confirmed: 0, false_alarm: 0, missed: 0 };
     let errors = 0;
+    let noAlertsAtAll = false;
+    // IDs attempted this run — excluded from refetch so an alert whose grading
+    // errored (and stayed outcome_checked=false) can't loop within one run.
+    const attemptedIds = new Set<string>();
 
-    for (const alert of ungradedAlerts as AlertOutcome[]) {
-      try {
-        const claim = alert.predicted_outcome?.claim || '';
-        const severity = alert.predicted_outcome?.severity as string | undefined;
-        const deadlineDate = new Date(alert.outcome_deadline).toISOString().split('T')[0];
+    // 1+2. Fetch and grade oldest-first batches until the time budget is spent
+    while (Date.now() - startTime < TIME_BUDGET_MS) {
+      const now = new Date().toISOString();
 
-        console.log(`[hunt-alert-grader] Grading ${alert.id} (${alert.alert_source} / ${alert.state_abbr || 'national'} / ${alert.alert_date})`);
+      let batchQuery = supabase
+        .from('hunt_alert_outcomes')
+        .select('id, alert_source, alert_knowledge_id, state_abbr, alert_date, predicted_outcome, outcome_window_hours, outcome_deadline')
+        .eq('outcome_checked', false)
+        .lt('outcome_deadline', now)
+        .order('outcome_deadline', { ascending: true })
+        .limit(BATCH_SIZE);
+      if (attemptedIds.size > 0) {
+        batchQuery = batchQuery.not('id', 'in', `(${[...attemptedIds].join(',')})`);
+      }
+      const { data: ungradedAlerts, error: queryErr } = await batchQuery;
 
-        let grade: Grade;
-        let reasoning: string;
-        let signalsFound: SignalFound[] = [];
-        let domainResults: DomainResult[] = [];
+      if (queryErr) {
+        console.error('[hunt-alert-grader] Query error:', queryErr);
+        if (attemptedIds.size === 0) {
+          await logCronRun({ functionName: 'hunt-alert-grader', status: 'error', errorMessage: queryErr.message, durationMs: Date.now() - startTime });
+          return cronErrorResponse('Query failed');
+        }
+        errors++;
+        break;
+      }
 
-        // --- COMPOUND-RISK: Per-domain grading ---
-        if (alert.alert_source === 'compound-risk') {
-          const claimedDomains = parseClaimedDomains(claim);
-          const testable = claimedDomains.filter(d => !SKIP_DOMAINS.has(d) && DOMAIN_CONTENT_TYPES[d]);
+      if (!ungradedAlerts || ungradedAlerts.length === 0) {
+        noAlertsAtAll = attemptedIds.size === 0;
+        break;
+      }
 
-          if (testable.length === 0) {
-            // Can't parse domains — fall back to generic check
-            console.log(`[hunt-alert-grader] No parseable domains in claim: "${claim.slice(0, 80)}"`);
-            grade = 'missed';
-            reasoning = `Could not parse testable domains from claim. Raw claim: "${claim.slice(0, 120)}"`;
-          } else {
-            // Check each domain independently
-            domainResults = await Promise.all(
-              testable.map(domain =>
-                checkDomain(supabase, domain, DOMAIN_CONTENT_TYPES[domain], alert.state_abbr, alert.alert_date, deadlineDate)
-              )
-            );
+      console.log(`[hunt-alert-grader] Found ${ungradedAlerts.length} alerts to grade (${attemptedIds.size} attempted so far)`);
 
-            const result = gradeFromDomainResults(domainResults, severity);
-            grade = result.grade;
-            reasoning = result.reasoning;
+      for (const alert of ungradedAlerts as AlertOutcome[]) {
+        if (Date.now() - startTime >= TIME_BUDGET_MS) break;
+        attemptedIds.add(alert.id);
+        try {
+          const claim = alert.predicted_outcome?.claim || '';
+          const severity = alert.predicted_outcome?.severity as string | undefined;
+          const deadlineDate = new Date(alert.outcome_deadline).toISOString().split('T')[0];
 
-            // Collect signals from all domains
-            for (const dr of domainResults) {
-              for (const s of dr.samples) {
-                signalsFound.push({ id: s.id, title: s.title, content_type: s.content_type, source: 'direct', domain: dr.domain });
+          console.log(`[hunt-alert-grader] Grading ${alert.id} (${alert.alert_source} / ${alert.state_abbr || 'national'} / ${alert.alert_date})`);
+
+          let grade: Grade;
+          let reasoning: string;
+          let signalsFound: SignalFound[] = [];
+          let domainResults: DomainResult[] = [];
+
+          // --- COMPOUND-RISK: Per-domain grading ---
+          if (alert.alert_source === 'compound-risk') {
+            const claimedDomains = parseClaimedDomains(claim);
+            const testable = claimedDomains.filter(d => !SKIP_DOMAINS.has(d) && DOMAIN_CONTENT_TYPES[d]);
+
+            if (testable.length === 0) {
+              // Can't parse domains — fall back to generic check
+              console.log(`[hunt-alert-grader] No parseable domains in claim: "${claim.slice(0, 80)}"`);
+              grade = 'missed';
+              reasoning = `Could not parse testable domains from claim. Raw claim: "${claim.slice(0, 120)}"`;
+            } else {
+              // Check each domain independently
+              domainResults = await Promise.all(
+                testable.map(domain =>
+                  checkDomain(supabase, domain, DOMAIN_CONTENT_TYPES[domain], alert.state_abbr, alert.alert_date, deadlineDate)
+                )
+              );
+
+              const result = gradeFromDomainResults(domainResults, severity);
+              grade = result.grade;
+              reasoning = result.reasoning;
+
+              // Collect signals from all domains
+              for (const dr of domainResults) {
+                for (const s of dr.samples) {
+                  signalsFound.push({ id: s.id, title: s.title, content_type: s.content_type, source: 'direct', domain: dr.domain });
+                }
               }
             }
           }
-        }
-        // --- CONVERGENCE-ALERT / ANOMALY-ALERT: Signal-count grading ---
-        else {
-          const queryContentTypes = Array.isArray(alert.predicted_outcome?.expected_signals) && alert.predicted_outcome.expected_signals.length > 0
-            ? alert.predicted_outcome.expected_signals
-            : ['migration-spike-extreme', 'migration-spike-significant', 'weather-event', 'nws-alert'];
+          // --- CONVERGENCE-ALERT / ANOMALY-ALERT: Signal-count grading ---
+          else {
+            const queryContentTypes = Array.isArray(alert.predicted_outcome?.expected_signals) && alert.predicted_outcome.expected_signals.length > 0
+              ? alert.predicted_outcome.expected_signals
+              : ['migration-spike-extreme', 'migration-spike-significant', 'weather-event', 'nws-alert'];
 
-          // Direct query — limit per content type to avoid weather flooding.
-          // Use effective_date to match the real-world date, consistent with
-          // checkDomain fix (same bug: created_at ≠ when signal occurred).
-          const directMatches: { id: string; title: string; content_type: string }[] = [];
-          for (const ct of queryContentTypes) {
-            let q = supabase
+            // Direct query — limit per content type to avoid weather flooding.
+            // Use effective_date to match the real-world date, consistent with
+            // checkDomain fix (same bug: created_at ≠ when signal occurred).
+            const directMatches: { id: string; title: string; content_type: string }[] = [];
+            for (const ct of queryContentTypes) {
+              let q = supabase
+                .from('hunt_knowledge')
+                .select('id, title, content_type')
+                .eq('content_type', ct)
+                .not('effective_date', 'is', null)
+                .gte('effective_date', alert.alert_date)
+                .lte('effective_date', deadlineDate)
+                .order('effective_date', { ascending: false })
+                .limit(5);
+
+              if (alert.state_abbr) q = q.eq('state_abbr', alert.state_abbr);
+              const { data } = await q;
+              if (data) directMatches.push(...data);
+            }
+
+            // Vector search for broader signal detection
+            const searchText = `What happened in ${alert.state_abbr || 'the US'} between ${alert.alert_date} and ${deadlineDate}?`;
+            const queryEmbedding = await generateEmbedding(searchText, 'query');
+
+            const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v3', {
+              query_embedding: queryEmbedding,
+              match_threshold: 0.40,
+              match_count: 10,
+              filter_state_abbr: alert.state_abbr || null,
+              filter_content_types: queryContentTypes,
+              filter_species: null,
+              filter_date_from: alert.alert_date,
+              filter_date_to: deadlineDate,
+              recency_weight: 0.1,
+              exclude_du_report: true,
+            });
+
+            const highRelevanceVector = (vectorResults || []).filter((r: { similarity: number }) => r.similarity > 0.6);
+
+            const result = gradeFromSignalCount(directMatches.length, highRelevanceVector.length, severity);
+            grade = result.grade;
+            reasoning = result.reasoning;
+
+            const seenIds = new Set<string>();
+            for (const m of directMatches) {
+              if (!seenIds.has(m.id)) {
+                seenIds.add(m.id);
+                signalsFound.push({ id: m.id, title: m.title, content_type: m.content_type, source: 'direct', domain: 'general' });
+              }
+            }
+          }
+
+          gradeCounts[grade]++;
+
+          // Build grade text for embedding
+          let originalClaim = claim;
+          if (alert.alert_knowledge_id) {
+            const { data: origEntry } = await supabase
               .from('hunt_knowledge')
-              .select('id, title, content_type')
-              .eq('content_type', ct)
-              .not('effective_date', 'is', null)
-              .gte('effective_date', alert.alert_date)
-              .lte('effective_date', deadlineDate)
-              .order('effective_date', { ascending: false })
-              .limit(5);
-
-            if (alert.state_abbr) q = q.eq('state_abbr', alert.state_abbr);
-            const { data } = await q;
-            if (data) directMatches.push(...data);
+              .select('title, content')
+              .eq('id', alert.alert_knowledge_id)
+              .single();
+            if (origEntry) originalClaim = origEntry.content || origEntry.title || originalClaim;
           }
 
-          // Vector search for broader signal detection
-          const searchText = `What happened in ${alert.state_abbr || 'the US'} between ${alert.alert_date} and ${deadlineDate}?`;
-          const queryEmbedding = await generateEmbedding(searchText, 'query');
+          const domainBreakdown = domainResults.length > 0
+            ? `\nDomain breakdown:\n${domainResults.map(d => `  ${d.domain}: ${d.signals_found} signals — ${d.confirmed ? 'CONFIRMED' : 'MISSED'} (checked: ${d.content_types_checked.join(', ')})`).join('\n')}`
+            : '';
 
-          const { data: vectorResults } = await supabase.rpc('search_hunt_knowledge_v3', {
-            query_embedding: queryEmbedding,
-            match_threshold: 0.40,
-            match_count: 10,
-            filter_state_abbr: alert.state_abbr || null,
-            filter_content_types: queryContentTypes,
-            filter_species: null,
-            filter_date_from: alert.alert_date,
-            filter_date_to: deadlineDate,
-            recency_weight: 0.1,
-            exclude_du_report: true,
-          });
+          let gradeContent = `On ${alert.alert_date}, ${alert.alert_source} fired for ${alert.state_abbr || 'national'}: '${originalClaim.slice(0, 500)}'.\n`;
+          gradeContent += `Outcome window: ${alert.alert_date} to ${deadlineDate}.\n`;
+          gradeContent += `Grade: ${grade}. ${reasoning}${domainBreakdown}`;
 
-          const highRelevanceVector = (vectorResults || []).filter((r: { similarity: number }) => r.similarity > 0.6);
-
-          const result = gradeFromSignalCount(directMatches.length, highRelevanceVector.length, severity);
-          grade = result.grade;
-          reasoning = result.reasoning;
-
-          const seenIds = new Set<string>();
-          for (const m of directMatches) {
-            if (!seenIds.has(m.id)) {
-              seenIds.add(m.id);
-              signalsFound.push({ id: m.id, title: m.title, content_type: m.content_type, source: 'direct', domain: 'general' });
-            }
+          if (grade === 'false_alarm') {
+            gradeContent += `\nHigh-severity claim did not materialize. The ${alert.alert_source} threshold may need adjustment for ${alert.state_abbr || 'this region'}.`;
+          } else if (grade === 'confirmed') {
+            gradeContent += `\nPattern validated across claimed domains. Conditions reinforced as reliable predictors.`;
           }
-        }
 
-        gradeCounts[grade]++;
+          const gradeTitle = `Alert Grade: ${grade} — ${alert.state_abbr || 'national'} ${alert.alert_date}`;
+          const gradeEmbedding = await generateEmbedding(gradeContent, 'document');
 
-        // Build grade text for embedding
-        let originalClaim = claim;
-        if (alert.alert_knowledge_id) {
-          const { data: origEntry } = await supabase
+          const { data: insertedGrade, error: insertErr } = await supabase
             .from('hunt_knowledge')
-            .select('title, content')
-            .eq('id', alert.alert_knowledge_id)
+            .insert({
+              title: gradeTitle,
+              content: gradeContent,
+              content_type: 'alert-grade',
+              tags: [alert.alert_source, grade, alert.state_abbr || 'national'],
+              state_abbr: alert.state_abbr || null,
+              species: null,
+              effective_date: alert.alert_date,
+              embedding: gradeEmbedding,
+              metadata: {
+                alert_source: alert.alert_source,
+                outcome_grade: grade,
+                original_claim: originalClaim.slice(0, 500),
+                signals_found_count: signalsFound.length,
+                signals_found: signalsFound.slice(0, 15),
+                domain_results: domainResults.length > 0 ? domainResults.map(d => ({
+                  domain: d.domain,
+                  signals_found: d.signals_found,
+                  confirmed: d.confirmed,
+                  always_on: ALWAYS_ON_DOMAINS.has(d.domain),
+                })) : undefined,
+                // Split grades: "discriminating" domains (birds, climate, drought, etc.)
+                // vs "always-on" domains (water, nws) so the digest can report both.
+                discriminating: domainResults.length > 0 ? (() => {
+                  const disc = domainResults.filter(d => !ALWAYS_ON_DOMAINS.has(d.domain));
+                  return {
+                    confirmed: disc.filter(d => d.confirmed).length,
+                    total: disc.length,
+                  };
+                })() : undefined,
+                alert_knowledge_id: alert.alert_knowledge_id,
+              },
+            })
+            .select('id')
             .single();
-          if (origEntry) originalClaim = origEntry.content || origEntry.title || originalClaim;
-        }
 
-        const domainBreakdown = domainResults.length > 0
-          ? `\nDomain breakdown:\n${domainResults.map(d => `  ${d.domain}: ${d.signals_found} signals — ${d.confirmed ? 'CONFIRMED' : 'MISSED'} (checked: ${d.content_types_checked.join(', ')})`).join('\n')}`
-          : '';
-
-        let gradeContent = `On ${alert.alert_date}, ${alert.alert_source} fired for ${alert.state_abbr || 'national'}: '${originalClaim.slice(0, 500)}'.\n`;
-        gradeContent += `Outcome window: ${alert.alert_date} to ${deadlineDate}.\n`;
-        gradeContent += `Grade: ${grade}. ${reasoning}${domainBreakdown}`;
-
-        if (grade === 'false_alarm') {
-          gradeContent += `\nHigh-severity claim did not materialize. The ${alert.alert_source} threshold may need adjustment for ${alert.state_abbr || 'this region'}.`;
-        } else if (grade === 'confirmed') {
-          gradeContent += `\nPattern validated across claimed domains. Conditions reinforced as reliable predictors.`;
-        }
-
-        const gradeTitle = `Alert Grade: ${grade} — ${alert.state_abbr || 'national'} ${alert.alert_date}`;
-        const gradeEmbedding = await generateEmbedding(gradeContent, 'document');
-
-        const { data: insertedGrade, error: insertErr } = await supabase
-          .from('hunt_knowledge')
-          .insert({
-            title: gradeTitle,
-            content: gradeContent,
-            content_type: 'alert-grade',
-            tags: [alert.alert_source, grade, alert.state_abbr || 'national'],
-            state_abbr: alert.state_abbr || null,
-            species: null,
-            effective_date: alert.alert_date,
-            embedding: gradeEmbedding,
-            metadata: {
-              alert_source: alert.alert_source,
-              outcome_grade: grade,
-              original_claim: originalClaim.slice(0, 500),
-              signals_found_count: signalsFound.length,
-              signals_found: signalsFound.slice(0, 15),
-              domain_results: domainResults.length > 0 ? domainResults.map(d => ({
-                domain: d.domain,
-                signals_found: d.signals_found,
-                confirmed: d.confirmed,
-                always_on: ALWAYS_ON_DOMAINS.has(d.domain),
-              })) : undefined,
-              // Split grades: "discriminating" domains (birds, climate, drought, etc.)
-              // vs "always-on" domains (water, nws) so the digest can report both.
-              discriminating: domainResults.length > 0 ? (() => {
-                const disc = domainResults.filter(d => !ALWAYS_ON_DOMAINS.has(d.domain));
-                return {
-                  confirmed: disc.filter(d => d.confirmed).length,
-                  total: disc.length,
-                };
-              })() : undefined,
-              alert_knowledge_id: alert.alert_knowledge_id,
-            },
-          })
-          .select('id')
-          .single();
-
-        if (insertErr) {
-          console.error(`[hunt-alert-grader] Knowledge insert error for ${alert.id}:`, insertErr);
-          errors++;
-          continue;
-        }
-
-        // Update hunt_alert_outcomes
-        const { error: updateErr } = await supabase
-          .from('hunt_alert_outcomes')
-          .update({
-            outcome_checked: true,
-            outcome_grade: grade,
-            outcome_signals_found: signalsFound,
-            outcome_reasoning: reasoning,
-            grade_knowledge_id: insertedGrade?.id || null,
-            graded_at: new Date().toISOString(),
-          })
-          .eq('id', alert.id);
-
-        if (updateErr) {
-          console.error(`[hunt-alert-grader] Update error for ${alert.id}:`, updateErr);
-          errors++;
-        } else {
-          console.log(`[hunt-alert-grader] Graded ${alert.id}: ${grade}`);
-        }
-
-        // Arc reactor: transition arc to grade
-        try {
-          if (alert.state_abbr) {
-            const { data: linkedArc } = await supabase
-              .from('hunt_state_arcs')
-              .select('id, current_act')
-              .eq('state_abbr', alert.state_abbr)
-              .in('current_act', ['recognition', 'outcome'])
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            if (linkedArc) {
-              await transitionArc(supabase, linkedArc.id, 'grade', { grade });
-              fireNarrator(alert.state_abbr, 'grade_assigned', { arc_id: linkedArc.id, use_opus: true });
-            }
+          if (insertErr) {
+            console.error(`[hunt-alert-grader] Knowledge insert error for ${alert.id}:`, insertErr);
+            errors++;
+            continue;
           }
-        } catch (arcErr) {
-          console.error('[hunt-alert-grader] Arc reactor error:', arcErr);
+
+          // Update hunt_alert_outcomes
+          const { error: updateErr } = await supabase
+            .from('hunt_alert_outcomes')
+            .update({
+              outcome_checked: true,
+              outcome_grade: grade,
+              outcome_signals_found: signalsFound,
+              outcome_reasoning: reasoning,
+              grade_knowledge_id: insertedGrade?.id || null,
+              graded_at: new Date().toISOString(),
+            })
+            .eq('id', alert.id);
+
+          if (updateErr) {
+            console.error(`[hunt-alert-grader] Update error for ${alert.id}:`, updateErr);
+            errors++;
+          } else {
+            console.log(`[hunt-alert-grader] Graded ${alert.id}: ${grade}`);
+          }
+
+          // Arc reactor: transition arc to grade
+          try {
+            if (alert.state_abbr) {
+              const { data: linkedArc } = await supabase
+                .from('hunt_state_arcs')
+                .select('id, current_act')
+                .eq('state_abbr', alert.state_abbr)
+                .in('current_act', ['recognition', 'outcome'])
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (linkedArc) {
+                await transitionArc(supabase, linkedArc.id, 'grade', { grade });
+                fireNarrator(alert.state_abbr, 'grade_assigned', { arc_id: linkedArc.id, use_opus: true });
+              }
+            }
+          } catch (arcErr) {
+            console.error('[hunt-alert-grader] Arc reactor error:', arcErr);
+          }
+        } catch (alertErr) {
+          console.error(`[hunt-alert-grader] Error grading ${alert.id}:`, alertErr);
+          errors++;
         }
-      } catch (alertErr) {
-        console.error(`[hunt-alert-grader] Error grading ${alert.id}:`, alertErr);
-        errors++;
       }
+    }
+
+    if (noAlertsAtAll) {
+      console.log('[hunt-alert-grader] No alerts to grade');
+      await logCronRun({ functionName: 'hunt-alert-grader', status: 'success', summary: { graded: 0, message: 'No alerts past deadline' }, durationMs: Date.now() - startTime });
+      return cronResponse({ graded: 0, message: 'No alerts past deadline' });
     }
 
     // 3. Log summary
     const totalGraded = gradeCounts.confirmed + gradeCounts.partially_confirmed + gradeCounts.false_alarm + gradeCounts.missed;
     const summary = {
       graded: totalGraded,
+      attempted: attemptedIds.size,
       ...gradeCounts,
       errors,
       run_at: new Date().toISOString(),
