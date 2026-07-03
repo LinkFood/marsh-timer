@@ -160,6 +160,7 @@ export default function ExplorerLanding() {
   const [archiveDate, setArchiveDate] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const heroDateRef = useRef<HTMLInputElement>(null);
   const autoFiredRef = useRef(false);
 
   // --- Data on load: cheap REST only, zero LLM ---
@@ -312,12 +313,36 @@ export default function ExplorerLanding() {
           {/* ---------- LEFT COLUMN ---------- */}
           <div className="space-y-10 min-w-0">
 
+          {/* S1 — COLD OPEN: pick a day */}
+          <section>
+            <h1 className="font-display text-[clamp(1.35rem,6vw,2.25rem)] leading-tight">
+              <span className="block text-white/55">Pick a day you remember.</span>
+              <span className="block text-white/95">See what the Earth remembers.</span>
+            </h1>
+            <div className="relative inline-block mt-4">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 border border-white/10 hover:border-cyan-400/30 transition-colors pointer-events-none">
+                <CalendarDays size={13} className="text-cyan-400/70" />
+                <span className="font-body text-sm text-white/50">Open any day →</span>
+              </div>
+              <input
+                ref={heroDateRef}
+                type="date"
+                min="1950-01-01"
+                max={todayISO}
+                onChange={e => { if (e.target.value) navigate(`/date/${e.target.value}?state=${state}`); }}
+                onClick={() => { try { heroDateRef.current?.showPicker(); } catch { /* native fallback */ } }}
+                aria-label="Pick a day you remember — open it in the archive"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </div>
+          </section>
+
           {/* S2 — TODAY, HERE */}
           <section>
             <div className="relative flex flex-wrap items-center gap-2 mb-4">
-              <h1 className="font-body text-2xl sm:text-3xl text-white/90 leading-tight">
+              <h2 className="font-body text-2xl sm:text-3xl text-white/90 leading-tight">
                 {dateStr} — {stateName}
-              </h1>
+              </h2>
               <button
                 onClick={() => setShowStates(!showStates)}
                 className="flex items-center gap-1 px-2 py-1 rounded-full border border-white/10 bg-white/[0.03] hover:border-cyan-400/30 transition-colors"
@@ -408,6 +433,9 @@ export default function ExplorerLanding() {
                     <>
                       <p className="font-body text-sm text-white/70">
                         {docketCount} claims on the docket · {awaitingVerdict} awaiting verdict
+                        {!latestVerdict && (
+                          <span className="font-body italic text-white/40"> — every claim is a public bet.</span>
+                        )}
                       </p>
                       {latestVerdict && (
                         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
