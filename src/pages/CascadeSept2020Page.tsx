@@ -3,6 +3,7 @@ import { ArrowRight, Scale } from 'lucide-react';
 import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import CascadeRibbon from '@/components/CascadeRibbon';
+import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from '@/components/EventMap';
 import { getStateName } from '@/hooks/useUserLocation';
 import { SEPT2020_DATASET, STATES_AFFECTED, DOMAIN_LABEL } from '@/data/cascade_sept2020';
@@ -178,6 +179,12 @@ export default function CascadeSept2020Page() {
               </div>
             ))}
           </section>
+
+          {/* Cite this cascade */}
+          <CiteBlock
+            label="Cite this cascade"
+            citation={`Duck Countdown Environmental Archive, "The weekend the weather snapped" — Strangest Days, September 2020. 7.6M+ records across 25+ domains, 1950–present. duckcountdown.com/cascade/sept-2020-whiplash. Retrieved ${retrievedToday()}.`}
+          />
 
           {/* Closing — sibling cascade + the court */}
           <section className="border-t border-white/[0.06] pt-6 space-y-3">

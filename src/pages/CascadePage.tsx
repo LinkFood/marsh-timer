@@ -3,6 +3,7 @@ import { ArrowRight, Scale } from 'lucide-react';
 import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import CascadeRibbon from '@/components/CascadeRibbon';
+import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
 
 /**
  * /cascade/july-2026-heat — "The Cascade".
@@ -95,6 +96,12 @@ export default function CascadePage() {
               </div>
             ))}
           </section>
+
+          {/* Cite this cascade */}
+          <CiteBlock
+            label="Cite this cascade"
+            citation={`Duck Countdown Environmental Archive, "The heat wave the layers saw coming" — The Cascade, July 2026. 7.6M+ records across 25+ domains, 1950–present. duckcountdown.com/cascade/july-2026-heat. Retrieved ${retrievedToday()}.`}
+          />
 
           {/* Closing — to the court */}
           <section className="border-t border-white/[0.06] pt-6">

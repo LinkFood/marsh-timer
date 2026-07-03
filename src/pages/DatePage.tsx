@@ -6,6 +6,7 @@ import AppHeader from '@/components/AppHeader';
 import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import PrecedentCard from '@/components/PrecedentCard';
+import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
 import { useChat } from '@/hooks/useChat';
 import { useDayArchive, useArchaeologyTimeline, shiftDate, PROBE_COLORS, PROBE_LABELS, type ArchiveEntry } from '@/hooks/useDayArchive';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
@@ -314,6 +315,12 @@ export default function DatePage() {
                 ))}
               </div>
             )}
+            <div className="mt-4">
+              <CiteBlock
+                label="Cite this day"
+                citation={`Duck Countdown Environmental Archive, entry for ${formatted}${state ? `, ${getStateName(state)}` : ''}. 7.6M+ records across 25+ domains, 1950–present. duckcountdown.com/date/${dateStr}${state ? `?state=${state}` : ''}. Retrieved ${retrievedToday()}.`}
+              />
+            </div>
           </section>
 
           {/* Synthesize — the only LLM call, and only on press */}
