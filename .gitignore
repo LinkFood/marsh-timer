@@ -26,6 +26,7 @@ dist-ssr
 # Backfill orchestrator
 scripts/.orchestrator-checkpoint.json
 scripts/.noaa-stations-cache.json
+scripts/experiments/.cache/
 
 # Strangest-days analysis panel (local, rebuildable from hunt_knowledge)
 analysis/
