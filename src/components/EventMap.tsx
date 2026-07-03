@@ -20,8 +20,8 @@ const CATEGORY_COLOR: Record<EventCategory, string> = {
 };
 
 // Classic tile-grid layout — [col, row]. ME top right, FL bottom right,
-// AK/HI bottom left. 11 columns × 8 rows.
-const TILE_GRID: Record<string, [number, number]> = {
+// AK/HI bottom left. 11 columns × 8 rows. Exported for static mini-map reuse.
+export const TILE_GRID: Record<string, [number, number]> = {
   ME: [10, 0],
   VT: [9, 1], NH: [10, 1],
   WA: [0, 2], ID: [1, 2], MT: [2, 2], ND: [3, 2], MN: [4, 2], WI: [5, 2], MI: [7, 2], NY: [8, 2], MA: [9, 2], RI: [10, 2],
@@ -32,10 +32,10 @@ const TILE_GRID: Record<string, [number, number]> = {
   AK: [0, 7], HI: [1, 7], TX: [3, 7], FL: [8, 7],
 };
 
-const CELL = 10;
-const PITCH = 11.2;
-const VIEW_W = 10 * PITCH + CELL;      // 11 columns
-const VIEW_H = 7 * PITCH + CELL;       // 8 rows
+export const CELL = 10;
+export const PITCH = 11.2;
+export const VIEW_W = 10 * PITCH + CELL;      // 11 columns
+export const VIEW_H = 7 * PITCH + CELL;       // 8 rows
 
 // Activity ramp: gray-800 → slate-600
 const RAMP_LO: [number, number, number] = [31, 41, 55];

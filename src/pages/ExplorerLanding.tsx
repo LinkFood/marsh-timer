@@ -504,6 +504,11 @@ export default function ExplorerLanding() {
             <p className="mt-3 text-[10px] font-mono text-white/25">
               Nearest-day matching arrives when the similarity engine clears verification.
             </p>
+            <p className="mt-2 text-[10px] font-mono text-white/25">
+              <Link to="/cascade" className="hover:text-white/50 transition-colors">
+                Strangest days — replays of days the layers moved together →
+              </Link>
+            </p>
           </section>
 
           {/* S5 — ASK THE ARCHIVE */}

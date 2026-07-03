@@ -11,6 +11,21 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://duckcountdown.com/cascade</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://duckcountdown.com/cascade/july-2026-heat</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://duckcountdown.com/cascade/sept-2020-whiplash</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://duckcountdown.com/date/2012-10-29</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>

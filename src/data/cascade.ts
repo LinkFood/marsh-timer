@@ -140,3 +140,129 @@ export const CASCADE_RECEIPTS = {
   sourceLine: 'Retrodiction of registered claims — see the Court.',
   windowLine: '25 days replayed from the archive · 2026-06-08 → 2026-07-03 · every line a real reading.',
 };
+
+/* ------------------------------------------------------------------ */
+/* Generic ribbon dataset — the shape CascadeRibbon renders.           */
+/* Any cascade page supplies one of these; the heat-wave adapter below */
+/* is the default.                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface RibbonRow {
+  /** ISO date. */
+  date: string;
+  /** Per-band raw values, keyed by band key. */
+  values: Record<string, number>;
+  /** True when the day's values are interpolated between real readings (dimmed). */
+  interpolated?: boolean;
+}
+
+export interface RibbonBand {
+  key: string;
+  /** Band title, top-left. */
+  title: string;
+  /** Line/fill color (CSS). */
+  color: string;
+  /** Quiet caption, bottom-left of the band. */
+  leadWord: string;
+  /** Mono annotation shown at the anomaly point. */
+  note: string;
+  /** The day this band first broke normal (dashed marker). */
+  anomalyDate: string;
+  /** Raw-value domain mapped to band height, [min, max]. */
+  domain: [number, number];
+  /**
+   * Optional fill: 'step-area' = step-fill to the band floor (drought),
+   * 'area' = polygon under the line (snow), 'gap' = shade from the top
+   * baseline down to the fallen line (bird absence).
+   */
+  fill?: 'step-area' | 'area' | 'gap';
+  /** Heavier stroke for the punchline band. */
+  bold?: boolean;
+}
+
+export interface RibbonReceipts {
+  /** Optional denominator line: "{lead} {label}: {k}/{n} · base rate ..." */
+  denominator?: { n: number; k: number; base: number; label: string; lead: string };
+  /** Body provenance lines (font-body). */
+  bodyLines: string[];
+  /** Final mono line. */
+  monoLine: string;
+}
+
+export interface RibbonDataset {
+  rows: RibbonRow[];
+  bands: RibbonBand[];
+  /** The 0-line date and its label. */
+  peakDate: string;
+  peakLabel: string;
+  /** Dates given bottom ticks (peakDate included as the red tick). */
+  tickDates: string[];
+  ariaLabel: string;
+  receipts: RibbonReceipts;
+}
+
+const HEATWAVE_COLORS: Record<LayerKey, string> = {
+  drought: 'rgb(245 158 11)',      // amber-500
+  ocean: 'rgb(45 212 191)',        // teal-400
+  birds: 'rgb(167 139 250)',       // violet-400
+  thermometer: 'rgb(248 113 113)', // red-400
+};
+
+const HEATWAVE_DOMAINS: Record<LayerKey, [number, number]> = {
+  drought: [0, 100],
+  ocean: [0, 4.5],
+  birds: [0, 100],
+  thermometer: [80, 108],
+};
+
+const HEATWAVE_VALUE: Record<LayerKey, (r: CascadeRow) => number> = {
+  drought: r => r.droughtDe2Pct,
+  ocean: r => r.sstAnomalySigma,
+  birds: r => r.birdActivityPct,
+  thermometer: r => r.tempHighF,
+};
+
+const HEATWAVE_FILL: Partial<Record<LayerKey, RibbonBand['fill']>> = {
+  drought: 'step-area',
+  birds: 'gap',
+};
+
+/** The July 2026 heat wave, adapted to the generic ribbon shape. */
+export const HEATWAVE_DATASET: RibbonDataset = {
+  rows: CASCADE_ROWS.map(r => ({
+    date: r.date,
+    interpolated: r.interpolated,
+    values: {
+      drought: HEATWAVE_VALUE.drought(r),
+      ocean: HEATWAVE_VALUE.ocean(r),
+      birds: HEATWAVE_VALUE.birds(r),
+      thermometer: HEATWAVE_VALUE.thermometer(r),
+    },
+  })),
+  bands: LAYER_LEADS.map(l => ({
+    key: l.key,
+    title: l.title,
+    color: HEATWAVE_COLORS[l.key],
+    leadWord: l.leadWord,
+    note: l.note,
+    anomalyDate: l.anomalyDate,
+    domain: HEATWAVE_DOMAINS[l.key],
+    fill: HEATWAVE_FILL[l.key],
+    bold: l.key === 'thermometer',
+  })),
+  peakDate: PEAK_DATE,
+  peakLabel: PEAK_LABEL,
+  tickDates: ['2026-06-08', '2026-06-15', '2026-06-22', '2026-06-29', PEAK_DATE],
+  ariaLabel: 'The cascade: four environmental layers led the July 2026 heat wave by 3 weeks to 4 days.',
+  receipts: {
+    denominator: {
+      n: CASCADE_RECEIPTS.denominator.n,
+      k: CASCADE_RECEIPTS.denominator.k,
+      base: CASCADE_RECEIPTS.denominator.base,
+      label: 'in state-years',
+      lead: 'This event class appeared',
+    },
+    bodyLines: [CASCADE_RECEIPTS.fingerprintLine, CASCADE_RECEIPTS.windowLine],
+    monoLine: CASCADE_RECEIPTS.sourceLine,
+  },
+};
