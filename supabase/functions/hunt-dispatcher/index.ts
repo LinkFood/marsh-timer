@@ -22,7 +22,7 @@ const INTENT_TOOLS = [
       properties: {
         intent: {
           type: 'string',
-          enum: ['weather', 'solunar', 'season_info', 'search', 'pattern_query', 'recent_activity', 'self_assessment', 'general'],
+          enum: ['weather', 'solunar', 'season_info', 'search', 'pattern_query', 'recent_activity', 'self_assessment', 'docket', 'general'],
           description: 'The classified intent of the user message',
         },
         state_abbr: {
@@ -178,6 +178,43 @@ async function getNationalContext(): Promise<string> {
   }
 }
 
+// Real-event context — bounded, indexed counts of recent high-signal events.
+// This replaces the retired convergence score everywhere: the score was proven
+// to be a seasonal index with no predictive signal and must never be presented
+// as meaning. Counts of real archive events are honest; a 0-100 score is not.
+async function getRecentEventContext(stateAbbr: string | null): Promise<string> {
+  try {
+    const supabase = createSupabaseClient();
+    const since = new Date(Date.now() - 48 * 3600000).toISOString();
+    const CAP = 50;
+    const fetchGroup = async (types: string[]) => {
+      let q = supabase
+        .from('hunt_knowledge')
+        .select('title, state_abbr, created_at')
+        .in('content_type', types)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(CAP);
+      if (stateAbbr) q = q.eq('state_abbr', stateAbbr);
+      const { data } = await q;
+      return data || [];
+    };
+    const [anomalies, migrationSpikes, nwsAlerts] = await Promise.all([
+      fetchGroup(['anomaly-alert']),
+      fetchGroup(['migration-spike', 'migration-spike-extreme', 'migration-spike-significant']),
+      fetchGroup(['nws-alert']),
+    ]);
+    const fmt = (label: string, rows: Array<{ title: string; state_abbr?: string | null }>) => {
+      const count = rows.length >= CAP ? `${CAP}+` : String(rows.length);
+      const samples = rows.slice(0, 3).map(r => `${r.state_abbr || 'national'}: ${r.title}`).join(' | ');
+      return `- ${label}: ${count} entries${samples ? ` (e.g. ${samples})` : ''}`;
+    };
+    return `\n\nReal events in the archive${stateAbbr ? ` for ${stateAbbr}` : ' (national)'} — last 48 hours:\n${fmt('Anomaly alerts', anomalies)}\n${fmt('Migration spikes', migrationSpikes)}\n${fmt('NWS alerts', nwsAlerts)}`;
+  } catch {
+    return '';
+  }
+}
+
 // Check if a season is currently open for a species/state
 async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ isOpen: boolean; nextOpen?: string; status: string }> {
   try {
@@ -226,7 +263,7 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
 
 // The shared system prompt rules appended to every handler's system prompt
 const BRAIN_RULES = `
-SYSTEM CAPABILITY: You have access to 4.5M+ environmental data entries across 83+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 88 automated crons continuously ingest new data.
+SYSTEM CAPABILITY: You have access to 7.6M+ environmental data entries across 83+ content types, covering all 50 US states from 1950 to present. Sources include NOAA storm events, USGS water levels, earthquake data, BirdCast radar migration, photoperiod, tidal, geomagnetic, fire activity, drought, crop data, and more. 88 automated crons continuously ingest new data.
 
 TODAY'S DATE: ${new Date().toISOString().split('T')[0]}. Any date on or before today is a PAST date with potential data. Do NOT say a date is "in the future" if it is today or earlier.
 
@@ -240,9 +277,11 @@ CRITICAL RULES:
 7. If you must add general context beyond the data, clearly label it: "General context (not from brain data):"
 8. Never include external URLs, links, or website references in your response. All information comes from the brain's embedded data.
 9. You are an environmental intelligence system, not a chatbot. Lead with data. Be specific — state names, numbers, dates, signal types.
-10. When suggesting follow-up questions, frame them around environmental signals and patterns, not hunting.
-   Good: "What patterns are converging in Idaho right now?" / "How do current conditions compare to last year?" / "What usually follows when these conditions align?"
+10. When suggesting follow-up questions, frame them around what the archive can actually show, not hunting.
+   Good: "What does the archive show for Idaho this week?" / "How do current conditions compare to last year?" / "What usually followed when these conditions aligned — and how often?"
    Bad: "What patterns should I watch for duck hunting in Idaho?" / "Best spots for deer in Texas?"
+11. Never present convergence scores as prediction or signal — the metric was retired after failing validation. When citing patterns, include denominators (appeared N times, outcome followed K). Prefer "the archive shows" over "the brain predicts".
+12. Web results are NOT archive data. If you use a provided web result, you MUST attribute it explicitly as "(from the web, not the archive)". Never blend web content into "From our data:" claims.
 `;
 
 function createStreamingResponse(request: Request, handlerResult: HandlerResult, supabase: ReturnType<typeof createSupabaseClient>, userId: string | null, sessionId: string | null, originalMessage: string, intent: string): Response {
@@ -305,7 +344,7 @@ function createStreamingResponse(request: Request, handlerResult: HandlerResult,
           supabase.from('hunt_conversations').insert([
             { user_id: userId, session_id: sessionId, role: 'user', content: originalMessage },
             { user_id: userId, session_id: sessionId, role: 'assistant', content: fullText, metadata: { cards, intent } },
-          ]).then(() => {}).catch(e => console.warn('Conversation store failed:', e));
+          ]).then(() => {}, (e: unknown) => console.warn('Conversation store failed:', e));
         }
         controller.close();
       }
@@ -402,7 +441,7 @@ serve(async (req) => {
 
     // Step 1: Intent classification (STAYS AS HAIKU)
     const classifySystemPrompt = `You are the Duck Countdown Brain — an environmental intelligence system monitoring patterns across 21 data sources for all 50 US states.
-You analyze convergence signals from weather, wildlife migration, lunar cycles, satellite data, water levels, drought conditions, and more.
+You analyze cross-domain patterns from weather, wildlife migration, lunar cycles, satellite data, water levels, drought conditions, and more.
 You can answer questions about environmental patterns, weather intelligence, wildlife movement, species activity, conditions, and season dates.
 
 Current context:
@@ -410,7 +449,7 @@ Current context:
 - Selected state: ${ctxState || 'none'}
 ${conversationContext}
 
-Classify the user's intent into one of: weather, solunar, season_info, search, pattern_query, recent_activity, self_assessment, general.
+Classify the user's intent into one of: weather, solunar, season_info, search, pattern_query, recent_activity, self_assessment, docket, general.
 
 Use "weather" for questions about weather, wind, temperature, pressure, fronts, environmental conditions.
 Use "solunar" for moon phase, tidal influence, activity cycles, solunar.
@@ -436,6 +475,11 @@ Use "self_assessment" when the user asks:
 - How accurate are you / your predictions
 - Have you been right / wrong / show me your track record
 - How reliable are your alerts / what have you gotten wrong
+
+Use "docket" when the user asks about the claim court, the docket, or standing claims:
+- What's on the docket / what claims are open / any verdicts
+- Has a claim fired / been confirmed / beaten its controls
+- Show me the court's receipts / claim track record / lift numbers
 
 Use "general" for greetings, casual chat, meta questions about the app.`;
 
@@ -465,7 +509,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
             state_abbr: ctxState,
             species: ctxSpecies || 'all',
           }))
-        ).then(() => {}).catch(err => console.error('[Dispatcher] Failed to stage discoveries:', err));
+        ).then(() => {}, (err: unknown) => console.error('[Dispatcher] Failed to stage discoveries:', err));
       }
       if (useStreaming) {
         return createStreamingResponse(req, handlerResult, supabase, userId, sessionId, message, 'general');
@@ -601,6 +645,9 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
       case 'self_assessment':
         handlerResult = await handleSelfAssessment(supabase, resolvedSpecies, resolvedState, message);
         break;
+      case 'docket':
+        handlerResult = await handleDocket(supabase, resolvedState, message);
+        break;
       default:
         handlerResult = await handleGeneral(message, resolvedSpecies, resolvedState, conversationContext, dateFrom, dateTo);
         break;
@@ -618,7 +665,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
           state_abbr: resolvedState,
           species: resolvedSpecies,
         }))
-      ).then(() => {}).catch(err => console.error('[Dispatcher] Failed to stage discoveries:', err));
+      ).then(() => {}, (err: unknown) => console.error('[Dispatcher] Failed to stage discoveries:', err));
     }
 
     if (useStreaming) {
@@ -646,7 +693,7 @@ Use "general" for greetings, casual chat, meta questions about the app.`;
       cost_usd: cost,
       tokens_in: classifyResponse.usage.input_tokens,
       tokens_out: classifyResponse.usage.output_tokens,
-    }).then(() => {}).catch(e => console.warn('Task record failed:', e));
+    }).then(() => {}, (e: unknown) => console.warn('Task record failed:', e));
 
     return new Response(JSON.stringify(result), { status: 200, headers });
 
@@ -675,6 +722,8 @@ async function handleRecentActivity(
     .limit(1000);
   if (stateAbbr) recentQuery = recentQuery.eq('state_abbr', stateAbbr);
   const { data: recentCounts } = await recentQuery;
+  // limit(1000) is a hard row cap — at 1000 rows the sample is truncated, not complete
+  const recentTruncated = (recentCounts?.length || 0) >= 1000;
 
   const typeCounts: Record<string, number> = {};
   (recentCounts || []).forEach((r: any) => {
@@ -682,7 +731,7 @@ async function handleRecentActivity(
   });
 
   // 2. High-signal entries (last 48h)
-  const highSignalTypes = ['nws-alert','weather-event','migration-spike-extreme','migration-spike-significant','anomaly-alert','disaster-watch','convergence-score','correlation-discovery'];
+  const highSignalTypes = ['nws-alert','weather-event','migration-spike-extreme','migration-spike-significant','anomaly-alert','disaster-watch','correlation-discovery'];
   let highQuery = supabase
     .from('hunt_knowledge')
     .select('id, title, content_type, state_abbr, metadata, created_at')
@@ -712,6 +761,7 @@ async function handleRecentActivity(
     type: 'activity',
     data: {
       total_24h: recentCounts?.length || 0,
+      total_24h_truncated: recentTruncated,
       by_type: typeCounts,
       high_signal_count: highSignals?.length || 0,
       top_states: topStates,
@@ -746,24 +796,15 @@ async function handleRecentActivity(
     });
   }
 
-  // 7. Fetch pattern links + convergence for state context
-  const [patternLinks, convergenceData] = await Promise.all([
-    getRecentPatternLinks(stateAbbr),
-    stateAbbr
-      ? supabase
-          .from('hunt_convergence_scores')
-          .select('*')
-          .eq('state_abbr', stateAbbr)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  // 7. Fetch pattern links for state context
+  const patternLinks = await getRecentPatternLinks(stateAbbr);
 
   // 8. Build context for Sonnet
   const contextLines = [
     `## Brain Activity Summary (last 24 hours)`,
-    `Total new entries: ${recentCounts?.length || 0}`,
+    recentTruncated
+      ? `New entries: at least 1000 — this summary covers only the most recent 1000 entries; the true 24-hour total is higher. Say "the most recent 1000 entries", never a complete total.`
+      : `Total new entries: ${recentCounts?.length || 0}`,
     `### Entries by type:`,
     ...Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => `- ${type}: ${count}`),
     `### High-signal events (last 48 hours):`,
@@ -773,13 +814,6 @@ async function handleRecentActivity(
     `### Latest pipeline activity:`,
     ...(recentCrons || []).slice(0, 5).map((c: any) => `- ${c.function_name}: ${c.status} at ${c.created_at}`),
   ];
-
-  // Convergence breakdown
-  const convData = convergenceData?.data;
-  if (convData) {
-    contextLines.push(`### Convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank})`);
-    contextLines.push(`Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`);
-  }
 
   // Pattern links
   if (patternLinks.length > 0) {
@@ -826,54 +860,84 @@ async function handleSelfAssessment(
 ): Promise<HandlerResult> {
   const cards: any[] = [];
 
-  const { data: calibrations } = await supabase
-    .from('hunt_alert_calibration')
-    .select('*')
-    .eq('window_days', 90)
-    .order('accuracy_rate', { ascending: false });
+  // v2 matched-control grades ONLY. The old hunt_alert_calibration numbers are
+  // never cited — pre-v2 "accuracy" was tautological (alerts confirmed by the
+  // same domains that fired them). v2 grades score each claim against random
+  // matched control windows; the court block lives inside outcome_signals_found.
+  let v2Rows: any[] = [];
+  try {
+    let q = supabase
+      .from('hunt_alert_outcomes')
+      .select('alert_source, state_abbr, alert_date, outcome_grade, outcome_signals_found, graded_at')
+      .eq('outcome_checked', true)
+      .eq('outcome_signals_found->court->>grade_version', '2')
+      .order('graded_at', { ascending: false })
+      .limit(200);
+    if (stateAbbr) q = q.eq('state_abbr', stateAbbr);
+    const { data, error } = await q;
+    if (!error && Array.isArray(data)) v2Rows = data;
+  } catch { /* defensive — re-scoring may still be in progress */ }
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: recentGrades } = await supabase
-    .from('hunt_knowledge')
-    .select('title, content, content_type, state_abbr, metadata, created_at')
-    .in('content_type', ['alert-grade','alert-calibration','forecast-accuracy','migration-report-card','convergence-report-card'])
-    .gte('created_at', thirtyDaysAgo)
-    .order('created_at', { ascending: false })
-    .limit(20);
+  const withCourt = v2Rows
+    .map((r: any) => ({ ...r, court: r.outcome_signals_found?.court }))
+    .filter((r: any) => r.court && r.court.grade_version === 2);
 
-  if (recentGrades?.length > 0) {
-    cards.push({
-      type: 'pattern',
-      data: {
-        patterns: recentGrades.map((g: any) => ({
-          title: g.title, content: g.content?.slice(0, 200) || '', content_type: g.content_type,
-          state_abbr: g.state_abbr, similarity: 1.0,
-        })),
-      }
-    });
+  const isConfirmedWithLift = (r: any) =>
+    r.outcome_grade === 'confirmed' && typeof r.court.lift === 'number' && r.court.lift > 1;
+
+  const total = withCourt.length;
+  const beatBaseRate = withCourt.filter(isConfirmedWithLift).length;
+
+  // Per-source breakdown with denominators
+  const bySource: Record<string, { total: number; beat: number }> = {};
+  for (const r of withCourt) {
+    const src = r.alert_source || 'unknown';
+    if (!bySource[src]) bySource[src] = { total: 0, beat: 0 };
+    bySource[src].total++;
+    if (isConfirmedWithLift(r)) bySource[src].beat++;
+  }
+
+  const contextLines = [
+    `## Track Record — matched-control grades (grade_version 2)`,
+    `Scope: ${stateAbbr || 'all states'} | ${total} claims graded against matched controls (most recent 200 max)`,
+    total > 0
+      ? `Headline: ${beatBaseRate} of ${total} claims confirmed against matched controls — the outcome occurred AND beat the base rate of random same-length windows (lift > 1).`
+      : `No matched-control grades available yet${stateAbbr ? ` for ${stateAbbr}` : ''} — the claim court opens tonight; grades so far are being re-scored against matched controls.`,
+  ];
+
+  if (total > 0) {
+    contextLines.push(`### By source (confirmed-with-lift / graded):`);
+    contextLines.push(...Object.entries(bySource).map(([src, s]) =>
+      `- ${src}: ${s.beat} of ${s.total} beat matched controls`
+    ));
+    contextLines.push(`### Most recent verdicts:`);
+    contextLines.push(...withCourt.slice(0, 8).map((r: any) =>
+      `- ${r.alert_date} ${r.alert_source} (${r.state_abbr || 'national'}): ${r.outcome_grade}, controls ${r.court.control_hits}/${r.court.control_n}, lift ${r.court.lift ?? 'n/a'}`
+    ));
+
     cards.push({
       type: 'source',
       data: {
-        vectorCount: recentGrades.length, keywordCount: 0,
-        contentTypes: [...new Set(recentGrades.map((g: any) => g.content_type))],
-        similarityRange: [1.0, 1.0],
+        vectorCount: total, keywordCount: 0,
+        contentTypes: ['alert-grade-v2'],
+        label: `${beatBaseRate} of ${total} claims confirmed against matched controls`,
       }
     });
   }
 
-  const contextLines = [
-    `## Brain Self-Assessment Data`,
-    `### Alert Calibration (90-day rolling):`,
-    ...(calibrations || []).map((c: any) =>
-      `- ${c.alert_source}${c.state_abbr ? ` (${c.state_abbr})` : ' (national)'}: ${(Number(c.accuracy_rate) * 100).toFixed(0)}% accuracy over ${c.total_alerts} alerts`
-    ),
-    `### Recent Grades (last 30 days):`,
-    ...(recentGrades || []).map((g: any) => `- [${g.content_type}] ${g.title}`),
-  ];
+  // Claim court docket — tables land tonight; fully defensive
+  const docket = await getDocketSummary(supabase);
+  contextLines.push(docket.context);
 
   return {
     cards,
-    systemPrompt: `You are reporting on your own prediction accuracy. Be honest and specific. Show numbers. If accuracy is low, say so. If no calibration data exists yet, say honestly: "The self-grading system just started — check back in a week."\n\n${BRAIN_RULES}`,
+    systemPrompt: `You are reporting the system's honest track record. RULES:
+- Report accuracy ONLY as "X of N claims confirmed against matched controls" — a claim counts only when the outcome occurred AND beat the base rate of random matched windows (lift > 1). Always include denominators.
+- Explain lift plainly: lift > 1 means the trigger beat random chance; lift <= 1 means the outcome fires just as often on random windows (base rate, not skill); lift = 0 means the claim missed.
+- NEVER cite any older calibration accuracy percentages — pre-v2 grading was tautological and was retired.
+- The retired convergence score was proven to be a seasonal index with no predictive signal; if asked about it, say exactly that.
+- If there are no v2 grades yet, say: the claim court opens tonight; grades so far are being re-scored against matched controls.
+\n${BRAIN_RULES}`,
     userContent: `${userMessage}\n\n---\n\n${contextLines.join('\n')}`,
   };
 }
@@ -901,9 +965,9 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     };
   }
 
-  // Fetch weather + convergence + brain search + historical in parallel
+  // Fetch weather + real-event context + brain search + historical in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const [weatherRes, convergenceResult, brainResults, patternLinks, seasonStatus, historicalResults] = await Promise.all([
+  const [weatherRes, realEventContext, brainResults, patternLinks, seasonStatus, historicalResults] = await Promise.all([
     fetch(weatherUrl, {
       method: 'POST',
       headers: {
@@ -912,13 +976,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       },
       body: JSON.stringify({ lat: state.centroid_lat, lng: state.centroid_lng, state_abbr: stateAbbr }),
     }),
-    supabase
-      .from('hunt_convergence_scores')
-      .select('*')
-      .eq('state_abbr', stateAbbr)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single(),
+    getRecentEventContext(stateAbbr),
     searchBrain({
       query: `${state.name} environmental weather conditions ${query}`,
       content_types: undefined,  // Search full brain — cross-domain discovery
@@ -949,7 +1007,6 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
   }
 
   const forecast = await weatherRes.json();
-  const convData = convergenceResult.data;
 
   const hourly = forecast.hourly;
   const now = new Date();
@@ -969,12 +1026,6 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     linksInsight = `\n\nLive pattern connections (last 72h):\n${patternLinks.map(l => `${l.source_title} → ${l.matched_title} (${(l.similarity * 100).toFixed(0)}% match)`).join('\n')}`;
   }
 
-  // Convergence breakdown for system prompt
-  let convergenceInsight = '';
-  if (convData) {
-    convergenceInsight = `\n\nConvergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}). Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
-  }
-
   // Historical precedent context
   let historicalInsight = '';
   if (Array.isArray(historicalResults) && historicalResults.length > 0) {
@@ -990,23 +1041,6 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       description: `${state.name} conditions`,
     },
   }];
-
-  if (convData) {
-    cards.push({
-      type: 'convergence',
-      data: {
-        stateAbbr: convData.state_abbr,
-        score: convData.score,
-        weatherComponent: convData.weather_component,
-        solunarComponent: convData.solunar_component,
-        migrationComponent: convData.migration_component,
-        birdcastComponent: convData.birdcast_component,
-        patternComponent: convData.pattern_component,
-        nationalRank: convData.national_rank,
-        reasoning: convData.reasoning,
-      },
-    });
-  }
 
   if (brainResults.length > 0) {
     cards.push({
@@ -1054,7 +1088,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     cards,
     systemPrompt: `Start with a 2-3 sentence assessment of current conditions and what they mean. You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. When historical precedents are provided, explain what happened last time these conditions aligned. Be specific with numbers and states.
 ${BRAIN_RULES}`,
-    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}${convergenceInsight}\n\nBrain data (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}${historicalInsight}\n\nQuery: ${query}`,
+    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}${realEventContext}\n\nBrain data (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}${historicalInsight}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
@@ -1152,20 +1186,13 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     };
   }
 
-  // Fetch seasons + convergence + brain search in parallel
-  const [seasonsResult, convergenceResult, brainResults] = await Promise.all([
+  // Fetch seasons + brain search in parallel
+  const [seasonsResult, brainResults] = await Promise.all([
     supabase
       .from('hunt_seasons')
       .select('*')
       .eq('species_id', species)
       .eq('state_abbr', stateAbbr),
-    supabase
-      .from('hunt_convergence_scores')
-      .select('*')
-      .eq('state_abbr', stateAbbr)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single(),
     searchBrain({
       query: `${species} seasonal patterns regulations ${stateAbbr} ${query}`,
       content_types: undefined,  // Search full brain — cross-domain discovery
@@ -1179,7 +1206,6 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
   ]);
 
   const seasons = seasonsResult.data;
-  const convData = convergenceResult.data;
 
   if (!seasons || seasons.length === 0) {
     return {
@@ -1222,23 +1248,6 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     brainContext = `\n\nAdditional knowledge from the brain:\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
   }
 
-  if (convData) {
-    cards.push({
-      type: 'convergence',
-      data: {
-        stateAbbr: convData.state_abbr,
-        score: convData.score,
-        weatherComponent: convData.weather_component,
-        solunarComponent: convData.solunar_component,
-        migrationComponent: convData.migration_component,
-        birdcastComponent: convData.birdcast_component,
-        patternComponent: convData.pattern_component,
-        nationalRank: convData.national_rank,
-        reasoning: convData.reasoning,
-      },
-    });
-  }
-
   return {
     cards,
     systemPrompt: `You are a species behavior and regulatory expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
@@ -1252,32 +1261,87 @@ ${BRAIN_RULES}`,
 async function handleCompare(state1: string, state2: string, query: string, species: string): Promise<HandlerResult> {
   const supabase = createSupabaseClient();
 
-  const [conv1, conv2, s1Status, s2Status] = await Promise.all([
-    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state1).order('date', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('hunt_convergence_scores').select('*').eq('state_abbr', state2).order('date', { ascending: false }).limit(1).maybeSingle(),
+  // Enumerate real per-domain events for each state over the last 7 days —
+  // no convergence score, no winner. The archive shows differences; it does
+  // not rank states.
+  const COMPARE_DOMAINS = [
+    'weather-event', 'nws-alert', 'birdcast-daily',
+    'migration-spike', 'migration-spike-extreme', 'migration-spike-significant',
+    'anomaly-alert', 'ocean-buoy', 'space-weather',
+  ];
+  const since = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+  type Entry = { title: string; content_type: string; effective_date?: string };
+  const fetchState = async (st: string): Promise<Entry[]> => {
+    // One bounded indexed query per content type (avoids IN-scans on 7.6M rows)
+    const perType = await Promise.all(
+      COMPARE_DOMAINS.map(async (ct) => {
+        const { data } = await supabase
+          .from('hunt_knowledge')
+          .select('title, content_type, effective_date')
+          .eq('content_type', ct)
+          .eq('state_abbr', st)
+          .gte('effective_date', since)
+          .limit(6);
+        return data || [];
+      })
+    );
+    return perType.flat();
+  };
+
+  const [rows1, rows2, s1Status, s2Status] = await Promise.all([
+    fetchState(state1),
+    fetchState(state2),
     getSeasonStatus(species, state1),
     getSeasonStatus(species, state2),
   ]);
 
-  const c1 = conv1.data;
-  const c2 = conv2.data;
+  const groupByDomain = (rows: Entry[]) => {
+    const groups: Record<string, Entry[]> = {};
+    for (const r of rows) {
+      if (!groups[r.content_type]) groups[r.content_type] = [];
+      groups[r.content_type].push(r);
+    }
+    return groups;
+  };
+  const g1 = groupByDomain(rows1);
+  const g2 = groupByDomain(rows2);
+  const allDomains = [...new Set([...Object.keys(g1), ...Object.keys(g2)])];
 
-  let context = `Comparing ${state1} vs ${state2} for ${species} environmental conditions:\n`;
-  if (c1) context += `\n${state1}: Score ${c1.score}/100 (rank #${c1.national_rank}). Weather: ${c1.weather_component}/25, Solunar: ${c1.solunar_component}/15, Migration: ${c1.migration_component}/25, BirdCast: ${c1.birdcast_component}/20, Pattern: ${c1.pattern_component}/15. ${c1.reasoning}`;
-  if (c2) context += `\n${state2}: Score ${c2.score}/100 (rank #${c2.national_rank}). Weather: ${c2.weather_component}/25, Solunar: ${c2.solunar_component}/15, Migration: ${c2.migration_component}/25, BirdCast: ${c2.birdcast_component}/20, Pattern: ${c2.pattern_component}/15. ${c2.reasoning}`;
-  context += `\n\nSeason status: ${state1}: ${s1Status.status} | ${state2}: ${s2Status.status}`;
+  let context = `## ${state1} vs ${state2} — real archive events, last 7 days (since ${since})\n`;
+  context += `${state1}: ${rows1.length} entries | ${state2}: ${rows2.length} entries\n\n`;
+  for (const domain of allDomains) {
+    const d1 = g1[domain] || [];
+    const d2 = g2[domain] || [];
+    context += `### ${domain}\n`;
+    context += `${state1} (${d1.length}): ${d1.slice(0, 3).map(r => r.title).join('; ') || 'No entries'}\n`;
+    context += `${state2} (${d2.length}): ${d2.slice(0, 3).map(r => r.title).join('; ') || 'No entries'}\n\n`;
+  }
+  if (allDomains.length === 0) {
+    context += `No high-signal entries in the archive for either state in the last 7 days.\n`;
+  }
+  context += `\nSeason status: ${state1}: ${s1Status.status} | ${state2}: ${s2Status.status}`;
 
   const cards: unknown[] = [];
-  if (c1) cards.push({ type: 'convergence', data: { stateAbbr: c1.state_abbr, score: c1.score, weatherComponent: c1.weather_component, solunarComponent: c1.solunar_component, migrationComponent: c1.migration_component, birdcastComponent: c1.birdcast_component, patternComponent: c1.pattern_component, nationalRank: c1.national_rank, reasoning: c1.reasoning } });
-  if (c2) cards.push({ type: 'convergence', data: { stateAbbr: c2.state_abbr, score: c2.score, weatherComponent: c2.weather_component, solunarComponent: c2.solunar_component, migrationComponent: c2.migration_component, birdcastComponent: c2.birdcast_component, patternComponent: c2.pattern_component, nationalRank: c2.national_rank, reasoning: c2.reasoning } });
+  if (rows1.length > 0 || rows2.length > 0) {
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: rows1.length + rows2.length,
+        keywordCount: 0,
+        contentTypes: allDomains,
+        label: `${rows1.length} entries for ${state1}, ${rows2.length} for ${state2} (last 7 days, direct query)`,
+      },
+    });
+  }
 
   return {
     cards,
-    systemPrompt: `You are an environmental analyst comparing two states. Use the provided convergence scores and brain data to give a clear recommendation. Format as a side-by-side comparison with a verdict. Be specific — cite scores, bird counts, and conditions.
-ONLY reference data provided in the context. If data is missing for a state, say so.
+    systemPrompt: `You are an environmental analyst comparing two states using real archive events. Narrate the DIFFERENCES domain by domain — event counts and notable events — with denominators. Do NOT declare a winner, do NOT score or rank the states, and do NOT say one state is "stronger". If the user asks which state is better or stronger, explain that the archive shows events, not rankings, and describe what actually differs. If a domain has no entries for a state, say "no entries" — an absent entry is not evidence of calm conditions.
+ONLY reference data provided in the context.
 ${BRAIN_RULES}`,
     userContent: `${context}\n\nQuestion: ${query}`,
-    mapAction: { type: 'flyTo', target: c1 && c2 ? (c1.score >= c2.score ? state1 : state2) : state1 },
+    mapAction: { type: 'flyTo', target: state1 },
   };
 }
 
@@ -1288,7 +1352,7 @@ async function handleDatePortrait(dateStr: string, query: string, stateAbbr: str
   const to = new Date(d.getTime() + 3 * 86400000).toISOString().split('T')[0];
 
   const PORTRAIT_DOMAINS = [
-    'weather-event', 'nws-alert', 'convergence-score', 'birdcast-daily',
+    'weather-event', 'nws-alert', 'birdcast-daily',
     'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
   ];
 
@@ -1376,7 +1440,7 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
   const supabase = createSupabaseClient();
   // 8 key domains — keeps parallel queries under 150s edge function limit
   const COMPARE_DOMAINS = [
-    'weather-event', 'nws-alert', 'convergence-score', 'birdcast-daily',
+    'weather-event', 'nws-alert', 'birdcast-daily',
     'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
   ];
 
@@ -1492,11 +1556,8 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
   const mentionsDU = /\b(du|ducks unlimited|migration map)\b/i.test(query);
   const searchQuery = species && species !== 'all' ? `${species} ${query}` : query;
 
-  // Check if this is a comparative query (no state, asking about "best" or "where")
-  const isComparative = !stateAbbr && /\b(best|top|where|which state|compare|recommend)\b/i.test(query);
-
   const supabase = createSupabaseClient();
-  const [brainResults, patternLinks, topStatesResult, convergenceData, historicalResults, nationalContext] = await Promise.all([
+  const [brainResults, patternLinks, realEventContext, historicalResults, nationalContext] = await Promise.all([
     searchBrain({
       query: searchQuery,
       species: species,
@@ -1508,28 +1569,9 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
       date_from: dateFrom,
       date_to: dateTo,
     }),
-    getRecentPatternLinks(stateAbbr),
-    isComparative
-      ? supabase
-          .from('hunt_convergence_scores')
-          .select('state_abbr, score, reasoning, national_rank')
-          .order('score', { ascending: false })
-          .limit(10)
-      : Promise.resolve({ data: null }),
-    // Fetch convergence score for the state if mentioned, or top 5 national
-    stateAbbr
-      ? supabase
-          .from('hunt_convergence_scores')
-          .select('*')
-          .eq('state_abbr', stateAbbr)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : supabase
-          .from('hunt_convergence_scores')
-          .select('state_abbr, score, reasoning, national_rank')
-          .order('score', { ascending: false })
-          .limit(5),
+    getRecentPatternLinks(stateAbbr || null),
+    // Real-event counts (state-filtered or national) — replaces the retired convergence score
+    getRecentEventContext(stateAbbr || null),
     // Historical pattern search: always run, with or without state
     searchBrain({
         query: stateAbbr
@@ -1554,12 +1596,23 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
       includeDomains: ['noaa.gov', 'usgs.gov', 'ebird.org', 'weather.gov', 'nasa.gov', 'drought.gov'],
     });
     if (webResults.length > 0) {
-      webContext = '\n\nWEB RESEARCH (cite source if used):\n' +
+      webContext = '\n\nWEB RESULTS — these came from a live web search, NOT the brain archive. If you use any of them, you MUST attribute them as "(from the web, not the archive)":\n' +
         webResults.map(r => `[${r.title}] (${r.url})\n${r.content}`).join('\n\n');
     }
   }
 
   const cards: unknown[] = [];
+  if (webResults.length > 0) {
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: 0,
+        keywordCount: webResults.length,
+        contentTypes: ['web'],
+        label: `${webResults.length} web result${webResults.length === 1 ? '' : 's'} (from the web, not the archive)`,
+      },
+    });
+  }
   let vectorContext = '';
 
   if (brainResults.length > 0) {
@@ -1591,20 +1644,33 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
     });
   }
 
-  // Keyword fallback if brain returned nothing
+  // Keyword fallback if brain returned nothing — bounded and filtered,
+  // never an unfiltered table dump.
   if (!vectorContext) {
     try {
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.84.0');
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
       const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+
+      // hunt_state_facts only enters context with a real filter: the resolved
+      // state's name, or a query match on state_name — plus species when set.
+      let factsQuery = supabase.from('hunt_state_facts')
+        .select('species_id, state_name, facts')
+        .limit(3);
+      if (species && species !== 'all') factsQuery = factsQuery.eq('species_id', species);
+      if (stateAbbr) {
+        const { data: st } = await supabase.from('hunt_states').select('name').eq('abbreviation', stateAbbr).maybeSingle();
+        factsQuery = st?.name
+          ? factsQuery.eq('state_name', st.name)
+          : factsQuery.ilike('state_name', `%${escapedQuery}%`);
+      } else {
+        factsQuery = factsQuery.ilike('state_name', `%${escapedQuery}%`);
+      }
+
       const [seasonsResult, factsResult] = await Promise.all([
         supabase.from('hunt_seasons')
           .select('species_id, state_abbr, state_name, season_type, zone, notes')
           .or(`notes.ilike.%${escapedQuery}%,state_name.ilike.%${escapedQuery}%`)
           .limit(5),
-        supabase.from('hunt_state_facts')
-          .select('species_id, state_name, facts')
-          .limit(5),
+        factsQuery,
       ]);
       vectorContext = [
         ...(seasonsResult.data || []).map((s: Record<string, unknown>) => `${s.species_id} ${s.state_name} ${s.season_type}: ${s.notes || 'No notes'}`),
@@ -1644,28 +1710,6 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
     });
   }
 
-  let topStatesContext = '';
-  if (topStatesResult.data && topStatesResult.data.length > 0) {
-    topStatesContext = `\n\nTop states by convergence score right now:\n${topStatesResult.data.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning}`).join('\n')}`;
-    topStatesContext += `\n\nNote: Check season dates before recommending — some of these states may have closed seasons right now.`;
-  }
-
-  // Convergence score breakdown for the queried state (or top national)
-  let convergenceContext = '';
-  const convRaw = convergenceData?.data;
-  if (convRaw) {
-    if (Array.isArray(convRaw) && convRaw.length > 0) {
-      // National: top states by score
-      convergenceContext = `\n\nTop states by convergence score:\n${convRaw.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank || '-'} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning || ''}`).join('\n')}`;
-    } else if (!Array.isArray(convRaw)) {
-      // Single state
-      const convData = convRaw;
-      convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
-      convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
-      if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
-    }
-  }
-
   // Historical pattern matches
   let historicalContext = '';
   if (Array.isArray(historicalResults) && historicalResults.length > 0) {
@@ -1678,9 +1722,9 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
 
   return {
     cards,
-    systemPrompt: `Lead with a 2-3 sentence direct answer to the user's question. Then organize supporting evidence by theme. You are an environmental intelligence analyst with access to a brain containing 2.4M+ embedded data entries across 55+ content types including weather, migration, water, drought, NWS alerts, solunar, convergence scores, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned. Cite brain entry counts and content types.
+    systemPrompt: `Lead with a 2-3 sentence direct answer to the user's question. Then organize supporting evidence by theme. You are an environmental intelligence analyst with access to a brain containing 7.6M+ embedded data entries across 83+ content types including weather, migration, water, drought, NWS alerts, solunar, and historical patterns. Synthesize the provided context. When patterns match, explain what happened historically when these conditions aligned — with denominators. Cite brain entry counts and content types. If web results are provided and you use one, attribute it as "(from the web, not the archive)".
 ${BRAIN_RULES}`,
-    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${topStatesContext}${convergenceContext}${historicalContext}${nationalContext}${webContext}\n\nQuestion: ${query}`,
+    userContent: `Brain data (${brainResults.length} entries found${brainResults.length > 0 ? `, confidence ${minSim}-${maxSim}` : ''}):\n${vectorContext || 'No brain matches found.'}\n\nIMPORTANT: Only reference the brain data above. If the data doesn't answer the question, say "The brain doesn't have data on this yet."${linksContext}${realEventContext}${historicalContext}${nationalContext}${webContext}\n\nQuestion: ${query}`,
     _webResults: webResults,
   } as HandlerResult & { _webResults: TavilyResult[] };
 }
@@ -1688,8 +1732,8 @@ ${BRAIN_RULES}`,
 async function handleGeneral(message: string, species: string, stateAbbr: string | null, conversationContext: string = '', dateFrom?: string | null, dateTo?: string | null): Promise<HandlerResult & { _webResults?: TavilyResult[] }> {
   const supabase = createSupabaseClient();
 
-  // Brain search + convergence + pattern links + historical + national context in parallel
-  const [brainResults, convergenceData, patternLinks, historicalResults, nationalContext] = await Promise.all([
+  // Brain search + real-event context + pattern links + historical + national context in parallel
+  const [brainResults, realEventContext, patternLinks, historicalResults, nationalContext] = await Promise.all([
     searchBrain({
       query: message,
       state_abbr: stateAbbr || undefined,
@@ -1700,19 +1744,8 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
       date_from: dateFrom,
       date_to: dateTo,
     }),
-    stateAbbr
-      ? supabase
-          .from('hunt_convergence_scores')
-          .select('*')
-          .eq('state_abbr', stateAbbr)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-      : supabase
-          .from('hunt_convergence_scores')
-          .select('state_abbr, score, reasoning, national_rank')
-          .order('score', { ascending: false })
-          .limit(5),
+    // Real-event counts — replaces the retired convergence score
+    getRecentEventContext(stateAbbr),
     getRecentPatternLinks(stateAbbr),
     // Historical: always run, with or without state
     searchBrain({
@@ -1738,7 +1771,7 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
       includeDomains: ['noaa.gov', 'usgs.gov', 'ebird.org', 'weather.gov', 'nasa.gov', 'drought.gov'],
     });
     if (webResults.length > 0) {
-      webContext = '\n\nWEB RESEARCH (cite source if used):\n' +
+      webContext = '\n\nWEB RESULTS — these came from a live web search, NOT the brain archive. If you use any of them, you MUST attribute them as "(from the web, not the archive)":\n' +
         webResults.map(r => `[${r.title}] (${r.url})\n${r.content}`).join('\n\n');
     }
   }
@@ -1746,20 +1779,6 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
   let brainContext = '';
   if (brainResults.length > 0) {
     brainContext = `\n\nRelevant knowledge (${brainResults.length} entries, cite if useful):\n${brainResults.map(v => `[${v.content_type}] ${v.title}: ${v.content}`).join('\n')}`;
-  }
-
-  // Convergence score breakdown (single state or top national)
-  let convergenceContext = '';
-  const convRaw = convergenceData?.data;
-  if (convRaw) {
-    if (Array.isArray(convRaw) && convRaw.length > 0) {
-      convergenceContext = `\n\nTop states by convergence score:\n${convRaw.map((s: { state_abbr: string; score: number; reasoning: string; national_rank: number }) => `#${s.national_rank || '-'} ${s.state_abbr}: ${s.score}/100 — ${s.reasoning || ''}`).join('\n')}`;
-    } else if (!Array.isArray(convRaw)) {
-      const convData = convRaw;
-      convergenceContext = `\n\nCurrent convergence for ${convData.state_abbr}: ${convData.score}/100 (rank #${convData.national_rank}).`;
-      convergenceContext += ` Components: Weather ${convData.weather_component}/25, Migration ${convData.migration_component}/25, BirdCast ${convData.birdcast_component}/20, Solunar ${convData.solunar_component}/15, Pattern ${convData.pattern_component}/15, Water ${convData.water_component || 0}/15, Photoperiod ${convData.photoperiod_component || 0}/10, Tide ${convData.tide_component || 0}/10.`;
-      if (convData.reasoning) convergenceContext += ` Analysis: ${convData.reasoning}`;
-    }
   }
 
   // Pattern links
@@ -1774,10 +1793,23 @@ async function handleGeneral(message: string, species: string, stateAbbr: string
     historicalContext = `\n\nHistorical precedents:\n${historicalResults.map(v => `- [${v.content_type}] ${v.title}: ${v.content.length > 300 ? v.content.substring(0, 300) + '...' : v.content}`).join('\n')}`;
   }
 
+  const cards: unknown[] = [];
+  if (webResults.length > 0) {
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: 0,
+        keywordCount: webResults.length,
+        contentTypes: ['web'],
+        label: `${webResults.length} web result${webResults.length === 1 ? '' : 's'} (from the web, not the archive)`,
+      },
+    });
+  }
+
   return {
-    cards: [],
-    systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. Adapt your framing to the user's context — environmental research, agriculture, ecology, weather, or general awareness. Your core function is environmental pattern recognition.${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
-${conversationContext}${brainContext}${convergenceContext}${linksContext}${historicalContext}${nationalContext}${webContext}
+    cards,
+    systemPrompt: `You are an environmental intelligence engine tracking patterns across weather, migration, water levels, pressure, solunar cycles, drought, and wildlife behavior across all 50 US states. You synthesize data from 21+ sources. Adapt your framing to the user's context — environmental research, agriculture, ecology, weather, or general awareness. Your core function is environmental pattern recognition. If web results are provided and you use one, attribute it as "(from the web, not the archive)".${species && species !== 'all' ? `\nCurrent species context: ${species}. State: ${stateAbbr || 'none'}.` : ''}
+${conversationContext}${brainContext}${realEventContext}${linksContext}${historicalContext}${nationalContext}${webContext}
 Be concise and helpful. 2-3 sentences max for casual chat.
 ${BRAIN_RULES}`,
     userContent: message,
@@ -1848,5 +1880,107 @@ YOUR JOB:
 ${patternContext}
 ${BRAIN_RULES}`,
     userContent: originalMessage,
+  };
+}
+
+// --- Claim Court (docket) ---
+// hunt_claims / hunt_claim_fires land tonight — every query here is defensive
+// against missing tables and empty dockets.
+
+async function getDocketSummary(supabase: any): Promise<{ context: string; claims: any[]; fires: any[] }> {
+  const opening = `\n\n## Claim Court\nThe claim court opens tonight; grades so far are being re-scored against matched controls. No docket entries to cite yet.`;
+  try {
+    const [claimsRes, firesRes] = await Promise.all([
+      supabase
+        .from('hunt_claims')
+        .select('id, name, status, created_at')
+        .limit(100),
+      supabase
+        .from('hunt_claim_fires')
+        .select('claim_id, state_abbr, fired_at, window_end, evaluated, hit, control_hits, control_n, lift, graded_at')
+        .order('fired_at', { ascending: false })
+        .limit(200),
+    ]);
+
+    if (claimsRes.error || !Array.isArray(claimsRes.data) || claimsRes.data.length === 0) {
+      return { context: opening, claims: [], fires: [] };
+    }
+
+    const claims = claimsRes.data;
+    const fires: any[] = (firesRes.error ? [] : firesRes.data) || [];
+    const nameById = new Map<string, string>(claims.map((c: any) => [String(c.id), String(c.name)]));
+
+    const perClaim: Record<string, { fires: number; graded: number; hits: number; beatBase: number }> = {};
+    for (const f of fires) {
+      const name = nameById.get(String(f.claim_id)) || String(f.claim_id);
+      if (!perClaim[name]) perClaim[name] = { fires: 0, graded: 0, hits: 0, beatBase: 0 };
+      const p = perClaim[name];
+      p.fires++;
+      if (f.evaluated) {
+        p.graded++;
+        if (f.hit) p.hits++;
+        if (typeof f.lift === 'number' && f.lift > 1) p.beatBase++;
+      }
+    }
+
+    const lines = [
+      `\n\n## Claim Court Docket`,
+      `Standing claims: ${claims.length} (${claims.filter((c: any) => c.status === 'active').length} active) | fires on record: ${fires.length} (most recent 200 max)`,
+      ...claims.slice(0, 20).map((c: any) => {
+        const p = perClaim[c.name];
+        if (!p || p.fires === 0) return `- "${c.name}" (${c.status}): no fires recorded yet`;
+        const pending = p.fires - p.graded;
+        let line = `- "${c.name}" (${c.status}): fired ${p.fires} time(s)`;
+        if (p.graded > 0) line += `; ${p.hits} of ${p.graded} graded fires hit, ${p.beatBase} of ${p.graded} beat matched controls (lift > 1)`;
+        if (pending > 0) line += `; ${pending} awaiting verdict`;
+        return line;
+      }),
+    ];
+
+    const verdicts = fires.filter((f: any) => f.evaluated);
+    if (verdicts.length > 0) {
+      lines.push(`### Most recent verdicts:`);
+      lines.push(...verdicts.slice(0, 10).map((f: any) =>
+        `- "${nameById.get(String(f.claim_id)) || 'claim'}" / ${f.state_abbr} fired ${f.fired_at}: ${f.hit ? 'HIT' : 'MISS'}, controls ${f.control_hits}/${f.control_n}, lift ${f.lift ?? 'n/a'}`
+      ));
+    } else {
+      lines.push(`(No verdicts yet — the first grades land after the first outcome windows close.)`);
+    }
+
+    return { context: lines.join('\n'), claims, fires };
+  } catch {
+    return { context: opening, claims: [], fires: [] };
+  }
+}
+
+async function handleDocket(supabase: any, stateAbbr: string | null, userMessage: string): Promise<HandlerResult> {
+  const docket = await getDocketSummary(supabase);
+
+  const cards: unknown[] = [];
+  const verdicts = docket.fires.filter((f: any) => f.evaluated);
+  if (docket.claims.length > 0) {
+    cards.push({
+      type: 'source',
+      data: {
+        vectorCount: docket.claims.length,
+        keywordCount: verdicts.length,
+        contentTypes: ['claim', 'claim-fire'],
+        label: `${docket.claims.length} standing claims, ${verdicts.length} graded fires`,
+      },
+    });
+  }
+
+  return {
+    cards,
+    systemPrompt: `You are the clerk of the claim court — the honest docket. The court holds standing claims ("when trigger X fires in a state, outcome Y follows within N days"), records every fire, and grades each fire against matched random control windows in the same state.
+
+RULES:
+- Answer with literal receipts: for each claim, report fires, hits, control fractions (control hits / control n), and lift — exactly as given in the context.
+- Explain lift plainly: lift > 1 means the trigger beat the base rate of random matched windows; lift <= 1 means the outcome fires just as often at random (base rate, not skill); lift = 0 means the fire missed its outcome.
+- Never soften a bad verdict and never inflate a good one. Denominators always.
+- If the docket is empty, say plainly: the claim court opens tonight; grades so far are being re-scored against matched controls.
+${stateAbbr ? `- The user's selected state is ${stateAbbr}; highlight fires in that state when present.` : ''}
+${BRAIN_RULES}`,
+    userContent: `${userMessage}\n\n---\n${docket.context}`,
   };
 }
