@@ -567,6 +567,9 @@ verify_jwt = false
 [functions.hunt-today-briefing]
 verify_jwt = false
 
+[functions.hunt-days-like-today]
+verify_jwt = false
+
 [functions.hunt-narrator]
 verify_jwt = false
 

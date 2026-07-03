@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronDown, Send, Flame, Loader2, RotateCcw, Waves, Scale, CalendarDays } from 'lucide-react';
+import { ChevronDown, ChevronRight, Send, Flame, Loader2, RotateCcw, Waves, Scale, CalendarDays } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useTodayBriefing } from '@/hooks/useTodayBriefing';
 import { useSolunarToday, formatSolunarLine } from '@/hooks/useSolunarToday';
@@ -9,6 +9,7 @@ import { useLatestLayers, type LayerItem } from '@/hooks/useLatestLayers';
 import { useClaims, useClaimFires, type ClaimFire } from '@/hooks/useClaims';
 import { useBirdActivity, useTodayAnomaly, degreesToCompass, type BirdDay } from '@/hooks/useTodaySignals';
 import { useTodayEventMap } from '@/hooks/useTodayEventMap';
+import { useDaysLikeToday, type DayPrecedent } from '@/hooks/useDaysLikeToday';
 import { useUserLocation, US_STATES, getStateName } from '@/hooks/useUserLocation';
 import { humanizeEntry, yearLines, layerMeta } from '@/lib/humanize';
 import EventMap from '@/components/EventMap';
@@ -80,6 +81,79 @@ function WatchCard({ fire, claimName }: { fire: ClaimFire; claimName: string }) 
         Filed as claim → Court
       </Link>
     </div>
+  );
+}
+
+/**
+ * One "days like today" precedent — a historical day whose conditions
+ * matched today's portrait. Receipts, not vibes: similarity, source count,
+ * and what actually followed in the next 7 days. Replay, never prediction.
+ */
+function DayLikeCard({ precedent, state }: { precedent: DayPrecedent; state: string }) {
+  const headline = new Date(precedent.date + 'T12:00:00')
+    .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  const conditionLines: { text: string; stateTag: string | null }[] = [];
+  const seen = new Set<string>();
+  for (const e of precedent.entries) {
+    const text = humanizeEntry(e.title, e.content_type || '');
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    conditionLines.push({ text, stateTag: e.state_abbr });
+    if (conditionLines.length === 2) break;
+  }
+
+  const then = new Date(precedent.date + 'T12:00:00').getTime();
+  const aftermathLines: { text: string; offset: string }[] = [];
+  for (const a of precedent.aftermath) {
+    if (!a.date) continue;
+    const text = humanizeEntry(a.title, a.content_type || '');
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    const days = Math.round((new Date(a.date + 'T12:00:00').getTime() - then) / 86400_000);
+    aftermathLines.push({ text, offset: `+${days}d` });
+    if (aftermathLines.length === 2) break;
+  }
+
+  return (
+    <Link
+      to={`/date/${precedent.date}?state=${state}`}
+      className="block bg-gray-900 rounded-lg border border-gray-800 hover:border-cyan-400/30 transition-colors px-4 py-3 group"
+    >
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="font-display text-sm text-white/90">{headline}</span>
+        <span className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[9px] font-mono text-cyan-400/70">{Math.round(precedent.similarity * 100)}% match</span>
+          <ChevronRight size={12} className="text-white/20 group-hover:text-cyan-400/60 transition-colors" />
+        </span>
+      </div>
+      <div className="space-y-1">
+        {conditionLines.map(line => (
+          <div key={line.text} className="flex items-start justify-between gap-2">
+            <p className="text-xs font-body text-white/55 leading-snug line-clamp-2">{line.text}</p>
+            {line.stateTag && (
+              <span className="text-[9px] font-mono text-white/30 px-1.5 py-0.5 rounded border border-white/10 shrink-0">
+                {line.stateTag}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {aftermathLines.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-white/[0.05] space-y-1">
+          <p className="text-[9px] font-mono uppercase tracking-widest text-teal-400/50">What followed</p>
+          {aftermathLines.map(line => (
+            <div key={line.text} className="flex items-start gap-2">
+              <span className="text-[9px] font-mono text-teal-400/60 mt-0.5 shrink-0">{line.offset}</span>
+              <p className="text-xs font-body text-teal-100/50 leading-snug line-clamp-2">{line.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="mt-1.5 text-[10px] font-mono text-white/25">
+        {precedent.source_count} source{precedent.source_count === 1 ? '' : 's'} · aftermath window 7 days
+      </p>
+    </Link>
   );
 }
 
@@ -169,6 +243,9 @@ export default function ExplorerLanding() {
   const { latest: birdLatest, history: birdHistory } = useBirdActivity(state);
   const anomaly = useTodayAnomaly(state);
   const { years: historyYears } = useThisDayInHistory(undefined, state);
+  // Days-like-today precedent engine — degrades to this-day-in-history until
+  // the similarity index clears; self-activating, no flags.
+  const daysLike = useDaysLikeToday(state);
   const { claims, status: claimsStatus } = useClaims();
   const { fires, status: firesStatus } = useClaimFires();
   const { byState: eventsByState, activityByState, loading: eventsLoading, quiet: eventsQuiet } = useTodayEventMap();
@@ -514,24 +591,42 @@ export default function ExplorerLanding() {
               <span className="text-[10px] font-mono text-white/25 hidden sm:inline">any day, 1950 → today</span>
             </div>
 
-            <p className="text-[10px] font-mono text-white/30 mb-2">This day across the years —</p>
-            {historyYears.length > 0 ? (
-              <div className="space-y-2.5">
-                {historyYears.map(({ year, entries }) => (
-                  <PrecedentCard
-                    key={year}
-                    dateHeadline={`${MONTHS[now.getMonth()]} ${now.getDate()}, ${year}`}
-                    lines={yearLines(entries)}
-                    to={`/date/${year}-${mmdd}?state=${state}`}
-                  />
-                ))}
-              </div>
+            {daysLike.status === 'ready' ? (
+              <>
+                <p className="text-[10px] font-mono text-white/30 mb-2">
+                  The last {daysLike.precedents.length} times conditions looked like today in {stateName} —
+                </p>
+                <div className="space-y-2.5">
+                  {daysLike.precedents.map(p => (
+                    <DayLikeCard key={p.date} precedent={p} state={state} />
+                  ))}
+                </div>
+                <p className="mt-3 text-[10px] font-mono text-white/25">
+                  Matched by conditions, not calendar. The archive replays — it never predicts.
+                </p>
+              </>
             ) : (
-              <p className="font-body text-sm text-white/30">Opening the archive for this day...</p>
+              <>
+                <p className="text-[10px] font-mono text-white/30 mb-2">This day across the years —</p>
+                {historyYears.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {historyYears.map(({ year, entries }) => (
+                      <PrecedentCard
+                        key={year}
+                        dateHeadline={`${MONTHS[now.getMonth()]} ${now.getDate()}, ${year}`}
+                        lines={yearLines(entries)}
+                        to={`/date/${year}-${mmdd}?state=${state}`}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="font-body text-sm text-white/30">Opening the archive for this day...</p>
+                )}
+                <p className="mt-3 text-[10px] font-mono text-white/25">
+                  Nearest-day matching arrives when the similarity engine clears verification.
+                </p>
+              </>
             )}
-            <p className="mt-3 text-[10px] font-mono text-white/25">
-              Nearest-day matching arrives when the similarity engine clears verification.
-            </p>
             <p className="mt-2 text-[10px] font-mono text-white/25">
               <Link to="/cascade" className="hover:text-white/50 transition-colors">
                 Strangest days — replays of days the layers moved together →
