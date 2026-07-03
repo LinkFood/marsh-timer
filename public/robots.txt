@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /ops
+Disallow: /auth
 
 Sitemap: https://duckcountdown.com/sitemap.xml

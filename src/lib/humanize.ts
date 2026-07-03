@@ -46,12 +46,25 @@ function readableType(contentType: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+/** Caps words that are legitimate acronyms — never title-cased. */
+const ACRONYMS = new Set(['NWS', 'NOAA', 'USGS', 'USA', 'KP']);
+
 /** Content types whose entries are routine daily weather bookkeeping. */
 export function isRoutineWeather(contentType: string, title?: string | null): boolean {
   return contentType === 'ghcn-daily' || contentType === 'nasa-daily' || /^daily weather\b/i.test(title || '');
 }
 
-/** One raw ingestion title → one human headline. Never returns machine suffixes. */
+/**
+ * One raw ingestion title → one human headline. Never returns machine suffixes.
+ *
+ * Examples:
+ *   "Daily Weather AL 1950-07-02"                  → "Daily weather record"
+ *   "MD air-quality"                               → "Air quality reading"
+ *   "MD soil-conditions"                           → "Soil conditions report"
+ *   "TX river-discharge"                           → "River discharge reading"
+ *   "Thunderstorm Wind 60 MONTGOMERY"              → "Thunderstorm wind 60 — Montgomery"
+ *   "M2.6 earthquake 37 km SSW of Ferndale, California" → "M2.6 earthquake near Ferndale, California"
+ */
 export function humanizeEntry(title: string | null | undefined, contentType: string): string {
   let t = (title || '').trim();
 
@@ -61,6 +74,10 @@ export function humanizeEntry(title: string | null | undefined, contentType: str
 
   if (!t) return TYPE_LABELS[contentType] ?? readableType(contentType);
   if (/^daily weather\b/i.test(t)) return 'Daily weather record';
+
+  // Bare "<STATE> <content-type>" ("MD air-quality") — state shows as a tag elsewhere
+  const bare = t.match(/^[A-Z]{2}\s+([a-z][a-z0-9-]*)$/);
+  if (bare) return TYPE_LABELS[bare[1]] ?? `${readableType(bare[1])} reading`;
 
   // "M2.6 earthquake 37 km SSW of Ferndale" → "M2.6 earthquake near Ferndale"
   t = t.replace(/\b\d+(?:\.\d+)?\s*km\s+[NSEW]{1,3}\s+of\s+/i, 'near ');
@@ -74,6 +91,19 @@ export function humanizeEntry(title: string | null | undefined, contentType: str
       .replace(/[a-z]+/g, w => (SMALL.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
       .replace(/^([a-z])/, c => c.toUpperCase());
   }
+
+  // Trailing ALL-CAPS place name ("Thunderstorm Wind 60 MONTGOMERY") →
+  // sentence-case the event, em-dash the place ("Thunderstorm wind 60 — Montgomery").
+  // 2-letter caps (state abbrs) and known acronyms are left alone.
+  const tail = t.match(/\s+((?:[A-Z]{3,}\s*)+)$/);
+  if (tail && !tail[1].trim().split(/\s+/).some(w => ACRONYMS.has(w))) {
+    const place = tail[1].trim().split(/\s+/).map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+    const head = (t.slice(0, tail.index).trim())
+      .replace(/\b[A-Z][a-z]+\b/g, (w, i: number) => (i === 0 ? w : w.toLowerCase()));
+    t = `${head} — ${place}`;
+  }
+  // Any remaining shouted words mid-title get title-cased in place
+  t = t.replace(/\b[A-Z]{3,}\b/g, w => (ACRONYMS.has(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()));
 
   if (t.length > 90) t = t.slice(0, 87).trimEnd() + '…';
   return t.charAt(0).toUpperCase() + t.slice(1);
