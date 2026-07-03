@@ -9,8 +9,10 @@ interface HistoricalEntry {
   state_abbr: string | null;
 }
 
-// Every 5 years from 1950-2025
-const YEARS = Array.from({ length: 16 }, (_, i) => 1950 + i * 5);
+// 8 years sampled evenly across 1950 → last year (was 16 five-year steps —
+// the sections only ever show a handful of cards, so 16 probes was double-paying)
+const LAST_YEAR = new Date().getFullYear() - 1;
+const YEARS = Array.from({ length: 8 }, (_, i) => Math.round(1950 + (i * (LAST_YEAR - 1950)) / 7));
 
 // High-value content types with deep historical effective_date coverage
 const CONTENT_TYPES = [
@@ -42,19 +44,27 @@ const CONTENT_TYPES = [
 
 const MAX_ENTRIES = 15;
 
-export function useThisDayInHistory() {
+/**
+ * @param dateStr optional YYYY-MM-DD — anchor month/day (defaults to today).
+ *                The anchor's own year is excluded ("other years").
+ */
+export function useThisDayInHistory(dateStr?: string) {
   const [entries, setEntries] = useState<HistoricalEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    setEntries([]);
 
     const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    const month = dateStr ? dateStr.slice(5, 7) : String(now.getMonth() + 1).padStart(2, '0');
+    const day = dateStr ? dateStr.slice(8, 10) : String(now.getDate()).padStart(2, '0');
+    const excludeYear = dateStr ? parseInt(dateStr.slice(0, 4), 10) : now.getFullYear();
 
     // One lightweight query per year — each hits the effective_date index
-    const queries = YEARS.map(yr => {
+    const queries = YEARS.filter(yr => yr !== excludeYear).map(yr => {
       const dateStr = `${yr}-${month}-${day}`;
       return supabase
         .from('hunt_knowledge')
@@ -66,6 +76,7 @@ export function useThisDayInHistory() {
     });
 
     Promise.all(queries).then(results => {
+      if (cancelled) return;
       const found: HistoricalEntry[] = [];
       const seenTypes = new Set<string>();
 
@@ -91,8 +102,10 @@ export function useThisDayInHistory() {
       // Sort by year, cap total
       setEntries(found.sort((a, b) => a.year - b.year).slice(0, MAX_ENTRIES));
       setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [dateStr]);
 
   return { entries, loading };
 }
