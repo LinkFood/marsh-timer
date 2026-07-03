@@ -32,5 +32,10 @@
 - Layer-viz ideas (Loom, Coincidence Columns, Core Sample, Heartbeat, Echo) all = "un-merge the archaeology dot-row" on DatePage. One build covers several.
 - OG images (Birthday / Prove-Me-Wrong unfurl) need `@vercel/og` (NOT installed; only `@vercel/edge`) + middleware currently redirect-only (no meta injection). Real new-dep work → defer.
 
+## Duck–Front "founding-fact" test scope (2026-07-03) — see docs/DUCK-FRONT-TEST-SCOPE.md
+- **eBird is the binding constraint.** `hunt-migration-monitor` pulls `recent?back=1` (snapshot; API caps back=30 → NO historical density). Stores `species='all-birds'` raw `sighting_count` (effort-confounded) in `hunt_migration_history`; **waterfowl breakdown is COMPUTED then discarded** from the table — but survives as `waterfowl:N` text inside `hunt_knowledge.content` (content_type migration-daily/-spike-*/-lull), so recoverable by parsing. ~13.3k rows = ~Oct2025→Jul2026 = n=1 fall season.
+- **Fronts already detected daily.** `hunt-weather-watchdog` has a `cold_front` detector (temp drop >15°F d-o-d → `hunt_weather_events`), and its Open-Meteo `DailyForecast` carries `pressure_msl_mean` + `wind_direction_10m_dominant` — real front signature available for the recent (~5yr) window. ghcn-daily (1950-2025, hunt_knowledge) is temp+precip only (NO pressure/wind), and has NO daily cron so it does NOT overlap 2026 eBird → 76yr history useless for this test until EBD download exists.
+- **The killer confound = birder-effort** (front→nice weekend→more checklists→more birds). Only real fix = eBird EBD Custom Download (Anseriformes + Sampling Event Data for party-hours); free but needs Cornell access agreement (days lead) + GB local TSV parse. MVE = 1 read-only script, 1-2 sessions, placebo-first; full = 4-6 sessions + EBD approval.
+
 ## S/M/L convention (file-count)
 - S = 1-2 files, M = 3-5 files, L = 6+ files.
