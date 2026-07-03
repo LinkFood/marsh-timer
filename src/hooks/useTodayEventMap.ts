@@ -30,12 +30,32 @@ interface EventRow {
 
 export function useTodayEventMap() {
   const [byState, setByState] = useState<Record<string, StateEvents>>({});
+  const [activityByState, setActivityByState] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
     let cancelled = false;
     const today = new Date().toISOString().slice(0, 10);
+
+    // Baseline shading: how many entries the archive ingested today, per state.
+    // One bounded query on the effective_date btree index; on any failure the
+    // map just renders flat gray.
+    supabase
+      .from('hunt_knowledge')
+      .select('state_abbr')
+      .eq('effective_date', today)
+      .limit(1000)
+      .then(({ data, error }) => {
+        if (cancelled || error || !Array.isArray(data)) return;
+        const counts: Record<string, number> = {};
+        for (const row of data as EventRow[]) {
+          const abbr = row.state_abbr?.toUpperCase();
+          if (!abbr || abbr.length !== 2) continue;
+          counts[abbr] = (counts[abbr] ?? 0) + 1;
+        }
+        setActivityByState(counts);
+      }, () => {});
 
     Promise.all([
       supabase
@@ -80,6 +100,7 @@ export function useTodayEventMap() {
 
   return {
     byState,
+    activityByState,
     loading,
     quiet: !loading && Object.keys(byState).length === 0,
   };

@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronDown, Send, Flame, Loader2, RotateCcw } from 'lucide-react';
+import { ChevronDown, Send, Flame, Loader2, RotateCcw, Waves, Scale, CalendarDays } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
 import { useTodayBriefing } from '@/hooks/useTodayBriefing';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
+import { useLatestLayers, type LayerItem } from '@/hooks/useLatestLayers';
 import { useClaims, useClaimFires, type ClaimFire } from '@/hooks/useClaims';
 import { useBirdActivity, useTodayAnomaly, degreesToCompass, type BirdDay } from '@/hooks/useTodaySignals';
 import { useTodayEventMap } from '@/hooks/useTodayEventMap';
 import { useUserLocation, US_STATES, getStateName } from '@/hooks/useUserLocation';
+import { humanizeEntry, yearLines, layerMeta } from '@/lib/humanize';
 import EventMap from '@/components/EventMap';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import AppHeader from '@/components/AppHeader';
@@ -23,9 +25,12 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 /**
- * The Today page. Single column, everything on load is a direct REST read
- * or an existing non-LLM edge function. The dispatcher only fires when the
- * user asks something. Show don't predict — precedents carry denominators.
+ * The Today page. Desktop: two columns — narrative left, live rail right
+ * (tile map + latest-from-the-layers + latest verdict, sticky). Mobile:
+ * single column, rail content flows inline. Everything on load is a direct
+ * REST read or an existing non-LLM edge function; the dispatcher only fires
+ * when the user asks something. Show don't predict — precedents carry
+ * denominators.
  */
 
 function SectionLabel({ children }: { children: string }) {
@@ -55,7 +60,7 @@ function WatchCard({ fire, claimName }: { fire: ClaimFire; claimName: string }) 
   const detail = (fire.detail && typeof fire.detail === 'object' ? fire.detail : null) as Record<string, unknown> | null;
   const observation = String(detail?.observation || detail?.summary || detail?.text || claimName);
   return (
-    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+    <div className="bg-gray-950/60 rounded-lg border border-gray-800 p-4">
       <div className="flex items-start gap-2 mb-2">
         <Flame size={13} className="text-amber-400 mt-0.5 shrink-0" />
         <p className="text-sm font-body text-white/80 leading-snug">{observation}</p>
@@ -85,6 +90,58 @@ function birdLine(latest: BirdDay, stateName: string): string {
   return `Radar counted ${n.toLocaleString()} birds over ${stateName} ${when}${dir}.`;
 }
 
+function relativeDay(dateStr: string): string {
+  const then = new Date(dateStr + 'T12:00:00');
+  const now = new Date();
+  now.setHours(12, 0, 0, 0);
+  const days = Math.round((now.getTime() - then.getTime()) / 86400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return `${days}d ago`;
+}
+
+/** Right-rail feed: the most recent notable entries across the layers. */
+function LayersFeed({ items, loading }: { items: LayerItem[]; loading: boolean }) {
+  const rows = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { key: string; text: string; state: string | null; when: string; label: string; color: string }[] = [];
+    for (const it of items) {
+      const text = humanizeEntry(it.title, it.content_type);
+      const key = `${text}|${it.state_abbr || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const meta = layerMeta(it.content_type);
+      out.push({ key, text, state: it.state_abbr, when: relativeDay(it.effective_date), label: meta.label, color: meta.color });
+    }
+    return out;
+  }, [items]);
+
+  return (
+    <section>
+      <SectionLabel>Latest from the layers</SectionLabel>
+      {loading ? (
+        <p className="text-[10px] font-mono text-white/25">Reading the layers...</p>
+      ) : rows.length === 0 ? (
+        <p className="font-body text-sm text-white/40 italic">The layers are quiet — nothing notable in the last three days.</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {rows.map(row => (
+            <li key={row.key} className="flex items-start gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full mt-[5px] shrink-0" style={{ backgroundColor: row.color }} />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-body text-white/65 leading-snug">{row.text}</p>
+                <p className="text-[9px] font-mono text-white/30 mt-0.5">
+                  {row.state ? `${row.state} · ` : ''}{row.when} · {row.label}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default function ExplorerLanding() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -100,16 +157,18 @@ export default function ExplorerLanding() {
   const [question, setQuestion] = useState('');
   const [archiveDate, setArchiveDate] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const autoFiredRef = useRef(false);
 
   // --- Data on load: cheap REST only, zero LLM ---
   const { data: briefing } = useTodayBriefing(state);            // hunt-today-briefing (table reads)
   const { latest: birdLatest, history: birdHistory } = useBirdActivity(state);
   const anomaly = useTodayAnomaly(state);
-  const { entries: historyEntries } = useThisDayInHistory();
+  const { years: historyYears } = useThisDayInHistory(undefined, state);
   const { claims, status: claimsStatus } = useClaims();
   const { fires, status: firesStatus } = useClaimFires();
-  const { byState: eventsByState, loading: eventsLoading, quiet: eventsQuiet } = useTodayEventMap();
+  const { byState: eventsByState, activityByState, loading: eventsLoading, quiet: eventsQuiet } = useTodayEventMap();
+  const { items: layerItems, loading: layersLoading } = useLatestLayers();
 
   // --- Chat: fires ONLY on user action (or explicit ?q= deep link) ---
   const { messages, loading, streaming, sendMessage, clearMessages } = useChat({
@@ -180,13 +239,6 @@ export default function ExplorerLanding() {
   const latestVerdict = firesStatus === 'ready' ? fires.find(f => f.evaluated === true) ?? null : null;
   const courtUnavailable = claimsStatus === 'unavailable' && firesStatus === 'unavailable';
 
-  // S4 — 3-5 year cards spread across the archive span
-  const precedents = useMemo(() => {
-    if (historyEntries.length <= 5) return historyEntries;
-    const picks = new Set<number>();
-    for (let i = 0; i < 5; i++) picks.add(Math.round((i * (historyEntries.length - 1)) / 4));
-    return [...picks].map(i => historyEntries[i]);
-  }, [historyEntries]);
   const mmdd = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todayISO = `${now.getFullYear()}-${mmdd}`;
 
@@ -203,6 +255,49 @@ export default function ExplorerLanding() {
   const birdValues = birdHistory.map(d => d.cumulative_birds ?? 0);
   const docketCount = claimsStatus === 'ready' && claims.length > 0 ? claims.length : 4;
 
+  const archiveDateLabel = archiveDate
+    ? new Date(archiveDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+
+  // --- Rail pieces (rendered in the sticky rail on desktop, inline on mobile) ---
+  const mapPanel = (
+    <section>
+      <SectionLabel>Today on the map</SectionLabel>
+      <EventMap
+        byState={eventsByState}
+        activityByState={activityByState}
+        loading={eventsLoading}
+        quiet={eventsQuiet}
+        selectedState={state}
+        onSelectState={abbr => { setOverride(null); setUserState(abbr); }}
+      />
+    </section>
+  );
+
+  const layersFeed = <LayersFeed items={layerItems} loading={layersLoading} />;
+
+  const verdictPanel = latestVerdict ? (
+    <section>
+      <SectionLabel>Latest verdict</SectionLabel>
+      <div className="border border-gray-800 rounded-lg bg-gray-900/50 p-4 space-y-1.5">
+        <div className="flex items-center gap-2">
+          <span className={`font-mono text-xs font-bold ${latestVerdict.hit ? 'text-teal-400' : 'text-red-400'}`}>
+            {latestVerdict.hit ? 'HIT' : 'MISS'}
+          </span>
+          <span className="font-body text-sm text-white/70">
+            {claimNameById.get(latestVerdict.claim_id || '') || 'Registered claim'}
+          </span>
+        </div>
+        <Denominator n={latestVerdict.control_n} k={latestVerdict.control_hits} label="controls" className="text-[10px]" />
+        <div>
+          <Link to="/court" className="text-[10px] font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors">
+            Full record →
+          </Link>
+        </div>
+      </div>
+    </section>
+  ) : null;
+
   return (
     <div className="min-h-[100dvh] bg-gray-950 flex flex-col">
       <AppHeader>
@@ -210,10 +305,12 @@ export default function ExplorerLanding() {
       </AppHeader>
 
       <main className="flex-1">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-10 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-10">
+        <div className="max-w-2xl md:max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-10 md:grid md:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_420px] md:gap-10 md:items-start">
 
-          {/* S2 + S2.5 — TODAY, HERE + THE EVENT MAP (side by side on desktop) */}
-          <div className="md:grid md:grid-cols-[1fr_15rem] md:gap-8 md:items-center">
+          {/* ---------- LEFT COLUMN ---------- */}
+          <div className="space-y-10 min-w-0">
+
+          {/* S2 — TODAY, HERE */}
           <section>
             <div className="relative flex flex-wrap items-center gap-2 mb-4">
               <h1 className="font-body text-2xl sm:text-3xl text-white/90 leading-tight">
@@ -271,100 +368,116 @@ export default function ExplorerLanding() {
             </div>
           </section>
 
-          {/* S2.5 — TODAY ON THE MAP: real events only, never scores */}
-          <section className="mt-10 md:mt-0">
-            <SectionLabel>Today on the map</SectionLabel>
-            <EventMap
-              byState={eventsByState}
-              loading={eventsLoading}
-              quiet={eventsQuiet}
-              selectedState={state}
-              onSelectState={abbr => { setOverride(null); setUserState(abbr); }}
-            />
-          </section>
-          </div>
+          {/* S2.5 — map inline on mobile only (lives in the rail on desktop) */}
+          <div className="md:hidden">{mapPanel}</div>
 
           {/* S3 — WHAT'S BUILDING */}
           <section>
-            <SectionLabel>WHAT'S BUILDING</SectionLabel>
-            {watchFires.length > 0 ? (
-              <div className="space-y-3">
-                {watchFires.map(fire => (
-                  <WatchCard key={fire.id} fire={fire} claimName={claimNameById.get(fire.claim_id || '') || 'Registered claim'} />
-                ))}
-              </div>
-            ) : (
-              <p className="font-body text-sm text-white/40 leading-relaxed">
-                Nothing building. The layers are within seasonal range.
-              </p>
-            )}
+            <div className="border border-gray-800 rounded-lg bg-gray-900/50 p-4">
+              <SectionLabel>What's building</SectionLabel>
+              {watchFires.length > 0 ? (
+                <div className="space-y-3">
+                  {watchFires.map(fire => (
+                    <WatchCard key={fire.id} fire={fire} claimName={claimNameById.get(fire.claim_id || '') || 'Registered claim'} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <Waves size={14} className="text-white/20 mt-0.5 shrink-0" />
+                  <p className="font-body text-sm text-white/40 leading-relaxed">
+                    Nothing building. The layers are within seasonal range.
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
 
-          {/* S3.5 — THE COURT strip */}
+          {/* S3.5 — THE COURT */}
           <section id="court">
-            <SectionLabel>The Court</SectionLabel>
-            {courtUnavailable ? (
-              <p className="font-body text-sm text-white/40">
-                The court convenes — first claims being registered.{' '}
-                <Link to="/court" className="font-mono text-[11px] text-cyan-400/70 hover:text-cyan-400 transition-colors">→ /court</Link>
-              </p>
-            ) : (
-              <div className="bg-gray-900 rounded-lg border border-gray-800 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                <span className="font-body text-sm text-white/70">
-                  {docketCount} claims on the docket · {awaitingVerdict} awaiting verdict
-                </span>
-                {latestVerdict && (
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                    <span className={`font-mono font-bold ${latestVerdict.hit ? 'text-teal-400' : 'text-red-400'}`}>
-                      {latestVerdict.hit ? 'HIT' : 'MISS'}
-                    </span>
-                    <span className="font-body text-white/55">
-                      {claimNameById.get(latestVerdict.claim_id || '') || 'Registered claim'}
-                    </span>
-                    <Denominator n={latestVerdict.control_n} k={latestVerdict.control_hits} label="controls" className="text-[10px]" />
-                  </span>
-                )}
-                <Link to="/court" className="ml-auto text-[11px] font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors whitespace-nowrap">
-                  Full record →
-                </Link>
+            <div className="border border-gray-800 rounded-lg bg-gray-900/50 p-4">
+              <SectionLabel>The Court</SectionLabel>
+              <div className="flex items-start gap-2.5">
+                <Scale size={14} className="text-white/20 mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  {courtUnavailable ? (
+                    <p className="font-body text-sm text-white/40 leading-relaxed">
+                      The court convenes — first claims being registered.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="font-body text-sm text-white/70">
+                        {docketCount} claims on the docket · {awaitingVerdict} awaiting verdict
+                      </p>
+                      {latestVerdict && (
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                          <span className={`font-mono font-bold ${latestVerdict.hit ? 'text-teal-400' : 'text-red-400'}`}>
+                            {latestVerdict.hit ? 'HIT' : 'MISS'}
+                          </span>
+                          <span className="font-body text-white/55">
+                            {claimNameById.get(latestVerdict.claim_id || '') || 'Registered claim'}
+                          </span>
+                          <Denominator n={latestVerdict.control_n} k={latestVerdict.control_hits} label="controls" className="text-[10px]" />
+                        </p>
+                      )}
+                    </>
+                  )}
+                  <Link to="/court" className="inline-block text-[11px] font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors">
+                    Full record →
+                  </Link>
+                </div>
               </div>
-            )}
+            </div>
           </section>
+
+          {/* Layers feed inline on mobile only (lives in the rail on desktop) */}
+          <div className="md:hidden">{layersFeed}</div>
 
           {/* S4 — THE ARCHIVE (open any day + this-day preview cards) */}
           <section id="archive">
             <SectionLabel>The Archive</SectionLabel>
 
             <div className="flex items-center gap-2 mb-4">
-              <input
-                type="date"
-                min="1950-01-01"
-                max={todayISO}
-                value={archiveDate}
-                onChange={e => setArchiveDate(e.target.value)}
-                aria-label="Open any day in the archive"
-                className="[color-scheme:dark] bg-gray-900 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono text-white/70 outline-none focus:border-cyan-400/30 transition-colors"
-              />
-              <button
-                onClick={() => archiveDate && navigate(`/date/${archiveDate}?state=${state}`)}
-                disabled={!archiveDate}
-                className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] hover:border-cyan-400/30 transition-colors text-[11px] font-mono text-cyan-400/80 disabled:opacity-30"
-              >
-                Open →
-              </button>
+              <div className="relative">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 border border-white/10 hover:border-cyan-400/30 transition-colors pointer-events-none">
+                  <CalendarDays size={13} className="text-cyan-400/70" />
+                  {archiveDateLabel ? (
+                    <span className="font-display text-sm text-white/90">{archiveDateLabel}</span>
+                  ) : (
+                    <span className="font-body text-sm text-white/50">Open any day →</span>
+                  )}
+                </div>
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  min="1950-01-01"
+                  max={todayISO}
+                  value={archiveDate}
+                  onChange={e => setArchiveDate(e.target.value)}
+                  onClick={() => { try { dateInputRef.current?.showPicker(); } catch { /* native fallback */ } }}
+                  aria-label="Open any day in the archive"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+              {archiveDate && (
+                <button
+                  onClick={() => navigate(`/date/${archiveDate}?state=${state}`)}
+                  className="px-3 py-2 rounded-lg border border-white/10 bg-white/[0.03] hover:border-cyan-400/30 transition-colors text-[11px] font-mono text-cyan-400/80"
+                >
+                  Open →
+                </button>
+              )}
               <span className="text-[10px] font-mono text-white/25 hidden sm:inline">any day, 1950 → today</span>
             </div>
 
             <p className="text-[10px] font-mono text-white/30 mb-2">This day across the years —</p>
-            {precedents.length > 0 ? (
+            {historyYears.length > 0 ? (
               <div className="space-y-2.5">
-                {precedents.map(entry => (
+                {historyYears.map(({ year, entries }) => (
                   <PrecedentCard
-                    key={`${entry.year}-${entry.content_type}`}
-                    dateHeadline={`${MONTHS[now.getMonth()]} ${now.getDate()}, ${entry.year}`}
-                    whatHappened={entry.title || entry.content}
-                    stateTag={entry.state_abbr}
-                    to={`/date/${entry.year}-${mmdd}?state=${state}`}
+                    key={year}
+                    dateHeadline={`${MONTHS[now.getMonth()]} ${now.getDate()}, ${year}`}
+                    lines={yearLines(entries)}
+                    to={`/date/${year}-${mmdd}?state=${state}`}
                   />
                 ))}
               </div>
@@ -465,6 +578,14 @@ export default function ExplorerLanding() {
               <Link to="/ops" className="text-[9px] font-mono text-white/20 hover:text-white/40 transition-colors">ops</Link>
             </p>
           </footer>
+          </div>
+
+          {/* ---------- RIGHT RAIL (desktop only) ---------- */}
+          <aside className="hidden md:block sticky top-6 space-y-8 max-h-[calc(100dvh-3rem)] overflow-y-auto pr-1">
+            {mapPanel}
+            {layersFeed}
+            {verdictPanel}
+          </aside>
         </div>
       </main>
 

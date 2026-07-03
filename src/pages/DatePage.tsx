@@ -10,6 +10,7 @@ import { useChat } from '@/hooks/useChat';
 import { useDayArchive, useArchaeologyTimeline, shiftDate, PROBE_COLORS, PROBE_LABELS, type ArchiveEntry } from '@/hooks/useDayArchive';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { US_STATES, getStateName } from '@/hooks/useUserLocation';
+import { yearLines } from '@/lib/humanize';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -73,7 +74,7 @@ export default function DatePage() {
   // --- Data on load: direct REST reads only, zero LLM ---
   const { groups, total, loading: archiveLoading } = useDayArchive(dateStr, state);
   const { days: timelineDays } = useArchaeologyTimeline(dateStr, state);
-  const { entries: historyEntries } = useThisDayInHistory(dateStr);
+  const { years: historyYears } = useThisDayInHistory(dateStr, state);
 
   // --- Synthesis: LLM fires ONLY on button press ---
   const { messages, loading, streaming, sendMessage } = useChat({
@@ -161,7 +162,7 @@ export default function DatePage() {
     for (const d of timelineDays) d.cats.forEach(c => s.add(c));
     return [...s];
   }, [timelineDays]);
-  const precedents = historyEntries.slice(0, 5);
+  const precedents = historyYears;
   const mmdd = dateStr.slice(5);
 
   return (
@@ -361,13 +362,12 @@ export default function DatePage() {
             <section>
               <SectionLabel>This day in other years</SectionLabel>
               <div className="space-y-2.5">
-                {precedents.map(entry => (
+                {precedents.map(({ year, entries }) => (
                   <PrecedentCard
-                    key={`${entry.year}-${entry.content_type}`}
-                    dateHeadline={formatDateStr(`${entry.year}-${mmdd}`)}
-                    whatHappened={entry.title || entry.content}
-                    stateTag={entry.state_abbr}
-                    to={`/date/${entry.year}-${mmdd}${state ? `?state=${state}` : ''}`}
+                    key={year}
+                    dateHeadline={formatDateStr(`${year}-${mmdd}`)}
+                    lines={yearLines(entries)}
+                    to={`/date/${year}-${mmdd}${state ? `?state=${state}` : ''}`}
                   />
                 ))}
               </div>
