@@ -17,6 +17,7 @@ import UserMenu from '@/components/UserMenu';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Denominator from '@/components/Denominator';
 import PrecedentCard from '@/components/PrecedentCard';
+import CascadeRibbon from '@/components/CascadeRibbon';
 import CountdownClock from '@/components/salvage/CountdownClock';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -427,6 +428,22 @@ export default function ExplorerLanding() {
                 </div>
               </div>
             </div>
+          </section>
+
+          {/* S3.6 — THE CASCADE teaser (quiet, one accent) */}
+          <section>
+            <Link
+              to="/cascade/july-2026-heat"
+              className="group block rounded-lg border border-white/[0.06] bg-gray-900/40 hover:border-violet-400/25 transition-colors overflow-hidden"
+            >
+              <div className="opacity-80">
+                <CascadeRibbon mini />
+              </div>
+              <p className="px-4 py-2.5 text-[11px] font-body text-white/50 leading-snug border-t border-white/[0.05]">
+                The birds went silent 11 days before the July heat wave.{' '}
+                <span className="font-mono text-violet-300/70 group-hover:text-violet-300 transition-colors">See the cascade →</span>
+              </p>
+            </Link>
           </section>
 
           {/* Layers feed inline on mobile only (lives in the rail on desktop) */}
