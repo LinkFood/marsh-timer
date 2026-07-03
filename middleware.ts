@@ -25,7 +25,9 @@ function redirect(location: string) {
 const UNFURL_BOT_RE =
   /facebookexternalhit|facebot|twitterbot|slackbot|slack-imgproxy|linkedinbot|discordbot|whatsapp|telegrambot|pinterestbot|redditbot|embedly|iframely|skypeuripreview|vkshare/i;
 
-const SITE = 'https://duckcountdown.com';
+// Canonical host — the apex 307s to www, so absolute URLs must use www to
+// keep crawler image fetches redirect-free.
+const SITE = 'https://www.duckcountdown.com';
 
 interface RouteMeta {
   title: string;
