@@ -4,6 +4,8 @@ import { Activity, RefreshCw, ChevronDown, ChevronRight, ArrowLeft, Brain } from
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { useOpsData } from '@/hooks/useOpsData';
 import { useIntelligenceFeed, type IntelItem } from '@/hooks/useIntelligenceFeed';
+import { useV2Grades } from '@/hooks/useV2Grades';
+import Denominator from '@/components/Denominator';
 
 function timeAgo(iso: string | null | undefined): string {
   if (!iso) return 'never';
@@ -110,6 +112,7 @@ export default function OpsPage() {
   const { data, loading, error, refetch } = useOpsData();
   const [feedFilter, setFeedFilter] = useState<string | undefined>(undefined);
   const { items: intelItems, loading: feedLoading } = useIntelligenceFeed(feedFilter);
+  const v2 = useV2Grades();
 
   const totalCrons = Array.isArray(data.crons.crons) ? data.crons.crons.length : 0;
   const lastEmbed = data.brain.content_types.length > 0
@@ -473,8 +476,25 @@ export default function OpsPage() {
                     <div className="text-[9px] font-mono text-white/40">Total (30d)</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-mono font-bold text-emerald-400">{data.alerts.accuracy}%</div>
-                    <div className="text-[9px] font-mono text-white/40">Accuracy</div>
+                    {v2.loading ? (
+                      <div className="text-[10px] font-mono text-white/30 pt-2 animate-pulse">loading v2...</div>
+                    ) : v2.v2Total === 0 ? (
+                      <div className="text-[10px] font-mono text-white/40 leading-snug pt-1">
+                        First honest grades land after the next grader run.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-mono font-bold text-cyan-400">
+                          {Math.round((v2.discriminatingHits / v2.v2Total) * 100)}%
+                        </div>
+                        <div className="text-[9px] font-mono text-white/40 leading-snug">
+                          Discriminating accuracy (v2, matched controls)
+                        </div>
+                        <div className="text-[9px] mt-0.5">
+                          <Denominator n={v2.v2Total} k={v2.discriminatingHits} label="v2 grades" />
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-mono font-bold text-emerald-400">{data.alerts.confirmed}</div>
