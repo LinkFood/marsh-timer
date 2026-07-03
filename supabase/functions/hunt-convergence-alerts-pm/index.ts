@@ -39,6 +39,69 @@ const SCORE_CROSS_THRESHOLD = 75;   // Alert if score crosses above 75
 const THROTTLE_HOURS = 48;          // Don't re-alert same state within 48 hours
 const MAX_ALERTS_PER_USER_PER_DAY = 3;
 
+// --- Honest suppression (grader v2 / matched-control grades) ---
+// KEEP IN SYNC with hunt-convergence-alerts (this is the PM duplicate).
+// Suppression keys off DISCRIMINATING accuracy, not the raw accuracy_rate.
+// Raw accuracy was tautological: always-on daily feeds auto-confirmed alerts.
+// A v2-graded outcome counts as an honest hit only if it was graded
+// confirmed/partially_confirmed AND its lift > 1 — i.e., the same detection
+// fired LESS often on matched random control windows (the alert beat base
+// rate). See hunt-alert-grader for the lift convention.
+//
+// UNITS: percent, 0-100. SUPPRESS_BELOW_PCT = 40 means 40 PERCENT — the value
+// compared against it below is also 0-100. (Historic bug: hunt_alert_calibration
+// accuracy_rate is stored 0-100 but was once compared as a 0-1 fraction. Keep
+// everything at this comparison site in percentage units.)
+const SUPPRESS_BELOW_PCT = 40;
+const MIN_GRADED_FOR_SUPPRESSION = 5;
+const SUPPRESSION_WINDOW_DAYS = 90;
+// Grades written before grader v2 shipped are tautological — never use them
+// for suppression decisions.
+const GRADE_V2_EPOCH = '2026-07-02';
+
+interface HonestAccuracy {
+  pct: number;      // 0-100
+  n: number;        // v2-graded outcomes considered
+  hits: number;     // honest hits (graded hit AND lift > 1)
+}
+
+// Returns null when there is not enough v2-graded history — the sensible
+// default is NOT suppressed (missing/null data must never silence a state).
+async function getHonestAccuracy(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  stateAbbr: string,
+): Promise<HonestAccuracy | null> {
+  const windowCutoff = new Date(Date.now() - SUPPRESSION_WINDOW_DAYS * 86400000).toISOString();
+  const cutoff = windowCutoff > GRADE_V2_EPOCH ? windowCutoff : GRADE_V2_EPOCH;
+
+  const { data, error } = await supabase
+    .from('hunt_alert_outcomes')
+    .select('outcome_grade, outcome_signals_found')
+    .eq('alert_source', 'convergence-alert')
+    .eq('state_abbr', stateAbbr)
+    .eq('outcome_checked', true)
+    .gte('graded_at', cutoff)
+    .limit(200);
+
+  if (error || !data) return null;
+
+  // Only rows carrying a v2 court block count; older rows (or rows whose
+  // court block is missing for any reason) are ignored.
+  const v2 = data.filter((r) => {
+    const court = (r.outcome_signals_found as { court?: { grade_version?: number } } | null)?.court;
+    return court?.grade_version === 2;
+  });
+  if (v2.length < MIN_GRADED_FOR_SUPPRESSION) return null;
+
+  const hits = v2.filter((r) => {
+    const graded = r.outcome_grade === 'confirmed' || r.outcome_grade === 'partially_confirmed';
+    const lift = Number((r.outcome_signals_found as { court?: { lift?: number | null } }).court?.lift ?? 0);
+    return graded && lift > 1;
+  }).length;
+
+  return { pct: (hits / v2.length) * 100, n: v2.length, hits };
+}
+
 // ---------------------------------------------------------------------------
 // Main Handler — Afternoon check (PM run)
 // ---------------------------------------------------------------------------
@@ -176,28 +239,23 @@ serve(async (req) => {
     const throttleUntil = new Date(now.getTime() + THROTTLE_HOURS * 3600000).toISOString();
 
     for (const candidate of candidates) {
-      // Check historical accuracy for this state
-      const { data: calibration } = await supabase
-        .from('hunt_alert_calibration')
-        .select('accuracy_rate, precision_rate, total_alerts')
-        .eq('alert_source', 'convergence-alert')
-        .eq('state_abbr', candidate.state_abbr)
-        .eq('window_days', 90)
-        .maybeSingle();
+      // Check honest (discriminating, lift-verified) accuracy for this state.
+      // Both sides of the comparison are in PERCENT (0-100) — see units note
+      // on SUPPRESS_BELOW_PCT.
+      const honest = await getHonestAccuracy(supabase, candidate.state_abbr);
 
       let confidenceModifier = '';
-      if (calibration && calibration.total_alerts >= 5) {
-        // accuracy_rate is stored as a percentage (0-100), not a fraction
-        const accuracy = Number(calibration.accuracy_rate);
-        if (accuracy < 40) {
-          console.log(`[hunt-convergence-alerts-pm] Suppressing ${candidate.state_abbr} — 90d accuracy only ${accuracy.toFixed(0)}%`);
+      if (honest) {
+        if (honest.pct < SUPPRESS_BELOW_PCT) {
+          console.log(`[hunt-convergence-alerts-pm] Suppressing ${candidate.state_abbr} — 90d discriminating accuracy only ${honest.pct.toFixed(0)}% (${honest.hits}/${honest.n} beat matched controls)`);
           continue; // skip this alert
-        } else if (accuracy > 75) {
-          confidenceModifier = `\nHistorical accuracy for this pattern in ${candidate.state_abbr}: ${accuracy.toFixed(0)}% (${calibration.total_alerts} alerts).`;
+        } else if (honest.pct > 75) {
+          confidenceModifier = `\nDiscriminating accuracy for this pattern in ${candidate.state_abbr}: ${honest.pct.toFixed(0)}% (${honest.hits}/${honest.n} alerts beat matched-control base rate).`;
         } else {
-          confidenceModifier = `\nHistorical accuracy: ${accuracy.toFixed(0)}% over ${calibration.total_alerts} alerts.`;
+          confidenceModifier = `\nDiscriminating accuracy: ${honest.pct.toFixed(0)}% over ${honest.n} alerts (lift-verified against matched controls).`;
         }
       }
+      // honest === null → not enough v2-graded history → default: not suppressed
 
       const enrichedReasoning = (candidate.reasoning || '') + confidenceModifier;
 

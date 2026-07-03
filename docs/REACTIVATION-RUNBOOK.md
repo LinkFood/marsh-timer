@@ -126,3 +126,68 @@ curl -s "https://rvhyotvklfowklzjahdd.supabase.co/rest/v1/hunt_knowledge?select=
 
 # stale crons gone (via ops dashboard cron health, or cron.job query in SQL editor)
 ```
+
+---
+
+# Court v2 — honest matched-control grading (2026-07-02)
+
+Separate workstream from the ingestion fixes above. The shipped self-grading
+was tautological (outcome-signal-in-window, no base-rate comparison; always-on
+daily feeds auto-confirmed). Court v2 grades every claim against matched
+control windows and scores as lift. Full lift convention documented in
+`supabase/functions/hunt-alert-grader/index.ts`; trigger/outcome vocabulary in
+`supabase/functions/hunt-claim-court/index.ts`.
+
+## Already live (deployed 2026-07-02, no new-table dependencies)
+
+- `hunt-alert-grader` v2 — discriminating-domains primary grade
+  (always-on exclusion set expanded to water/nws/weather/air_quality/
+  space_weather/ocean/soil), legacy grade preserved as `grade_legacy`,
+  N=10 matched-control windows + lift written into
+  `hunt_alert_outcomes.outcome_signals_found.court` and the alert-grade
+  knowledge entry metadata. hunt_knowledge write-backs are non-fatal
+  (safe during index-rebuild write locks).
+- `hunt-convergence-alerts` + `hunt-convergence-alerts-pm` — suppression now
+  keys off discriminating accuracy (v2 grades with lift > 1), 40% bar kept,
+  percentage units throughout, missing data defaults to NOT suppressed.
+
+## Deferred (blocked on the hunt_knowledge write lock / migration push owner)
+
+**Step C1 — push the docket migration** (after Step 0 above passes, alongside
+or after Step 4):
+
+- `20260702090000_claim_court.sql` — creates `hunt_claims` + `hunt_claim_fires`,
+  schedules `hunt-claim-court-daily` (09:00 UTC, idempotent DO block), and
+  seeds the first four claims: `drought-heat-amplification`,
+  `bio-absence-leads-heat`, plus two KNOWN-PHYSICS BENCHMARKS
+  (`tide-surge-coastal-flood`, `overcast-collapse-flood`) that act as positive
+  controls — if the court cannot confirm known physics with lift > 1, the
+  court is broken.
+
+```bash
+cd /Users/jameschellis/marsh-timer
+npx supabase db push
+```
+
+**Step C2 — deploy the court function** (needs the tables from C1):
+
+```bash
+npx supabase functions deploy hunt-claim-court --no-verify-jwt
+```
+
+**Step C3 — verify** (next morning after the 09:00 UTC run, or fire it once
+manually):
+
+```bash
+KEY=...   # as in Step 0
+curl -s -X POST "https://rvhyotvklfowklzjahdd.supabase.co/functions/v1/hunt-claim-court" \
+  -H "Authorization: Bearer $KEY" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}'
+# expect {"active_claims":4,...}; then check fires:
+curl -s "https://rvhyotvklfowklzjahdd.supabase.co/rest/v1/hunt_claim_fires?select=*&limit=10" \
+  -H "Authorization: Bearer $KEY" -H "apikey: $KEY"
+```
+
+Note: the cron is scheduled by the migration BEFORE the function is deployed
+(C1 before C2). A cron firing into an undeployed function 404s harmlessly and
+`hunt-claim-court` tolerates an empty docket — but do C2 immediately after C1
+anyway.

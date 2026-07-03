@@ -582,6 +582,9 @@ verify_jwt = false
 [functions.hunt-bio-correlator]
 verify_jwt = false
 
+[functions.hunt-claim-court]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

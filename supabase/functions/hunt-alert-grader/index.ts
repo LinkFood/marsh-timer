@@ -105,11 +105,19 @@ const NATIONAL_DOMAINS = new Set([
 // We skip it in domain checks.
 const SKIP_DOMAINS = new Set(['convergence']);
 
-// Domains that confirm >80% of the time regardless of prediction quality.
-// They're still checked (a grade needs to reflect all claimed domains) but
-// we track them separately so the digest can report "discriminating" accuracy
-// (how well did we predict things that DON'T always happen).
-const ALWAYS_ON_DOMAINS = new Set(['water', 'nws']);
+// Domains that confirm on essentially ANY random window. Measured 2026-07-02
+// against matched random control windows: water, nws, weather, air_quality,
+// space_weather, ocean, and soil confirm 91-100% of the time regardless of
+// prediction quality — their feeds are always-on daily ingestion, so "signal
+// present in window" carries no information. They are still CHECKED and
+// reported, but they are EXCLUDED from the primary (discriminating) grade.
+// The old all-domains grade is preserved in metadata as grade_legacy.
+const ALWAYS_ON_DOMAINS = new Set([
+  'water', 'nws', 'weather',
+  'air_quality', 'air',
+  'space_weather', 'space',
+  'ocean', 'soil',
+]);
 
 // Domain-specific confirmation thresholds.
 // Weekly/monthly signals can only produce 1 entry in a 7-day window — force
@@ -255,6 +263,126 @@ function gradeFromDomainResults(
 }
 
 // ---------------------------------------------------------------------------
+// Grader v2 — matched-control evaluation
+//
+// The v1 grades were tautological: "did the outcome signal occur in the
+// window" with no base-rate comparison. Always-on daily feeds auto-confirmed.
+// v2 evaluates the SAME detection over N=10 matched control windows (same
+// state, same window length, random start dates within the live-data era,
+// non-overlapping with the alert's own window) and scores the alert as LIFT
+// over base rate, not raw hit rate.
+//
+// Lift convention (grade_version 2):
+//   control_rate = control_hits / control_n
+//   lift = alert_hit ? 1 / max(control_rate, 1/(2*control_n)) : 0
+// The 1/(2N) floor ("half a hit") keeps lift finite when controls are clean:
+// with N=10 the max lift is 20. lift = 0 means the alert itself missed;
+// lift <= 1 means the outcome fires at least as often on random matched
+// windows (tautology); lift > 1 means the alert beat base rate.
+// ---------------------------------------------------------------------------
+
+// Continuous multi-domain ingestion starts here — control windows are only
+// sampled from the live-data era so "no signal" means absence, not no-feed.
+const LIVE_ERA_START = '2026-03-15';
+const CONTROL_N = 10;
+
+interface CourtResult {
+  grade_version: 2;
+  grade_legacy: Grade;
+  alert_hit: boolean;
+  control_hits: number;
+  control_n: number;
+  control_rate: number | null;
+  lift: number | null;
+  control_window_days: number;
+  control_starts: string[];
+  control_detection: 'domain' | 'direct-only' | 'none';
+}
+
+function isGradeHit(grade: Grade): boolean {
+  return grade === 'confirmed' || grade === 'partially_confirmed';
+}
+
+function addDaysStr(dateStr: string, n: number): string {
+  return new Date(Date.parse(dateStr) + n * 86400000).toISOString().split('T')[0];
+}
+
+// Random non-overlapping control window start dates: same window length,
+// uniform over [LIVE_ERA_START, today - windowDays], rejecting any window
+// that overlaps the alert's own window. Deduped; may return < n if the era
+// is too short.
+function pickControlStarts(alertStart: string, alertEnd: string, windowDays: number, n: number): string[] {
+  const eraStartMs = Date.parse(LIVE_ERA_START);
+  const latestStartMs = Date.now() - windowDays * 86400000;
+  if (latestStartMs <= eraStartMs) return [];
+  const dayRange = Math.floor((latestStartMs - eraStartMs) / 86400000);
+  const alertStartMs = Date.parse(alertStart);
+  const alertEndMs = Date.parse(alertEnd);
+  const starts = new Set<string>();
+  let attempts = 0;
+  while (starts.size < n && attempts < n * 8) {
+    attempts++;
+    const startMs = eraStartMs + Math.floor(Math.random() * (dayRange + 1)) * 86400000;
+    const endMs = startMs + windowDays * 86400000;
+    if (startMs <= alertEndMs && endMs >= alertStartMs) continue; // overlaps alert window
+    starts.add(new Date(startMs).toISOString().split('T')[0]);
+  }
+  return [...starts];
+}
+
+function computeLift(alertHit: boolean, controlHits: number, controlN: number): number | null {
+  if (controlN === 0) return alertHit ? null : 0; // no controls available — lift undefined for hits
+  const controlRate = controlHits / controlN;
+  if (!alertHit) return 0;
+  return Math.round((1 / Math.max(controlRate, 1 / (2 * controlN))) * 100) / 100;
+}
+
+// Compound-risk control detection: identical machinery to the alert's own
+// primary grade — checkDomain over the same DISCRIMINATING domains, graded
+// with gradeFromDomainResults.
+async function controlHitCompound(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  discDomains: string[],
+  stateAbbr: string | null,
+  start: string,
+  end: string,
+  severity: string | undefined,
+): Promise<boolean> {
+  const results = await Promise.all(
+    discDomains.map(d => checkDomain(supabase, d, DOMAIN_CONTENT_TYPES[d], stateAbbr, start, end))
+  );
+  return isGradeHit(gradeFromDomainResults(results, severity).grade);
+}
+
+// Signal-count control detection: direct-only — one bounded query per control
+// window over the same content types; hit = >= 2 direct signals (the
+// partially_confirmed threshold). Controls omit the vector channel (that
+// would cost CONTROL_N Voyage embeddings per alert); recorded as
+// control_detection: 'direct-only'. This can slightly UNDERSTATE control
+// rate vs the alert's full detection — i.e., it is generous to the alert;
+// interpret lift near 1 accordingly.
+async function controlHitDirect(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  contentTypes: string[],
+  stateAbbr: string | null,
+  start: string,
+  end: string,
+): Promise<boolean> {
+  let q = supabase
+    .from('hunt_knowledge')
+    .select('id')
+    .in('content_type', contentTypes)
+    .not('effective_date', 'is', null)
+    .gte('effective_date', start)
+    .lte('effective_date', end)
+    .limit(3);
+  if (stateAbbr) q = q.eq('state_abbr', stateAbbr);
+  const { data, error } = await q;
+  if (error) console.error('[hunt-alert-grader] Control window query failed:', error.message);
+  return (data ?? []).length >= 2;
+}
+
+// ---------------------------------------------------------------------------
 // Fallback: convergence-alert and anomaly-alert grading
 // These don't have structured domain claims — use the old expected_signals approach
 // but with stricter thresholds and no blanket limit(20)
@@ -368,9 +496,13 @@ serve(async (req) => {
           console.log(`[hunt-alert-grader] Grading ${alert.id} (${alert.alert_source} / ${alert.state_abbr || 'national'} / ${alert.alert_date})`);
 
           let grade: Grade;
+          let gradeLegacy: Grade;
           let reasoning: string;
           let signalsFound: SignalFound[] = [];
           let domainResults: DomainResult[] = [];
+          // Inputs for the matched-control (court) evaluation below
+          let discDomainNames: string[] = [];
+          let controlContentTypes: string[] = [];
 
           // --- COMPOUND-RISK: Per-domain grading ---
           if (alert.alert_source === 'compound-risk') {
@@ -381,6 +513,7 @@ serve(async (req) => {
               // Can't parse domains — fall back to generic check
               console.log(`[hunt-alert-grader] No parseable domains in claim: "${claim.slice(0, 80)}"`);
               grade = 'missed';
+              gradeLegacy = 'missed';
               reasoning = `Could not parse testable domains from claim. Raw claim: "${claim.slice(0, 120)}"`;
             } else {
               // Check each domain independently
@@ -390,9 +523,22 @@ serve(async (req) => {
                 )
               );
 
-              const result = gradeFromDomainResults(domainResults, severity);
-              grade = result.grade;
-              reasoning = result.reasoning;
+              // LEGACY grade: all claimed domains, including always-on ones —
+              // this is the tautological v1 judgment, preserved for continuity.
+              gradeLegacy = gradeFromDomainResults(domainResults, severity).grade;
+
+              // PRIMARY grade: discriminating domains only. Always-on domains
+              // (water/nws/weather/air_quality/space_weather/ocean/soil)
+              // confirm 91-100% on random windows so they cannot support a
+              // grade — only domains that can actually miss count.
+              const discResults = domainResults.filter(d => !ALWAYS_ON_DOMAINS.has(d.domain));
+              discDomainNames = discResults.map(d => d.domain);
+              const excludedNames = domainResults.filter(d => ALWAYS_ON_DOMAINS.has(d.domain)).map(d => d.domain);
+              const primary = gradeFromDomainResults(discResults, severity);
+              grade = primary.grade;
+              reasoning = discResults.length === 0
+                ? `All ${domainResults.length} claimed domain(s) are always-on (${excludedNames.join(', ')}) — they confirm on any random window, so the claim has no discriminating content. ${primary.reasoning}`
+                : `${primary.reasoning}${excludedNames.length > 0 ? ` [Always-on domains excluded from grade: ${excludedNames.join(', ')}]` : ''}`;
 
               // Collect signals from all domains
               for (const dr of domainResults) {
@@ -449,7 +595,9 @@ serve(async (req) => {
 
             const result = gradeFromSignalCount(directMatches.length, highRelevanceVector.length, severity);
             grade = result.grade;
+            gradeLegacy = result.grade; // no domain split on this path — legacy = primary
             reasoning = result.reasoning;
+            controlContentTypes = queryContentTypes;
 
             const seenIds = new Set<string>();
             for (const m of directMatches) {
@@ -461,6 +609,49 @@ serve(async (req) => {
           }
 
           gradeCounts[grade]++;
+
+          // --- Grader v2: matched-control (court) evaluation ---
+          // Evaluate the SAME detection over CONTROL_N random windows of the
+          // same length in the same state, and score the alert as lift.
+          const windowDays = Math.max(1, Math.round((Date.parse(deadlineDate) - Date.parse(alert.alert_date)) / 86400000));
+          const alertHit = isGradeHit(grade);
+          let controlStarts: string[] = [];
+          let controlHits = 0;
+          let controlDetection: CourtResult['control_detection'] = 'none';
+
+          if (alert.alert_source === 'compound-risk' && discDomainNames.length > 0) {
+            controlDetection = 'domain';
+            controlStarts = pickControlStarts(alert.alert_date, deadlineDate, windowDays, CONTROL_N);
+            const hits = await Promise.all(controlStarts.map(start =>
+              controlHitCompound(supabase, discDomainNames, alert.state_abbr, start, addDaysStr(start, windowDays), severity)
+            ));
+            controlHits = hits.filter(Boolean).length;
+          } else if (alert.alert_source !== 'compound-risk' && controlContentTypes.length > 0) {
+            controlDetection = 'direct-only';
+            controlStarts = pickControlStarts(alert.alert_date, deadlineDate, windowDays, CONTROL_N);
+            const hits = await Promise.all(controlStarts.map(start =>
+              controlHitDirect(supabase, controlContentTypes, alert.state_abbr, start, addDaysStr(start, windowDays))
+            ));
+            controlHits = hits.filter(Boolean).length;
+          }
+          // else: no evaluable detection (unparseable compound claim) — no controls
+
+          const controlN = controlStarts.length;
+          const controlRate = controlN > 0 ? Math.round((controlHits / controlN) * 1000) / 1000 : null;
+          const lift = computeLift(alertHit, controlHits, controlN);
+
+          const court: CourtResult = {
+            grade_version: 2,
+            grade_legacy: gradeLegacy,
+            alert_hit: alertHit,
+            control_hits: controlHits,
+            control_n: controlN,
+            control_rate: controlRate,
+            lift,
+            control_window_days: windowDays,
+            control_starts: controlStarts,
+            control_detection: controlDetection,
+          };
 
           // Build grade text for embedding
           let originalClaim = claim;
@@ -480,69 +671,87 @@ serve(async (req) => {
           let gradeContent = `On ${alert.alert_date}, ${alert.alert_source} fired for ${alert.state_abbr || 'national'}: '${originalClaim.slice(0, 500)}'.\n`;
           gradeContent += `Outcome window: ${alert.alert_date} to ${deadlineDate}.\n`;
           gradeContent += `Grade: ${grade}. ${reasoning}${domainBreakdown}`;
+          gradeContent += `\nMatched controls: ${controlHits}/${controlN} random same-length windows also hit (control rate ${controlRate ?? 'n/a'}). Lift: ${lift ?? 'n/a'}${lift !== null && lift > 1 ? ' — beat base rate' : lift !== null && lift > 0 ? ' — did NOT beat base rate' : ''}. Legacy (all-domains) grade: ${gradeLegacy}.`;
 
           if (grade === 'false_alarm') {
             gradeContent += `\nHigh-severity claim did not materialize. The ${alert.alert_source} threshold may need adjustment for ${alert.state_abbr || 'this region'}.`;
+          } else if (grade === 'confirmed' && lift !== null && lift > 1) {
+            gradeContent += `\nPattern validated across discriminating domains AND beat matched-control base rate.`;
           } else if (grade === 'confirmed') {
-            gradeContent += `\nPattern validated across claimed domains. Conditions reinforced as reliable predictors.`;
+            gradeContent += `\nDiscriminating domains confirmed, but the same detection also fires on random windows — treat as base rate, not skill.`;
           }
 
-          const gradeTitle = `Alert Grade: ${grade} — ${alert.state_abbr || 'national'} ${alert.alert_date}`;
-          const gradeEmbedding = await generateEmbedding(gradeContent, 'document');
+          // Knowledge write-back is NON-FATAL: hunt_knowledge writes can fail
+          // (e.g., during IVFFlat index rebuilds, which lock writes). The
+          // grade itself lives in hunt_alert_outcomes — losing the embedded
+          // copy must not leave the alert ungraded and re-attempted forever.
+          let gradeKnowledgeId: string | null = null;
+          try {
+            const gradeTitle = `Alert Grade: ${grade} — ${alert.state_abbr || 'national'} ${alert.alert_date}`;
+            const gradeEmbedding = await generateEmbedding(gradeContent, 'document');
 
-          const { data: insertedGrade, error: insertErr } = await supabase
-            .from('hunt_knowledge')
-            .insert({
-              title: gradeTitle,
-              content: gradeContent,
-              content_type: 'alert-grade',
-              tags: [alert.alert_source, grade, alert.state_abbr || 'national'],
-              state_abbr: alert.state_abbr || null,
-              species: null,
-              effective_date: alert.alert_date,
-              embedding: gradeEmbedding,
-              metadata: {
-                alert_source: alert.alert_source,
-                outcome_grade: grade,
-                original_claim: originalClaim.slice(0, 500),
-                signals_found_count: signalsFound.length,
-                signals_found: signalsFound.slice(0, 15),
-                domain_results: domainResults.length > 0 ? domainResults.map(d => ({
-                  domain: d.domain,
-                  signals_found: d.signals_found,
-                  confirmed: d.confirmed,
-                  always_on: ALWAYS_ON_DOMAINS.has(d.domain),
-                })) : undefined,
-                // Split grades: "discriminating" domains (birds, climate, drought, etc.)
-                // vs "always-on" domains (water, nws) so the digest can report both.
-                discriminating: domainResults.length > 0 ? (() => {
-                  const disc = domainResults.filter(d => !ALWAYS_ON_DOMAINS.has(d.domain));
-                  return {
-                    confirmed: disc.filter(d => d.confirmed).length,
-                    total: disc.length,
-                  };
-                })() : undefined,
-                alert_knowledge_id: alert.alert_knowledge_id,
-              },
-            })
-            .select('id')
-            .single();
+            const { data: insertedGrade, error: insertErr } = await supabase
+              .from('hunt_knowledge')
+              .insert({
+                title: gradeTitle,
+                content: gradeContent,
+                content_type: 'alert-grade',
+                tags: [alert.alert_source, grade, alert.state_abbr || 'national'],
+                state_abbr: alert.state_abbr || null,
+                species: null,
+                effective_date: alert.alert_date,
+                embedding: gradeEmbedding,
+                metadata: {
+                  alert_source: alert.alert_source,
+                  outcome_grade: grade,
+                  original_claim: originalClaim.slice(0, 500),
+                  signals_found_count: signalsFound.length,
+                  signals_found: signalsFound.slice(0, 15),
+                  domain_results: domainResults.length > 0 ? domainResults.map(d => ({
+                    domain: d.domain,
+                    signals_found: d.signals_found,
+                    confirmed: d.confirmed,
+                    always_on: ALWAYS_ON_DOMAINS.has(d.domain),
+                  })) : undefined,
+                  // Split grades: "discriminating" domains (birds, climate, drought, etc.)
+                  // vs "always-on" domains so the digest can report both.
+                  discriminating: domainResults.length > 0 ? (() => {
+                    const disc = domainResults.filter(d => !ALWAYS_ON_DOMAINS.has(d.domain));
+                    return {
+                      confirmed: disc.filter(d => d.confirmed).length,
+                      total: disc.length,
+                    };
+                  })() : undefined,
+                  // Matched-control verdict (see lift convention at top of file)
+                  ...court,
+                  alert_knowledge_id: alert.alert_knowledge_id,
+                },
+              })
+              .select('id')
+              .single();
 
-          if (insertErr) {
-            console.error(`[hunt-alert-grader] Knowledge insert error for ${alert.id}:`, insertErr);
-            errors++;
-            continue;
+            if (insertErr) {
+              console.error(`[hunt-alert-grader] Knowledge insert error for ${alert.id} (non-fatal):`, insertErr);
+            } else {
+              gradeKnowledgeId = insertedGrade?.id || null;
+            }
+          } catch (knErr) {
+            console.error(`[hunt-alert-grader] Knowledge write-back failed for ${alert.id} (non-fatal):`, knErr);
           }
 
-          // Update hunt_alert_outcomes
+          // Update hunt_alert_outcomes. outcome_signals_found carries both the
+          // matched signals and the court block ({ signals, court }) — the
+          // table has no metadata column and schema changes are frozen; the
+          // grader is this column's only writer and downstream readers select
+          // outcome_grade/graded_at only.
           const { error: updateErr } = await supabase
             .from('hunt_alert_outcomes')
             .update({
               outcome_checked: true,
               outcome_grade: grade,
-              outcome_signals_found: signalsFound,
+              outcome_signals_found: { signals: signalsFound, court },
               outcome_reasoning: reasoning,
-              grade_knowledge_id: insertedGrade?.id || null,
+              grade_knowledge_id: gradeKnowledgeId,
               graded_at: new Date().toISOString(),
             })
             .eq('id', alert.id);
