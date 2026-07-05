@@ -15,6 +15,7 @@ const CascadeSept2020Page = lazy(() => import("./pages/CascadeSept2020Page"));
 const CascadeIndexPage = lazy(() => import("./pages/CascadeIndexPage"));
 const Auth = lazy(() => import("./pages/Auth"));
 const OpsPage = lazy(() => import("./pages/OpsPage"));
+const AtlasPage = lazy(() => import("./pages/AtlasPage"));
 
 const App = () => (
   <BrowserRouter>
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/cascade/july-2026-heat" element={<CascadePage />} />
           <Route path="/cascade/sept-2020-whiplash" element={<CascadeSept2020Page />} />
           <Route path="/ops" element={<OpsPage />} />
+          <Route path="/atlas" element={<AtlasPage />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
