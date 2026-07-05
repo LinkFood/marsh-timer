@@ -8,9 +8,13 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 
 const FUNCTION_NAME = "hunt-space-weather";
 
+// SWPC retired the legacy /products/solar-wind/*-7-day.json feeds when the
+// legacy RTSW plot sunset (~2026-06-30). The current real-time solar wind lives
+// under /json/rtsw/ as array-of-objects, 1-minute cadence, ~1 day deep — which
+// is all this function needs since it only aggregates the current UTC day.
 const ENDPOINTS = {
-  plasma: "https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json",
-  mag: "https://services.swpc.noaa.gov/products/solar-wind/mag-7-day.json",
+  plasma: "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json",
+  mag: "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json",
   kp: "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
   xray: "https://services.swpc.noaa.gov/json/goes/primary/xrays-7-day.json",
 };
@@ -165,33 +169,36 @@ serve(async (req) => {
       fetchJson(ENDPOINTS.xray),
     ]);
 
-    // Parse plasma: array of arrays, first row is headers — only today's data
+    // Parse plasma (rtsw_wind_1m): array of objects, 1-min cadence — only today's data.
+    // Multiple sources (SOLAR1/ACE/DSCOVR) can appear per minute; keep only the active row.
     const plasmaByDate = new Map<string, Array<{ speed: number; density: number }>>();
-    const plasmaArr = plasmaRaw as string[][];
-    for (let i = 1; i < plasmaArr.length; i++) {
-      const row = plasmaArr[i];
-      if (!row || row.length < 3) continue;
-      const dateKey = getDateKey(row[0]);
-      if (dateKey !== today) continue;
-      const density = parseFloat(row[1]);
-      const speed = parseFloat(row[2]);
-      if (isNaN(density) && isNaN(speed)) continue;
-      if (!plasmaByDate.has(dateKey)) plasmaByDate.set(dateKey, []);
-      plasmaByDate.get(dateKey)!.push({ speed: speed || 0, density: density || 0 });
+    const plasmaArr = plasmaRaw as Array<{ time_tag?: string; active?: boolean; proton_speed?: number | null; proton_density?: number | null }>;
+    if (Array.isArray(plasmaArr)) {
+      for (const row of plasmaArr) {
+        if (!row || row.active === false) continue;
+        const dateKey = getDateKey(row.time_tag);
+        if (dateKey !== today) continue;
+        const speed = typeof row.proton_speed === "number" ? row.proton_speed : NaN;
+        const density = typeof row.proton_density === "number" ? row.proton_density : NaN;
+        if (isNaN(density) && isNaN(speed)) continue;
+        if (!plasmaByDate.has(dateKey)) plasmaByDate.set(dateKey, []);
+        plasmaByDate.get(dateKey)!.push({ speed: speed || 0, density: density || 0 });
+      }
     }
 
-    // Parse mag: array of arrays, first row is headers — only today's data
+    // Parse mag (rtsw_mag_1m): array of objects, 1-min cadence — only today's data.
     const magByDate = new Map<string, Array<{ bz: number }>>();
-    const magArr = magRaw as string[][];
-    for (let i = 1; i < magArr.length; i++) {
-      const row = magArr[i];
-      if (!row || row.length < 4) continue;
-      const dateKey = getDateKey(row[0]);
-      if (dateKey !== today) continue;
-      const bz = parseFloat(row[3]); // bz_gsm is column index 3
-      if (isNaN(bz)) continue;
-      if (!magByDate.has(dateKey)) magByDate.set(dateKey, []);
-      magByDate.get(dateKey)!.push({ bz });
+    const magArr = magRaw as Array<{ time_tag?: string; active?: boolean; bz_gsm?: number | null }>;
+    if (Array.isArray(magArr)) {
+      for (const row of magArr) {
+        if (!row || row.active === false) continue;
+        const dateKey = getDateKey(row.time_tag);
+        if (dateKey !== today) continue;
+        const bz = typeof row.bz_gsm === "number" ? row.bz_gsm : NaN;
+        if (isNaN(bz)) continue;
+        if (!magByDate.has(dateKey)) magByDate.set(dateKey, []);
+        magByDate.get(dateKey)!.push({ bz });
+      }
     }
 
     // Parse Kp: array of objects with time_tag and Kp fields

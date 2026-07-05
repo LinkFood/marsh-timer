@@ -159,9 +159,21 @@ function DayLikeCard({ precedent, state }: { precedent: DayPrecedent; state: str
 
 function birdLine(latest: BirdDay, stateName: string): string {
   const n = latest.cumulative_birds;
-  const when = new Date(latest.date + 'T12:00:00').toDateString() === new Date().toDateString()
-    ? 'today' : 'last night';
+  const then = new Date(latest.date + 'T12:00:00');
+  const now = new Date();
+  now.setHours(12, 0, 0, 0);
+  const days = Math.round((now.getTime() - then.getTime()) / 86400_000);
   const dir = latest.avg_direction != null ? `, moving ${degreesToCompass(latest.avg_direction)}` : '';
+
+  // BirdCast radar is seasonal (dark ~mid-Jun→Aug), so the latest row is often
+  // weeks old off-season. Never label stale data "last night" — say when it was.
+  if (days >= 3) {
+    const on = then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    if (n == null || n === 0) return `Migration radar is quiet for the season — last count over ${stateName} was ${on}.`;
+    return `Migration radar is quiet for the season. Last count over ${stateName}: ${n.toLocaleString()} birds on ${on}${dir}.`;
+  }
+
+  const when = days <= 0 ? 'today' : days === 1 ? 'last night' : `${days} nights ago`;
   if (n == null || n === 0) return `Radar shows quiet skies over ${stateName} ${when}.`;
   return `Radar counted ${n.toLocaleString()} birds over ${stateName} ${when}${dir}.`;
 }
