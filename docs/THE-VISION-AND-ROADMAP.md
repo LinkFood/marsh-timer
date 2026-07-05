@@ -35,6 +35,32 @@ Duckcountdown is just the address. The idea is: *nature keeps a diary, and this 
 4. **Verification by cross-reference.** The archive checks itself — a reading that doesn't fit its neighbors is flagged (this also catches ingestion gaps).
 5. **Never sum into a score.** Convergence is what the eye sees on the map, never a formula.
 6. **No ads. No dopamine engineering.** The second it lies to hold attention, it becomes YouTube and loses the only thing that made it worth building.
+7. **Location-AWARE, never location-TRACKING (James, 2026-07-05).** It needs to know where you stand — that's the whole point — but geolocation must be: client-side only (browser gives coords to answer "what's here," never sent to a server to store), coarsened (county-level is enough; never keep precise GPS), unstored + unlogged + unsold, and no account/login/identity required. Location is a *question answered in the moment, then forgotten* — the exact opposite of Google knowing everywhere you've been. A user can also just TYPE a place instead. The honest window cannot be a surveillance window.
+
+---
+
+## THE TRIGGER MECHANISM — how it actually works (2026-07-05)
+
+**The reframe:** you don't "trigger" individual embedded rows. Data plays two roles:
+- **Historical embedded rows = the BASELINE.** The memory, the judge. They don't fire — they're what you compare *against.*
+- **Incoming (or any evaluated) reading = the defendant.** A trigger fires when a reading deviates from its place's own embedded history.
+
+So "how do we trigger the 8M already embedded?" has two honest answers: (1) they ARE the baseline every trigger measures against; (2) the **embeddings themselves become the RHYME trigger** — vector search over the embedded corpus finds "days like this." That's the embeddings finally *doing work* — and it's exactly what the index rebuild unlocks.
+
+**The three triggers, and how each uses the embedded data:**
+
+1. **ANOMALY** ("weird for here") — Build a baseline table: per place (station/county/state) × per day-of-year (rolling window), the mean/std/percentiles of each variable, rolled up FROM the embedded history. Materialized, refreshed as data grows. Trigger = z-score of a reading vs its local baseline; |z| ≥ threshold fires. *No vector search — cheap SQL rollups. Works now.*
+
+2. **RHYME** ("what does today rhyme with") — THE embeddings are the mechanism. A place-day's vector → nearest neighbors in the corpus = the days it rhymes with. *Structured version (moon/tide/temp match) works NOW (proven on VA data). Semantic "feels-like" version needs the index (tier-bump).* Denominator: how many days rhyme, what followed, vs a random control.
+
+3. **CONVERGENCE** ("multiple domains weird at once, same place") — Fires when ≥2 anomaly triggers co-occur at one place-time. **SHOWN on the map (dots piling up), NEVER summed into a score.** Denominator: how often ≥N domains co-occur here for nothing.
+
+**THE GATE (Rule #1 + trigger + "?") — James's design:** every row entering the gate:
+1. **Gets EMBEDDED** (Rule #1, non-negotiable, never skipped, nothing ever deleted).
+2. **Gets EVALUATED** against the baselines (anomaly? rhyme? convergence?).
+3. **If it fires notably, opens a QUESTION** — a prospective claim stapled at ingest ("conditions like X just fired here — does outcome Y follow within N days?"), registered in the **court** (the existing KEEP claim/watch/grade system), watched, and graded honestly with the denominator. The "?" is the hypothesis attached at ingest time. Most rows fire nothing (ordinary — correct). The notable few become watched questions. This is how new data "enters with a trigger embedded with a question mark."
+
+**RETROACTIVE BACKFILL (triggering the history):** a one-time pass computes anomaly + rhyme + convergence for every historical place-day against the rest of history. Result: any date's page shows its triggers, the precedent library is pre-built, and the trigger logic is validated against known events. Bounded one-time job, then incremental for new data.
 
 ---
 
