@@ -150,7 +150,17 @@ James's gut check after seeing the globe: *"It's cool but nothing my hunting bud
 
 ---
 
-## VERIFICATION CAVEAT + LESSON (2026-07-05 late night)
+## ✅ HUNTER SURFACE LIVE + VERIFIED (2026-07-05 ~05:00) — the map works
+
+**PIVOTED off the fragile MapLibre map to a reliable SVG STATE-GRID, and it's WORKING + Chrome-verified.** `/atlas` now renders the US as a calm grid of state boxes (reuses `EventMap`'s `TILE_GRID`), each shaded by its weather anomaly vs its own 76-yr history (calm diverging palette — cool blues colder-than-normal, warm terracottas warmer, neutral quiet). **Click a state → the Apple×Palantir Spot Dossier renders with REAL data:** NOW (state weather °, anomaly z + denominator "vs 75 yrs", shooting light, moon phase+illum, tide, solunar rating + major/minor feed windows, front chip) + PAST ("Days like today, here" — the rhyme with dates). Verified end-to-end clicking MD. **Zero WebGL = no blank-map fragility; renders every time.** This is James's requirement met: calm nested boxes, no dot-scatter, hunter data at a spot, now+past.
+
+Files: `src/pages/AtlasPage.tsx` (grid + dossier wiring), `src/lib/atlas/spotDossierAdapter.ts` (toSpotData), reuses `EventMap` TILE_GRID + `stateChoropleth` colors + `SpotDossier` card + `hunt-atlas-spot`/`hunt-atlas-solunar` fns. The MapLibre globe code is in git history if a geographic/fly-to view is wanted later as a secondary toggle — but the grid is the reliable hero.
+
+**NEXT:** county-level drill (box-in-box), wire the rhyme dates to fly/scroll, deepen the dossier (real wind/pressure needs point-weather ingest), and the precedent/semantic rhyme still wants James's index tier-bump. Known minor: shooting-light/solunar times are longitude-local + rough US-DST (±~30min, labeled honest); state weather is state-level (labeled).
+
+---
+
+## VERIFICATION CAVEAT + LESSON (2026-07-05 late night — SUPERSEDED by the grid pivot above; kept for the lesson)
 
 The nested-box STATE CHOROPLETH + globe are WIRED into AtlasPage (`buildChoroplethPaint` over `US_STATES_GEOJSON`, shaded by `hunt-atlas-anomaly`; hover readout; click-to-drill). But it could NOT be cleanly Chrome-verified tonight: after ~20+ live map reloads while testing, the browser showed a BLANK map (globe sphere, no tiles). **This was environmental, NOT a code bug** — the bare globe shell that rendered perfectly earlier *also* went blank on reload, and the non-WebGL landing page kept rendering fine. Cause: WebGL context exhaustion (MapLibre globe needs WebGL2) + likely OpenFreeMap rate-limiting from hammering their free tile service from one IP. LESSON: don't reload a WebGL map 20 times to verify — verify ONCE in a fresh tab, or use `npm run dev` locally for instant feedback instead of fighting Vercel deploy latency.
 
