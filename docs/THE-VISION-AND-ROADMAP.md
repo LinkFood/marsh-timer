@@ -136,6 +136,25 @@ Depth is **jagged, not a clean wall.** Build knowing each layer's floor:
 
 ---
 
+## BUILD STATE — 2026-07-05 night (resume exactly here)
+
+**LIVE + Chrome-verified at `/atlas`:** globe-first MapLibre map (OpenFreeMap positron, no key/Mapbox), zoom to ground, geolocate. **Real earthquake dots** on it (read-only `hunt-atlas-earthquakes`, mag≥4, 1990→now, sized/colored by magnitude — CA fault system renders correctly). **Hover** = telemetry readout (M/date/place/depth). **Click** = flyTo the actual coords. Page: `src/pages/AtlasPage.tsx`, route `/atlas` in App.tsx.
+
+**Deployed read-only functions (DB-safety verified, zero writes):** `hunt-atlas-earthquakes` (points), `hunt-atlas-anomaly` (per-state weather z-score vs that state's GHCN day-of-year history — state-level; note: ?date only uses month-day, defendant is always most-recent year). Frontend asset `src/data/atlas/stateCentroids.ts` (50 states [lng,lat]).
+
+**"Who" layer breathing:** `hunt-wikidata-ingest` deployed — bounded first run ingested **250 real geolocated+dated US events** (embedded, idempotent, insert-only). content_type wikidata-event/place/person, coords+date+QID in metadata. TODO next run: add `date <= today` filter (a future-dated 2178 item slipped in); classifier already tightened for future runs. Held bounded to respect IO budget.
+
+**NEXT (bolt onto the above):**
+1. Plot the Wikidata events + the state anomaly dots as clickable layers on `/atlas` (next to quakes) — read-only fetches, same pattern as the quake layer.
+2. Click a dot → the dossier card (reuse the JFK / tonight-like-this card design).
+3. The rhyme trigger ("last time it looked like this here") — structured now, semantic after the **index tier-bump** (James's one move; parked migration 20260414100018).
+4. Scale ingestion (Wikidata past-only + more, NRHP, gap-free bulk GHCN/storm-events) — ONE pipe at a time, post-index for the big backfills, ≤20/embed batch, watch the shared IO budget.
+5. Finish demolition Lanes E (cron unschedule) + F (delete dead convergence fn dirs) in a low-traffic window.
+
+**Guardrails proven this session:** map build agents were READ-ONLY (DB-safety verifier confirmed); ingestion is a separate bounded additive track (embedding law); everything committed+pushed as we go.
+
+---
+
 ## WHERE WE STOPPED / NEXT MOVE
 
 **Next: build Rung 1 — the map.** MapLibre GL, free tiles, US, zoomable to county. Then Rung 2 (weather-anomaly dots) wired to the trigger logic. The first four rungs need no tier bump and no new data — they run on the archive as-is.
