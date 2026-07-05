@@ -1,33 +1,87 @@
--- IVFFlat index rebuild for 7M-row brain
--- Current: hunt_knowledge_embedding_idx with lists=1414 (sized for ~2M rows)
--- Target: lists=2645 = sqrt(7M), probes=51 = sqrt(2645)
---
--- WARNING: This migration LOCKS WRITES on hunt_knowledge for 30-60 minutes
--- while the new index builds. All ingestion crons will fail during the rebuild.
--- Run during a low-traffic window.
---
--- Apply manually with `npx supabase db push` during a low-traffic window.
+-- IVFFlat rebuild for the 7.6M-row brain — SERVER-SIDE via one-shot pg_cron job.
+-- Three client-side attempts failed for environmental reasons (restart mid-build,
+-- disk exhaustion pre-autoscale, client TCP timeout while queueing for the lock).
+-- This migration is FAST: it installs a rebuild function + status RPC and schedules
+-- a self-unscheduling pg_cron job. The hour-long CREATE INDEX runs entirely inside
+-- the database — no client connection to break.
 
-SET statement_timeout = '0';
--- pgvector requires ~1637MB to k-means-train lists=2645 on 7.6M x 512-dim vectors
--- (build failed 2026-07-02 at the previous 512MB setting, SQLSTATE 54000)
-SET maintenance_work_mem = '2GB';
 SET search_path = public, extensions;
 
--- Drop the existing undersized index.
--- BOTH historical names — the April rebuild silently no-oped because it
--- dropped idx_hunt_knowledge_embedding while the live index was named
--- hunt_knowledge_embedding_idx. Dropping both makes this rebuild robust
--- regardless of which name is live.
-DROP INDEX IF EXISTS idx_hunt_knowledge_embedding;
-DROP INDEX IF EXISTS hunt_knowledge_embedding_idx;
+-- The rebuild worker. Advisory try-lock makes concurrent firings no-op instantly;
+-- the reloptions check makes post-success firings no-op; self-unschedules when done.
+CREATE OR REPLACE FUNCTION public.run_ivfflat_rebuild()
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $fn$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class
+    WHERE relname = 'hunt_knowledge_embedding_idx'
+      AND reloptions @> ARRAY['lists=2645']
+  ) THEN
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ivfflat-rebuild-oneshot') THEN
+      PERFORM cron.unschedule('ivfflat-rebuild-oneshot');
+    END IF;
+    RETURN 'already built';
+  END IF;
 
--- Build with proper sizing for 7M rows
-CREATE INDEX hunt_knowledge_embedding_idx
-  ON hunt_knowledge USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 2645);
+  IF NOT pg_try_advisory_xact_lock(hashtext('ivfflat-rebuild')) THEN
+    RETURN 'another rebuild run is in progress';
+  END IF;
 
--- Update v3 RPC probes to match new lists
+  PERFORM set_config('maintenance_work_mem', '2GB', false);
+  -- Fail fast on the drop locks; the 30s job cadence is the retry loop.
+  PERFORM set_config('lock_timeout', '55s', false);
+  DROP INDEX IF EXISTS idx_hunt_knowledge_embedding;
+  DROP INDEX IF EXISTS hunt_knowledge_embedding_idx;
+  PERFORM set_config('lock_timeout', '0', false);
+
+  EXECUTE 'CREATE INDEX hunt_knowledge_embedding_idx
+    ON hunt_knowledge USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 2645)';
+
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ivfflat-rebuild-oneshot') THEN
+    PERFORM cron.unschedule('ivfflat-rebuild-oneshot');
+  END IF;
+  RETURN 'built';
+END;
+$fn$;
+
+-- Poll this over PostgREST to watch the build land.
+CREATE OR REPLACE FUNCTION public.ivfflat_rebuild_status()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $fn$
+DECLARE
+  idx regclass := to_regclass('public.hunt_knowledge_embedding_idx');
+BEGIN
+  RETURN jsonb_build_object(
+    'index_exists', idx IS NOT NULL,
+    'reloptions', (SELECT reloptions FROM pg_class WHERE relname = 'hunt_knowledge_embedding_idx'),
+    'index_size', CASE WHEN idx IS NOT NULL THEN pg_size_pretty(pg_relation_size(idx)) END,
+    'job_scheduled', EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ivfflat-rebuild-oneshot'),
+    'recent_runs', (
+      SELECT jsonb_agg(jsonb_build_object(
+        'status', d.status, 'start', d.start_time, 'end', d.end_time, 'msg', left(d.return_message, 200)
+      ) ORDER BY d.start_time DESC)
+      FROM (
+        SELECT dd.status, dd.start_time, dd.end_time, dd.return_message
+        FROM cron.job_run_details dd
+        JOIN cron.job j ON j.jobid = dd.jobid
+        WHERE j.jobname = 'ivfflat-rebuild-oneshot'
+        ORDER BY dd.start_time DESC
+        LIMIT 5
+      ) d
+    )
+  );
+END;
+$fn$;
+
+-- probes must match the new lists sizing; safe to apply before the index lands.
 CREATE OR REPLACE FUNCTION search_hunt_knowledge_v3(
   query_embedding vector(512),
   match_threshold float DEFAULT 0.3,
@@ -92,31 +146,21 @@ BEGIN
 END;
 $$;
 
--- Reschedule pattern-link-worker after rebuild completes.
--- Idempotent unschedule-then-schedule — bare cron.schedule is NOT idempotent
--- and an error here would roll back the 30-60 min index build.
+-- Arm the one-shot job. Idempotent unschedule-then-schedule.
 DO $do$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'hunt-pattern-link-worker') THEN
-    PERFORM cron.unschedule('hunt-pattern-link-worker');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ivfflat-rebuild-oneshot') THEN
+    PERFORM cron.unschedule('ivfflat-rebuild-oneshot');
   END IF;
   PERFORM cron.schedule(
-    'hunt-pattern-link-worker',
-    '*/15 * * * *',
-    $cron$
-    SELECT net.http_post(
-      url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'project_url') || '/functions/v1/hunt-pattern-link-worker',
-      headers := jsonb_build_object(
-        'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key'),
-        'Content-Type', 'application/json'
-      ),
-      body := '{}'::jsonb
-    );
-    $cron$
+    'ivfflat-rebuild-oneshot',
+    '30 seconds',
+    $cron$ SET statement_timeout = 0; SET maintenance_work_mem = '2GB'; SELECT public.run_ivfflat_rebuild(); $cron$
   );
 END;
 $do$;
 
+-- pattern-link-worker rescheduling intentionally deferred to a post-verify
+-- migration — it must not resume until the index is confirmed live.
+
 RESET search_path;
-RESET maintenance_work_mem;
-RESET statement_timeout;
