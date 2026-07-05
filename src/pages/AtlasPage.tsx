@@ -16,7 +16,7 @@ export default function AtlasPage() {
     if (!containerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: "https://tiles.openfreemap.org/styles/liberty",
+      style: "https://tiles.openfreemap.org/styles/positron",
       center: [-98.5, 39.5], // continental US
       zoom: 3.6,
       minZoom: 2.5,
@@ -25,6 +25,7 @@ export default function AtlasPage() {
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "top-right");
+    map.on("load", () => map.resize());
     mapRef.current = map;
     return () => {
       map.remove();
@@ -34,7 +35,7 @@ export default function AtlasPage() {
 
   return (
     <div className="relative h-screen w-full bg-gray-950 text-gray-100">
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-4 top-4 z-10 select-none">
         <div className="rounded bg-gray-950/80 px-3 py-2 backdrop-blur-sm ring-1 ring-white/10">
           <div className="font-mono text-[11px] tracking-[0.24em] text-cyan-300/90">DUCK COUNTDOWN</div>
