@@ -36,7 +36,9 @@ export default function AtlasPage() {
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), "top-right");
     map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "top-right");
-    map.on("style.load", () => map.setProjection({ type: "globe" }));
+    // NOTE: globe projection temporarily disabled — it was blocking tile requests
+    // on this style/version. Re-introduce once the box layers are verified stable.
+    // map.on("style.load", () => map.setProjection({ type: "globe" }));
     mapRef.current = map;
 
     // Keep the canvas sized to its container. Without this, a map created before
