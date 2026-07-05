@@ -160,6 +160,9 @@ Files: `src/pages/AtlasPage.tsx` (grid + dossier wiring), `src/lib/atlas/spotDos
 
 ---
 
+
+**PROGRESS 2026-07-05 ~05:30 (all Chrome-verified):** rhyme dates in the dossier now CLICK THROUGH to /date/:date?state (box → dossier → click a rhyming day → the archive record of it — full loop verified on MD → Jul 8 1968). Fixed moon illumination (74% not 7350%), shooting-light DST (reads wall-clock 05:17). Known: first state-click after a fresh page load sometimes needs a second tap (minor hydration timing).
+
 ## VERIFICATION CAVEAT + LESSON (2026-07-05 late night — SUPERSEDED by the grid pivot above; kept for the lesson)
 
 The nested-box STATE CHOROPLETH + globe are WIRED into AtlasPage (`buildChoroplethPaint` over `US_STATES_GEOJSON`, shaded by `hunt-atlas-anomaly`; hover readout; click-to-drill). But it could NOT be cleanly Chrome-verified tonight: after ~20+ live map reloads while testing, the browser showed a BLANK map (globe sphere, no tiles). **This was environmental, NOT a code bug** — the bare globe shell that rendered perfectly earlier *also* went blank on reload, and the non-WebGL landing page kept rendering fine. Cause: WebGL context exhaustion (MapLibre globe needs WebGL2) + likely OpenFreeMap rate-limiting from hammering their free tile service from one IP. LESSON: don't reload a WebGL map 20 times to verify — verify ONCE in a fresh tab, or use `npm run dev` locally for instant feedback instead of fighting Vercel deploy latency.
