@@ -23,7 +23,7 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
 }
 
 function anomalyPhrase(z: number | undefined): string {
-  if (z === undefined) return "typical — no reading today";
+  if (z === undefined) return "no reading here today";
   if (z >= 2) return `much warmer than normal (z +${z.toFixed(1)})`;
   if (z >= 1) return `warmer than normal (z +${z.toFixed(1)})`;
   if (z <= -2) return `much colder than normal (z ${z.toFixed(1)})`;
