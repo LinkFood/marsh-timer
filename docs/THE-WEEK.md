@@ -110,3 +110,5 @@ npx tsx scripts/ncei-reingest.ts --supersede     # marks all v1 rows (no source_
 nohup npx tsx scripts/tide-roster-backfill.ts > /tmp/tide-roster.log 2>&1 &
 nohup npx tsx scripts/ndbc-pressure-backfill.ts > /tmp/ndbc-pressure.log 2>&1 &   # NOT simultaneously — sequence them
 ```
+
+**2026-07-05 ~16:15 — LANE COORDINATION (pipe-2 agent has the conn).** ComCat agent died mid-fetch (no process, log stopped at 300/508); its fetch stage RESUMED and COMPLETED read-only: **508/508 windows, 13,821 M4.5+ quakes staged** in scripts/.comcat-raw.jsonl — ingest stage pending at page 0, blocked only by the IVFFlat rebuild lock (hunt_knowledge 55P03 since ~15:00, watcher polling every 2 min). All 77 NCEI year files pre-downloading to scripts/.ncei-cache (tonight's run skips download). **When the lock clears, this agent runs the write lane in order: 1) comcat --ingest → --verify, 2) ncei-reingest overnight, 3) tide-roster, 4) ndbc-pressure, 5) ncei --supersede (after db push + spot-verify). One pipe at a time. If you are another agent reading this: the lane is claimed — check for a newer entry before starting any write.**
