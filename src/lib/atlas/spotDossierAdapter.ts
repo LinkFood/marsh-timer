@@ -131,7 +131,9 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
 
     rhyme: rh.length
       ? {
-          matches: rh.map((r) => ({ date: r.date, summary: r.note ?? null })),
+          // Carry the spot's coords onto each rhyme day so the card treats the
+          // row as actionable (the parent wires the click to /date/:date).
+          matches: rh.map((r) => ({ date: r.date, summary: r.note ?? null, lat, lng })),
           n_candidates: rh.length,
         }
       : null,
