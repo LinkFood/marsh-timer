@@ -1,0 +1,99 @@
+# Duck Countdown — The Vision & Roadmap
+### READ THIS FIRST. Every session opens here and continues. Do not start over.
+
+> **North star (James, 2026-07-05):** *"If done right, this is a gift to our youth and anyone that wants to know where they stand."*
+>
+> *"It gives the imagination to the children and the awareness to the adults."*
+
+---
+
+## THE VISION (approved 2026-07-05)
+
+Duck Countdown is a **living map of the ground you're standing on** — not gas stations and IHOPs, but the real stuff: every layer of nature and human history that ever converged on that exact spot, stacked on one clock, back as far as anyone recorded. You open it in the morning and it tells you what your place is doing today and **what that rhymes with** — *"the last time the moon, the tide, and the weather lined up like this here was October 1961"* — and the answer is new tomorrow because the day is, and **every answer is built from recorded fact only, never a guess**, because weather can be forecast but history can only be kept. It's **full of triggers**, each firing against its own place's history, **filtered down to the few things worth seeing**, with **the odds always shown** so it never lies to you the way a horoscope does. It's for the hunter who wondered who else ever stood in that blind, and it's for the kids, so they can open it anywhere on Earth and feel they're the newest knot in a rope that runs back further than anyone remembers. **The honest window YouTube was never allowed to be.**
+
+Duckcountdown is just the address. The idea is: *nature keeps a diary, and this is the first place reading all of it on the same page — honestly.*
+
+---
+
+## THE CORE ARCHITECTURE
+
+**The one-sentence engine:** compare a place's present to its own history, and surface what's true, weird, or rhyming — with the odds attached. History defines the future — **as odds, not oracle.**
+
+**The record vs. the trigger (the key insight, 2026-07-05):** The archive was step one — *record the unguessable*, because history can't be forecast, only kept. That's the embedding law, done. But a record with no trigger just sits there (a library with no librarian). The **trigger layer is the missing voice** — the mechanism that fires and surfaces. That's what we build now.
+
+**A trigger =** a rule: *"when [condition, measured against THIS place's own history] is true, surface [this]."* Three flavors, all local, all fire on **history only** (never predictions):
+- **Anomaly** — today is weird *for here* (deviation from this place's baseline).
+- **Rhyme** — today matches a rare past *here* ("what does today rhyme with").
+- **Convergence** — several domains weird *at once, same place*. **SHOWN visually on the map, NEVER summed into a score.** (Summing weighted domains into one number = the dead convergence predictor. Do not rebuild it.)
+
+**Triggers are local + nested:** the baseline is local — weird-for-Virginia ≠ weird-for-Arizona. Triggers nest by geography (nation → state → county → station), each firing against its own history. **Full of triggers, filtered in presentation:** arm thousands, surface only the few that clear the bar. (Over-firing everything is what killed the old engine.)
+
+**THE HONESTY LAWS (non-negotiable — these are the whole moat):**
+1. **The denominator, always shown.** "This rhymed 4 times" is a lie; "4 of 6 dry springs, vs 1-in-10 random" is the truth. Every pattern carries its base rate + a control.
+2. **No guessing.** Fire on recorded fact, never a forecast. History is the fuel because it can't be faked.
+3. **Provenance on everything.** Every number traces to its source + what kind (measured / computed / reported / derived).
+4. **Verification by cross-reference.** The archive checks itself — a reading that doesn't fit its neighbors is flagged (this also catches ingestion gaps).
+5. **Never sum into a score.** Convergence is what the eye sees on the map, never a formula.
+6. **No ads. No dopamine engineering.** The second it lies to hold attention, it becomes YouTube and loses the only thing that made it worth building.
+
+---
+
+## THE DATA — a staircase, honest about every floor
+
+Depth is **jagged, not a clean wall.** Build knowing each layer's floor:
+- **Moon / tide / sun / season** — computable to ANY date, past or future. Infinite depth, zero gaps, free. It's math. *(The moon is a perfect BASELINE, never a trigger-as-oracle — proven dead as a predictor 2026-07-05.)*
+- **Instrumental weather (GHCN)** — solid ~1880s, a few stations older, sparse before.
+- **Rivers, earthquakes** — ~1900+.
+- **Nature-timing (birds/blooms/fish)** — mostly recent; a few deep spines (CBC 1900, cloned lilac 1956, crop progress 1979).
+- **Before instruments** — proxy only (tree rings, ice cores), century-coarse.
+
+**Gap-free is a VERIFICATION problem, not a pulling problem.** Data mostly exists; gaps come from piecemeal ingestion silently failing (storm-events post-2016, GHCN truncation — happened here). The fix, per domain:
+1. Pull the **authoritative bulk archive** (NCEI GHCN bulk tarball, Storm Events yearly CSVs, CO-OPS tides, USGS water) — NOT day-by-day API. Bulk = complete by construction.
+2. Ingest all, embed per the law.
+3. **Coverage audit:** rows-per-year, per-place. A dip below neighbors = a hole. Refill. Re-audit on a schedule (silent failures recur).
+4. Live crons keep the recent edge; audit the seam where live meets historical.
+
+**Highest-leverage nature-data to add** (from the 2026-07-04 gettability scout, see `project_dcd_nature_data_gettability_map`): eBird EBD+SED, MODIS phenology, USDA Crop Progress, USFWS harvest microdata, USA-NPN cloned lilac. Honest ceiling: multi-state fish-bite + deep fall-color don't exist free; stay proxy/shallow there.
+
+---
+
+## THE BUILD RUNGS (sequence — first 4 need NOTHING from anyone)
+
+1. **The map.** MapLibre GL + free tiles (no token, no Mapbox baggage — that was deleted). US, zoomable state → county → station. The home surface. *Unblocked.*
+2. **Anomaly dots.** For every point with deep history (weather stations, river/tide gauges, quakes), compute today vs that spot's own history → deviation = the dot. Start with weather (deepest baseline, point-resolved → granular). NO weights, dots stay separate. *Unblocked.*
+3. **Click a dot → the dossier card.** What's here now + this day in this spot's history. (Prototyped 2026-07-05: the JFK card + the "tonight-like-this" VA card — both artifacts.) *Unblocked.*
+4. **Granular drill-down.** State → county → station, Post Office style. Deep layers shatter into sub-dots; shallow layers stay coarse and SAY so. *Unblocked.*
+5. **Precedent / rhyme layer** — "the last times this spot looked like this, here's what followed," with the denominator. *NEEDS the vector index (see Blocked).* Structured version already PROVEN (moon+tide+temp match, VA, 2026-07-05).
+6. **Events / human layer** — Capone hunted here, presidents proposed there, burial grounds. The "who." *NEEDS a significance dataset ingested (find-more).*
+
+**Daily retention trigger:** *"What does today rhyme with?"* — self-refreshing forever (the Earth makes a new day daily → new answer daily), personal (your coordinates), places you in time. The astrology hook, but TRUE. Buildable now (structured), better with the index.
+
+---
+
+## STATUS — what's done, proven, blocked (as of 2026-07-05)
+
+**DONE / PROVEN:**
+- The archive: ~8M embedded rows, one clock, state-resolved. The hard foundation — behind us.
+- **Dead convergence predictor DEMOLISHED tonight** (Lanes A/B/C/D shipped + verified; commits through `788a843`): scan trigger cut (~770 dead runs/day gone, A1 verified silent), 13 edge functions gutted of convergence, /ops pruned, 16 orphan frontend files deleted, build passes. Fixed live falsehoods (stale bird line, dead SWPC feed). Fixed /ops crash.
+- Precedent engine proven on real data (VA moon+tide+temp → "last time was Oct 22 1961").
+- The honest discipline validated: killed James's own 5-year moon theory on his own data (24,000 quakes = 1.01x; 49 major events = 1.02x; cosmic-risk-oracle was a confirmation engine, not a checker).
+
+**BLOCKED (James's hands):**
+- **IVFFlat index rebuild** = the tier-bump keystone. Parked migration `20260414100018_rebuild_ivfflat_for_7m.sql.PENDING_CONCURRENT` (rename to a `20260704+` prefix or `db push --include-all`; bump Supabase compute tier for the 2GB build, push in a low-traffic window ~30-60min, downgrade). Unblocks days-like-today + Rung 5. Vector search currently times out on the undersized index.
+
+**PENDING DEMOLITION (finish anytime, low-traffic window):**
+- **Lane E** — the cron unschedule migration (ready SQL in `docs/OVERHAUL-BLUEPRINT.md`; unschedules dead convergence crons, KEEPS correlation-engine).
+- **Lane F** — delete the 8 dead convergence function dirs (only AFTER A1 verified — it is — and E applied).
+- See `docs/OVERHAUL-BLUEPRINT.md` for the full adversarially-verified cut list, and `docs/OVERHAUL-PLAN.md` for keep/rip/rebuild.
+
+---
+
+## WHERE WE STOPPED / NEXT MOVE
+
+**Next: build Rung 1 — the map.** MapLibre GL, free tiles, US, zoomable to county. Then Rung 2 (weather-anomaly dots) wired to the trigger logic. The first four rungs need no tier bump and no new data — they run on the archive as-is.
+
+Then, when James does the tier bump: apply the index rebuild → Rung 5 (precedent layer) lights up.
+Then: ingest the events layer → Rung 6 (the human "who").
+Ongoing: bulk-backfill + coverage-audit each domain toward gap-free (staircase-honest).
+
+**The proofs to show anyone (or your future self):** the JFK date-dossier artifact, and the "tonight-like-this" VA daily card. Both real data, both honest, both built 2026-07-05. That's the product, small. The map is the same thing, alive.

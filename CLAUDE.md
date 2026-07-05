@@ -1,6 +1,8 @@
 # Duck Countdown — CLAUDE.md
 
 > **This is the single source of truth.** If it's not in this document, it doesn't exist yet. Every session starts here.
+>
+> ⭐ **READ `docs/THE-VISION-AND-ROADMAP.md` FIRST.** As of 2026-07-05 the project pivoted: the old convergence *predictor* is dead (proven, demolished) and the product is now a **living, honest map of the ground you stand on** — fact-only, denominator-always, no guessing. That doc holds the vision, architecture, build rungs, and where we stopped. The sections below are legacy reference (the archive, infra, gotchas still apply); the *product direction* lives in the vision doc.
 
 ---
 
