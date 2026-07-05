@@ -98,13 +98,17 @@ async function buildPortrait(
   const parts: string[] = [];
 
   if (stateAbbr) {
-    const [weatherRes, convRes, birdRes] = await Promise.all([
+    // Recent notable-event window (real events, not the retired convergence score)
+    const windowStart = new Date(Date.now() - 3 * 86400_000).toISOString().slice(0, 10);
+    const [weatherRes, eventsRes, birdRes] = await Promise.all([
       supabase.from('hunt_weather_forecast')
         .select('temp_high_f, temp_low_f, wind_speed_max_mph, wind_direction_dominant, pressure_msl, precipitation_mm, weather_code, cloud_cover_pct')
         .eq('state_abbr', stateAbbr).eq('date', today).limit(1),
-      supabase.from('hunt_convergence_scores')
-        .select('score, signals')
-        .eq('state_abbr', stateAbbr).order('date', { ascending: false }).limit(1),
+      supabase.from('hunt_knowledge')
+        .select('content_type')
+        .eq('state_abbr', stateAbbr)
+        .in('content_type', ['anomaly-alert', 'nws-alert', 'storm-event', 'migration-spike'])
+        .gte('effective_date', windowStart),
       supabase.from('hunt_birdcast')
         .select('cumulative_birds, avg_direction')
         .eq('state_abbr', stateAbbr).order('date', { ascending: false }).limit(1),
@@ -124,12 +128,13 @@ async function buildPortrait(
       if (bits.length > 0) parts.push(bits.join(', '));
     }
 
-    const conv = convRes.data?.[0] as { score: number | null; signals: { domain_scores?: Record<string, number> } | null } | undefined;
-    if (conv?.score != null) {
-      const active = Object.entries(conv.signals?.domain_scores ?? {})
-        .filter(([, v]) => typeof v === 'number' && v > 0)
-        .map(([k]) => k.replace(/_/g, ' '));
-      parts.push(`environmental convergence score ${conv.score}${active.length > 0 ? ` with ${active.join(', ')} active` : ''}`);
+    const events = Array.isArray(eventsRes.data) ? eventsRes.data as { content_type: string }[] : [];
+    if (events.length > 0) {
+      const counts = new Map<string, number>();
+      for (const e of events) counts.set(e.content_type, (counts.get(e.content_type) ?? 0) + 1);
+      const label: Record<string, string> = { 'anomaly-alert': 'anomalies', 'nws-alert': 'weather alerts', 'storm-event': 'storm events', 'migration-spike': 'migration spikes' };
+      const summary = [...counts.entries()].map(([t, n]) => `${n} ${label[t] ?? t}`).join(', ');
+      parts.push(`recent activity: ${summary} in the last 3 days`);
     }
 
     const bird = birdRes.data?.[0] as { cumulative_birds: number | null; avg_direction: number | null } | undefined;
@@ -142,13 +147,19 @@ async function buildPortrait(
     return `${dateLine}, ${stateAbbr}: ${parts.join('. ')}.`;
   }
 
-  // National: today's top convergence states
-  const { data } = await supabase.from('hunt_convergence_scores')
-    .select('state_abbr, score')
-    .eq('date', today).order('score', { ascending: false }).limit(5);
+  // National: states with the most recent notable activity (real events, not the retired score)
+  const natWindowStart = new Date(Date.now() - 3 * 86400_000).toISOString().slice(0, 10);
+  const { data } = await supabase.from('hunt_knowledge')
+    .select('state_abbr')
+    .in('content_type', ['anomaly-alert', 'nws-alert', 'storm-event', 'migration-spike'])
+    .gte('effective_date', natWindowStart)
+    .not('state_abbr', 'is', null)
+    .limit(1000);
   if (!Array.isArray(data) || data.length === 0) return null;
-  const tops = data.map((r: { state_abbr: string; score: number }) => `${r.state_abbr} ${r.score}`).join(', ');
-  return `${dateLine}, United States: environmental convergence concentrated in ${tops}.`;
+  const byState = new Map<string, number>();
+  for (const r of data as { state_abbr: string }[]) byState.set(r.state_abbr, (byState.get(r.state_abbr) ?? 0) + 1);
+  const tops = [...byState.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([s, n]) => `${s} (${n})`).join(', ');
+  return `${dateLine}, United States: most recent notable activity in ${tops}.`;
 }
 
 serve(async (req) => {
