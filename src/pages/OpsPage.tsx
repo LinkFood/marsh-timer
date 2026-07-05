@@ -310,33 +310,6 @@ export default function OpsPage() {
                 <span className="text-white/40">Skipped</span>
               </div>
             </div>
-            {data.scans.length > 0 && (
-              <>
-                <h4 className="text-[10px] font-mono text-white/40 uppercase mb-2">Recent Scans</h4>
-                <div className="max-h-[250px] overflow-y-auto -mx-4 -mb-4">
-                  {data.scans.map((scan: any, i: number) => {
-                    const summary = typeof scan.summary === 'object' && scan.summary ? scan.summary : {};
-                    return (
-                      <div key={i} className="flex items-center gap-2 px-4 py-1.5 border-b border-gray-800/30">
-                        <span className={`w-1.5 h-1.5 rounded-full ${summary.alert ? 'bg-red-400' : 'bg-emerald-400'}`} />
-                        <span className="text-[11px] font-mono text-white/70">{summary.state || '?'}</span>
-                        <span className="text-[10px] font-mono text-white/30">{summary.domains || 0} domains</span>
-                        {summary.alert && (
-                          <span className="text-[8px] font-mono text-red-400 bg-red-400/10 px-1 rounded">ALERT</span>
-                        )}
-                        {scan.duration_ms != null && (
-                          <span className="text-[9px] font-mono text-white/20 hidden sm:block">{(scan.duration_ms / 1000).toFixed(1)}s</span>
-                        )}
-                        <span className="text-[9px] font-mono text-white/20 ml-auto">{timeAgo(scan.created_at)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            {data.scans.length === 0 && (
-              <div className="flex items-center justify-center h-16 text-white/20 text-[10px]">No recent scans</div>
-            )}
           </Card>
         </div>
 
