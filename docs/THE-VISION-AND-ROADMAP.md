@@ -41,6 +41,18 @@ Duckcountdown is just the address. The idea is: *nature keeps a diary, and this 
 
 ---
 
+## THE SCALE-FREE RHYME LAW (James, 2026-07-05 night)
+
+**Ducks are the brand, not the boundary.** Birds matter (one of the deepest data spines we own) but the product is NOT duck-scoped. The one sentence — *"last time these patterns matched, here's what happened"* — must work at EVERY altitude and for ANY domain:
+- **Zip/station:** "last time your creek ran this high under a moon this full: March 1987 — the road flooded by Sunday."
+- **County/state:** the Bloom, the dossier.
+- **Continental:** "last July this warm across the flyway: 2012 — earliest teal push on record followed."
+- **Global:** "Earth hasn't held this much moisture on a July 5 in the instrument era."
+
+Same grammar on every floor: pattern → last match → what followed → the odds. Each altitude compares ONLY to its own history (a zip rhymes against that zip, the nation against the nation — never cross-altitude). This is the trigger-nesting principle extended to the rhyme itself: the rhyme rides the elevator. Hunter/farmer/fisherman/kid are all the same user at different floors of the same building.
+
+---
+
 ## THE TRIGGER MECHANISM — how it actually works (2026-07-05)
 
 **The reframe:** you don't "trigger" individual embedded rows. Data plays two roles:
