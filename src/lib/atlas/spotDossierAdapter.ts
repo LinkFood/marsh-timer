@@ -25,6 +25,27 @@ interface SolunarResp {
   } | null;
 }
 
+interface OnFileResp {
+  type?: string;
+  line?: string;
+  scope?: string;
+}
+
+interface ThatDayResp {
+  high?: number | null;
+  anomaly_f?: number | null;
+  tide_residual_ft?: number | null;
+  tide_station?: string | null;
+  moon_phase?: string | null;
+}
+
+interface LineupMatchResp {
+  date?: string;
+  that_day?: ThatDayResp | null;
+  outcome?: string | null;
+  on_file?: OnFileResp[] | null;
+}
+
 interface SpotResp {
   spot?: { lat?: number; lng?: number; state?: string } | null;
   target_date?: string | null;
@@ -34,8 +55,17 @@ interface SpotResp {
     last_date?: string | null;
     n_matches?: number;
     n_years?: number;
+    matches?: LineupMatchResp[] | null;
     today?: { tide_station?: string | null } | null;
     honest_note?: string | null;
+  } | null;
+  control?: {
+    outcome?: string | null;
+    matched_n?: number;
+    matched_outcome_n?: number;
+    all_n?: number;
+    all_outcome_n?: number;
+    note?: string | null;
   } | null;
   now?: {
     weather?: { avg_high_f?: number; avg_low_f?: number; precip_in?: number; label?: string } | null;
@@ -44,8 +74,31 @@ interface SpotResp {
   } | null;
   past?: {
     anomaly?: { metric?: string; value?: number; baseline_mean?: number; z?: number | null; n_years?: number } | null;
-    rhyme?: { date: string; high?: number; delta_f?: number; note?: string }[] | null;
+    rhyme?: {
+      date: string;
+      high?: number;
+      delta_f?: number;
+      note?: string;
+      outcome?: string | null;
+      also_recorded?: string[] | null;
+      on_file?: OnFileResp[] | null;
+    }[] | null;
   } | null;
+}
+
+/** Server on_file items + leftover also_recorded types → provenance chips (max 3). */
+function toChips(onFile: OnFileResp[] | null | undefined, alsoRecorded?: string[] | null): { type: string; line: string; scope: string }[] {
+  const chips = (onFile ?? [])
+    .filter((f) => f.line)
+    .map((f) => ({ type: f.type ?? "record", line: f.line as string, scope: f.scope ?? "here" }));
+  const seenTypes = new Set(chips.map((c) => c.type));
+  for (const t of alsoRecorded ?? []) {
+    if (chips.length >= 3) break;
+    if (seenTypes.has(t)) continue;
+    chips.push({ type: t, line: t, scope: "here" });
+    seenTypes.add(t);
+  }
+  return chips.slice(0, 3);
 }
 
 /** ISO-8601 UTC -> local "HH:MM" using a longitude-based solar offset. */
@@ -99,14 +152,28 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
     // valid lead, so zero matches still flows through.
     lineup:
       lu && Array.isArray(lu.components) && lu.components.length > 0 && (lu.n_years ?? 0) > 0
-        ? {
-            last_date: lu.last_date ?? null,
-            n_matches: lu.n_matches ?? 0,
-            n_years: lu.n_years ?? null,
-            components: lu.components,
-            tide_station: lu.today?.tide_station ?? null,
-            note: lu.honest_note ?? null,
-          }
+        ? (() => {
+            // matches[] is sorted newest-first — matches[0] IS the named last_date.
+            const last = (lu.matches ?? []).find((m) => m.date === lu.last_date) ?? null;
+            return {
+              last_date: lu.last_date ?? null,
+              n_matches: lu.n_matches ?? 0,
+              n_years: lu.n_years ?? null,
+              components: lu.components!,
+              tide_station: lu.today?.tide_station ?? null,
+              note: lu.honest_note ?? null,
+              that_day: last?.that_day
+                ? {
+                    high: last.that_day.high ?? null,
+                    anomaly_f: last.that_day.anomaly_f ?? null,
+                    tide_residual_ft: last.that_day.tide_residual_ft ?? null,
+                    moon_phase: last.that_day.moon_phase ?? null,
+                  }
+                : null,
+              followed: last?.outcome ?? null,
+              on_file: last ? toChips(last.on_file) : [],
+            };
+          })()
         : null,
 
     weather: w
@@ -159,8 +226,28 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
       ? {
           // Carry the spot's coords onto each rhyme day so the card treats the
           // row as actionable (the parent wires the click to /date/:date).
-          matches: rh.map((r) => ({ date: r.date, summary: r.note ?? null, lat, lng })),
+          matches: rh.map((r) => ({
+            date: r.date,
+            summary: r.note ?? null,
+            outcome: r.outcome ? `then ${r.outcome}` : null,
+            on_file: toChips(r.on_file, r.also_recorded),
+            lat,
+            lng,
+          })),
           n_candidates: rh.length,
+        }
+      : null,
+
+    // THE CONTROL LINE — the all-years base rate the lineup claim is judged
+    // against. Rendered once under the rhyme list; without it the feature is
+    // a horoscope, so it rides in the same payload.
+    control: spot.control
+      ? {
+          outcome: spot.control.outcome ?? null,
+          matched_n: spot.control.matched_n ?? 0,
+          matched_outcome_n: spot.control.matched_outcome_n ?? 0,
+          all_n: spot.control.all_n ?? 0,
+          all_outcome_n: spot.control.all_outcome_n ?? 0,
         }
       : null,
   };

@@ -22,12 +22,15 @@
 //   - nws-alert   : recent official alert count for the state.
 //
 // Query strategy (READ-ONLY, no precompute — a table would be a WRITE):
-//   One paginated pull of a ±3-day day-of-year window across all years for the
-//   state (~530 rows) powers weather NOW, the front trend, the anomaly z-score,
-//   the rhyme pool, AND the lineup's temp component at once. Side queries: the
-//   same-window tide-gauge pull (the lineup's tide component), tide snapshot,
-//   nws-alert count. Moon age is pure math (zero queries). All state-scoped,
-//   all sub-second.
+//   One paginated pull of a −3..+10 day-of-year window across all years for the
+//   state (~1,078 rows) powers weather NOW, the front trend, the anomaly z-score,
+//   the rhyme pool, the lineup's temp component, AND the "what followed" trail
+//   (next-7-recorded-days aftermath) for every named date at once. The core pool
+//   (rhyme/lineup/anomaly) stays ±3; offsets +4..+10 exist only so each pool day
+//   carries its own recorded aftermath. Side queries: the same-window tide-gauge
+//   pull (the lineup's tide component + per-date residuals), ONE batched on-file
+//   provenance query over all named dates, tide snapshot, nws-alert count. Moon
+//   age is pure math (zero queries). All state-scoped, all sub-second.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.84.0';
 import { handleCors, getCorsHeaders } from '../_shared/cors.ts';
@@ -35,10 +38,15 @@ import { STATE_CENTROIDS } from '../_shared/states.ts';
 
 const FIRST_YEAR = 1950;        // GHCN-daily archive floor in hunt_knowledge
 const MIN_YEARS = 5;            // below this the baseline is too thin — z stays null
-const WINDOW_DAYS = 3;          // ±N day-of-year window for the front + rhyme pool
+const WINDOW_DAYS = 3;          // ±N day-of-year CORE window (front + rhyme + lineup pool)
+const AFTERMATH_DAYS = 7;       // "what followed" — recorded days traced after any named date
+const WINDOW_AFTER = WINDOW_DAYS + AFTERMATH_DAYS; // pull runs −3..+10 so every pool day carries its trail
 const RHYME_LIMIT = 5;          // how many "days like today" to surface
 const PAGE_SIZE = 1000;         // PostgREST hard cap per request
-const MAX_PAGES = 4;            // safety bound (±3d × ~76yr ≈ 530 rows for one state)
+const MAX_PAGES = 6;            // (−3..+10)d ≈ 14 rows/yr × ~77 yrs ≈ 1,078 ghcn rows; tide gauges can run more
+const COOL_OUTCOME_F = 5;       // recorded avg-high drop that counts as "cooled" for the control line
+const ON_FILE_PER_DATE = 2;     // max provenance items attached to a named date
+const ON_FILE_TYPES = ['storm-event', 'nws-alert', 'historical-newspaper', 'onthisday-event'];
 const FRONT_DROP_F = 8;         // avg-high fall (°F) over the window that reads as a front
 const TIDE_RECENT_FROM = '2025-11-25'; // recent tide snapshot floor (archive edge ~2025-12)
 const ALERT_LOOKBACK_DAYS = 30; // "recent" window for nws-alert count
@@ -59,7 +67,7 @@ const NO_PRECIP_RE = /No measurable precipitation/i;
 interface DayObs {
   date: string;   // YYYY-MM-DD
   year: number;
-  offset: number; // day-of-year offset from the target (−3..+3)
+  offset: number; // day-of-year offset from the target (−3..+10; core pool is |offset| ≤ 3)
   high: number | null;
   low: number | null;
   precip: number | null;     // inches; 0 when "no measurable"
@@ -71,6 +79,38 @@ function round(n: number | null, dp = 2): number | null {
   const f = 10 ** dp;
   return Math.round(n * f) / f;
 }
+
+function isoPlusDays(iso: string, days: number): string {
+  const dt = new Date(iso + 'T00:00:00Z');
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(^|[\s\-'./(])([a-z])/g, (_m, p, c) => p + c.toUpperCase());
+}
+
+/** One-line provenance phrase from an on-file row's title (per content type). */
+function onFileLine(ct: string, title: string): string {
+  const t = String(title ?? '').trim();
+  if (ct === 'storm-event') {
+    // "Heavy Snow RALEIGH WV 2000-02-04" → "Heavy Snow — Raleigh"
+    const m = t.match(/^(.*?)\s+([A-Z][A-Z .&'()/-]*?)\s+[A-Z]{2}\s+\d{4}-\d{2}-\d{2}$/);
+    if (m) return `${m[1]} — ${titleCase(m[2])}`;
+    return t.replace(/\s+\d{4}-\d{2}-\d{2}$/, '');
+  }
+  if (ct === 'nws-alert') return t.replace(/\s+-\s+[A-Z]{2}$/, '');
+  if (ct === 'historical-newspaper') {
+    // "newspaper Image 2 of The daily Alaska empire (Juneau, Alaska), April 11, 1939 …"
+    const m = t.match(/of\s+(.+?)\s*\(/i);
+    if (m) return titleCase(m[1]);
+  }
+  return t.length > 90 ? `${t.slice(0, 87)}…` : t;
+}
+
+const ON_FILE_PRIORITY: Record<string, number> = {
+  'storm-event': 0, 'nws-alert': 1, 'historical-newspaper': 2, 'onthisday-event': 3,
+};
 
 function resolveTargetDate(dateParam: string | null): { iso: string; mm: string; dd: string } | null {
   let y: number, mo: number, d: number;
@@ -260,12 +300,14 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // ---- Build the ±WINDOW_DAYS day-of-year date list across all years -------
+    // ---- Build the −WINDOW_DAYS..+WINDOW_AFTER day-of-year date list ---------
+    // Core pool is ±WINDOW_DAYS; the +4..+10 tail exists so every pool day has
+    // its own recorded "what followed" trail in the SAME pull.
     const thisYear = new Date().getUTCFullYear();
     const dateSet = new Set<string>();
     const offsetOf = new Map<string, number>(); // iso -> day-of-year offset
     for (let y = FIRST_YEAR; y <= thisYear; y++) {
-      for (let off = -WINDOW_DAYS; off <= WINDOW_DAYS; off++) {
+      for (let off = -WINDOW_DAYS; off <= WINDOW_AFTER; off++) {
         const dt = new Date(Date.UTC(y, +target.mm - 1, +target.dd));
         dt.setUTCDate(dt.getUTCDate() + off);
         const iso = dt.toISOString().slice(0, 10);
@@ -305,6 +347,123 @@ Deno.serve(async (req: Request) => {
       }
       if (data.length < PAGE_SIZE) break;
     }
+
+    // ---- Shared lookups over the pull ----------------------------------------
+    const byDate = new Map<string, DayObs>();
+    for (const o of obs) byDate.set(o.date, o);
+    /** Core pool membership — rhyme/lineup/denominators stay ±WINDOW_DAYS. */
+    const inCore = (o: DayObs): boolean => Math.abs(o.offset) <= WINDOW_DAYS;
+
+    /**
+     * AFTERMATH — what the recorded days after `dateIso` actually did.
+     * Pure lookups over the same pull; recorded fact only. Returns null when the
+     * day itself has no recorded high.
+     */
+    const aftermathFor = (dateIso: string): Record<string, unknown> | null => {
+      const day0 = byDate.get(dateIso);
+      if (!day0 || day0.high === null) return null;
+      const h0 = day0.high as number;
+      const series: Array<{ date: string; high: number; delta_f: number }> = [];
+      for (let k = 1; k <= AFTERMATH_DAYS; k++) {
+        const d = isoPlusDays(dateIso, k);
+        const o = byDate.get(d);
+        if (o && o.high !== null) {
+          series.push({ date: d, high: round(o.high) as number, delta_f: round(o.high - h0, 1) as number });
+        }
+      }
+      const n = series.length;
+      let low = Infinity, lowDays = 0, hi = -Infinity, hiDays = 0;
+      for (const pt of series) {
+        const daysOut = Math.round((Date.parse(pt.date + 'T00:00:00Z') - Date.parse(dateIso + 'T00:00:00Z')) / 86400000);
+        if (pt.high < low) { low = pt.high; lowDays = daysOut; }
+        if (pt.high > hi) { hi = pt.high; hiDays = daysOut; }
+      }
+      const maxDrop = n > 0 ? h0 - low : null;   // positive = cooled off that day
+      const maxRise = n > 0 ? hi - h0 : null;    // positive = warmed past that day
+      let outcome: string | null = null;
+      if (n === 0) outcome = null;
+      else if (n < 3) outcome = `only ${n} recorded day${n === 1 ? '' : 's'} follow on file`;
+      else if ((maxDrop as number) >= COOL_OUTCOME_F && (maxDrop as number) >= (maxRise as number))
+        outcome = `cooled ${Math.round(maxDrop as number)}°F within ${lowDays} day${lowDays === 1 ? '' : 's'}`;
+      else if ((maxRise as number) >= COOL_OUTCOME_F)
+        outcome = `warmed ${Math.round(maxRise as number)}°F within ${hiDays} day${hiDays === 1 ? '' : 's'}`;
+      else
+        outcome = `held steady through the week (within ${round(Math.max(maxDrop as number, maxRise as number), 1)}°F)`;
+      return {
+        n_days: n,
+        series,
+        max_drop_f: round(maxDrop, 1),
+        days_to_low: n > 0 ? lowDays : null,
+        max_rise_f: round(maxRise, 1),
+        days_to_high: n > 0 ? hiDays : null,
+        outcome,
+      };
+    };
+    const cooled = (am: Record<string, unknown> | null): boolean =>
+      !!am && (am.n_days as number) >= 3 && ((am.max_drop_f as number | null) ?? -Infinity) >= COOL_OUTCOME_F;
+    const aftermathComparable = (am: Record<string, unknown> | null): boolean =>
+      !!am && (am.n_days as number) >= 3;
+
+    // Per-offset day-of-year mean high — the anomaly baseline for any pool day.
+    const offSum = new Map<number, { s: number; n: number }>();
+    for (const o of obs) {
+      if (o.high === null) continue;
+      const cur = offSum.get(o.offset) ?? { s: 0, n: 0 };
+      cur.s += o.high; cur.n += 1;
+      offSum.set(o.offset, cur);
+    }
+    const offMean = (off: number): number | null => {
+      const c = offSum.get(off);
+      return c && c.n >= MIN_YEARS ? c.s / c.n : null;
+    };
+
+    // ---- Tide pool: same window, this state's own gauge history (if any) -----
+    // One paginated pull; if the state has multiple gauges, keep the one with
+    // the deepest record in the window. Feeds the lineup's tide component AND
+    // per-named-date tide residuals.
+    const byStation = new Map<string, Map<string, number>>(); // sid -> date -> residual
+    const stationName = new Map<string, string>();
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE_SIZE;
+      const { data, error } = await supabase
+        .from('hunt_knowledge')
+        .select('effective_date, metadata')
+        .eq('content_type', 'tide-gauge')
+        .eq('state_abbr', stateParam)
+        .in('effective_date', dateList)
+        .range(from, from + PAGE_SIZE - 1);
+      if (error || !data || data.length === 0) break;
+      for (const r of data) {
+        const md = (r.metadata ?? {}) as Record<string, unknown>;
+        const sid = String(md.station_id ?? md.station_name ?? '');
+        const res = Number(md.residual_ft);
+        if (!sid || !Number.isFinite(res)) continue;
+        const iso = String(r.effective_date).slice(0, 10);
+        if (!byStation.has(sid)) byStation.set(sid, new Map());
+        byStation.get(sid)!.set(iso, res);
+        if (md.station_name) stationName.set(sid, String(md.station_name));
+      }
+      if (data.length < PAGE_SIZE) break;
+    }
+    let bestSid: string | null = null;
+    for (const sid of byStation.keys()) {
+      if (!bestSid || byStation.get(sid)!.size > byStation.get(bestSid)!.size) bestSid = sid;
+    }
+    const tidePool = bestSid ? byStation.get(bestSid)! : new Map<string, number>();
+    const tideStation = bestSid ? (stationName.get(bestSid) ?? bestSid) : null;
+
+    /** THAT DAY — a named date's own numbers, from the same pull + pure math. */
+    const thatDayFor = (o: DayObs): Record<string, unknown> => {
+      const m = offMean(o.offset);
+      const res = tidePool.get(o.date);
+      return {
+        high: round(o.high),
+        anomaly_f: m !== null && o.high !== null ? round(o.high - m, 1) : null,
+        tide_residual_ft: res !== undefined ? round(res) : null,
+        tide_station: res !== undefined ? tideStation : null,
+        moon_phase: moonPhaseName(moonAgeOnDate(o.date)),
+      };
+    };
 
     // ---- ANOMALY (exact day-of-year, most-recent year = defendant) -----------
     const exact = obs.filter((o) => o.offset === 0 && o.high !== null)
@@ -385,48 +544,33 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- RHYME ("days like today here") --------------------------------------
-    // Pool = the whole ±window across years, excluding the defendant day itself.
-    // Ranked by |avg-high − today's value|; the closest are what today rhymes with.
+    // Pool = the CORE ±window across years, excluding the defendant day itself.
+    // Ranked by |avg-high − today's value|; the closest are what today rhymes
+    // with. Each picked day carries its own story: that day's numbers, what the
+    // recorded days after it did, and (filled below) what else is on file.
     let rhyme: Array<Record<string, unknown>> = [];
     if (defendant && defendant.high !== null) {
       const todayHigh = defendant.high as number;
       const pool = obs.filter((o) =>
-        o.high !== null && !(o.year === defendant!.year && o.offset === 0));
+        inCore(o) && o.high !== null && !(o.year === defendant!.year && o.offset === 0));
       pool.sort((a, b) =>
         Math.abs((a.high as number) - todayHigh) - Math.abs((b.high as number) - todayHigh));
       const picked = pool.slice(0, RHYME_LIMIT);
 
-      // One side query for notable content_types on the picked rhyme dates.
-      const rhymeDates = picked.map((o) => o.date);
-      const notableByDate = new Map<string, string[]>();
-      if (rhymeDates.length > 0) {
-        const { data: notable } = await supabase
-          .from('hunt_knowledge')
-          .select('effective_date, content_type')
-          .eq('state_abbr', stateParam)
-          .in('effective_date', rhymeDates)
-          .neq('content_type', 'ghcn-daily')
-          .limit(500);
-        for (const r of notable ?? []) {
-          const iso = String(r.effective_date).slice(0, 10);
-          if (!notableByDate.has(iso)) notableByDate.set(iso, []);
-          const arr = notableByDate.get(iso)!;
-          const ct = r.content_type as string;
-          if (!arr.includes(ct)) arr.push(ct);
-        }
-      }
-
       rhyme = picked.map((o) => {
         const delta = round((o.high as number) - todayHigh);
-        const types = (notableByDate.get(o.date) ?? []).slice(0, 6);
+        const am = aftermathFor(o.date);
         return {
           date: o.date,
           high: round(o.high),
           delta_f: delta,
           precip_in: round(o.precip),
-          also_recorded: types,
-          note: `Avg high ${round(o.high)}°F (${(delta ?? 0) >= 0 ? '+' : ''}${delta}°F vs today)`
-            + (types.length ? ` — also on file: ${types.join(', ')}.` : '.'),
+          that_day: thatDayFor(o),
+          aftermath: am,
+          outcome: am ? (am.outcome as string | null) : null,
+          also_recorded: [] as string[],           // filled by the on-file batch below
+          on_file: [] as Array<Record<string, unknown>>, // filled by the on-file batch below
+          note: `Avg high ${round(o.high)}°F (${(delta ?? 0) >= 0 ? '+' : ''}${delta}°F vs today)`,
         };
       });
     }
@@ -439,54 +583,8 @@ Deno.serve(async (req: Request) => {
     // honest output — "never in N recorded years" is emitted as fact, not
     // padded into a fake match.
     let lineup: Record<string, unknown> | null = null;
+    let lineupMatchesAll: Array<Record<string, unknown>> = []; // unsliced — feeds the control line
     if (defendant) {
-      // Per-offset day-of-year mean high — the anomaly baseline for pool days.
-      const offSum = new Map<number, { s: number; n: number }>();
-      for (const o of obs) {
-        if (o.high === null) continue;
-        const cur = offSum.get(o.offset) ?? { s: 0, n: 0 };
-        cur.s += o.high; cur.n += 1;
-        offSum.set(o.offset, cur);
-      }
-      const offMean = (off: number): number | null => {
-        const c = offSum.get(off);
-        return c && c.n >= MIN_YEARS ? c.s / c.n : null;
-      };
-
-      // Tide pool: same DOY window, this state's own gauge history (if any).
-      // One paginated pull; if the state has multiple gauges, keep the one
-      // with the deepest record in the window.
-      const byStation = new Map<string, Map<string, number>>(); // sid -> date -> residual
-      const stationName = new Map<string, string>();
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const from = page * PAGE_SIZE;
-        const { data, error } = await supabase
-          .from('hunt_knowledge')
-          .select('effective_date, metadata')
-          .eq('content_type', 'tide-gauge')
-          .eq('state_abbr', stateParam)
-          .in('effective_date', dateList)
-          .range(from, from + PAGE_SIZE - 1);
-        if (error || !data || data.length === 0) break;
-        for (const r of data) {
-          const md = (r.metadata ?? {}) as Record<string, unknown>;
-          const sid = String(md.station_id ?? md.station_name ?? '');
-          const res = Number(md.residual_ft);
-          if (!sid || !Number.isFinite(res)) continue;
-          const iso = String(r.effective_date).slice(0, 10);
-          if (!byStation.has(sid)) byStation.set(sid, new Map());
-          byStation.get(sid)!.set(iso, res);
-          if (md.station_name) stationName.set(sid, String(md.station_name));
-        }
-        if (data.length < PAGE_SIZE) break;
-      }
-      let bestSid: string | null = null;
-      for (const sid of byStation.keys()) {
-        if (!bestSid || byStation.get(sid)!.size > byStation.get(bestSid)!.size) bestSid = sid;
-      }
-      const tidePool = bestSid ? byStation.get(bestSid)! : new Map<string, number>();
-      const tideStation = bestSid ? (stationName.get(bestSid) ?? bestSid) : null;
-
       // "Today", honestly: moon is computed for the target date itself (pure
       // math, no gap); temp is the defendant day (most recent recorded); tide
       // is the gauge's most recent recorded day in the window.
@@ -515,6 +613,7 @@ Deno.serve(async (req: Request) => {
         let searched = 0;
         const matches: Array<Record<string, unknown>> = [];
         for (const o of obs) {
+          if (!inCore(o)) continue; // the +4..+10 tail is aftermath fuel, not pool
           if (o.year === defendant.year || o.high === null) continue;
           const m = offMean(o.offset);
           if (m === null) continue;
@@ -527,14 +626,21 @@ Deno.serve(async (req: Request) => {
           if (useTide && !tideMatch(res as number)) continue;
           const age = moonAgeOnDate(o.date);
           if (moonAgeDist(age, moonToday) > MOON_TOL_DAYS) continue;
+          const am = aftermathFor(o.date);
           matches.push({
             date: o.date,
             moon_age: round(age),
+            moon_phase: moonPhaseName(age),
             temp_anomaly_f: round(anom, 1),
             tide_residual_ft: useTide ? round(res as number) : null,
+            that_day: thatDayFor(o),
+            aftermath: am,
+            outcome: am ? (am.outcome as string | null) : null,
+            on_file: [] as Array<Record<string, unknown>>, // filled by the on-file batch below
           });
         }
         matches.sort((a, b) => (a.date as string) < (b.date as string) ? 1 : -1);
+        lineupMatchesAll = matches;
         const nYears = years.size;
 
         const moonPhrase = `moon age within ±${MOON_TOL_DAYS} days of ${round(moonToday, 1)} (${moonPhaseName(moonToday)})`;
@@ -579,6 +685,96 @@ Deno.serve(async (req: Request) => {
             + (useTide ? `; tide as of ${(tideToday as { date: string }).date}.` : '.')
             + ' Recorded fact only — never a forecast.',
         };
+      }
+    }
+
+    // ---- THE CONTROL LINE (mandatory — without it the lineup is a horoscope) -
+    // Base rate over ALL recorded years of this exact day-of-year, matched or
+    // not: how often did the following week actually cool ≥COOL_OUTCOME_F°F?
+    // The lineup-matched days' rate is only meaningful next to this number.
+    let control: Record<string, unknown> | null = null;
+    if (defendant) {
+      let allN = 0, allOutcomeN = 0;
+      for (const o of exact) {
+        if (o.year === defendant.year) continue; // today's trail hasn't been recorded yet
+        const am = aftermathFor(o.date);
+        if (!aftermathComparable(am)) continue;
+        allN++;
+        if (cooled(am)) allOutcomeN++;
+      }
+      let matchedN = 0, matchedOutcomeN = 0;
+      for (const m of lineupMatchesAll) {
+        const am = m.aftermath as Record<string, unknown> | null;
+        if (!aftermathComparable(am)) continue;
+        matchedN++;
+        if (cooled(am)) matchedOutcomeN++;
+      }
+      control = {
+        outcome: `avg high cooled ≥${COOL_OUTCOME_F}°F within the next ${AFTERMATH_DAYS} recorded days`,
+        matched_n: matchedN,
+        matched_outcome_n: matchedOutcomeN,
+        all_n: allN,
+        all_outcome_n: allOutcomeN,
+        note: `Control: of ${allN} recorded ${target.mm}-${target.dd}s here (every year, lineup-matched or not), `
+          + `${allOutcomeN} cooled ≥${COOL_OUTCOME_F}°F within the following ${AFTERMATH_DAYS} recorded days. `
+          + `The ${matchedN} lineup-matched days with a recorded week after them: ${matchedOutcomeN}. `
+          + 'Recorded fact only — a base rate, never a forecast.',
+      };
+    }
+
+    // ---- ON FILE — one batched provenance query over every named date --------
+    // ONE bounded query (never per-date): storm-event / nws-alert /
+    // historical-newspaper / onthisday-event rows on the exact named dates.
+    // State-scoped types match state_abbr; onthisday-event rows land with
+    // state_abbr=null from a separate ingest pipe — matched by exact date only
+    // and labeled "in the world" (they light up automatically as the pipe fills).
+    {
+      const namedDates = new Set<string>();
+      for (const r of rhyme) namedDates.add(r.date as string);
+      const lineupMatches = (lineup?.matches ?? []) as Array<Record<string, unknown>>;
+      for (const m of lineupMatches) namedDates.add(m.date as string);
+      if (namedDates.size > 0) {
+        const { data: onFileRows, error: onFileErr } = await supabase
+          .from('hunt_knowledge')
+          .select('effective_date, content_type, state_abbr, title')
+          .in('effective_date', Array.from(namedDates))
+          .neq('content_type', 'ghcn-daily')
+          .or(`state_abbr.eq.${stateParam},and(state_abbr.is.null,content_type.eq.onthisday-event)`)
+          .limit(600);
+        if (onFileErr) console.error('on-file query failed:', onFileErr.message);
+        const alsoByDate = new Map<string, string[]>();
+        const onFileByDate = new Map<string, Array<Record<string, unknown>>>();
+        for (const r of onFileRows ?? []) {
+          const iso = String(r.effective_date).slice(0, 10);
+          const ct = String(r.content_type);
+          const isHere = r.state_abbr === stateParam;
+          if (isHere) {
+            if (!alsoByDate.has(iso)) alsoByDate.set(iso, []);
+            const arr = alsoByDate.get(iso)!;
+            if (!arr.includes(ct)) arr.push(ct);
+          }
+          if (!ON_FILE_TYPES.includes(ct)) continue;
+          if (!isHere && ct !== 'onthisday-event') continue; // null-state rows only count for the world type
+          const line = onFileLine(ct, String(r.title ?? ''));
+          if (!line) continue;
+          if (!onFileByDate.has(iso)) onFileByDate.set(iso, []);
+          const items = onFileByDate.get(iso)!;
+          if (items.some((it) => it.line === line)) continue;
+          items.push({ type: ct, line, scope: isHere ? 'here' : 'in the world' });
+        }
+        const onFileFor = (iso: string): Array<Record<string, unknown>> =>
+          (onFileByDate.get(iso) ?? [])
+            .sort((a, b) => (ON_FILE_PRIORITY[a.type as string] ?? 9) - (ON_FILE_PRIORITY[b.type as string] ?? 9))
+            .slice(0, ON_FILE_PER_DATE);
+        for (const r of rhyme) {
+          const iso = r.date as string;
+          const types = (alsoByDate.get(iso) ?? []).slice(0, 6);
+          r.also_recorded = types;
+          r.on_file = onFileFor(iso);
+        }
+        for (const m of lineupMatches) {
+          m.on_file = onFileFor(m.date as string);
+        }
       }
     }
 
@@ -670,8 +866,9 @@ Deno.serve(async (req: Request) => {
       target_date: target.iso,
       month_day: `${target.mm}-${target.dd}`,
       generated_at: new Date().toISOString(),
-      sources: ['ghcn-daily', 'tide-gauge', 'nws-alert'],
+      sources: ['ghcn-daily', 'tide-gauge', 'nws-alert', 'storm-event', 'historical-newspaper', 'onthisday-event'],
       lineup,
+      control,
       now: {
         weather,
         front,
@@ -683,9 +880,10 @@ Deno.serve(async (req: Request) => {
         rhyme,
         rhyme_pool: {
           window_days: WINDOW_DAYS,
+          aftermath_days: AFTERMATH_DAYS,
           years: `${FIRST_YEAR} → present`,
           ranked_by: 'closest avg-high to today',
-          note: 'Denominator for the rhyme: the pool is every recorded day within ±3 calendar days of this day-of-year across all years; the list is the closest matches by avg-high.',
+          note: 'Denominator for the rhyme: the pool is every recorded day within ±3 calendar days of this day-of-year across all years; the list is the closest matches by avg-high. Each named date carries its own recorded aftermath (next 7 recorded days) — fact, never a forecast.',
         },
       },
     }), { status: 200, headers: jsonHeaders });

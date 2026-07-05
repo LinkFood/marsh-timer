@@ -120,6 +120,16 @@ export interface AnomalyNow {
   metric?: string | null;
 }
 
+/** A provenance chip — something the archive holds for a named date. */
+export interface OnFileChip {
+  /** content type, e.g. "storm-event" */
+  type: string;
+  /** one-line title, e.g. "Thunderstorm Wind — Accomack" */
+  line: string;
+  /** "here" (state-scoped) or "in the world" (global, e.g. onthisday-event) */
+  scope?: string | null;
+}
+
 /** One historical day this spot's NOW rhymes with. Every one is a place you can fly to. */
 export interface RhymeDay {
   /** "YYYY-MM-DD" */
@@ -130,6 +140,8 @@ export interface RhymeDay {
   summary?: string | null;
   /** what followed (honest, recorded) */
   outcome?: string | null;
+  /** provenance chips — what else the archive holds for this exact date */
+  on_file?: OnFileChip[] | null;
   /** true coords for map.flyTo(); null when the layer only knows a region */
   lat?: number | null;
   lng?: number | null;
@@ -161,6 +173,31 @@ export interface LineupLead {
   tide_station?: string | null;
   /** the backend's full honest note (thresholds, as-of dates, resolution) */
   note?: string | null;
+  /** the named date's own recorded numbers — the date stops being a stranger */
+  that_day?: {
+    high?: number | null;
+    anomaly_f?: number | null;
+    tide_residual_ft?: number | null;
+    moon_phase?: string | null;
+  } | null;
+  /** what the recorded days after the named date did, e.g. "cooled 9°F within 4 days" */
+  followed?: string | null;
+  /** provenance chips for the named date */
+  on_file?: OnFileChip[] | null;
+}
+
+/**
+ * THE CONTROL LINE — the all-years base rate for the lineup's outcome claim.
+ * "12 of 17 lineup days cooled within a week — vs 31 of 74 ordinary years."
+ * Mandatory whenever a lineup renders; without it the sentence is a horoscope.
+ */
+export interface ControlLine {
+  /** the recorded outcome being counted, e.g. "avg high cooled ≥5°F within the next 7 recorded days" */
+  outcome?: string | null;
+  matched_n: number;
+  matched_outcome_n: number;
+  all_n: number;
+  all_outcome_n: number;
 }
 
 /** The full dossier payload — the merged hunt-atlas-spot + hunt-atlas-solunar shape. */
@@ -178,6 +215,7 @@ export interface SpotData {
   solunar?: SolunarNow | null;
   anomaly?: AnomalyNow | null;
   rhyme?: RhymeResult | null;
+  control?: ControlLine | null;
 }
 
 export interface SpotDossierProps {
@@ -414,6 +452,68 @@ function LineupLeadBlock({ lineup }: { lineup: LineupLead }) {
         {" · "}
         {resLabel}
       </div>
+
+      {/* The named date's own story — its numbers, then what followed. */}
+      {lineup.last_date && lineup.that_day && (
+        <p className="mt-2 font-body text-[12.5px] leading-relaxed text-gray-400">
+          That day: {thatDaySentence(lineup.that_day)}.
+          {lineup.followed && (
+            <>
+              {" "}What followed:{" "}
+              <span className="text-gray-300">{lineup.followed}</span>.
+            </>
+          )}
+        </p>
+      )}
+      {lineup.last_date && !!lineup.on_file?.length && (
+        <OnFileChips items={lineup.on_file} className="mt-1.5" />
+      )}
+    </div>
+  );
+}
+
+/** "89° (+3° for here) · tide 0.6 ft over predicted · waning gibbous" */
+function thatDaySentence(td: NonNullable<LineupLead["that_day"]>): string {
+  const parts: string[] = [];
+  if (td.high != null) {
+    const anom =
+      td.anomaly_f != null ? ` (${signed(td.anomaly_f, 0)}° for here)` : "";
+    parts.push(`${Math.round(td.high)}°${anom}`);
+  }
+  if (td.tide_residual_ft != null) {
+    const r = td.tide_residual_ft;
+    parts.push(
+      Math.abs(r) < 0.05
+        ? "tide at predicted"
+        : `tide ${Math.abs(r).toFixed(1)} ft ${r > 0 ? "over" : "under"} predicted`,
+    );
+  }
+  if (td.moon_phase) parts.push(td.moon_phase.toLowerCase());
+  return parts.join(" · ");
+}
+
+/** Small provenance chips: "on file: Thunderstorm Wind — Accomack". */
+function OnFileChips({
+  items,
+  className,
+}: {
+  items: OnFileChip[];
+  className?: string;
+}) {
+  return (
+    <div className={["flex flex-wrap gap-1.5", className ?? ""].join(" ")}>
+      {items.map((it, i) => (
+        <span
+          key={`${it.type}-${i}`}
+          className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-gray-500 ring-1 ring-inset ring-white/[0.06]"
+          title={`${it.type}${it.scope ? ` · ${it.scope}` : ""}`}
+        >
+          <span className="shrink-0 text-gray-600">
+            {it.scope === "in the world" ? "in the world:" : "on file:"}
+          </span>
+          <span className="truncate">{it.line}</span>
+        </span>
+      ))}
     </div>
   );
 }
@@ -685,11 +785,22 @@ export default function SpotDossier({
                         {day.outcome}
                       </div>
                     )}
+                    {!!day.on_file?.length && (
+                      <OnFileChips items={day.on_file} className="mt-1" />
+                    )}
                   </div>
                 </Row>
               );
             })}
           </ul>
+
+          {/* THE CONTROL LINE — the all-years base rate, always present.
+              Without it the lineup claim is a horoscope. */}
+          {data.control && (
+            <p className="pt-0.5 text-[10px] leading-relaxed tabular-nums text-gray-500">
+              {controlSentence(data.control)}
+            </p>
+          )}
 
           {/* Honesty footer — no guessing, recorded fact only. */}
           <p className="pt-0.5 text-[10px] leading-relaxed text-gray-600">
@@ -722,6 +833,20 @@ function lineupPhrase(components: string[]): string {
   if (words.length <= 1) return words[0] ?? "these";
   if (words.length === 2) return `${words[0]} and ${words[1]}`;
   return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
+}
+
+/**
+ * The control caption. Recorded counts only — no forecast words, ever.
+ * "Across all 74 recorded years here, cooling ≥5° within a week happened 31
+ *  of 74 times — the 17 lineup-matched days ran 12 of 17."
+ */
+function controlSentence(c: ControlLine): string {
+  const what = c.outcome ?? "the counted outcome";
+  const base = `Across all ${c.all_n} recorded years here, ${what} happened ${c.all_outcome_n} of ${c.all_n} times`;
+  if (c.matched_n > 0) {
+    return `${base} — the ${c.matched_n} lineup-matched day${c.matched_n === 1 ? "" : "s"} ran ${c.matched_outcome_n} of ${c.matched_n}.`;
+  }
+  return `${base}. No lineup-matched days carried a recorded week after them to compare.`;
 }
 
 function countPhrase(n: number): string {
