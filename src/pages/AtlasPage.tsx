@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from "@/components/EventMap";
 import { fetchStateAnomaly, colorForZ, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
@@ -38,6 +38,7 @@ export default function AtlasPage() {
   const [dossier, setDossier] = useState<SpotData | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const dossierRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchStateAnomaly().then(setZByState).catch(() => setZByState({}));
@@ -47,6 +48,10 @@ export default function AtlasPage() {
     setSelected(abbr);
     setDossier(null);
     setLoading(true);
+    // On phones the dossier stacks below the grid — bring it into view on tap.
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      requestAnimationFrame(() => dossierRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
     const c = STATE_CENTROIDS[abbr]; // [lng, lat]
     try {
       const [spot, sol] = await Promise.all([
@@ -128,7 +133,7 @@ export default function AtlasPage() {
         </div>
 
         {/* The spot dossier */}
-        <div className="lg:w-[380px] lg:flex-none">
+        <div ref={dossierRef} className="scroll-mt-4 lg:w-[380px] lg:flex-none">
           {!selected && (
             <div className="flex h-full min-h-[200px] items-center justify-center rounded-lg bg-gray-900/40 p-6 text-center text-sm text-gray-500 ring-1 ring-white/5">
               Pick a state to see what it&rsquo;s doing now &mdash; and the last time it looked like this.
