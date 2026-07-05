@@ -169,6 +169,9 @@ Files: `src/pages/AtlasPage.tsx` (grid + dossier wiring), `src/lib/atlas/spotDos
 
 **PROGRESS 2026-07-05 ~06:40:** a11y pass on the state grid — each box is now a real keyboard-operable button (role=button, tabIndex, Enter/Space to open, per-state aria-labels; parent svg role img→group so the boxes aren't hidden as one image). Keyboard + screen-reader users can now operate the hero surface. Build green, pushed. Core surface unchanged visually. Still GATED on James: real-phone 375px check, semantic rhyme (index tier-bump), county drill (county-resolved data).
 
+
+**PROGRESS 2026-07-05 ~07:10:** honesty-law polish — a no-data state now reads "no reading here today" instead of "typical — no reading today" (calling it 'typical' implied a reading we don't have; the map must never quietly guess). Fixes both the hover readout and the box aria-label. Build green, pushed.
+
 ## VERIFICATION CAVEAT + LESSON (2026-07-05 late night — SUPERSEDED by the grid pivot above; kept for the lesson)
 
 The nested-box STATE CHOROPLETH + globe are WIRED into AtlasPage (`buildChoroplethPaint` over `US_STATES_GEOJSON`, shaded by `hunt-atlas-anomaly`; hover readout; click-to-drill). But it could NOT be cleanly Chrome-verified tonight: after ~20+ live map reloads while testing, the browser showed a BLANK map (globe sphere, no tiles). **This was environmental, NOT a code bug** — the bare globe shell that rendered perfectly earlier *also* went blank on reload, and the non-WebGL landing page kept rendering fine. Cause: WebGL context exhaustion (MapLibre globe needs WebGL2) + likely OpenFreeMap rate-limiting from hammering their free tile service from one IP. LESSON: don't reload a WebGL map 20 times to verify — verify ONCE in a fresh tab, or use `npm run dev` locally for instant feedback instead of fighting Vercel deploy latency.
