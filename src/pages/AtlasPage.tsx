@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from "@/components/EventMap";
 import { fetchStateAnomaly, colorForZ, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
 import { STATE_CENTROIDS } from "@/data/atlas/stateCentroids";
@@ -375,7 +375,12 @@ export default function AtlasPage() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row lg:gap-10 lg:py-10">
         {/* The map of boxes — and the camera */}
         <div className="lg:flex-1">
-          <div className="mb-1 font-mono text-[11px] tracking-[0.24em] text-cyan-300/90">DUCK COUNTDOWN</div>
+          <div className="mb-1 flex items-baseline justify-between">
+            <span className="font-mono text-[11px] tracking-[0.24em] text-cyan-300/90">DUCK COUNTDOWN</span>
+            <Link to="/morning" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
+              The Morning Line &rarr;
+            </Link>
+          </div>
           <h1 className="text-2xl font-semibold text-gray-100">The ground you stand on</h1>
           <p className="mt-1 max-w-md text-sm text-gray-400">
             Each state shaded by what it&rsquo;s doing today, measured against its own 76&nbsp;years.

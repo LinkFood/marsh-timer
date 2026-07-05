@@ -641,3 +641,6 @@ verify_jwt = false
 
 [functions.hunt-atlas-storms]
 verify_jwt = false
+
+[functions.hunt-morning-line]
+verify_jwt = false
