@@ -2,7 +2,9 @@
 
 > **This is the single source of truth.** If it's not in this document, it doesn't exist yet. Every session starts here.
 >
-> ⭐ **READ `docs/THE-VISION-AND-ROADMAP.md` FIRST.** As of 2026-07-05 the project pivoted: the old convergence *predictor* is dead (proven, demolished) and the product is now a **living, honest map of the ground you stand on** — fact-only, denominator-always, no guessing. That doc holds the vision, architecture, build rungs, and where we stopped. The sections below are legacy reference (the archive, infra, gotchas still apply); the *product direction* lives in the vision doc.
+> 🎯 **SPRINT ACTIVE: READ `docs/THE-WEEK.md` FIRST** — one-goal week ending in judgment 2026-07-12. It is the single source of truth until then; follow its pickup protocol.
+>
+> ⭐ **Then `docs/THE-VISION-AND-ROADMAP.md`.** As of 2026-07-05 the project pivoted: the old convergence *predictor* is dead (proven, demolished) and the product is now a **living, honest map of the ground you stand on** — fact-only, denominator-always, no guessing. That doc holds the vision, architecture, build rungs, and where we stopped. The sections below are legacy reference (the archive, infra, gotchas still apply); the *product direction* lives in the vision doc.
 
 ---
 
