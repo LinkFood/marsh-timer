@@ -4,6 +4,8 @@
 > **North star (James, 2026-07-05):** *"If done right, this is a gift to our youth and anyone that wants to know where they stand."*
 >
 > *"It gives the imagination to the children and the awareness to the adults."*
+>
+> **BUILD FOR THE HUNTER; the kid gets wonder for free (James, 2026-07-05).** A kid won't use a data map — so DON'T build a kids' toy. Build the real, deep, operational instrument a *hunter* would actually open. The imagination for children comes from the tool being *true* (real river, real "who stood here," real sky the night they were born), never from dumbing it down. One product, two depths: the hunter *operates* the map (dots, triggers, fly-to, "when were conditions right here"); the kid *marvels* at the story layer riding on top (the card, the rhyme, the actual-there history). Realness IS the wonder. Simplify it and you lose both.
 
 ---
 
