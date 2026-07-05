@@ -83,6 +83,15 @@ Depth is **jagged, not a clean wall.** Build knowing each layer's floor:
 
 ---
 
+## THE MAP IS THE PRODUCT — how it must feel (James, 2026-07-05)
+
+- **Globe first, then smaller and smaller and smaller.** It opens as a *planet* (MapLibre globe projection) and you fall into it — globe → country → state → county → the river, the blind, the corner. Zoom is the primary verb. Not a flat US map; a world you descend into.
+- **The map IS the navigation, not just a display.** Everything is geo-anchored, and the map is how you *travel* between connected things. When a card says "this rhymes with the Delaware crossing," **clicking that bubble flies the map to the Delaware River.** Every rhyme, precedent, event, and anomaly is a *place you can fly to.* `map.flyTo()` is the connective tissue — the card and the map are one instrument, not two panels.
+- **ACTUAL there — precise, real coordinates (James, emphatic).** Fly-to lands on the *real* place: the actual bend of the Delaware where Washington crossed, not a regional approximation. The map cannot lie about *where* any more than the data lies about *what*. Every geo-anchor is a true coordinate; when a layer only knows a county or state, the map SAYS so (labels its granularity) rather than faking a precise pin. Honesty of place = honesty of fact.
+- **Deadline context:** James wants something viewable in 24–48h (target ~2026-07-06/07). Prioritize a real, alive, globe-to-ground map with at least one true data layer (earthquakes = deep + point) and the fly-to navigation feel.
+
+---
+
 ## BUILD RULES (James, 2026-07-05 — how we build, every session)
 
 1. **Verify everything in Chrome, on the live site** — desktop AND 375px. Build-passing ≠ looks-right. Verify at meaningful increments (not every micro-change, but throughout — "you catch my drift").

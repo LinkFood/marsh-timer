@@ -18,13 +18,17 @@ export default function AtlasPage() {
       container: containerRef.current,
       style: "https://tiles.openfreemap.org/styles/positron",
       center: [-98.5, 39.5], // continental US
-      zoom: 3.6,
-      minZoom: 2.5,
-      maxZoom: 14,
+      zoom: 2.4,
+      minZoom: 0.8,
+      maxZoom: 17,
       attributionControl: { compact: true },
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), "top-right");
     map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "top-right");
+    map.on("style.load", () => {
+      // Globe first, then fall all the way down to the ground.
+      map.setProjection({ type: "globe" });
+    });
     map.on("load", () => map.resize());
     mapRef.current = map;
     return () => {
