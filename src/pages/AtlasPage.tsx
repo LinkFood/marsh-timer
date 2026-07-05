@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from "@/components/EventMap";
 import { fetchStateAnomaly, colorForZ, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
 import { STATE_CENTROIDS } from "@/data/atlas/stateCentroids";
@@ -36,6 +37,7 @@ export default function AtlasPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [dossier, setDossier] = useState<SpotData | null>(null);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStateAnomaly().then(setZByState).catch(() => setZByState({}));
@@ -138,7 +140,11 @@ export default function AtlasPage() {
             </div>
           )}
           {selected && !loading && dossier && (
-            <SpotDossier placeLabel={selected} data={dossier} />
+            <SpotDossier
+              placeLabel={selected}
+              data={dossier}
+              onRhymeClick={(day) => navigate(`/date/${day.date}?state=${selected}`)}
+            />
           )}
           {selected && !loading && !dossier && (
             <div className="rounded-lg bg-gray-900/40 p-6 text-sm text-gray-500 ring-1 ring-white/5">
