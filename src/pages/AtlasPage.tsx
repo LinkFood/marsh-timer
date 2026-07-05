@@ -12,6 +12,7 @@ import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase";
 const APIKEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 
 type Quake = { lat: number; lng: number; magnitude: number; date: string; place: string; depth_km: number | null };
+type EventPt = { lat: number; lng: number; date: string; label: string; kind: string; url: string };
 
 export default function AtlasPage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -105,6 +106,68 @@ export default function AtlasPage() {
         const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
         map.flyTo({ center: [lng, lat], zoom: 8.5, speed: 0.8, curve: 1.4, essential: true });
       });
+
+      // Second layer: the human "who happened here" events (read-only fetch).
+      let events: EventPt[] = [];
+      try {
+        const eres = await fetch(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-events`, {
+          headers: { apikey: APIKEY, Authorization: `Bearer ${APIKEY}` },
+        });
+        const ejson = await eres.json();
+        events = Array.isArray(ejson?.points) ? ejson.points : [];
+      } catch {
+        events = [];
+      }
+      const efc = {
+        type: "FeatureCollection" as const,
+        features: events
+          .filter((ev) => Number.isFinite(ev.lat) && Number.isFinite(ev.lng))
+          .map((ev) => ({
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: [ev.lng, ev.lat] },
+            properties: { label: ev.label, date: ev.date, kind: ev.kind },
+          })),
+      };
+      map.addSource("events", { type: "geojson", data: efc });
+      map.addLayer({
+        id: "events",
+        type: "circle",
+        source: "events",
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#38bdf8",
+          "circle-opacity": 0.85,
+          "circle-stroke-color": "#0f1016",
+          "circle-stroke-width": 0.8,
+        },
+      });
+      map.on("mouseenter", "events", (e) => {
+        map.getCanvas().style.cursor = "pointer";
+        const f = e.features?.[0];
+        if (!f) return;
+        const p = f.properties as { label: string; date: string; kind: string };
+        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+        popup
+          .setLngLat([lng, lat])
+          .setHTML(
+            `<div style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;color:#1a1a1a">` +
+              `<div style="font-weight:700;font-size:13px">${p.label}</div>` +
+              `<div style="color:#0369a1">${p.kind} &middot; ${p.date}</div>` +
+              `<div style="color:#777">click to fly here</div>` +
+              `</div>`
+          )
+          .addTo(map);
+      });
+      map.on("mouseleave", "events", () => {
+        map.getCanvas().style.cursor = "";
+        popup.remove();
+      });
+      map.on("click", "events", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+        map.flyTo({ center: [lng, lat], zoom: 12, speed: 0.8, curve: 1.4, essential: true });
+      });
     });
 
     return () => {
@@ -124,7 +187,7 @@ export default function AtlasPage() {
       </div>
       <div className="pointer-events-none absolute bottom-4 left-4 z-10">
         <div className="rounded bg-gray-950/70 px-3 py-1.5 font-mono text-[10px] text-gray-400 backdrop-blur-sm ring-1 ring-white/5">
-          earthquakes 1990&ndash;now &middot; hover to read &middot; click to fly there
+          <span style={{ color: "#e8853a" }}>&#9679;</span> earthquakes &middot; <span style={{ color: "#38bdf8" }}>&#9679;</span> what happened here &middot; hover to read &middot; click to fly
         </div>
       </div>
     </div>
