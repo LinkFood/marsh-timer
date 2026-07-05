@@ -638,3 +638,6 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.hunt-atlas-events]
 verify_jwt = false
+
+[functions.hunt-atlas-storms]
+verify_jwt = false
