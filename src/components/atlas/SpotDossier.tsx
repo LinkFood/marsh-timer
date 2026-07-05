@@ -143,12 +143,33 @@ export interface RhymeResult {
   base_rate?: string | null;
 }
 
+/**
+ * The LINEUP — the card's lead. "Last time the moon, the tide, and the cold
+ * lined up like this here: October 22, 1961." A dated sentence, not a stat.
+ * last_date === null with n_years > 0 is the honest "never in N recorded
+ * years" state — a hero line too, never faked into a match.
+ */
+export interface LineupLead {
+  /** "YYYY-MM-DD" of the last joint match, or null (never) */
+  last_date: string | null;
+  n_matches: number;
+  /** DENOMINATOR — distinct recorded years actually searched */
+  n_years: number | null;
+  /** which components lined up, e.g. ["moon","tide","temperature"] */
+  components: string[];
+  /** gauge name when tide is one of the components */
+  tide_station?: string | null;
+  /** the backend's full honest note (thresholds, as-of dates, resolution) */
+  note?: string | null;
+}
+
 /** The full dossier payload — the merged hunt-atlas-spot + hunt-atlas-solunar shape. */
 export interface SpotData {
   resolution: SpotResolution;
   /** ISO timestamp the NOW reading is as-of */
   as_of?: string | null;
   coords?: { lat: number; lng: number } | null;
+  lineup?: LineupLead | null;
   weather?: WeatherNow | null;
   front?: FrontSignal | null;
   moon?: MoonNow | null;
@@ -353,6 +374,50 @@ function AnomalyBadge({ anomaly }: { anomaly: AnomalyNow }) {
   );
 }
 
+/**
+ * The LEAD — the product's thesis as a dated serif sentence above the NOW
+ * grid. Fact-only, denominator directly beneath it, never a forecast. The
+ * zero-match state ("Never in N recorded years…") renders with the same
+ * weight: an honest "never" is as much of a shiver as a named date.
+ */
+function LineupLeadBlock({ lineup }: { lineup: LineupLead }) {
+  const phrase = lineupPhrase(lineup.components);
+  const compLabel = lineup.components.join(" + ");
+  const resLabel = lineup.tide_station
+    ? `state-level · tide at ${lineup.tide_station}`
+    : "state-level";
+  return (
+    <div
+      className="border-b border-white/[0.06] px-4 py-4"
+      title={lineup.note ?? undefined}
+    >
+      {lineup.last_date ? (
+        <p className="font-display text-[19px] font-semibold leading-snug text-white">
+          Last time {phrase} lined up like this here:{" "}
+          <span className="whitespace-nowrap text-teal-300">
+            {formatLineupDate(lineup.last_date)}
+          </span>
+          .
+        </p>
+      ) : (
+        <p className="font-display text-[19px] font-semibold leading-snug text-white">
+          Never in {lineup.n_years ?? "the"} recorded years have {phrase} lined
+          up like today.
+        </p>
+      )}
+      <div className="mt-1.5 text-[11px] tabular-nums text-gray-500">
+        {lineup.last_date
+          ? `${countPhrase(lineup.n_matches)} in ${lineup.n_years} years`
+          : `0 matches in ${lineup.n_years} years`}
+        {" · "}
+        {compLabel}
+        {" · "}
+        {resLabel}
+      </div>
+    </div>
+  );
+}
+
 /** Wind arrow — points the way the wind is going, rotated by bearing. */
 function WindArrow({ deg }: { deg: number }) {
   return (
@@ -382,7 +447,7 @@ export default function SpotDossier({
   onFrontClick,
   className,
 }: SpotDossierProps) {
-  const { weather, front, moon, sun, tide, solunar, anomaly, rhyme } = data;
+  const { lineup, weather, front, moon, sun, tide, solunar, anomaly, rhyme } = data;
   const asOf = asOfLabel(data.as_of);
 
   // Shooting-light window (fall back to sunrise/sunset if legal-light not computed).
@@ -425,6 +490,9 @@ export default function SpotDossier({
           {front && <FrontChip front={front} onClick={onFrontClick} />}
         </div>
       </div>
+
+      {/* ── THE LEAD — the lineup sentence (the product's thesis) ─ */}
+      {lineup && <LineupLeadBlock lineup={lineup} />}
 
       {/* ── NOW ────────────────────────────────────────────────── */}
       <div className="space-y-3 px-4 py-4">
@@ -644,6 +712,32 @@ function ratingWord(r: number): string {
   if (r >= 2.5) return "Good";
   if (r >= 1.5) return "Average";
   return "Poor";
+}
+
+/** ["moon","tide","temperature"] → "the moon, the tide, and the cold" */
+function lineupPhrase(components: string[]): string {
+  const words = components.map((c) =>
+    c === "moon" ? "the moon" : c === "tide" ? "the tide" : "the cold",
+  );
+  if (words.length <= 1) return words[0] ?? "these";
+  if (words.length === 2) return `${words[0]} and ${words[1]}`;
+  return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
+}
+
+function countPhrase(n: number): string {
+  if (n === 1) return "Once";
+  if (n === 2) return "Twice";
+  return `${n} times`;
+}
+
+function formatLineupDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function formatRhymeDate(iso: string): string {

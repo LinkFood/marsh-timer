@@ -28,6 +28,15 @@ interface SolunarResp {
 interface SpotResp {
   spot?: { lat?: number; lng?: number; state?: string } | null;
   target_date?: string | null;
+  lineup?: {
+    mode?: string;
+    components?: string[];
+    last_date?: string | null;
+    n_matches?: number;
+    n_years?: number;
+    today?: { tide_station?: string | null } | null;
+    honest_note?: string | null;
+  } | null;
   now?: {
     weather?: { avg_high_f?: number; avg_low_f?: number; precip_in?: number; label?: string } | null;
     front?: { signal?: string; temp_change_f?: number; drop_from_peak_f?: number; note?: string } | null;
@@ -68,6 +77,8 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
   const an = past.anomaly ?? null;
   const rh = Array.isArray(past.rhyme) ? past.rhyme : [];
 
+  const lu = spot.lineup ?? null;
+
   const m = solunar.moon ?? null;
   const s = solunar.sun ?? null;
   const sl = solunar.solunar ?? null;
@@ -82,6 +93,21 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
     place: placeLabel ?? spot.spot?.state ?? null,
     as_of: spot.target_date ?? null,
     coords: lat != null && lng != null ? { lat, lng } : null,
+
+    // The LEAD — the dated lineup sentence. Only rendered when the archive
+    // actually searched something (n_years > 0); "never in N years" is a
+    // valid lead, so zero matches still flows through.
+    lineup:
+      lu && Array.isArray(lu.components) && lu.components.length > 0 && (lu.n_years ?? 0) > 0
+        ? {
+            last_date: lu.last_date ?? null,
+            n_matches: lu.n_matches ?? 0,
+            n_years: lu.n_years ?? null,
+            components: lu.components,
+            tide_station: lu.today?.tide_station ?? null,
+            note: lu.honest_note ?? null,
+          }
+        : null,
 
     weather: w
       ? {
