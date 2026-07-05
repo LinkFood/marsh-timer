@@ -39,6 +39,13 @@ export default function AtlasPage() {
     map.on("style.load", () => map.setProjection({ type: "globe" }));
     mapRef.current = map;
 
+    // Keep the canvas sized to its container. Without this, a map created before
+    // its container has final size (or after a window resize) can get stuck with
+    // a 0/stale viewport and never request tiles — the map renders blank.
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(containerRef.current);
+    requestAnimationFrame(() => map.resize());
+
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px" });
 
     map.on("load", async () => {
@@ -95,6 +102,7 @@ export default function AtlasPage() {
     });
 
     return () => {
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
     };
