@@ -117,6 +117,50 @@ function parseStorms(raw: Record<string, unknown>): StormInfo | null {
   };
 }
 
+/**
+ * The sonar pulse, driven by rAF on the circle's `r` + `stroke-opacity`
+ * attributes directly (CSS transform/scale animation on an SVG circle under a
+ * tweened viewBox rendered as a giant disc — verified live). One 3.5s bloom,
+ * then rest; slow repeat every 6s. Max radius ~18% of the tile. Stroke stays
+ * a thin screen-space line via vector-effect. Reduced motion: a still ring.
+ */
+function SonarRing({ cx, cy }: { cx: number; cy: number }) {
+  const [pulse, setPulse] = useState<{ r: number; opacity: number }>({ r: 0.2, opacity: 0 });
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setPulse({ r: 1.2, opacity: 0.45 });
+      return;
+    }
+    let raf: number;
+    const t0 = performance.now();
+    const CYCLE_MS = 6000;
+    const BLOOM_MS = 3500;
+    const step = (now: number) => {
+      const t = ((now - t0) % CYCLE_MS) / BLOOM_MS;
+      if (t <= 1) {
+        setPulse({ r: 0.2 + easeOutCubic(t) * 1.6, opacity: 0.85 * (1 - t) });
+      } else {
+        setPulse({ r: 0.2, opacity: 0 }); // resting between pulses
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [cx, cy]);
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={pulse.r}
+      fill="none"
+      stroke="#22d3ee"
+      strokeOpacity={pulse.opacity}
+      strokeWidth={1.5}
+      vectorEffect="non-scaling-stroke"
+    />
+  );
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function formatEventDate(iso: string): string {
@@ -306,22 +350,14 @@ export default function AtlasPage() {
       ? "ring placed by recorded coordinate — approximate at this altitude"
       : "located to county — ring rests at box center"
     : "";
-  const sentenceY = tileY + CELL + 3.4;
+  // The leader runs from the ring toward the bottom edge of the landing frame,
+  // pointing at the HTML sentence just below the map.
+  const leaderEndY = tileY + CELL / 2 + FRAME_H * 0.58 - 1.6;
 
   return (
     <div className="min-h-screen w-full bg-gray-950 text-gray-100">
       {/* The sonar pulse + dossier landing. Scoped to this page; media query keeps reduced-motion silent. */}
       <style>{`
-        @keyframes atlas-sonar {
-          0% { transform: scale(0.1); opacity: 0.85; }
-          55% { transform: scale(1); opacity: 0; }
-          100% { transform: scale(1); opacity: 0; }
-        }
-        .atlas-sonar-ring {
-          transform-box: fill-box;
-          transform-origin: center;
-          animation: atlas-sonar 6s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
-        }
         @keyframes atlas-stage-in {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -333,7 +369,6 @@ export default function AtlasPage() {
         }
         .atlas-dossier-enter { animation: atlas-rise 500ms ease-out both; }
         @media (prefers-reduced-motion: reduce) {
-          .atlas-sonar-ring { animation: none; opacity: 0.45; transform: scale(0.55); }
           .atlas-stage-in, .atlas-dossier-enter { animation: none; }
         }
       `}</style>
@@ -464,75 +499,40 @@ export default function AtlasPage() {
                 </g>
               )}
 
-              {/* THE SONAR RING — one silent pulse at a located memory, then a slow repeat */}
+              {/* THE SONAR RING — one silent pulse at a located memory, then a slow
+                  repeat. The dated sentence lives in HTML below the map (SVG text
+                  clipped at viewport edges); the dashed leader points down to it. */}
               {landed && selected && event && ringX !== null && ringY !== null && (
-                <g className="atlas-stage-in">
-                  <g pointerEvents="none">
-                    <circle cx={ringX} cy={ringY} r={0.3} fill="#67e8f9" opacity={0.85} />
-                    <circle
-                      cx={ringX}
-                      cy={ringY}
-                      r={3.1}
-                      fill="none"
-                      stroke="#67e8f9"
-                      strokeWidth={0.16}
-                      className="atlas-sonar-ring"
-                    />
-                    <line
-                      x1={ringX}
-                      y1={ringY}
-                      x2={tileCx}
-                      y2={sentenceY - 1.6}
-                      stroke="rgba(103,232,249,0.45)"
-                      strokeWidth={0.1}
-                      strokeDasharray="0.5 0.45"
-                    />
-                  </g>
-                  {/* One dated sentence, denominator mandatory, click falls into the day. */}
-                  <g
-                    role="link"
-                    tabIndex={0}
-                    className="cursor-pointer"
-                    aria-label={`${sentenceL1} — open ${event.date}`}
-                    onClick={() => navigate(`/date/${event.date}?state=${selected}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") navigate(`/date/${event.date}?state=${selected}`);
-                    }}
-                  >
-                    <text
-                      x={tileCx}
-                      y={sentenceY}
-                      textAnchor="middle"
-                      fontSize={1.35}
-                      fontFamily="ui-monospace, monospace"
-                      fill="#e5e7eb"
-                    >
-                      {sentenceL1}
-                    </text>
-                    <text
-                      x={tileCx}
-                      y={sentenceY + 2}
-                      textAnchor="middle"
-                      fontSize={1.05}
-                      fontFamily="ui-monospace, monospace"
-                      fill="#9ca3af"
-                    >
-                      {sentenceL2}
-                    </text>
-                    <text
-                      x={tileCx}
-                      y={sentenceY + 3.7}
-                      textAnchor="middle"
-                      fontSize={0.92}
-                      fontFamily="ui-monospace, monospace"
-                      fill="#6b7280"
-                    >
-                      {sentenceL3}
-                    </text>
-                  </g>
+                <g className="atlas-stage-in" pointerEvents="none">
+                  <circle cx={ringX} cy={ringY} r={0.3} fill="#67e8f9" opacity={0.85} />
+                  <SonarRing cx={ringX} cy={ringY} />
+                  <line
+                    x1={ringX}
+                    y1={ringY}
+                    x2={tileCx}
+                    y2={leaderEndY}
+                    stroke="rgba(103,232,249,0.45)"
+                    strokeWidth={1}
+                    strokeDasharray="4 3.5"
+                    vectorEffect="non-scaling-stroke"
+                  />
                 </g>
               )}
             </svg>
+            {/* One dated sentence, denominator mandatory — HTML so it never clips,
+                wraps at narrow widths, and clicking it falls into the day. */}
+            {landed && selected && event && (
+              <button
+                type="button"
+                className="atlas-stage-in mt-2 block w-full cursor-pointer rounded-md px-1 py-1 text-center hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-cyan-300/50"
+                aria-label={`${sentenceL1} — open ${event.date}`}
+                onClick={() => navigate(`/date/${event.date}?state=${selected}`)}
+              >
+                <span className="block font-mono text-[12px] leading-snug text-gray-200">{sentenceL1}.</span>
+                <span className="block font-mono text-[11px] leading-snug text-gray-400">{sentenceL2}</span>
+                <span className="block font-mono text-[10px] leading-snug text-gray-600">{sentenceL3}</span>
+              </button>
+            )}
             <div className="mt-2 min-h-[1.25rem] font-mono text-[11px] text-gray-400">
               {descended && selected ? (
                 <span>
