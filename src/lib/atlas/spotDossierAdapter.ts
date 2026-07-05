@@ -44,7 +44,12 @@ function utcToLocalHHMM(iso: string | undefined | null, lng: number | undefined 
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const offsetH = Math.round((lng ?? 0) / 15); // solar-local hours from UTC
+  // Longitude gives standard-time offset from UTC; add US daylight saving in season
+  // so sun/feed times read as wall clock (what a hunter checks).
+  const mo = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  const isDST = (mo > 3 && mo < 11) || (mo === 3 && day >= 8) || (mo === 11 && day < 7);
+  const offsetH = Math.round((lng ?? 0) / 15) + (isDST ? 1 : 0);
   const shifted = new Date(d.getTime() + offsetH * 3600_000);
   const hh = String(shifted.getUTCHours()).padStart(2, "0");
   const mm = String(shifted.getUTCMinutes()).padStart(2, "0");
@@ -96,7 +101,7 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
       : null,
 
     moon: m
-      ? { phase: m.phase ?? "", illumination: m.illum ?? 0, age_days: m.age ?? null }
+      ? { phase: m.phase ?? "", illumination: (m.illum ?? 0) / 100, age_days: m.age ?? null }
       : null,
 
     sun: s
