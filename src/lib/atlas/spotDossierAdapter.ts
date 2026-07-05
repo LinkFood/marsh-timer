@@ -1,0 +1,134 @@
+/**
+ * spotDossierAdapter — maps the two read-only Atlas functions
+ * (hunt-atlas-spot + hunt-atlas-solunar) onto the SpotDossier card's `SpotData`
+ * prop. Pure data-shaping, no I/O. Honest about the archive's jagged resolution:
+ * weather is state-level, tide is the nearest gauge, times are longitude-local.
+ *
+ * Times: the sun/solunar functions return ISO-8601 UTC. Solar events are inherently
+ * longitude-based, so we render local clock time from the spot's longitude
+ * (offset ≈ lng/15 h). This is honest for sunrise/sunset/feed windows; it does not
+ * apply civil DST, so it can differ from wall-clock by up to an hour — acceptable
+ * for a "shooting light is around X" readout, and labeled as solar-local.
+ */
+import type { SpotData } from "@/components/atlas/SpotDossier";
+
+interface SolunarResp {
+  moon?: { phase?: string; illum?: number; age?: number; days_to_full?: number } | null;
+  sun?: {
+    sunrise?: string; sunset?: string;
+    shooting_light_start?: string; shooting_light_end?: string;
+  } | null;
+  solunar?: {
+    major?: { start: string; end: string }[];
+    minor?: { start: string; end: string }[];
+    rating?: string; score?: number;
+  } | null;
+}
+
+interface SpotResp {
+  spot?: { lat?: number; lng?: number; state?: string } | null;
+  target_date?: string | null;
+  now?: {
+    weather?: { avg_high_f?: number; avg_low_f?: number; precip_in?: number; label?: string } | null;
+    front?: { signal?: string; temp_change_f?: number; drop_from_peak_f?: number; note?: string } | null;
+    tide?: { station_name?: string; state?: string; daily_mean_ft?: number; residual_ft?: number; is_local?: boolean; note?: string } | null;
+  } | null;
+  past?: {
+    anomaly?: { metric?: string; value?: number; baseline_mean?: number; z?: number | null; n_years?: number } | null;
+    rhyme?: { date: string; high?: number; delta_f?: number; note?: string }[] | null;
+  } | null;
+}
+
+/** ISO-8601 UTC -> local "HH:MM" using a longitude-based solar offset. */
+function utcToLocalHHMM(iso: string | undefined | null, lng: number | undefined | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const offsetH = Math.round((lng ?? 0) / 15); // solar-local hours from UTC
+  const shifted = new Date(d.getTime() + offsetH * 3600_000);
+  const hh = String(shifted.getUTCHours()).padStart(2, "0");
+  const mm = String(shifted.getUTCMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: string): SpotData {
+  const lng = spot.spot?.lng ?? null;
+  const lat = spot.spot?.lat ?? null;
+  const now = spot.now ?? {};
+  const past = spot.past ?? {};
+
+  const w = now.weather ?? null;
+  const fr = now.front ?? null;
+  const td = now.tide ?? null;
+  const an = past.anomaly ?? null;
+  const rh = Array.isArray(past.rhyme) ? past.rhyme : [];
+
+  const m = solunar.moon ?? null;
+  const s = solunar.sun ?? null;
+  const sl = solunar.solunar ?? null;
+
+  const windows = [
+    ...(sl?.major ?? []).map((v) => ({ kind: "major" as const, start: utcToLocalHHMM(v.start, lng) ?? "", end: utcToLocalHHMM(v.end, lng) ?? "" })),
+    ...(sl?.minor ?? []).map((v) => ({ kind: "minor" as const, start: utcToLocalHHMM(v.start, lng) ?? "", end: utcToLocalHHMM(v.end, lng) ?? "" })),
+  ];
+
+  return {
+    resolution: "state",
+    place: placeLabel ?? spot.spot?.state ?? null,
+    as_of: spot.target_date ?? null,
+    coords: lat != null && lng != null ? { lat, lng } : null,
+
+    weather: w
+      ? {
+          temp_f: w.avg_high_f ?? 0,
+          sky: w.label ?? "state-level (GHCN-daily)",
+          wind_mph: 0, // state-level daily aggregate carries no wind — honest null-ish
+          wind_dir: null,
+        }
+      : null,
+
+    front: fr
+      ? {
+          moving: (fr.signal ?? "steady") !== "steady",
+          kind: (fr.temp_change_f ?? 0) < -3 ? "cold" : (fr.temp_change_f ?? 0) > 3 ? "warm" : "stationary",
+          detail: fr.note ?? null,
+        }
+      : null,
+
+    moon: m
+      ? { phase: m.phase ?? "", illumination: m.illum ?? 0, age_days: m.age ?? null }
+      : null,
+
+    sun: s
+      ? {
+          sunrise: utcToLocalHHMM(s.sunrise, lng) ?? "",
+          sunset: utcToLocalHHMM(s.sunset, lng) ?? "",
+          shooting_light_start: utcToLocalHHMM(s.shooting_light_start, lng),
+          shooting_light_end: utcToLocalHHMM(s.shooting_light_end, lng),
+        }
+      : null,
+
+    tide: td
+      ? {
+          station: td.station_name ?? null,
+          state: td.is_local ? "reading" : "nearest gauge",
+          height_ft: td.daily_mean_ft ?? null,
+        }
+      : null,
+
+    solunar: sl
+      ? { day_rating: sl.score ?? 0, rating_label: sl.rating ?? null, windows }
+      : null,
+
+    anomaly: an
+      ? { z: an.z ?? null, value: an.value ?? null, baseline_mean: an.baseline_mean ?? null, n_years: an.n_years ?? null, metric: an.metric ?? null }
+      : null,
+
+    rhyme: rh.length
+      ? {
+          matches: rh.map((r) => ({ date: r.date, summary: r.note ?? null })),
+          n_candidates: rh.length,
+        }
+      : null,
+  };
+}
