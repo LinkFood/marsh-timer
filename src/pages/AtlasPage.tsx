@@ -82,7 +82,7 @@ export default function AtlasPage() {
           </p>
 
           <div className="mt-5 rounded-lg bg-gray-900/40 p-3 ring-1 ring-white/5">
-            <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="w-full" role="img" aria-label="US states shaded by today's anomaly">
+            <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="w-full" role="group" aria-label="US states shaded by today's anomaly — pick a state">
               {Object.entries(TILE_GRID).map(([abbr, [col, row]]) => {
                 const z = zByState[abbr];
                 const fill = z !== undefined ? colorForZ(z, "dark") : QUIET_COLOR.dark;
@@ -91,9 +91,20 @@ export default function AtlasPage() {
                   <g
                     key={abbr}
                     className="cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${abbr} — ${anomalyPhrase(z)}`}
                     onMouseEnter={() => setHovered(abbr)}
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => selectState(abbr)}
+                    onFocus={() => setHovered(abbr)}
+                    onBlur={() => setHovered(null)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        selectState(abbr);
+                      }
+                    }}
                   >
                     <rect
                       x={col * PITCH}
