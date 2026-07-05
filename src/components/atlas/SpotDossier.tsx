@@ -92,6 +92,24 @@ export interface FrontSignal {
   pressure_delta_mb?: number | null;
   /** human phrase, e.g. "Pressure falling 6 mb / 6h — cold front" */
   detail?: string | null;
+  /**
+   * "YYYY-MM-DD" the front read is BASED ON (the GHCN archive edge, ~a year
+   * behind the wall clock). Shown small so "No front" never reads as today.
+   */
+  as_of?: string | null;
+}
+
+/**
+ * A recorded alert ON FILE for the actual today — a row the pipes already
+ * wrote (nws-alert / weather-event / compound-risk-alert), never a forecast.
+ */
+export interface LiveAlert {
+  /** content type, e.g. "nws-alert" */
+  type: string;
+  /** cleaned title, e.g. "Flood Watch" */
+  title: string;
+  /** identical titles collapse into one chip with a count */
+  count: number;
 }
 
 export interface TideNow {
@@ -209,6 +227,10 @@ export interface SpotData {
   lineup?: LineupLead | null;
   weather?: WeatherNow | null;
   front?: FrontSignal | null;
+  /** Recorded alerts on file for the ACTUAL today (never a forecast). */
+  live?: LiveAlert[] | null;
+  /** "YYYY-MM-DD" the live layer was read for (the actual today). */
+  live_as_of?: string | null;
   moon?: MoonNow | null;
   sun?: SunNow | null;
   tide?: TideNow | null;
@@ -353,6 +375,31 @@ function FrontChip({
       />
       {label}
     </Tag>
+  );
+}
+
+/**
+ * A LIVE chip — a recorded alert on file for the actual today. Amber like a
+ * moving front (it is the operational "today" read), labeled "on file today"
+ * because it's a recorded row, never a forecast.
+ */
+function LiveChip({ alert }: { alert: LiveAlert }) {
+  return (
+    <span
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1",
+        "border-amber-400/40 bg-amber-400/10 text-amber-300",
+        "text-[11px] font-semibold tracking-wide",
+      ].join(" ")}
+      title={`${alert.type} — recorded row on file for today, not a forecast`}
+    >
+      <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+      {alert.title}
+      {alert.count > 1 && (
+        <span className="tabular-nums opacity-70">×{alert.count}</span>
+      )}
+      <span className="font-normal opacity-60">· on file today</span>
+    </span>
   );
 }
 
@@ -549,6 +596,11 @@ export default function SpotDossier({
 }: SpotDossierProps) {
   const { lineup, weather, front, moon, sun, tide, solunar, anomaly, rhyme } = data;
   const asOf = asOfLabel(data.as_of);
+  const live = data.live ?? [];
+  // Live chips are TODAY's recorded read; the front chip's GHCN basis is ~a
+  // year old. When today has recorded alerts and the front would say "No
+  // front", the live chips lead and the stale-basis chip stands down.
+  const showFrontChip = !!front && !(live.length > 0 && !front.moving);
 
   // Shooting-light window (fall back to sunrise/sunset if legal-light not computed).
   const lightStart = sun?.shooting_light_start ?? sun?.sunrise ?? null;
@@ -587,7 +639,21 @@ export default function SpotDossier({
               )}
             </div>
           </div>
-          {front && <FrontChip front={front} onClick={onFrontClick} />}
+          {(live.length > 0 || front) && (
+            <div className="flex max-w-[60%] flex-col items-end gap-1.5">
+              {live.map((a, i) => (
+                <LiveChip key={`${a.type}-${a.title}-${i}`} alert={a} />
+              ))}
+              {showFrontChip && front && (
+                <FrontChip front={front} onClick={onFrontClick} />
+              )}
+              {showFrontChip && front?.as_of && (
+                <span className="text-[9px] tabular-nums text-gray-600">
+                  front read from archive, as of {front.as_of}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -61,16 +61,20 @@ interface SpotResp {
   } | null;
   control?: {
     outcome?: string | null;
-    matched_n?: number;
-    matched_outcome_n?: number;
-    all_n?: number;
-    all_outcome_n?: number;
+    matched_n?: number | null;
+    matched_outcome_n?: number | null;
+    all_n?: number | null;
+    all_outcome_n?: number | null;
+    reason?: string | null;
     note?: string | null;
   } | null;
   now?: {
     weather?: { avg_high_f?: number; avg_low_f?: number; precip_in?: number; label?: string } | null;
-    front?: { signal?: string; temp_change_f?: number; drop_from_peak_f?: number; note?: string } | null;
+    front?: { signal?: string; temp_change_f?: number; drop_from_peak_f?: number; as_of?: string | null; note?: string } | null;
     tide?: { station_name?: string; state?: string; daily_mean_ft?: number; residual_ft?: number; is_local?: boolean; note?: string } | null;
+    /** Recorded alerts on file for the ACTUAL today — never a forecast. */
+    live?: { type?: string; title?: string; count?: number }[] | null;
+    live_as_of?: string | null;
   } | null;
   past?: {
     anomaly?: { metric?: string; value?: number; baseline_mean?: number; z?: number | null; n_years?: number } | null;
@@ -187,11 +191,21 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
 
     front: fr
       ? {
-          moving: (fr.signal ?? "steady") !== "steady",
+          moving: (fr.signal ?? "steady") !== "steady" && (fr.signal ?? "") !== "unknown",
           kind: (fr.temp_change_f ?? 0) < -3 ? "cold" : (fr.temp_change_f ?? 0) > 3 ? "warm" : "stationary",
           detail: fr.note ?? null,
+          // The GHCN basis date (~a year behind the wall clock) — shown small so
+          // "No front" can never read as a statement about the actual today.
+          as_of: fr.as_of ?? null,
         }
       : null,
+
+    // The LIVE layer — recorded alerts on file for the ACTUAL today. When these
+    // exist and the front chip would say "No front", the card leads with these.
+    live: (now.live ?? [])
+      .filter((a) => a.title)
+      .map((a) => ({ type: a.type ?? "alert", title: a.title as string, count: a.count ?? 1 })),
+    live_as_of: now.live_as_of ?? null,
 
     moon: m
       ? { phase: m.phase ?? "", illumination: (m.illum ?? 0) / 100, age_days: m.age ?? null }
@@ -240,8 +254,9 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
 
     // THE CONTROL LINE — the all-years base rate the lineup claim is judged
     // against. Rendered once under the rhyme list; without it the feature is
-    // a horoscope, so it rides in the same payload.
-    control: spot.control
+    // a horoscope, so it rides in the same payload. A reason-only control
+    // (all_n null — no recorded day to count) has no sentence to render.
+    control: spot.control && spot.control.all_n != null
       ? {
           outcome: spot.control.outcome ?? null,
           matched_n: spot.control.matched_n ?? 0,

@@ -20,6 +20,9 @@
 //   - tide-gauge  : nearest coastal gauge reading (NOAA CO-OPS), nearest by
 //                   state/lat-lng centroid — the archive holds ~22 gauges.
 //   - nws-alert   : recent official alert count for the state.
+//   - LIVE layer  : nws-alert / weather-event / compound-risk-alert rows with
+//                   effective_date = the ACTUAL today — recorded alerts on file
+//                   today (never a forecast; the rows already exist).
 //
 // Query strategy (READ-ONLY, no precompute — a table would be a WRITE):
 //   One paginated pull of a −3..+10 day-of-year window across all years for the
@@ -50,6 +53,8 @@ const ON_FILE_TYPES = ['storm-event', 'nws-alert', 'historical-newspaper', 'onth
 const FRONT_DROP_F = 8;         // avg-high fall (°F) over the window that reads as a front
 const TIDE_RECENT_FROM = '2025-11-25'; // recent tide snapshot floor (archive edge ~2025-12)
 const ALERT_LOOKBACK_DAYS = 30; // "recent" window for nws-alert count
+const LIVE_TYPES = ['nws-alert', 'weather-event', 'compound-risk-alert']; // recorded-today live layer
+const LIVE_LIMIT = 10;          // bounded pull; identical titles collapse to one chip with a count
 
 // LINEUP ("last time the moon, the tide, and the cold lined up like this"):
 const MOON_TOL_DAYS = 2;        // ±days of moon age that reads as "same moon"
@@ -111,6 +116,27 @@ function onFileLine(ct: string, title: string): string {
 const ON_FILE_PRIORITY: Record<string, number> = {
   'storm-event': 0, 'nws-alert': 1, 'historical-newspaper': 2, 'onthisday-event': 3,
 };
+
+const LIVE_PRIORITY: Record<string, number> = {
+  'nws-alert': 0, 'compound-risk-alert': 1, 'weather-event': 2,
+};
+
+/** Human chip title from a live row's title (per content type). */
+function liveTitle(ct: string, title: string): string {
+  const t = String(title ?? '').trim();
+  if (ct === 'nws-alert') return t.replace(/\s+-\s+[A-Z]{2}$/, ''); // "Flood Watch - PA" → "Flood Watch"
+  if (ct === 'weather-event') {
+    // "PA pressure_drop 2026-07-05" → "Pressure drop"
+    const m = t.match(/^[A-Z]{2}\s+([a-z_]+)\s+\d{4}-\d{2}-\d{2}$/);
+    if (m) { const w = m[1].replace(/_/g, ' '); return w[0].toUpperCase() + w.slice(1); }
+  }
+  if (ct === 'compound-risk-alert') {
+    // "COMPOUND RISK: PA — 6 domains converging (2026-07-05)" → "6 domains converging"
+    const m = t.match(/—\s*(.+?)\s*\(\d{4}-\d{2}-\d{2}\)$/);
+    if (m) return m[1];
+  }
+  return t.length > 60 ? `${t.slice(0, 57)}…` : t;
+}
 
 function resolveTargetDate(dateParam: string | null): { iso: string; mm: string; dd: string } | null {
   let y: number, mo: number, d: number;
@@ -327,6 +353,9 @@ Deno.serve(async (req: Request) => {
         .eq('content_type', 'ghcn-daily')
         .eq('state_abbr', stateParam)
         .in('effective_date', dateList)
+        .order('effective_date', { ascending: true }) // REQUIRED: unordered .range() pages are
+        // non-deterministic in PostgREST — pages can overlap/skip rows, silently dropping
+        // exact-day rows and emptying the anomaly/control for a state that HAS the data.
         .range(from, from + PAGE_SIZE - 1);
       if (error) {
         return new Response(JSON.stringify({ error: `Weather query failed: ${error.message}` }),
@@ -431,6 +460,7 @@ Deno.serve(async (req: Request) => {
         .eq('content_type', 'tide-gauge')
         .eq('state_abbr', stateParam)
         .in('effective_date', dateList)
+        .order('effective_date', { ascending: true }) // deterministic pages (see ghcn pull note)
         .range(from, from + PAGE_SIZE - 1);
       if (error || !data || data.length === 0) break;
       for (const r of data) {
@@ -468,12 +498,16 @@ Deno.serve(async (req: Request) => {
     // ---- ANOMALY (exact day-of-year, most-recent year = defendant) -----------
     const exact = obs.filter((o) => o.offset === 0 && o.high !== null)
       .sort((a, b) => a.year - b.year);
+    // Never a silent {} — when the number can't be computed, `reason` says why.
     let anomaly: Record<string, unknown> = {
       metric: 'avg_high_f',
       value: null, as_of_year: null,
       baseline_mean: null, baseline_std: null, z: null, n_years: 0,
       resolution: 'state', min_years: MIN_YEARS,
       baseline: `per-state avg-high for ${target.mm}-${target.dd}, ${FIRST_YEAR} → present`,
+      reason: obs.length === 0
+        ? `No GHCN-daily rows on file for ${centroid.name} in the ±${WINDOW_DAYS}-day window of ${target.mm}-${target.dd} — nothing to measure against.`
+        : `No recorded ${target.mm}-${target.dd} with a usable avg-high on file for ${centroid.name} — the window has data but the exact day-of-year does not.`,
     };
     let defendant: DayObs | null = null;
     if (exact.length > 0) {
@@ -489,6 +523,11 @@ Deno.serve(async (req: Request) => {
         anomaly.baseline_mean = round(mean);
         anomaly.baseline_std = round(std);
         anomaly.z = std > 0 ? round(((defendant.high as number) - mean) / std) : null;
+        anomaly.reason = anomaly.z === null
+          ? 'Baseline has zero spread (std = 0) — z is undefined, not zero.'
+          : null;
+      } else {
+        anomaly.reason = `Only ${baseline.length} prior recorded year${baseline.length === 1 ? '' : 's'} on file — below the ${MIN_YEARS}-year floor, so z is withheld rather than faked.`;
       }
     }
 
@@ -505,12 +544,16 @@ Deno.serve(async (req: Request) => {
     } : null;
 
     // ---- FRONT signal (the defendant year's 3-day run-up) --------------------
+    // `as_of` is the DATE THE FRONT READ IS BASED ON (the GHCN archive edge, ~a
+    // year behind the wall clock) — surfaced so "no front" can never read as a
+    // statement about the actual today. Today's recorded alerts live in `live`.
     let front: Record<string, unknown> = {
       signal: 'unknown', temp_change_f: null, precip_recent_in: null,
-      window: [], resolution: 'state',
+      window: [], resolution: 'state', as_of: null,
       note: 'Not enough recent recorded days to read a front.',
     };
     if (defendant) {
+      front.as_of = defendant.date; // even the "can't read a front" state carries its basis date
       const run = obs
         .filter((o) => o.year === defendant!.year && o.offset <= 0 && o.high !== null)
         .sort((a, b) => a.offset - b.offset);
@@ -534,6 +577,7 @@ Deno.serve(async (req: Request) => {
           precip_recent_in: round(precipRecent),
           window: run.map((o) => ({ date: o.date, high: round(o.high), low: round(o.low), precip: round(o.precip) })),
           resolution: 'state',
+          as_of: defendant.date,
           note: signal === 'front_passing'
             ? `Avg-high fell ${round(dropFromPeak)}°F off its recent peak${precipRecent > 0.05 ? ` with ${round(precipRecent)}" rain` : ''} — reads as a front moving through.`
             : signal === 'cooling' ? `Cooling trend (${round(change)}°F over ${run.length} days).`
@@ -692,7 +736,14 @@ Deno.serve(async (req: Request) => {
     // Base rate over ALL recorded years of this exact day-of-year, matched or
     // not: how often did the following week actually cool ≥COOL_OUTCOME_F°F?
     // The lineup-matched days' rate is only meaningful next to this number.
-    let control: Record<string, unknown> | null = null;
+    // Never a silent null/{}: when there's no defendant day there's no base rate
+    // to count — the object says so explicitly (counts stay null, reason filled).
+    let control: Record<string, unknown> = {
+      outcome: `avg high cooled ≥${COOL_OUTCOME_F}°F within the next ${AFTERMATH_DAYS} recorded days`,
+      matched_n: null, matched_outcome_n: null, all_n: null, all_outcome_n: null,
+      reason: `No recorded ${target.mm}-${target.dd} on file for ${centroid.name} — no base rate to count.`,
+      note: null,
+    };
     if (defendant) {
       let allN = 0, allOutcomeN = 0;
       for (const o of exact) {
@@ -715,6 +766,7 @@ Deno.serve(async (req: Request) => {
         matched_outcome_n: matchedOutcomeN,
         all_n: allN,
         all_outcome_n: allOutcomeN,
+        reason: null,
         note: `Control: of ${allN} recorded ${target.mm}-${target.dd}s here (every year, lineup-matched or not), `
           + `${allOutcomeN} cooled ≥${COOL_OUTCOME_F}°F within the following ${AFTERMATH_DAYS} recorded days. `
           + `The ${matchedN} lineup-matched days with a recorded week after them: ${matchedOutcomeN}. `
@@ -855,6 +907,37 @@ Deno.serve(async (req: Request) => {
       alerts = { count: count ?? recent.length, lookback_days: ALERT_LOOKBACK_DAYS, recent };
     }
 
+    // ---- LIVE layer (recorded alerts on file for the ACTUAL today) -----------
+    // One bounded read-only query. These are rows the pipes already wrote with
+    // effective_date = today — RECORDED alerts, not forecasts. Identical titles
+    // (NWS zones fire duplicates) collapse into one chip with a count. This is
+    // what keeps the year-old GHCN front chip honest: "no front" is a statement
+    // about the archive edge; `live` is the statement about today.
+    let live: Array<Record<string, unknown>> = [];
+    {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const { data: liveRows, error: liveErr } = await supabase
+        .from('hunt_knowledge')
+        .select('content_type, title')
+        .in('content_type', LIVE_TYPES)
+        .eq('state_abbr', stateParam)
+        .eq('effective_date', todayIso)
+        .limit(LIVE_LIMIT);
+      if (liveErr) console.error('live query failed:', liveErr.message);
+      const byTitle = new Map<string, { type: string; title: string; count: number }>();
+      for (const r of liveRows ?? []) {
+        const ct = String(r.content_type);
+        const title = liveTitle(ct, String(r.title ?? ''));
+        if (!title) continue;
+        const key = `${ct}|${title}`;
+        const cur = byTitle.get(key);
+        if (cur) cur.count += 1;
+        else byTitle.set(key, { type: ct, title, count: 1 });
+      }
+      live = Array.from(byTitle.values())
+        .sort((a, b) => (LIVE_PRIORITY[a.type] ?? 9) - (LIVE_PRIORITY[b.type] ?? 9));
+    }
+
     // ---- Assemble ------------------------------------------------------------
     return new Response(JSON.stringify({
       spot: {
@@ -874,6 +957,9 @@ Deno.serve(async (req: Request) => {
         front,
         tide,
         alerts,
+        // Recorded alerts on file for the ACTUAL today (never a forecast).
+        live,
+        live_as_of: new Date().toISOString().slice(0, 10),
       },
       past: {
         anomaly,
