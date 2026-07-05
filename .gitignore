@@ -34,3 +34,5 @@ scripts/experiments/.cache/
 analysis/
 scripts/.stitched-events.jsonl
 scripts/.stitcher-commit-checkpoint.json
+scripts/.ncei-cache/
+scripts/.ncei-reingest-checkpoint.json
