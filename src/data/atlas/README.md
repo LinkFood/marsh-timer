@@ -11,6 +11,15 @@ Approximate geographic center `[lng, lat]` for all 50 US states. Used **now**
 to plot state-level weather-anomaly dots. Coordinates are in GeoJSON /
 MapLibre order (longitude first).
 
+### `usStates.geojson.ts`
+Simplified polygons for all 50 states + DC (51 features), each with
+`properties.state` = 2-letter USPS abbr. The **default drill level (1)** for
+the nested-box map: fill each state box by its current activity, click to drill
+in. Public-domain TIGER-lineage boundaries, coords rounded to ~2 decimals.
+
+**Next asset:** counties GeoJSON (US Census TIGER, drill level 2) — the boxes
+inside the state boxes.
+
 ## Next additions (planned, not yet built)
 
 Per the scout, point-resolved weather / buoy / tide dots need coordinate
