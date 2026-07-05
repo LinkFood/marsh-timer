@@ -32,3 +32,5 @@ scripts/experiments/.cache/
 
 # Strangest-days analysis panel (local, rebuildable from hunt_knowledge)
 analysis/
+scripts/.stitched-events.jsonl
+scripts/.stitcher-commit-checkpoint.json
