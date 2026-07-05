@@ -11,12 +11,8 @@ const EXPECTED_CRONS = [
   { name: 'hunt-migration-monitor', schedule: 'daily 7am', critical: true },
   { name: 'hunt-birdcast', schedule: 'daily', critical: false },
   { name: 'hunt-nasa-power', schedule: 'daily 6:30am', critical: false },
-  { name: 'hunt-convergence-engine', schedule: 'daily 8am', critical: true },
   { name: 'hunt-scout-report', schedule: 'daily 9am', critical: false },
-  { name: 'hunt-convergence-alerts', schedule: 'daily 8:15am', critical: false },
   { name: 'hunt-forecast-tracker', schedule: 'daily 10am', critical: true },
-  { name: 'hunt-migration-report-card', schedule: 'daily 11am', critical: false },
-  { name: 'hunt-convergence-report-card', schedule: 'weekly Sun noon', critical: false },
   { name: 'hunt-du-map', schedule: 'Mon+Thu noon', critical: false },
   { name: 'hunt-du-alerts', schedule: 'weekly', critical: false },
   { name: 'hunt-web-curator', schedule: 'daily 7am', critical: false },
@@ -27,7 +23,6 @@ const EXPECTED_CRONS = [
   { name: 'hunt-solunar-precompute', schedule: 'weekly Sun 6am', critical: false },
   { name: 'hunt-absence-detector', schedule: 'weekly Sun 2pm', critical: false },
   { name: 'hunt-disaster-watch', schedule: 'Wed+Sat 6am', critical: false },
-  { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
   { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
   { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
   { name: 'hunt-birdweather', schedule: 'daily 5:30am', critical: false },
@@ -72,7 +67,6 @@ serve(async (req) => {
       cachedTypes,
       alertPerf,
       discoveries,
-      scans,
       cronLogs,
     ] = await Promise.all([
       // 1. Brain total — approximate count from pg_class
@@ -104,15 +98,7 @@ serve(async (req) => {
       // 6. Discoveries
       supabase.rpc('hunt_ops_discoveries'),
 
-      // 7. Convergence scans (last 20)
-      supabase
-        .from('hunt_cron_log')
-        .select('function_name, status, summary, error_message, created_at, duration_ms')
-        .eq('function_name', 'hunt-convergence-scan')
-        .order('created_at', { ascending: false })
-        .limit(20),
-
-      // 8. Cron logs — placeholder (per-function queries below)
+      // 7. Cron logs — placeholder (per-function queries below)
       Promise.resolve({ data: null }),
     ]);
 
@@ -215,7 +201,6 @@ serve(async (req) => {
         embedded: discoveryData?.embedded ?? 0,
         skipped: discoveryData?.skipped ?? 0,
       },
-      scans: scans.data ?? [],
       checked_at: new Date().toISOString(),
     });
   } catch (err) {

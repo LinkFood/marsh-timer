@@ -159,7 +159,7 @@ serve(async (req) => {
                 query_embedding: embedding,
                 match_threshold: 0.3,
                 match_count: 3,
-                filter_content_types: ['weather-pattern', 'weather-insight', 'migration-daily', 'convergence'],
+                filter_content_types: ['weather-pattern', 'weather-insight', 'migration-daily'],
                 filter_state_abbr: c.stateAbbr,
                 filter_species: null,
                 filter_date_from: null,

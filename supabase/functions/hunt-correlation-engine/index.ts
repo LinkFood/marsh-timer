@@ -15,7 +15,7 @@ import { logCronRun } from '../_shared/cronLog.ts';
 
 // Seed types: multi-domain entries produce the best cross-domain discoveries
 const SEED_TYPES = [
-  "compound-risk-alert", "convergence-score", "anomaly-alert",
+  "anomaly-alert",
   "weather-event", "nws-alert", "migration-spike-extreme", "migration-spike-significant",
   "birdcast-daily", "climate-index", "disaster-watch",
 ];
@@ -24,7 +24,7 @@ const SEED_TYPES = [
 const CROSS_DOMAIN_TYPES = [
   "weather-realtime", "weather-event", "migration-spike-extreme", "migration-spike-significant",
   "birdcast-daily", "birdweather-acoustic", "usgs-water", "climate-index",
-  "drought-weekly", "nws-alert", "convergence-score", "compound-risk-alert",
+  "drought-weekly", "nws-alert",
   "noaa-tide", "crop-progress", "gbif-monthly", "snow-cover-daily",
 ];
 

@@ -21,15 +21,6 @@ interface AnomalyCheck {
 
 const CHECKS: AnomalyCheck[] = [
   {
-    name: "Convergence Score Spike",
-    contentType: "convergence-score",
-    valueField: "score",
-    groupBy: "state_abbr",
-    lookbackDays: 14,
-    minDataPoints: 7,
-    sigmaThreshold: 2.0,
-  },
-  {
     name: "BirdWeather Detection Surge",
     contentType: "birdweather-acoustic",
     valueField: "detection_count",

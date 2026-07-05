@@ -20,7 +20,6 @@ serve(async (req) => {
       'correlation-discovery',
       'anomaly-alert',
       'alert-grade',
-      'compound-risk-alert',
       'disaster-watch',
       'migration-spike-extreme',
       'migration-spike-significant',
@@ -50,27 +49,8 @@ serve(async (req) => {
       content: row.content?.length > 200 ? row.content.slice(0, 200) + '...' : row.content,
     }));
 
-    // Also fetch high convergence scores (>65) from last 48h
-    const { data: highScores } = await supabase
-      .from('hunt_convergence_scores')
-      .select('state_abbr, score, reasoning, created_at')
-      .gte('score', 65)
-      .gte('created_at', cutoff)
-      .order('score', { ascending: false })
-      .limit(10);
-
-    const scoreItems = (highScores || []).map(s => ({
-      id: `score-${s.state_abbr}-${s.created_at}`,
-      title: `${s.state_abbr} convergence spike: ${s.score}/100`,
-      content: s.reasoning?.slice(0, 200) || '',
-      content_type: 'convergence-score',
-      state_abbr: s.state_abbr,
-      metadata: { score: s.score },
-      created_at: s.created_at,
-    }));
-
-    // Merge and sort by created_at
-    const combined = [...items, ...scoreItems]
+    // Sort by created_at
+    const combined = [...items]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, limit);
 

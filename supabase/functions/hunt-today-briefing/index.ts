@@ -49,14 +49,11 @@ serve(async (req) => {
     // ONLY query small dedicated tables — NO hunt_knowledge (7M rows, too slow)
     // History comes from frontend useThisDayInHistory hook instead
     // entries_today removed — count with date filter on 7M rows takes 23s. Frontend computes separately.
-    const [weatherRes, solunarRes, convergenceRes, claimsRes, anomaliesRes] = await Promise.all([
+    const [weatherRes, solunarRes, claimsRes] = await Promise.all([
       T('weather', supabase.from('hunt_weather_forecast').select('date, temp_high_f, temp_low_f, wind_speed_max_mph, wind_direction_dominant, pressure_msl, precipitation_mm, weather_code, cloud_cover_pct, updated_at').eq('state_abbr', stateAbbr).eq('date', today).limit(1)),
       // hunt_solunar_cache went stale 2026-04-10; the precompute cron writes hunt_solunar_calendar
       T('solunar', supabase.from('hunt_solunar_calendar').select('moon_phase, illumination_pct, major_start_1, major_end_1, minor_start_1, minor_end_1, is_prime, prime_reason').eq('date', today).limit(1)),
-      T('convergence', supabase.from('hunt_convergence_scores').select('score, date, weather_component, solunar_component, migration_component, pattern_component, birdcast_component, water_component, photoperiod_component, tide_component, signals').eq('state_abbr', stateAbbr).order('date', { ascending: false }).limit(1)),
       T('claims', supabase.from('hunt_alert_outcomes').select('id, alert_source, state_abbr, alert_date, predicted_outcome, outcome_deadline, outcome_checked, outcome_grade, outcome_reasoning, created_at').or(`state_abbr.eq.${stateAbbr},state_abbr.is.null`).order('created_at', { ascending: false }).limit(10)),
-      // Anomalies from convergence_alerts (small table) instead of hunt_knowledge
-      T('anomalies', supabase.from('hunt_convergence_alerts').select('id, state_abbr, score, domains_active, alert_type, created_at').eq('state_abbr', stateAbbr).order('created_at', { ascending: false }).limit(5)),
     ]);
     console.log('[hunt-today-briefing] Timings:', JSON.stringify(t));
 
@@ -109,30 +106,6 @@ serve(async (req) => {
       };
     }
 
-    // --- Parse convergence ---
-    let convergence = null;
-    const convRow = convergenceRes.data?.[0];
-    if (convRow) {
-      // Read domain scores from signals JSON (new engine) or fall back to legacy columns
-      const ds = convRow.signals?.domain_scores;
-      convergence = {
-        total_score: convRow.score ?? 0,
-        components: [
-          { domain: 'weather', score: ds?.weather ?? convRow.weather_component ?? 0, max_score: 20, label: 'Weather' },
-          { domain: 'biological', score: ds?.biological ?? ((convRow.migration_component ?? 0) + (convRow.birdcast_component ?? 0)), max_score: 15, label: 'Bio' },
-          { domain: 'water', score: ds?.water ?? convRow.water_component ?? 0, max_score: 15, label: 'Water' },
-          { domain: 'drought', score: ds?.drought ?? 0, max_score: 15, label: 'Drought' },
-          { domain: 'air_quality', score: ds?.air_quality ?? 0, max_score: 15, label: 'Air' },
-          { domain: 'soil', score: ds?.soil ?? 0, max_score: 10, label: 'Soil' },
-          { domain: 'ocean', score: ds?.ocean ?? 0, max_score: 10, label: 'Ocean' },
-          { domain: 'space_weather', score: ds?.space_weather ?? 0, max_score: 10, label: 'Space' },
-          { domain: 'lunar', score: ds?.lunar ?? convRow.solunar_component ?? 0, max_score: 10, label: 'Lunar' },
-          { domain: 'photoperiod', score: ds?.photoperiod ?? convRow.photoperiod_component ?? 0, max_score: 8, label: 'Photo' },
-          { domain: 'tide', score: ds?.tide ?? convRow.tide_component ?? 0, max_score: 8, label: 'Tide' },
-        ],
-      };
-    }
-
     // History handled by frontend useThisDayInHistory hook
     const this_day_history: any[] = [];
 
@@ -160,15 +133,6 @@ serve(async (req) => {
       };
     });
 
-    // --- Parse anomalies from convergence_alerts ---
-    const anomalies = (Array.isArray(anomaliesRes.data) ? anomaliesRes.data : []).map((a: any) => ({
-      id: a.id,
-      description: `${a.alert_type || 'Convergence'}: ${stateAbbr} — ${a.domains_active || 0} domains (score ${a.score || '?'})`,
-      domains: [],
-      severity: (a.score || 0) > 80 ? 3 : (a.score || 0) > 50 ? 2 : 1,
-      detected_at: a.created_at,
-    }));
-
     // --- Brain stats ---
     const brain_stats = {
       total_entries: 6955000, // approximate, updated by BrainHeartbeat component
@@ -179,10 +143,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       current_weather,
       solunar,
-      convergence,
       this_day_history,
       claims_grades,
-      anomalies,
       brain_stats,
       _timings: t,
     }), { headers: jsonHeaders });

@@ -133,39 +133,11 @@ serve(async (req) => {
     }
 
     // -----------------------------------------------------------------
-    // 4. Top 3 convergence movers (biggest score changes day-over-day)
+    // 4. Biggest movers — retired with the convergence predictor.
+    //    Kept as an empty section so the digest structure is unchanged;
+    //    it always renders the graceful fallback below.
     // -----------------------------------------------------------------
-    const twoDaysAgo = new Date(now.getTime() - 48 * 3600 * 1000).toISOString().slice(0, 10);
-
-    const { data: recentScores } = await supabase
-      .from('hunt_convergence_scores')
-      .select('state_abbr, score, date')
-      .gte('date', twoDaysAgo)
-      .order('date', { ascending: false })
-      .limit(200);
-
     const moversSection: string[] = [];
-    if (recentScores && recentScores.length > 0) {
-      const byState: Record<string, { today: number | null; yesterday: number | null }> = {};
-      for (const row of recentScores) {
-        if (!byState[row.state_abbr]) byState[row.state_abbr] = { today: null, yesterday: null };
-        if (row.date === today) {
-          byState[row.state_abbr].today = row.score;
-        } else {
-          byState[row.state_abbr].yesterday = row.score;
-        }
-      }
-      const movers = Object.entries(byState)
-        .filter(([_, v]) => v.today !== null && v.yesterday !== null)
-        .map(([st, v]) => ({ state: st, today: v.today!, yesterday: v.yesterday!, delta: v.today! - v.yesterday! }))
-        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-        .slice(0, 5);
-
-      for (const m of movers) {
-        const arrow = m.delta > 0 ? '+' : '';
-        moversSection.push(`${m.state}: ${m.yesterday} -> ${m.today} (${arrow}${m.delta})`);
-      }
-    }
 
     // -----------------------------------------------------------------
     // 5. Brain stats
@@ -236,35 +208,9 @@ serve(async (req) => {
       }
     }
 
-    // Per-domain performance — what is the brain actually good at?
-    // Parse outcome_reasoning from compound-risk grades to count per-domain hit rates
-    const { data: gradedOutcomes } = await supabase
-      .from('hunt_alert_outcomes')
-      .select('outcome_reasoning')
-      .eq('alert_source', 'compound-risk')
-      .eq('outcome_checked', true)
-      .not('outcome_reasoning', 'is', null)
-      .limit(600);
-
+    // Per-domain performance — retired with the compound-risk predictor.
+    // Left as an empty map so the section renders its graceful fallback.
     const domainStats: Record<string, { confirmed: number; missed: number }> = {};
-    if (gradedOutcomes) {
-      for (const o of gradedOutcomes) {
-        const reasoning = o.outcome_reasoning || '';
-        // Parse: "drought: 5 signals (CONFIRMED); birds: 5 signals (CONFIRMED); water: 0 signals (MISSED)"
-        const parts = reasoning.split(';');
-        for (const part of parts) {
-          const trimmed = part.trim();
-          const m = trimmed.match(/^(\w+):\s*\d+\s*signals?\s*\((CONFIRMED|MISSED)\)/i);
-          if (m) {
-            const domain = m[1].toLowerCase();
-            const status = m[2].toUpperCase();
-            if (!domainStats[domain]) domainStats[domain] = { confirmed: 0, missed: 0 };
-            if (status === 'CONFIRMED') domainStats[domain].confirmed++;
-            else domainStats[domain].missed++;
-          }
-        }
-      }
-    }
     const domainLines: string[] = [];
     const sortedDomains = Object.entries(domainStats)
       .map(([d, s]) => ({ domain: d, ...s, total: s.confirmed + s.missed, rate: s.confirmed / (s.confirmed + s.missed) }))

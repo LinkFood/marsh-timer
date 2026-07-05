@@ -15,13 +15,12 @@ serve(async (req) => {
     const cronNames = [
       'hunt-weather-watchdog', 'hunt-weather-realtime', 'hunt-nws-monitor',
       'hunt-migration-monitor', 'hunt-birdcast', 'hunt-nasa-power',
-      'hunt-convergence-engine', 'hunt-scout-report', 'hunt-convergence-alerts',
-      'hunt-forecast-tracker', 'hunt-migration-report-card',
-      'hunt-convergence-report-card', 'hunt-du-map', 'hunt-du-alerts',
+      'hunt-scout-report',
+      'hunt-forecast-tracker', 'hunt-du-map', 'hunt-du-alerts',
       'hunt-web-curator', 'hunt-anomaly-detector', 'hunt-correlation-engine',
       'hunt-alert-grader', 'hunt-alert-calibration', 'hunt-solunar-precompute',
       'hunt-absence-detector', 'hunt-disaster-watch',
-      'hunt-convergence-scan', 'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
+      'hunt-brain-synthesizer', 'hunt-synthesis-reviewer',
       'hunt-birdweather', 'hunt-snow-cover', 'hunt-snotel',
       'hunt-gbif', 'hunt-multi-species', 'hunt-search-trends',
       'hunt-query-signal', 'hunt-power-outage',
@@ -31,7 +30,7 @@ serve(async (req) => {
       'hunt-drought-monitor', 'hunt-inaturalist',
     ];
 
-    // Query per function to avoid high-frequency crons (convergence-scan)
+    // Query per function to avoid high-frequency crons (weather-realtime)
     // flooding results and hiding other functions' logs
     const latest: Record<string, any> = {};
     const history: Record<string, any[]> = {};
@@ -66,12 +65,8 @@ serve(async (req) => {
       { name: 'hunt-migration-monitor', schedule: 'daily 7am', critical: true },
       { name: 'hunt-birdcast', schedule: 'daily', critical: false },
       { name: 'hunt-nasa-power', schedule: 'daily 6:30am', critical: false },
-      { name: 'hunt-convergence-engine', schedule: 'daily 8am', critical: true },
       { name: 'hunt-scout-report', schedule: 'daily 9am', critical: false },
-      { name: 'hunt-convergence-alerts', schedule: 'daily 8:15am', critical: false },
       { name: 'hunt-forecast-tracker', schedule: 'daily 10am', critical: true },
-      { name: 'hunt-migration-report-card', schedule: 'daily 11am', critical: false },
-      { name: 'hunt-convergence-report-card', schedule: 'weekly Sun noon', critical: false },
       { name: 'hunt-du-map', schedule: 'Mon+Thu noon', critical: false },
       { name: 'hunt-du-alerts', schedule: 'weekly', critical: false },
       { name: 'hunt-web-curator', schedule: 'daily 7am', critical: false },
@@ -82,7 +77,6 @@ serve(async (req) => {
       { name: 'hunt-solunar-precompute', schedule: 'weekly Sun 6am', critical: false },
       { name: 'hunt-absence-detector', schedule: 'weekly Sun 2pm', critical: false },
       { name: 'hunt-disaster-watch', schedule: 'Wed+Sat 6am', critical: false },
-      { name: 'hunt-convergence-scan', schedule: 'on-demand', critical: false },
       { name: 'hunt-brain-synthesizer', schedule: 'daily 12pm', critical: false },
       { name: 'hunt-synthesis-reviewer', schedule: 'weekly Sun 3pm', critical: false },
       { name: 'hunt-birdweather', schedule: 'daily 5:30am', critical: false },
@@ -101,7 +95,6 @@ serve(async (req) => {
       { name: 'hunt-usfws-survey', schedule: 'monthly 1st 6am', critical: false },
       { name: 'hunt-drought-monitor', schedule: 'weekly Tue 7am', critical: false },
       { name: 'hunt-inaturalist', schedule: 'weekly Wed 11am', critical: false },
-      // hunt-convergence-alerts-pm removed — logs as 'hunt-convergence-alerts' (same function, AM+PM runs)
     ];
 
     const health = expected.map(cron => {

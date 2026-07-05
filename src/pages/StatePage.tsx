@@ -42,7 +42,7 @@ export default function StatePage() {
   useEffect(() => {
     if (autoFiredRef.current || !abbr) return;
     autoFiredRef.current = true;
-    sendMessage(`Give me a complete environmental profile for ${stateName} (${abbr}). Include: current conditions right now (convergence score, any active anomalies), recent activity (last 7 days), historical context (notable events, climate patterns), what domains the brain has data for in this state, and what makes this state environmentally interesting or unusual right now. Be comprehensive.`);
+    sendMessage(`Give me a complete environmental profile for ${stateName} (${abbr}). Include: current conditions right now (any active anomalies, recent extremes), recent activity (last 7 days), the last times conditions here looked like this and the base rate, historical context (notable events, climate patterns), what domains the brain has data for in this state, and what makes this state environmentally interesting or unusual right now. Be comprehensive.`);
   }, [abbr, stateName, sendMessage]);
 
   useEffect(() => {

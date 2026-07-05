@@ -66,7 +66,7 @@ const MIN_SIMILARITY = 0.6;
 // Cross-domain filter: uses the EXTERNAL/BRIDGE/INTERNAL classification.
 // Only narrate links between external signals or narrative bridges to external signals.
 // The old isCrossDomain just checked if domain roots differed, which let
-// alert-grade ↔ convergence-score through (both internal bookkeeping).
+// pairs of internal bookkeeping types through (both internal bookkeeping).
 function isNarratableLink(sourceType: string, matchedType: string): boolean {
   // Must also be genuinely different content types
   if (sourceType === matchedType) return false;
@@ -81,7 +81,7 @@ function isNarratableLink(sourceType: string, matchedType: string): boolean {
 const NARRATOR_SYSTEM = `You are the narrator for an autonomous environmental intelligence brain. The brain operates in 512-dimensional embedding space, discovering cross-domain patterns between weather, migration, soil, water, air quality, space weather, and 20+ other data streams.
 
 Rules:
-1. If the brain's own internal signals (arc status, convergence trends, grading history) indicate skepticism, YOU are skeptical. Say "the brain flagged this as unconfirmed" or "internal signals are mixed."
+1. If the brain's own internal signals (arc status, grading history) indicate skepticism, YOU are skeptical. Say "the brain flagged this as unconfirmed" or "internal signals are mixed."
 2. Never claim causation. The brain finds geometric proximity (correlation in embedding space). Say "these patterns are geometrically close" or "the brain sees a connection" — not "X caused Y."
 3. Always state the confidence level you are given: CONFIRMED, UNCERTAIN, or SKEPTICAL.
 4. Always name the seam — where and when does this touch observable reality?
@@ -140,8 +140,6 @@ type Confidence = 'CONFIRMED' | 'UNCERTAIN' | 'SKEPTICAL';
 interface BrainSignals {
   confidence: Confidence;
   arc_status: string | null;
-  convergence_trend: string | null;
-  convergence_score: number | null;
   grading_summary: string | null;
   raw: string;
 }
@@ -154,12 +152,10 @@ async function checkBrainSignals(
   const signals: string[] = [];
   let confidence: Confidence = 'UNCERTAIN';
   let arcStatus: string | null = null;
-  let convergenceTrend: string | null = null;
-  let convergenceScore: number | null = null;
   let gradingSummary: string | null = null;
 
   if (!stateAbbr) {
-    return { confidence: 'UNCERTAIN', arc_status: null, convergence_trend: null, convergence_score: null, grading_summary: null, raw: 'No state context — cannot check brain signals.' };
+    return { confidence: 'UNCERTAIN', arc_status: null, grading_summary: null, raw: 'No state context — cannot check brain signals.' };
   }
 
   // Check state arc
@@ -191,26 +187,6 @@ async function checkBrainSignals(
     signals.push('No active arc for this state');
   }
 
-  // Check convergence trend (last 3 days)
-  const { data: convScores } = await supabase
-    .from('hunt_convergence_scores')
-    .select('score, date')
-    .eq('state_abbr', stateAbbr)
-    .order('date', { ascending: false })
-    .limit(3);
-
-  if (convScores && convScores.length >= 2) {
-    convergenceScore = convScores[0].score;
-    const trend = convScores[0].score - convScores[convScores.length - 1].score;
-    convergenceTrend = trend > 5 ? 'rising' : trend < -5 ? 'declining' : 'stable';
-    signals.push(`Convergence: ${convScores[0].score}/100, trend ${convergenceTrend} (${convScores.map(s => s.score).join(' → ')})`);
-
-    if (convergenceTrend === 'declining' && confidence !== 'SKEPTICAL') {
-      signals.push('WARNING: Convergence declining while pattern link is strong — contradictory signals');
-      if (confidence === 'CONFIRMED') confidence = 'UNCERTAIN';
-    }
-  }
-
   // Check recent grading for this state
   const { data: grades } = await supabase
     .from('hunt_alert_outcomes')
@@ -238,8 +214,6 @@ async function checkBrainSignals(
   return {
     confidence,
     arc_status: arcStatus,
-    convergence_trend: convergenceTrend,
-    convergence_score: convergenceScore,
     grading_summary: gradingSummary,
     raw: signals.join('\n'),
   };
@@ -474,7 +448,7 @@ serve(async (req) => {
           matched_entry: matchedEntry,
         };
 
-        // 2b. Check brain's own signals (arcs, convergence, grades)
+        // 2b. Check brain's own signals (arcs, grades)
         const primaryState = link.state_abbr || sourceEntry?.state_abbr || matchedEntry?.state_abbr || null;
         const effectiveDate = sourceEntry?.effective_date || matchedEntry?.effective_date || null;
         const brainSignals = await checkBrainSignals(supabase, primaryState, effectiveDate);
@@ -513,8 +487,6 @@ serve(async (req) => {
         const DOMAIN_LABELS: Record<string, string> = {
           'alert-grade': 'Prediction Grade',
           'bio-environmental-correlation': 'Wildlife-Weather Link',
-          'compound-risk-alert': 'Multi-Domain Risk',
-          'convergence-score': 'Convergence',
           'weather-realtime': 'Weather',
           'weather-event': 'Storm Event',
           'nws-alert': 'NWS Alert',
@@ -570,8 +542,6 @@ serve(async (req) => {
               seam,
               brain_signals: {
                 arc_status: brainSignals.arc_status,
-                convergence_trend: brainSignals.convergence_trend,
-                convergence_score: brainSignals.convergence_score,
                 grading_summary: brainSignals.grading_summary,
               },
               llm_model: CLAUDE_MODELS.sonnet,
@@ -652,8 +622,6 @@ serve(async (req) => {
               seam: { date: effectiveDate, location: arc.state_abbr },
               brain_signals: {
                 arc_status: arc.grade,
-                convergence_trend: brainSignals.convergence_trend,
-                convergence_score: brainSignals.convergence_score,
                 grading_summary: brainSignals.grading_summary,
               },
               llm_model: CLAUDE_MODELS.sonnet,

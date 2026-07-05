@@ -26,18 +26,6 @@ export interface SolunarData {
   rating: string;
 }
 
-export interface ConvergenceComponent {
-  domain: string;
-  score: number;
-  max_score: number;
-  label: string;
-}
-
-export interface ConvergenceData {
-  total_score: number;
-  components: ConvergenceComponent[];
-}
-
 export interface ThisDayEntry {
   year: number;
   content_type: string;
@@ -73,7 +61,6 @@ export interface BrainStats {
 export interface TodayBriefingData {
   current_weather: CurrentWeather | null;
   solunar: SolunarData | null;
-  convergence: ConvergenceData | null;
   this_day_history: ThisDayEntry[];
   claims_grades: ClaimGrade[];
   anomalies: Anomaly[];

@@ -52,14 +52,6 @@ serve(async (req) => {
         // 1. Gather context
         const today = new Date().toISOString().slice(0, 10);
 
-        // Convergence score + 3-day trend
-        const { data: scores } = await supabase
-          .from('hunt_convergence_scores')
-          .select('*')
-          .eq('state_abbr', arc.state_abbr)
-          .order('date', { ascending: false })
-          .limit(3);
-
         // Pattern links (72h)
         const cutoff72h = new Date(Date.now() - 72 * 3600 * 1000).toISOString();
         const { data: links } = await supabase
@@ -80,7 +72,7 @@ serve(async (req) => {
         // Fingerprint search (Act 2+)
         let similarArcs: string[] = [];
         if (['recognition', 'outcome', 'grade'].includes(arc.current_act)) {
-          const arcDesc = `${arc.state_abbr} ${(arc.buildup_signals?.domains || []).join(' ')} convergence ${arc.buildup_signals?.trigger || ''}`;
+          const arcDesc = `${arc.state_abbr} ${(arc.buildup_signals?.domains || []).join(' ')} ${arc.buildup_signals?.trigger || ''}`;
           try {
             const embedding = await generateEmbedding(arcDesc, 'query');
             const { data: matches } = await supabase.rpc('search_hunt_knowledge_v3', {
@@ -100,12 +92,6 @@ serve(async (req) => {
         }
 
         // 2. Build prompt
-        const scoreInfo = scores?.[0]
-          ? `Score: ${scores[0].score}/100 (weather:${scores[0].weather_component}, migration:${scores[0].migration_component}, birdcast:${scores[0].birdcast_component}, solunar:${scores[0].solunar_component}, pattern:${scores[0].pattern_component}, water:${scores[0].water_component}, photoperiod:${scores[0].photoperiod_component}, tide:${scores[0].tide_component})`
-          : 'No score data';
-        const trendInfo = scores && scores.length >= 2
-          ? `Trend: ${scores.map((s: any) => s.score).reverse().join(' → ')}`
-          : '';
         const linksInfo = links?.length
           ? `Pattern links: ${links.map((l: any) => `${l.source_content_type}→${l.matched_content_type} (${Math.round(l.similarity * 100)}%)`).join(', ')}`
           : 'No recent pattern links';
@@ -127,8 +113,6 @@ Write 3-5 sentences. Be specific — cite actual numbers, domains, signals. Neve
 - Recognition claim: ${JSON.stringify(arc.recognition_claim)}
 - Outcome deadline: ${arc.outcome_deadline || 'N/A'}
 - Outcome signals received: ${JSON.stringify(arc.outcome_signals)}
-- ${scoreInfo}
-- ${trendInfo}
 - ${linksInfo}
 - ${calInfo}
 - ${fingerInfo}
@@ -146,8 +130,8 @@ ${arc.narrative ? `\nPrevious narrative (maintain continuity):\n${arc.narrative}
         // 4. Call Opus for grade reasoning (Act 4 only)
         let gradeReasoning: string | null = null;
         if (use_opus || trigger === 'grade_assigned') {
-          const opusSystem = `You are the Duck Countdown Brain performing a post-mortem on a completed intelligence arc. Analyze: 1) Which convergence component was the strongest signal? Which was noise? 2) If missed: what signal was misleading? What was missing? 3) If confirmed: what was the earliest reliable signal? Could recognition have happened sooner? 4) How should the brain adjust weighting for similar future patterns? Be specific. Reference actual data.`;
-          const opusUser = `Arc: ${arc.state_abbr}\nBuildup: ${JSON.stringify(arc.buildup_signals)}\nClaim: ${JSON.stringify(arc.recognition_claim)}\nOutcome signals: ${JSON.stringify(arc.outcome_signals)}\nGrade: ${arc.grade}\n${scoreInfo}`;
+          const opusSystem = `You are the Duck Countdown Brain performing a post-mortem on a completed intelligence arc. Analyze: 1) Which signal domain was the strongest signal? Which was noise? 2) If missed: what signal was misleading? What was missing? 3) If confirmed: what was the earliest reliable signal? Could recognition have happened sooner? 4) How should the brain adjust weighting for similar future patterns? Be specific. Reference actual data.`;
+          const opusUser = `Arc: ${arc.state_abbr}\nBuildup: ${JSON.stringify(arc.buildup_signals)}\nClaim: ${JSON.stringify(arc.recognition_claim)}\nOutcome signals: ${JSON.stringify(arc.outcome_signals)}\nGrade: ${arc.grade}`;
 
           try {
             const opusResponse = await callClaude({
@@ -172,17 +156,8 @@ ${arc.narrative ? `\nPrevious narrative (maintain continuity):\n${arc.narrative}
           state_abbr: arc.state_abbr,
           date: today,
           content: narrative,
-          score: scores?.[0]?.score || null,
-          component_breakdown: scores?.[0] ? {
-            weather: scores[0].weather_component,
-            migration: scores[0].migration_component,
-            birdcast: scores[0].birdcast_component,
-            solunar: scores[0].solunar_component,
-            pattern: scores[0].pattern_component,
-            water: scores[0].water_component,
-            photoperiod: scores[0].photoperiod_component,
-            tide: scores[0].tide_component,
-          } : null,
+          score: null,
+          component_breakdown: null,
           signals: arc.buildup_signals,
           pattern_links: links,
         }, { onConflict: 'state_abbr,date' });

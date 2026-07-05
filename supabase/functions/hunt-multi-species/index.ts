@@ -37,7 +37,6 @@ serve(async (req) => {
     const SPECIES_CONTENT_TYPES = [
       "migration-spike-extreme", "migration-spike-significant",
       "birdcast-daily", "birdweather-acoustic",
-      "convergence-score", "compound-risk-alert",
       "multi-species-convergence",
     ];
 

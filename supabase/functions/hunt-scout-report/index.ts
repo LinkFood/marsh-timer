@@ -42,6 +42,53 @@ interface UserSettings {
 }
 
 // ---------------------------------------------------------------------------
+// Real-event counts per state (last 48h) — replaces the retired convergence score.
+// Mirrors hunt-dispatcher getRecentEventContext (index.ts:185): ranks states by
+// recent anomaly/migration/alert activity in the archive, not a predicted score.
+// ---------------------------------------------------------------------------
+
+async function getStateEventCounts(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  stateFilter?: string[],
+): Promise<Map<string, { count: number; samples: string[] }>> {
+  const since = new Date(Date.now() - 48 * 3600000).toISOString();
+  const TYPES = [
+    'anomaly-alert', 'migration-spike', 'migration-spike-extreme',
+    'migration-spike-significant', 'nws-alert', 'weather-event', 'disaster-watch',
+  ];
+  let q = supabase
+    .from('hunt_knowledge')
+    .select('title, state_abbr, created_at')
+    .in('content_type', TYPES)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (stateFilter && stateFilter.length > 0) q = q.in('state_abbr', stateFilter);
+  const { data } = await q;
+  const groups = new Map<string, { count: number; samples: string[] }>();
+  for (const row of data || []) {
+    const st = row.state_abbr;
+    if (!st) continue;
+    if (!groups.has(st)) groups.set(st, { count: 0, samples: [] });
+    const g = groups.get(st)!;
+    g.count++;
+    if (g.samples.length < 2 && row.title) g.samples.push(row.title);
+  }
+  return groups;
+}
+
+function eventReasoning(g?: { count: number; samples: string[] }): string {
+  if (!g || g.count === 0) return 'No notable events in the last 48h';
+  return `${g.count} recent event${g.count === 1 ? '' : 's'} in the last 48h${g.samples.length ? `: ${g.samples.join('; ')}` : ''}`;
+}
+
+function countsToScores(groups: Map<string, { count: number; samples: string[] }>): Score[] {
+  return Array.from(groups.entries())
+    .map(([state_abbr, g]) => ({ state_abbr, score: g.count, reasoning: eventReasoning(g) }))
+    .sort((a, b) => b.score - a.score);
+}
+
+// ---------------------------------------------------------------------------
 // Brief Formatter
 // ---------------------------------------------------------------------------
 
@@ -130,13 +177,8 @@ serve(async (req) => {
       .select('user_id, favorite_states, timezone, settings')
       .eq('brief_enabled', true);
 
-    // Fetch national top 3 (used for all briefs)
-    const { data: top3 } = await supabase
-      .from('hunt_convergence_scores')
-      .select('state_abbr, score, reasoning')
-      .eq('date', today)
-      .order('score', { ascending: false })
-      .limit(3);
+    // Fetch national top 3 by recent real-event activity (used for all briefs)
+    const nationalCounts = await getStateEventCounts(supabase);
 
     // Fetch upcoming solunar prime windows (next 7 days)
     const { data: primeWindows } = await supabase
@@ -152,7 +194,7 @@ serve(async (req) => {
       .select('event_type, severity, headline, states')
       .gte('expires', now.toISOString());
 
-    const nationalTop3: Score[] = top3 ?? [];
+    const nationalTop3: Score[] = countsToScores(nationalCounts).slice(0, 3);
     const solunarWindows: SolunarDay[] = primeWindows ?? [];
     const nwsAlerts: NWSAlert[] = activeAlerts ?? [];
 
@@ -176,15 +218,11 @@ serve(async (req) => {
     }
 
     for (const target of targets) {
-      // Fetch convergence scores for target's states
-      const { data: scores } = await supabase
-        .from('hunt_convergence_scores')
-        .select('*')
-        .eq('date', today)
-        .in('state_abbr', target.favoriteStates)
-        .order('score', { ascending: false });
-
-      const favoriteScores: Score[] = scores ?? [];
+      // Fetch recent real-event counts for target's states
+      const targetCounts = await getStateEventCounts(supabase, target.favoriteStates);
+      const favoriteScores: Score[] = target.favoriteStates
+        .map(st => ({ state_abbr: st, score: targetCounts.get(st)?.count ?? 0, reasoning: eventReasoning(targetCounts.get(st)) }))
+        .sort((a, b) => b.score - a.score);
 
       // Format the brief
       const briefText = formatBrief({
@@ -204,7 +242,7 @@ serve(async (req) => {
           date: today,
           brief_text: briefText,
           scores: favoriteScores,
-          data_sources: ['convergence_scores', 'solunar_calendar', 'nws_alerts'],
+          data_sources: ['real_event_counts', 'solunar_calendar', 'nws_alerts'],
           delivered_via: 'stored',
         });
 

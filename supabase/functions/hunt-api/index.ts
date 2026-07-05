@@ -5,7 +5,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 import { generateEmbedding } from '../_shared/embedding.ts';
 
 const DATE_DOMAINS = [
-  'weather-event', 'nws-alert', 'convergence-score', 'birdcast-daily',
+  'weather-event', 'nws-alert', 'birdcast-daily',
   'migration-spike', 'ocean-buoy', 'space-weather', 'anomaly-alert',
 ];
 

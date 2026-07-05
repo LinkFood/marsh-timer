@@ -92,8 +92,6 @@ const INTEL_BORDER: Record<string, string> = {
   'correlation-discovery': 'border-l-purple-400',
   'anomaly-alert': 'border-l-amber-400',
   'alert-grade': 'border-l-green-400',
-  'compound-risk-alert': 'border-l-red-400',
-  'convergence-score': 'border-l-cyan-400',
   'disaster-watch': 'border-l-orange-400',
   'migration-spike-extreme': 'border-l-emerald-400',
   'migration-spike-significant': 'border-l-emerald-400',
@@ -104,7 +102,7 @@ const FEED_TABS: { label: string; value: string | undefined }[] = [
   { label: 'Anomalies', value: 'anomaly-alert' },
   { label: 'Correlations', value: 'correlation-discovery' },
   { label: 'Grades', value: 'alert-grade' },
-  { label: 'Alerts', value: 'compound-risk-alert' },
+  { label: 'Alerts', value: 'nws-alert' },
   { label: 'Disaster', value: 'disaster-watch' },
 ];
 
