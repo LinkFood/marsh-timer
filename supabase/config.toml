@@ -414,6 +414,9 @@ verify_jwt = false
 [functions.hunt-atlas-earthquakes]
 verify_jwt = false
 
+[functions.hunt-atlas-solunar]
+verify_jwt = false
+
 [functions.hunt-du-map]
 verify_jwt = false
 
@@ -591,7 +594,13 @@ verify_jwt = false
 [functions.hunt-atlas-anomaly]
 verify_jwt = false
 
+[functions.hunt-atlas-spot]
+verify_jwt = false
+
 [functions.hunt-wikidata-ingest]
+verify_jwt = false
+
+[functions.hunt-nrhp-ingest]
 verify_jwt = false
 
 [edge_runtime]
