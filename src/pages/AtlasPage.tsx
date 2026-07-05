@@ -1,18 +1,23 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase";
+import { US_STATES_GEOJSON } from "@/data/atlas/usStates.geojson";
+import { fetchStateAnomaly, buildChoroplethPaint, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
 
 /**
  * ATLAS — the living map of the ground you stand on (docs/THE-VISION-AND-ROADMAP.md).
- * Globe-first, zoom smaller and smaller to the ground. Read-only: it never writes
- * the DB. First real layer = earthquakes (deep, true point coords). Click a dot ->
- * fly to the ACTUAL spot. The hunter operates it; the kid marvels at it.
+ * NESTED BOXES, not a dot-scatter: the default view is US states as boxes shaded by
+ * what they're doing NOW (anomaly vs each state's own history). Click a box to drill
+ * in; the SPOT DOSSIER (now + past) lands next. Globe-first, Apple-clean, read-only.
  */
-const APIKEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
-
-type Quake = { lat: number; lng: number; magnitude: number; date: string; place: string; depth_km: number | null };
-type EventPt = { lat: number; lng: number; date: string; label: string; kind: string; url: string };
+function anomalyPhrase(z: number | undefined): string {
+  if (z === undefined) return "typical / no reading";
+  if (z >= 2) return `much warmer than normal (z +${z.toFixed(1)})`;
+  if (z >= 1) return `warmer than normal (z +${z.toFixed(1)})`;
+  if (z <= -2) return `much colder than normal (z ${z.toFixed(1)})`;
+  if (z <= -1) return `colder than normal (z ${z.toFixed(1)})`;
+  return `about normal (z ${z >= 0 ? "+" : ""}${z.toFixed(1)})`;
+}
 
 export default function AtlasPage() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,139 +39,58 @@ export default function AtlasPage() {
     map.on("style.load", () => map.setProjection({ type: "globe" }));
     mapRef.current = map;
 
-    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "280px" });
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px" });
 
     map.on("load", async () => {
       map.resize();
 
-      // First real layer: earthquakes (read-only fetch — no DB writes).
-      let quakes: Quake[] = [];
+      // States shaded by what they're doing NOW (read-only fetch of per-state z).
+      let zByState: Record<string, number> = {};
       try {
-        const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-earthquakes?minMag=4&from=1990-01-01`, {
-          headers: { apikey: APIKEY, Authorization: `Bearer ${APIKEY}` },
-        });
-        const json = await res.json();
-        quakes = Array.isArray(json?.points) ? json.points : [];
+        zByState = await fetchStateAnomaly();
       } catch {
-        quakes = [];
+        zByState = {};
       }
 
-      const fc = {
-        type: "FeatureCollection" as const,
-        features: quakes
-          .filter((q) => Number.isFinite(q.lat) && Number.isFinite(q.lng))
-          .map((q) => ({
-            type: "Feature" as const,
-            geometry: { type: "Point" as const, coordinates: [q.lng, q.lat] },
-            properties: { mag: q.magnitude, date: q.date, place: q.place, depth: q.depth_km },
-          })),
-      };
+      const paint =
+        Object.keys(zByState).length > 0
+          ? buildChoroplethPaint(zByState, { theme: "light" })
+          : {
+              "fill-color": QUIET_COLOR.light,
+              "fill-opacity": 0.3,
+              "fill-outline-color": "rgba(11,11,11,0.10)",
+            };
 
-      map.addSource("quakes", { type: "geojson", data: fc });
-      map.addLayer({
-        id: "quakes",
-        type: "circle",
-        source: "quakes",
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["get", "mag"], 4, 4, 6, 10, 8, 18],
-          "circle-color": ["interpolate", ["linear"], ["get", "mag"], 4, "#f2c14e", 5, "#e8853a", 6, "#d1462f", 8, "#8f1d1d"],
-          "circle-opacity": 0.72,
-          "circle-stroke-color": "#0f1016",
-          "circle-stroke-width": 0.6,
-        },
-      });
+      map.addSource("states", { type: "geojson", data: US_STATES_GEOJSON as unknown as GeoJSON.FeatureCollection });
+      map.addLayer({ id: "states-fill", type: "fill", source: "states", paint });
 
-      // Hover: cursor + telemetry readout that follows the dot.
-      map.on("mouseenter", "quakes", (e) => {
+      // Hover a box -> calm readout (name + how it compares to its own history).
+      map.on("mousemove", "states-fill", (e) => {
         map.getCanvas().style.cursor = "pointer";
         const f = e.features?.[0];
         if (!f) return;
-        const p = f.properties as { mag: number; date: string; place: string; depth: number };
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+        const props = f.properties as { state?: string; name?: string };
+        const abbr = props.state ?? "";
+        const z = zByState[abbr];
         popup
-          .setLngLat([lng, lat])
+          .setLngLat(e.lngLat)
           .setHTML(
-            `<div style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;color:#1a1a1a">` +
-              `<div style="font-weight:700;font-size:13px">M${p.mag} &middot; ${p.date}</div>` +
-              `<div>${p.place}</div>` +
-              `<div style="color:#777">depth ${p.depth ?? "?"} km &middot; click to fly here</div>` +
+            `<div style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.55;color:#1a1a1a">` +
+              `<div style="font-weight:700;font-size:13px">${props.name ?? abbr}</div>` +
+              `<div style="color:#555">${anomalyPhrase(z)}</div>` +
+              `<div style="color:#999">today vs 76 yrs here &middot; click to drill in</div>` +
               `</div>`
           )
           .addTo(map);
       });
-      map.on("mouseleave", "quakes", () => {
+      map.on("mouseleave", "states-fill", () => {
         map.getCanvas().style.cursor = "";
         popup.remove();
       });
 
-      // Click a dot -> fly to the ACTUAL spot (precise coords, fall to the ground).
-      map.on("click", "quakes", (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
-        map.flyTo({ center: [lng, lat], zoom: 8.5, speed: 0.8, curve: 1.4, essential: true });
-      });
-
-      // Second layer: the human "who happened here" events (read-only fetch).
-      let events: EventPt[] = [];
-      try {
-        const eres = await fetch(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-events`, {
-          headers: { apikey: APIKEY, Authorization: `Bearer ${APIKEY}` },
-        });
-        const ejson = await eres.json();
-        events = Array.isArray(ejson?.points) ? ejson.points : [];
-      } catch {
-        events = [];
-      }
-      const efc = {
-        type: "FeatureCollection" as const,
-        features: events
-          .filter((ev) => Number.isFinite(ev.lat) && Number.isFinite(ev.lng))
-          .map((ev) => ({
-            type: "Feature" as const,
-            geometry: { type: "Point" as const, coordinates: [ev.lng, ev.lat] },
-            properties: { label: ev.label, date: ev.date, kind: ev.kind },
-          })),
-      };
-      map.addSource("events", { type: "geojson", data: efc });
-      map.addLayer({
-        id: "events",
-        type: "circle",
-        source: "events",
-        paint: {
-          "circle-radius": 5,
-          "circle-color": "#38bdf8",
-          "circle-opacity": 0.85,
-          "circle-stroke-color": "#0f1016",
-          "circle-stroke-width": 0.8,
-        },
-      });
-      map.on("mouseenter", "events", (e) => {
-        map.getCanvas().style.cursor = "pointer";
-        const f = e.features?.[0];
-        if (!f) return;
-        const p = f.properties as { label: string; date: string; kind: string };
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
-        popup
-          .setLngLat([lng, lat])
-          .setHTML(
-            `<div style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;color:#1a1a1a">` +
-              `<div style="font-weight:700;font-size:13px">${p.label}</div>` +
-              `<div style="color:#0369a1">${p.kind} &middot; ${p.date}</div>` +
-              `<div style="color:#777">click to fly here</div>` +
-              `</div>`
-          )
-          .addTo(map);
-      });
-      map.on("mouseleave", "events", () => {
-        map.getCanvas().style.cursor = "";
-        popup.remove();
-      });
-      map.on("click", "events", (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
-        map.flyTo({ center: [lng, lat], zoom: 12, speed: 0.8, curve: 1.4, essential: true });
+      // Click a box -> drill in (fall toward it; county boxes + spot dossier land next).
+      map.on("click", "states-fill", (e) => {
+        map.flyTo({ center: e.lngLat, zoom: 6, speed: 0.8, curve: 1.4, essential: true });
       });
     });
 
@@ -187,7 +111,7 @@ export default function AtlasPage() {
       </div>
       <div className="pointer-events-none absolute bottom-4 left-4 z-10">
         <div className="rounded bg-gray-950/70 px-3 py-1.5 font-mono text-[10px] text-gray-400 backdrop-blur-sm ring-1 ring-white/5">
-          <span style={{ color: "#e8853a" }}>&#9679;</span> earthquakes &middot; <span style={{ color: "#38bdf8" }}>&#9679;</span> what happened here &middot; hover to read &middot; click to fly
+          states shaded by today vs their own history &middot; hover to read &middot; click to drill in
         </div>
       </div>
     </div>
