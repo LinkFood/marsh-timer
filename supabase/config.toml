@@ -411,6 +411,9 @@ verify_jwt = false
 [functions.hunt-feedback]
 verify_jwt = false
 
+[functions.hunt-atlas-earthquakes]
+verify_jwt = false
+
 [functions.hunt-du-map]
 verify_jwt = false
 
@@ -583,6 +586,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.hunt-claim-court]
+verify_jwt = false
+
+[functions.hunt-atlas-anomaly]
 verify_jwt = false
 
 [edge_runtime]
