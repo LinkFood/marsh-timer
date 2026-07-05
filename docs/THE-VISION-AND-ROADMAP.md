@@ -83,6 +83,17 @@ Depth is **jagged, not a clean wall.** Build knowing each layer's floor:
 
 ---
 
+## BUILD RULES (James, 2026-07-05 — how we build, every session)
+
+1. **Verify everything in Chrome, on the live site** — desktop AND 375px. Build-passing ≠ looks-right. Verify at meaningful increments (not every micro-change, but throughout — "you catch my drift").
+2. **Interactive, but not a game** — genuinely explorable and alive (click, zoom, drill, pan), not gamified and not a dead dashboard. Palantir-feel: operational, you can dig, it rewards curiosity.
+3. **Cross-agent verification** — every agent's work gets checked by other agents (adversarial peer review) so the build stays correct.
+4. **NEVER touch the database** — the build is READ-ONLY on the archive. No writes, no DDL, no migrations, no deletes during the build. Nothing fucks with the 8M rows. (DB changes like the index rebuild are separate, deliberate, James-gated.)
+5. **Run scouts/idea-machines concurrently** — while building, research more data + what else we need to make it better.
+6. **Build it as a shell meant to be built upon** — extensible foundation, not over-built. Rung 1 is a skeleton designed for everything above it to bolt on.
+
+---
+
 ## THE BUILD RUNGS (sequence — first 4 need NOTHING from anyone)
 
 1. **The map.** MapLibre GL + free tiles (no token, no Mapbox baggage — that was deleted). US, zoomable state → county → station. The home surface. *Unblocked.*
