@@ -136,6 +136,18 @@ Depth is **jagged, not a clean wall.** Build knowing each layer's floor:
 
 ---
 
+## COURSE CORRECTION — COOL ≠ USEFUL (James, 2026-07-05 night)
+
+James's gut check after seeing the globe: *"It's cool but nothing my hunting buddies would use or my kids. Who cares if cool the data is."* **He is right — the first data layers (earthquakes, random Wikidata events) were the EASY data (had coords / were free), NOT the data anyone cares about.** A global dot-scatter is a data-viz demo, not a tool. STOP building impressive-but-useless layers.
+
+**HUNTER DATA (what to actually build):** a hunter opens it to know about HIS SPOT — not a global map. He wants: current weather here, is a FRONT coming (ducks move on fronts), the MOON phase, the TIDE, the SOLUNAR feed window, shooting light (sunrise/sunset), wind — and *"was a day like today ever good right here."* We already have nearly all of it (weather, moon, tide, solunar, migration in the archive). The KID opens it at their town/birthday and gets the wonder of what was TRUE here.
+
+**THE REFRAME: the map is not a dot-scatter — it's YOUR SPOT + its conditions + what it rhymes with.** The "tonight-like-this" card (moon/tide/weather + "last time it looked like this here was Oct 1961") is closer to the product than the whole earthquake globe. The globe is just how you *travel to* your spot. Build: geolocate/click a spot → a local dossier card (weather, moon, tide, solunar, front, shooting light) → "days like today here" (the rhyme, denominator shown). Keep earthquakes/events only as optional toggle layers, never the point. Build for the hunter; the kid's wonder comes free.
+
+**DESIGN NORTH STAR: Apple × Palantir (James, 2026-07-05).** Apple-grade design — clean, premium, considered, restrained; real typographic hierarchy, generous space, nothing gaudy — married to Palantir-grade intelligence — operational, data-dense, powerful, rewards a serious user. It should look like Apple built a Palantir for the outdoors: premium enough a kid thinks it's magic, powerful enough a hunter actually runs it. NOT a toy, NOT a cluttered dashboard. Every screen answers "what do I need to know here" at a glance, with depth on demand. Use the dataviz skill palette; encode state in form (not just number); the spot dossier is the hero surface, the globe is the way in.
+
+---
+
 ## BUILD STATE — 2026-07-05 night (resume exactly here)
 
 **LIVE + Chrome-verified at `/atlas`:** globe-first MapLibre map (OpenFreeMap positron, no key/Mapbox), zoom to ground, geolocate. **Real earthquake dots** on it (read-only `hunt-atlas-earthquakes`, mag≥4, 1990→now, sized/colored by magnitude — CA fault system renders correctly). **Hover** = telemetry readout (M/date/place/depth). **Click** = flyTo the actual coords. Page: `src/pages/AtlasPage.tsx`, route `/atlas` in App.tsx.
