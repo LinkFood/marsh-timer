@@ -251,7 +251,10 @@ function parseNdbcText(text: string): HourlyObs[] {
   const dpdIdx = colIdx["DPD"];
   const apdIdx = colIdx["APD"];
   const mwdIdx = colIdx["MWD"];
-  const presIdx = colIdx["PRES"];
+  // PIPE 4 fix (2026-07-05): pre-2007 NDBC historical files name the pressure
+  // column BAR, not PRES — reading only PRES silently nulled pressure for every
+  // pre-2007 day (Katrina's 979.3 mb bottom at 42040 among them).
+  const presIdx = colIdx["PRES"] !== undefined ? colIdx["PRES"] : colIdx["BAR"];
   const atmpIdx = colIdx["ATMP"];
   const wtmpIdx = colIdx["WTMP"];
   const dewpIdx = colIdx["DEWP"];
