@@ -376,7 +376,9 @@ export default function AtlasPage() {
         {/* The map of boxes — and the camera */}
         <div className="lg:flex-1">
           <div className="mb-1 flex items-baseline justify-between">
-            <span className="font-mono text-[11px] tracking-[0.24em] text-cyan-300/90">DUCK COUNTDOWN</span>
+            <Link to="/" className="font-mono text-[11px] tracking-[0.24em] text-cyan-300/90 hover:text-cyan-200">
+              DUCK COUNTDOWN
+            </Link>
             <Link to="/morning" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
               The Morning Line &rarr;
             </Link>

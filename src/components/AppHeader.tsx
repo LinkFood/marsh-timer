@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, CalendarDays, Scale } from 'lucide-react';
+import { Sun, CalendarDays, Scale, Sunrise, Map } from 'lucide-react';
 
 /**
  * AppHeader — the one shared header + mobile bottom tab bar.
@@ -21,6 +21,8 @@ function todayDateStr(): string {
 
 const TABS = [
   { label: 'TODAY', icon: Sun, to: () => '/', isActive: (p: string) => p === '/', anchor: 'top' },
+  { label: 'MORNING', icon: Sunrise, to: () => '/morning', isActive: (p: string) => p.startsWith('/morning') },
+  { label: 'ATLAS', icon: Map, to: () => '/atlas', isActive: (p: string) => p.startsWith('/atlas') },
   { label: 'ARCHIVE', icon: CalendarDays, to: () => `/date/${todayDateStr()}`, isActive: (p: string) => p.startsWith('/date'), anchor: 'archive' },
   { label: 'COURT', icon: Scale, to: () => '/court', isActive: (p: string) => p.startsWith('/court'), anchor: 'court' },
 ];
@@ -53,7 +55,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
               return (
                 <span key={tab.label} className="flex items-center">
                   {i > 0 && <span className="text-white/15 text-[10px] px-2 select-none">·</span>}
-                  {pathname === '/' ? (
+                  {pathname === '/' && tab.anchor ? (
                     <button onClick={() => scrollToAnchor(tab.anchor)} className={linkClass}>
                       {tab.label}
                     </button>

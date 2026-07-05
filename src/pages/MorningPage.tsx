@@ -108,12 +108,20 @@ export default function MorningPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
-      <header>
-        <div className="font-mono text-[11px] tracking-[0.28em] text-cyan-300/90">THE MORNING LINE</div>
-        <div className="mt-1.5 font-mono text-[11px] text-gray-500">
-          {line ? line.date_label : date ? shortLabel(date) : "today"} &middot; one true sentence about
-          American ground &middot; recorded fact, never a forecast
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <div className="font-mono text-[11px] tracking-[0.28em] text-cyan-300/90">THE MORNING LINE</div>
+          <div className="mt-1.5 font-mono text-[11px] text-gray-500">
+            {line ? line.date_label : date ? shortLabel(date) : "today"} &middot; one true sentence about
+            American ground &middot; recorded fact, never a forecast
+          </div>
         </div>
+        <Link
+          to="/"
+          className="whitespace-nowrap font-mono text-[11px] tracking-[0.24em] text-gray-500 hover:text-cyan-300"
+        >
+          DUCK COUNTDOWN
+        </Link>
       </header>
 
       <main className="flex flex-1 flex-col justify-center py-12">
