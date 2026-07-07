@@ -87,6 +87,21 @@ interface SpotResp {
       also_recorded?: string[] | null;
       on_file?: OnFileResp[] | null;
     }[] | null;
+    /** "days that READ like today" — matched by meaning (voyage-512 cosine). */
+    semantic_rhyme?: {
+      matches?: {
+        date?: string;
+        similarity?: number | null;
+        note?: string | null;
+        outcome?: string | null;
+      }[] | null;
+      novel?: boolean;
+      note?: string | null;
+      n_searched?: number | null;
+      method?: string | null;
+      unavailable?: boolean;
+      reason?: string | null;
+    } | null;
   } | null;
 }
 
@@ -251,6 +266,32 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
           n_candidates: rh.length,
         }
       : null,
+
+    // SEMANTIC RHYME — "days that read like today." Unavailable (RPC failure)
+    // maps to null so the card simply omits the block: failures isolate, never
+    // clutter. The novel state flows through — it's a hero line, not an error.
+    semantic: (() => {
+      const sr = past.semantic_rhyme ?? null;
+      if (!sr || sr.unavailable) return null;
+      const matches = (Array.isArray(sr.matches) ? sr.matches : [])
+        .filter((m): m is typeof m & { date: string } => !!m.date)
+        .map((m) => ({
+          date: m.date,
+          similarity: m.similarity ?? null,
+          summary: m.note ?? null,
+          outcome: m.outcome ? `then ${m.outcome}` : null,
+          lat,
+          lng,
+        }));
+      if (!sr.novel && matches.length === 0) return null;
+      return {
+        matches,
+        novel: sr.novel ?? false,
+        note: sr.note ?? null,
+        n_searched: sr.n_searched ?? null,
+        method: sr.method ?? null,
+      };
+    })(),
 
     // THE CONTROL LINE — the all-years base rate the lineup claim is judged
     // against. Rendered once under the rhyme list; without it the feature is

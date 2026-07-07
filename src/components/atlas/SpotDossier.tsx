@@ -174,6 +174,25 @@ export interface RhymeResult {
 }
 
 /**
+ * SEMANTIC RHYME — "days that READ like today, here." The structured rhyme
+ * above matches on one number (avg-high); this layer matches on MEANING —
+ * cosine over each day's embedded daily narrative. `novel: true` is the
+ * honest no-precedent state: today reads like nothing on record here. That
+ * sentence renders at full weight — it's a hero line, not an error.
+ */
+export interface SemanticRhyme {
+  matches: RhymeDay[];
+  /** true = no recorded day reads like today (the finding, not a failure) */
+  novel?: boolean;
+  /** the no-precedent sentence, verbatim from the archive */
+  note?: string | null;
+  /** DENOMINATOR — recorded days searched (estimated) */
+  n_searched?: number | null;
+  /** how the match was made, e.g. "voyage-512 cosine over this state's own daily records" */
+  method?: string | null;
+}
+
+/**
  * The LINEUP — the card's lead. "Last time the moon, the tide, and the cold
  * lined up like this here: October 22, 1961." A dated sentence, not a stat.
  * last_date === null with n_years > 0 is the honest "never in N recorded
@@ -237,6 +256,8 @@ export interface SpotData {
   solunar?: SolunarNow | null;
   anomaly?: AnomalyNow | null;
   rhyme?: RhymeResult | null;
+  /** "days that READ like today" — matched by meaning, not by one number */
+  semantic?: SemanticRhyme | null;
   control?: ControlLine | null;
 }
 
@@ -565,6 +586,66 @@ function OnFileChips({
   );
 }
 
+/**
+ * One rhyming-day row — the shared idiom for both rhyme lists (structured
+ * "days like today" and semantic "days that read like today"): date,
+ * match strength, why, what followed, provenance chips, click-through.
+ */
+function RhymeRow({
+  day,
+  onRhymeClick,
+}: {
+  day: RhymeDay;
+  onRhymeClick?: (day: RhymeDay) => void;
+}) {
+  const flyable = onRhymeClick && day.lat != null && day.lng != null;
+  const Row = flyable ? "button" : "div";
+  return (
+    <Row
+      onClick={flyable ? () => onRhymeClick!(day) : undefined}
+      className={[
+        "group flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left",
+        "border border-white/[0.05] bg-white/[0.015]",
+        flyable
+          ? "transition-colors hover:border-teal-400/30 hover:bg-teal-400/[0.05]"
+          : "",
+      ].join(" ")}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold text-gray-100 tabular-nums">
+            {formatRhymeDate(day.date)}
+          </span>
+          {day.similarity != null && (
+            <span className="text-[10px] tabular-nums text-teal-400/70">
+              {Math.round(day.similarity * 100)}% match
+            </span>
+          )}
+          {flyable && (
+            <span className="ml-auto text-[10px] text-gray-600 opacity-0 transition-opacity group-hover:opacity-100">
+              fly to →
+            </span>
+          )}
+        </div>
+        {day.summary && (
+          <div className="mt-0.5 text-[11px] leading-snug text-gray-500">
+            {day.summary}
+          </div>
+        )}
+        {day.outcome && (
+          <div className="mt-0.5 text-[11px] leading-snug text-gray-400">
+            <span className="text-gray-600">→ </span>
+            {day.outcome}
+          </div>
+        )}
+        {!!day.on_file?.length && (
+          <OnFileChips items={day.on_file} className="mt-1" />
+        )}
+      </div>
+    </Row>
+  );
+}
+
 /** Wind arrow — points the way the wind is going, rotated by bearing. */
 function WindArrow({ deg }: { deg: number }) {
   return (
@@ -594,7 +675,7 @@ export default function SpotDossier({
   onFrontClick,
   className,
 }: SpotDossierProps) {
-  const { lineup, weather, front, moon, sun, tide, solunar, anomaly, rhyme } = data;
+  const { lineup, weather, front, moon, sun, tide, solunar, anomaly, rhyme, semantic } = data;
   const asOf = asOfLabel(data.as_of);
   const live = data.live ?? [];
   // Live chips are TODAY's recorded read; the front chip's GHCN basis is ~a
@@ -809,55 +890,13 @@ export default function SpotDossier({
           </div>
 
           <ul className="space-y-1.5">
-            {rhyme.matches.slice(0, 4).map((day, i) => {
-              const flyable = onRhymeClick && day.lat != null && day.lng != null;
-              const Row = flyable ? "button" : "div";
-              return (
-                <Row
-                  key={`${day.date}-${i}`}
-                  onClick={flyable ? () => onRhymeClick!(day) : undefined}
-                  className={[
-                    "group flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left",
-                    "border border-white/[0.05] bg-white/[0.015]",
-                    flyable
-                      ? "transition-colors hover:border-teal-400/30 hover:bg-teal-400/[0.05]"
-                      : "",
-                  ].join(" ")}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold text-gray-100 tabular-nums">
-                        {formatRhymeDate(day.date)}
-                      </span>
-                      {day.similarity != null && (
-                        <span className="text-[10px] tabular-nums text-teal-400/70">
-                          {Math.round(day.similarity * 100)}% match
-                        </span>
-                      )}
-                      {flyable && (
-                        <span className="ml-auto text-[10px] text-gray-600 opacity-0 transition-opacity group-hover:opacity-100">
-                          fly to →
-                        </span>
-                      )}
-                    </div>
-                    {day.summary && (
-                      <div className="mt-0.5 text-[11px] leading-snug text-gray-500">
-                        {day.summary}
-                      </div>
-                    )}
-                    {day.outcome && (
-                      <div className="mt-0.5 text-[11px] leading-snug text-gray-400">
-                        <span className="text-gray-600">→ </span>
-                        {day.outcome}
-                      </div>
-                    )}
-                    {!!day.on_file?.length && (
-                      <OnFileChips items={day.on_file} className="mt-1" />
-                    )}
-                  </div>
-                </Row>
-              );
-            })}
+            {rhyme.matches.slice(0, 4).map((day, i) => (
+              <RhymeRow
+                key={`${day.date}-${i}`}
+                day={day}
+                onRhymeClick={onRhymeClick}
+              />
+            ))}
           </ul>
 
           {/* THE CONTROL LINE — the all-years base rate, always present.
@@ -871,6 +910,44 @@ export default function SpotDossier({
           {/* Honesty footer — no guessing, recorded fact only. */}
           <p className="pt-0.5 text-[10px] leading-relaxed text-gray-600">
             Recorded fact only — matched against this spot&apos;s own history, never a forecast.
+          </p>
+        </div>
+      )}
+
+      {/* ── SEMANTIC RHYME — days that READ like today ─────────── */}
+      {/* Structured rhyme above matches one number; this matches meaning.
+          The novel state renders the no-precedent sentence at full weight —
+          it's a hero line, not an error. */}
+      {semantic && (semantic.novel || semantic.matches.length > 0) && (
+        <div className="space-y-2.5 border-t border-white/[0.06] px-4 py-4">
+          <Eyebrow>Days that read like today</Eyebrow>
+
+          {semantic.novel ? (
+            <p className="font-display text-[19px] font-semibold leading-snug text-white">
+              {semantic.note ??
+                "Today doesn't read like anything on record here — that itself is the finding."}
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {semantic.matches.slice(0, 4).map((day, i) => (
+                <RhymeRow
+                  key={`${day.date}-${i}`}
+                  day={day}
+                  onRhymeClick={onRhymeClick}
+                />
+              ))}
+            </ul>
+          )}
+
+          {/* The method line — small, honest, never forecast language. */}
+          <p className="pt-0.5 text-[10px] leading-relaxed tabular-nums text-gray-600">
+            matched by meaning
+            {semantic.n_searched != null &&
+              ` across ~${semantic.n_searched.toLocaleString()} recorded days`}
+            {" — not a forecast."}
+            {semantic.method && (
+              <span className="text-gray-700"> {semantic.method}.</span>
+            )}
           </p>
         </div>
       )}

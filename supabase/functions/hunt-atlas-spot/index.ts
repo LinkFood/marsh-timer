@@ -57,6 +57,18 @@ const LIVE_TYPES = ['nws-alert', 'weather-event', 'compound-risk-alert']; // rec
 const LIVE_LIMIT = 10;          // bounded pull; identical titles collapse to one chip with a count
 
 // LINEUP ("last time the moon, the tide, and the cold lined up like this"):
+// SEMANTIC RHYME ("days that READ like today, here"):
+const SEMANTIC_MATCH_COUNT = 24;   // asked of the RPC — self + same-year near-dates get filtered in JS
+const SEMANTIC_LIMIT = 12;         // matches surfaced after filtering
+const SEMANTIC_THRESHOLD = 0.3;    // RPC cosine floor (wide open — templated ghcn text never reads below ~0.85)
+const SEMANTIC_NOVEL_FLOOR = 0.90; // best non-self raw cosine below this = today reads like nothing on record.
+                                   // Tuned empirically 2026-07-07: typical defendant days probe 0.944–0.964
+                                   // best-non-self (VA/PA/WY summer, VA winter, LA Katrina); the most
+                                   // anomalous day in the archive (TX 2021-02-15, Uri) still found 0.936
+                                   // (its true precedent, the Feb 2011 freeze). 0.90 sits below the worst
+                                   // observed best-match on the worst day — it fires only on real novelty.
+const SEMANTIC_EXCLUDE_DAYS = 3;   // ±calendar days of the defendant excluded — "yesterday" is not a rhyme
+
 const MOON_TOL_DAYS = 2;        // ±days of moon age that reads as "same moon"
 const TEMP_TOL_F = 5;           // pool anomaly must be within this of today's anomaly
 const TEMP_NEAR_F = 2;          // |anomaly| below this reads as "near normal"
@@ -939,6 +951,160 @@ Deno.serve(async (req: Request) => {
         .sort((a, b) => (LIVE_PRIORITY[a.type] ?? 9) - (LIVE_PRIORITY[b.type] ?? 9));
     }
 
+    // ---- SEMANTIC RHYME ("days that READ like today, here") ------------------
+    // The structured rhyme above matches on ONE number (avg-high). This layer
+    // matches on MEANING: the defendant day's embedded daily narrative searched
+    // against every other recorded day for this state (voyage-3-lite 512-dim
+    // cosine via search_hunt_knowledge_v3 / IVFFlat). Lorenz-honest: the match
+    // basis is the day's reduced recorded narrative — temps, precipitation,
+    // station coverage — never the full atmospheric state, and NEVER a forecast.
+    // When nothing on record reads like today, novel:true IS the finding, not
+    // an error. Composed AFTER every other block; any failure isolates here.
+    let semanticRhyme: Record<string, unknown> = {
+      unavailable: true,
+      reason: 'No recorded day on file to search from.',
+    };
+    semantic: if (defendant) {
+      try {
+        // 1. The query vector — today's defendant row's own embedding (exact-
+        //    date bounded read; order-by scans on hunt_knowledge time out).
+        const { data: embRows, error: embErr } = await supabase
+          .from('hunt_knowledge')
+          .select('embedding')
+          .eq('content_type', 'ghcn-daily')
+          .eq('state_abbr', stateParam)
+          .eq('effective_date', defendant.date)
+          .not('embedding', 'is', null)
+          .limit(1);
+        if (embErr || !embRows || embRows.length === 0 || !embRows[0].embedding) {
+          semanticRhyme = {
+            unavailable: true,
+            reason: embErr
+              ? `Defendant embedding read failed: ${embErr.message}`
+              : `The defendant day (${defendant.date}) has no embedding on file.`,
+          };
+          break semantic;
+        }
+        const queryEmbedding = embRows[0].embedding;
+
+        // 2. The search — this state's own ghcn-daily records only. One retry,
+        //    5xx only (never retry 4xx).
+        const rpcArgs = {
+          query_embedding: queryEmbedding,
+          match_threshold: SEMANTIC_THRESHOLD,
+          match_count: SEMANTIC_MATCH_COUNT,
+          filter_content_types: ['ghcn-daily'],
+          filter_state_abbr: stateParam,
+          filter_species: null,
+          filter_date_from: null,
+          filter_date_to: null,
+          recency_weight: 0.0,
+          exclude_du_report: false,
+        };
+        let resp = await supabase.rpc('search_hunt_knowledge_v3', rpcArgs);
+        if (resp.error && resp.status >= 500) {
+          resp = await supabase.rpc('search_hunt_knowledge_v3', rpcArgs);
+        }
+        if (resp.error) {
+          semanticRhyme = { unavailable: true, reason: `Vector search failed: ${resp.error.message}` };
+          break semantic;
+        }
+
+        // 3. Filter in JS: drop the defendant itself and its ±3-calendar-day
+        //    neighbors (same weather system reads like itself — that's not a
+        //    rhyme), recover RAW cosine from the signal-weighted similarity,
+        //    dedupe by date keeping the best.
+        const defMs = Date.parse(defendant.date + 'T00:00:00Z');
+        const bestByDate = new Map<string, { sim: number; content: string }>();
+        for (const hit of (resp.data ?? []) as Array<Record<string, unknown>>) {
+          if ((hit?.metadata as Record<string, unknown> | null)?.superseded === true) continue;
+          const iso = String(hit.effective_date ?? '').slice(0, 10);
+          if (!iso) continue;
+          const dayDist = Math.abs(Date.parse(iso + 'T00:00:00Z') - defMs) / 86400000;
+          if (dayDist <= SEMANTIC_EXCLUDE_DAYS) continue;
+          const sw = Number(hit.signal_weight);
+          const raw = Number.isFinite(sw) && sw > 0 ? Number(hit.similarity) / sw : Number(hit.similarity);
+          if (!Number.isFinite(raw)) continue;
+          const prev = bestByDate.get(iso);
+          if (!prev || raw > prev.sim) bestByDate.set(iso, { sim: raw, content: String(hit.content ?? '') });
+        }
+        const ranked = Array.from(bestByDate.entries())
+          .sort((a, b) => b[1].sim - a[1].sim)
+          .slice(0, SEMANTIC_LIMIT);
+
+        // 4. Denominator — estimated row count of this state's daily records
+        //    (never count:'exact' on hunt_knowledge). Null when it can't be read.
+        let nSearched: number | null = null;
+        try {
+          const { count } = await supabase
+            .from('hunt_knowledge')
+            .select('id', { count: 'estimated', head: true })
+            .eq('content_type', 'ghcn-daily')
+            .eq('state_abbr', stateParam);
+          nSearched = typeof count === 'number' ? count : null;
+        } catch (_e) { /* denominator stays null — never blocks the block */ }
+
+        const method = 'voyage-512 cosine over this state\'s own daily records';
+        const basis = `each day's embedded daily narrative (avg high/low, precipitation, station coverage — not the full weather state)`;
+        const depth = `${centroid.name}'s own GHCN-daily record, ${FIRST_YEAR} → ~2025-12`;
+        const bestSim = ranked.length > 0 ? ranked[0][1].sim : null;
+
+        // 5. NOVELTY — Lorenz/sigma-dissimilarity teaching: when no good analog
+        //    exists, say so at full weight instead of forcing weak matches.
+        if (bestSim === null || bestSim < SEMANTIC_NOVEL_FLOOR) {
+          semanticRhyme = {
+            novel: true,
+            note: 'today doesn\'t read like anything on record here — that itself is the finding',
+            matches: [],
+            method,
+            basis_date: defendant.date,
+            best_similarity: round(bestSim, 4),
+            novelty_floor: SEMANTIC_NOVEL_FLOOR,
+            n_searched: nSearched,
+            honest_note: `0 days read like ${defendant.date} (the most recent recorded ${target.mm}-${target.dd} here) above the ${SEMANTIC_NOVEL_FLOOR} similarity floor`
+              + (bestSim !== null ? ` (closest: ${round(bestSim, 3)})` : '')
+              + `. Matched by meaning on ${basis} across ${nSearched !== null ? `~${nSearched}` : 'all'} recorded days in ${depth}. Recorded fact only — never a forecast.`,
+          };
+          break semantic;
+        }
+
+        // 6. Matches — each carries its own parsed numbers; dates that overlap
+        //    the ±window pool reuse the existing that_day / aftermath context.
+        const matches = ranked.map(([iso, m]) => {
+          const p = parseGhcn(m.content);
+          const inPool = byDate.get(iso);
+          const am = inPool ? aftermathFor(iso) : null;
+          return {
+            date: iso,
+            similarity: round(m.sim, 4),
+            high: round(p.high),
+            precip_in: round(p.precip),
+            that_day: inPool ? thatDayFor(inPool) : null,
+            outcome: am ? (am.outcome as string | null) : null,
+            note: p.high !== null
+              ? `Avg high ${round(p.high)}°F${p.precip !== null && p.precip > 0 ? ` · ${round(p.precip)}" precip` : ''}`
+              : null,
+          };
+        });
+
+        semanticRhyme = {
+          novel: false,
+          matches,
+          method,
+          basis_date: defendant.date,
+          best_similarity: round(bestSim, 4),
+          novelty_floor: SEMANTIC_NOVEL_FLOOR,
+          n_searched: nSearched,
+          honest_note: `${matches.length} recorded days read most like ${defendant.date} (the most recent recorded ${target.mm}-${target.dd} here). Matched by meaning on ${basis}, cosine over ${nSearched !== null ? `~${nSearched}` : 'all'} recorded days in ${depth}. Similarity is closeness of the recorded description — recorded fact only, never a forecast.`,
+        };
+      } catch (e) {
+        semanticRhyme = {
+          unavailable: true,
+          reason: `Semantic rhyme failed: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+    }
+
     // ---- Assemble ------------------------------------------------------------
     return new Response(JSON.stringify({
       spot: {
@@ -965,6 +1131,7 @@ Deno.serve(async (req: Request) => {
       past: {
         anomaly,
         rhyme,
+        semantic_rhyme: semanticRhyme,
         rhyme_pool: {
           window_days: WINDOW_DAYS,
           aftermath_days: AFTERMATH_DAYS,
