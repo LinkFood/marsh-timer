@@ -36,3 +36,8 @@ scripts/.stitched-events.jsonl
 scripts/.stitcher-commit-checkpoint.json
 scripts/.ncei-cache/
 scripts/.ncei-reingest-checkpoint.json
+scripts/.comcat-raw.jsonl
+scripts/.comcat-checkpoint.json
+scripts/.comcat-run.log
+scripts/.ndbc-pressure-checkpoint.json
+scripts/.tide-roster-checkpoint.json
