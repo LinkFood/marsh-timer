@@ -62,7 +62,7 @@ BEGIN
   END IF;
   PERFORM cron.schedule(
     'vacuum-hunt-knowledge-oneshot',
-    '30 minutes',
+    '*/30 * * * *',
     'VACUUM (ANALYZE) public.hunt_knowledge'
   );
 END;
