@@ -645,25 +645,36 @@ async function runIngest(yearsArg: string | undefined) {
 async function runSupersede() {
   bootstrapKeys(false);
   console.log("\n=== SUPERSEDE v1 storm-event rows (metadata.superseded=true) ===");
-  console.log("Requires migration 20260705120000_mark_storm_v1_superseded.sql pushed first.");
+  console.log("Requires migration 20260707100000_mark_storm_v1_superseded_windowed.sql pushed first.");
   const cp = loadCheckpoint();
   let total = cp.supersededTotal || 0;
-  while (true) {
-    const res = await fetchWithRetry(
-      `${SUPABASE_URL}/rest/v1/rpc/mark_storm_v1_superseded`,
-      { method: "POST", headers: supaHeaders(), body: JSON.stringify({ batch_size: SUPERSEDE_BATCH }) },
-      "supersede-rpc"
-    );
-    const updated = await res.json();
-    if (typeof updated !== "number") throw new Error(`RPC returned non-number: ${JSON.stringify(updated).slice(0, 200)}`);
-    total += updated;
-    cp.supersededTotal = total;
-    saveCheckpoint(cp);
-    console.log(`  +${updated} marked (total ${total})`);
-    if (updated < SUPERSEDE_BATCH) break;
-    await sleep(500); // breathe — IO budget
+  // Year windows ride the effective_date btree so each call's scan is bounded —
+  // the unwindowed v1 RPC re-scanned every already-marked row and died at 57014.
+  const endYear = new Date().getUTCFullYear();
+  for (let year = 1950; year <= endYear; year++) {
+    let yearTotal = 0;
+    while (true) {
+      const res = await fetchWithRetry(
+        `${SUPABASE_URL}/rest/v1/rpc/mark_storm_v1_superseded`,
+        {
+          method: "POST",
+          headers: supaHeaders(),
+          body: JSON.stringify({ date_from: `${year}-01-01`, date_to: `${year}-12-31`, batch_size: SUPERSEDE_BATCH }),
+        },
+        "supersede-rpc"
+      );
+      const updated = await res.json();
+      if (typeof updated !== "number") throw new Error(`RPC returned non-number: ${JSON.stringify(updated).slice(0, 200)}`);
+      total += updated;
+      yearTotal += updated;
+      cp.supersededTotal = total;
+      saveCheckpoint(cp);
+      if (updated < SUPERSEDE_BATCH) break;
+      await sleep(300); // breathe — IO budget
+    }
+    if (yearTotal > 0) console.log(`  ${year}: +${yearTotal} marked (running total ${total})`);
   }
-  console.log(`SUPERSEDE COMPLETE: ${total} v1 rows marked. Now ship the reader-side filters (see PIPE-2 runbook).`);
+  console.log(`SUPERSEDE COMPLETE: ${total} v1 rows marked lifetime. Now ship the reader-side filters (see PIPE-2 runbook).`);
 }
 
 // ─── ESTIMATE ─────────────────────────────────────────────────────────────────

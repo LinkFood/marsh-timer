@@ -108,6 +108,7 @@ async function buildPortrait(
         .select('content_type')
         .eq('state_abbr', stateAbbr)
         .in('content_type', ['anomaly-alert', 'nws-alert', 'storm-event', 'migration-spike'])
+        .is('metadata->superseded', null)
         .gte('effective_date', windowStart),
       supabase.from('hunt_birdcast')
         .select('cumulative_birds, avg_direction')
@@ -152,6 +153,7 @@ async function buildPortrait(
   const { data } = await supabase.from('hunt_knowledge')
     .select('state_abbr')
     .in('content_type', ['anomaly-alert', 'nws-alert', 'storm-event', 'migration-spike'])
+    .is('metadata->superseded', null)
     .gte('effective_date', natWindowStart)
     .not('state_abbr', 'is', null)
     .limit(1000);
@@ -217,7 +219,7 @@ serve(async (req) => {
     // 4. Group hits into distinct precedent days, best-similarity first.
     //    RPC similarity is weighted by signal_weight — recover raw cosine.
     const byDate = new Map<string, { similarity: number; entries: ArchiveRow[] }>();
-    for (const hit of hits as ArchiveRow[]) {
+    for (const hit of (hits as ArchiveRow[]).filter((r: any) => r?.metadata?.superseded !== true)) {
       if (!hit.effective_date || hit.effective_date > cutoff) continue;
       const raw = hit.signal_weight && hit.signal_weight > 0
         ? (hit.similarity ?? 0) / hit.signal_weight
@@ -239,6 +241,7 @@ serve(async (req) => {
         let q = supabase.from('hunt_knowledge')
           .select('title, content_type, state_abbr, effective_date')
           .in('content_type', AFTERMATH_TYPES)
+          .is('metadata->superseded', null)
           .gt('effective_date', date)
           .lte('effective_date', addDays(date, 7))
           .order('effective_date', { ascending: true })

@@ -115,6 +115,7 @@ serve(async (req: Request) => {
         .select('title, content_type, metadata')
         .eq('state_abbr', state_abbr)
         .eq('content_type', 'storm-event')
+        .is('metadata->superseded', null)
         .gte('effective_date', now.toISOString().split('T')[0].slice(0, 8) + '01') // this month
         .order('effective_date', { ascending: false })
         .limit(5),
@@ -210,9 +211,11 @@ serve(async (req: Request) => {
         match_count: 10,
         filter_state_abbr: state_abbr,
       });
-      historicalMatches = (matches || []).filter((m: any) =>
-        m.effective_date && new Date(m.effective_date) < new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      );
+      historicalMatches = (matches || [])
+        .filter((r: any) => r?.metadata?.superseded !== true)
+        .filter((m: any) =>
+          m.effective_date && new Date(m.effective_date) < new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        );
     } catch (err) {
       console.error(`[${FUNCTION_NAME}] Historical search failed:`, err);
     }

@@ -157,6 +157,7 @@ serve(async (req) => {
         .from('hunt_knowledge')
         .select('effective_date, metadata')
         .eq('content_type', CONTENT_TYPE)
+        .is('metadata->superseded', null)
         .eq('state_abbr', state);
 
     // existsIn(a, b) = any row with effective_date in [a-01-01, b-01-01).
@@ -194,6 +195,7 @@ serve(async (req) => {
         .from('hunt_knowledge')
         .select('id', { count: 'exact', head: true })
         .eq('content_type', CONTENT_TYPE)
+        .is('metadata->superseded', null)
         .eq('state_abbr', state),
       existsIn(FLOOR_YEAR, 1990),
       dates.length > 0 ? base().in('effective_date', dates).limit(MAX_ROWS) : Promise.resolve({ data: [], error: null }),

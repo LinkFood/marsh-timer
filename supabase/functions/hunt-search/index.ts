@@ -44,9 +44,10 @@ serve(async (req) => {
           recency_weight: recency_weight ?? 0.1,
           exclude_du_report: exclude_du_report ?? false,
         });
-        // Deduplicate by title + effective_date
+        // Deduplicate by title + effective_date; drop superseded v1 storm-event rows
         const seen = new Set<string>();
         const deduped = (data || []).filter((r: any) => {
+          if (r?.metadata?.superseded === true) return false;
           const key = `${r.title}-${r.effective_date}`;
           if (seen.has(key)) return false;
           seen.add(key);

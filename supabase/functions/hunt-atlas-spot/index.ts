@@ -791,6 +791,7 @@ Deno.serve(async (req: Request) => {
           .select('effective_date, content_type, state_abbr, title')
           .in('effective_date', Array.from(namedDates))
           .neq('content_type', 'ghcn-daily')
+          .is('metadata->superseded', null)
           .or(`state_abbr.eq.${stateParam},and(state_abbr.is.null,content_type.eq.onthisday-event)`)
           .limit(600);
         if (onFileErr) console.error('on-file query failed:', onFileErr.message);

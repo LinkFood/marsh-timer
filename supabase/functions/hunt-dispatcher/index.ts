@@ -1366,6 +1366,7 @@ async function handleDatePortrait(dateStr: string, query: string, stateAbbr: str
         .from('hunt_knowledge')
         .select('title, content, content_type, state_abbr, effective_date')
         .eq('content_type', ct)
+        .is('metadata->superseded', null)
         .gte('effective_date', from)
         .lte('effective_date', to)
         .limit(8);
@@ -1458,6 +1459,7 @@ async function handleDateCompare(date1: string, date2: string, query: string, st
           .from('hunt_knowledge')
           .select('title, content, content_type, state_abbr, effective_date')
           .eq('content_type', ct)
+          .is('metadata->superseded', null)
           .gte('effective_date', from)
           .lte('effective_date', to)
           .limit(5);

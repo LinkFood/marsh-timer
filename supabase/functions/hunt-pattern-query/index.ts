@@ -229,6 +229,7 @@ Examples:
           .from('hunt_knowledge')
           .select('content,effective_date')
           .eq('content_type', cond.content_type)
+          .is('metadata->superseded', null)
           .not('effective_date', 'is', null);
 
         if (state_abbr) q = q.eq('state_abbr', state_abbr);
@@ -291,6 +292,7 @@ Examples:
         .from('hunt_knowledge')
         .select('content_type,state_abbr,effective_date,title,content')
         .in('content_type', followupTypes)
+        .is('metadata->superseded', null)
         .gte('effective_date', earliestDate)
         .lte('effective_date', latestEnd.toISOString().split('T')[0])
         .limit(200);

@@ -177,6 +177,7 @@ async function checkDomain(
     .from('hunt_knowledge')
     .select('id, title, content_type, effective_date')
     .in('content_type', contentTypes)
+    .is('metadata->superseded', null)
     .gte('effective_date', dateFrom)
     .lte('effective_date', dateTo)
     .not('effective_date', 'is', null)
@@ -372,6 +373,7 @@ async function controlHitDirect(
     .from('hunt_knowledge')
     .select('id')
     .in('content_type', contentTypes)
+    .is('metadata->superseded', null)
     .not('effective_date', 'is', null)
     .gte('effective_date', start)
     .lte('effective_date', end)
@@ -563,6 +565,7 @@ serve(async (req) => {
                 .from('hunt_knowledge')
                 .select('id, title, content_type')
                 .eq('content_type', ct)
+                .is('metadata->superseded', null)
                 .not('effective_date', 'is', null)
                 .gte('effective_date', alert.alert_date)
                 .lte('effective_date', deadlineDate)
@@ -591,7 +594,9 @@ serve(async (req) => {
               exclude_du_report: true,
             });
 
-            const highRelevanceVector = (vectorResults || []).filter((r: { similarity: number }) => r.similarity > 0.6);
+            const highRelevanceVector = (vectorResults || [])
+              .filter((r: any) => r?.metadata?.superseded !== true)
+              .filter((r: { similarity: number }) => r.similarity > 0.6);
 
             const result = gradeFromSignalCount(directMatches.length, highRelevanceVector.length, severity);
             grade = result.grade;

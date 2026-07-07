@@ -167,7 +167,9 @@ DOMAINS: [comma-separated domains involved]`,
 
       if (similar && similar.length > 0) {
         // Pick the most similar entry that's NOT from today
-        const match = similar.find((s: any) => s.effective_date && s.effective_date < yesterday);
+        const match = similar
+          .filter((r: any) => r?.metadata?.superseded !== true)
+          .find((s: any) => s.effective_date && s.effective_date < yesterday);
         if (match) {
           dejaVu = {
             date: match.effective_date,

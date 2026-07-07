@@ -151,6 +151,7 @@ serve(async (req) => {
           .from('hunt_knowledge')
           .select('id, title, content_type, effective_date')
           .eq('content_type', ct)
+          .is('metadata->superseded', null)
           .eq('state_abbr', bird.state_abbr)
           .gte('effective_date', dateFrom)
           .lte('effective_date', dateTo)
