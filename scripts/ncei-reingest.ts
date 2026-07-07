@@ -487,23 +487,31 @@ async function fetchListing(): Promise<{ year: number; file: string; bytes: numb
 }
 
 // ─── Existing v2 EVENT_IDs for a year (idempotency) ──────────────────────────
+// KEYSET pagination on the pkey — NEVER unordered limit/offset. ROOT CAUSE of
+// the 07-05 duplicate rows: this check used offset pages with NO order=; the
+// DC-era rerun (07-05 ~21:44) ran while the v1 supersede UPDATE pass churned
+// the same table, Postgres served the unordered pages in shifting physical
+// order, ids fell between pages and were silently missed, and those events
+// re-inserted as v2 duplicates (cleaned by scripts/dedupe-v2-storms.ts).
+// Keyset on the immutable id is stable under any concurrent churn.
 async function existingEventIds(year: number): Promise<Set<string>> {
   const ids = new Set<string>();
-  let offset = 0;
+  let cursor = "";
   while (true) {
     const url =
       `${SUPABASE_URL}/rest/v1/hunt_knowledge` +
       `?content_type=eq.${CONTENT_TYPE}` +
       `&effective_date=gte.${year}-01-01&effective_date=lte.${year}-12-31` +
       `&metadata->>ingest_v=eq.2` +
-      `&select=sid:metadata->>source_event_id` +
-      `&limit=${PAGE_SIZE}&offset=${offset}`;
-    const res = await fetchWithRetry(url, { headers: supaHeaders() }, `existing-ids ${year}@${offset}`);
+      `&select=id,sid:metadata->>source_event_id` +
+      (cursor ? `&id=gt.${cursor}` : "") +
+      `&order=id.asc&limit=${PAGE_SIZE}`;
+    const res = await fetchWithRetry(url, { headers: supaHeaders() }, `existing-ids ${year}@${cursor || "start"}`);
     const rows = await res.json();
     if (!Array.isArray(rows)) throw new Error(`existing-ids ${year}: non-array response`);
     for (const r of rows) if (r.sid) ids.add(String(r.sid));
     if (rows.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    cursor = rows[rows.length - 1].id;
   }
   return ids;
 }
@@ -524,6 +532,10 @@ async function embed(texts: string[]): Promise<number[][]> {
   return data.data.map((d: any) => d.embedding);
 }
 
+// NOTE: a retried POST can double-commit if the first attempt committed but the
+// response was lost ("fetch failed" mid-response). No unique constraint exists on
+// (content_type, source_event_id), so this is unguarded — scripts/dedupe-v2-storms.ts
+// is the sweep for that class too. 07-05 run: 81 retry events, dupes measured tiny.
 async function insertRows(rows: any[]): Promise<void> {
   await fetchWithRetry(
     `${SUPABASE_URL}/rest/v1/hunt_knowledge`,
