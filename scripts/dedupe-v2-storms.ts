@@ -99,47 +99,63 @@ async function fetchWithRetry(url: string, init: RequestInit, label: string, att
 
 type LiveRow = { id: string; created_at: string; effective_date: string; sid: string | null };
 
-// Every v2 storm-event row was created ≥ 2026-07-05 (the re-ingest). Scanning by
-// created_at keyset rides the (content_type, created_at) compound index — the
-// per-effective-year windows this replaced flipped to a bad plan on some years
-// and 57014'd hard.
-const V2_CREATED_FLOOR = "2026-07-05T00:00:00Z";
+// Scan lane per state_abbr, keyset on effective_date — this is the exact shape
+// of the partial index idx_storm_live_state_date (state_abbr, effective_date)
+// WHERE content_type='storm-event' AND metadata->'superseded' IS NULL, so every
+// page is a pure index walk (~0.5s). NOTE the `->` filter form: it must match
+// the index predicate for planner implication — `->>` does NOT ride it, and
+// created_at / plain effective_date scans 57014 on this 9.8M-row table.
+const STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN",
+  "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH",
+  "NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT",
+  "VT","VA","WA","WV","WI","WY",
+];
 
-/** Stream ALL LIVE v2 storm-event rows in created_at order (keyset, tie-safe). */
-async function scanAll(onRow: (r: LiveRow) => void): Promise<number> {
-  let cursor = V2_CREATED_FLOOR;
-  let seenAtCursor = new Set<string>(); // ids already processed at the cursor timestamp
-  let scanned = 0, pageN = 0;
+/** Stream all LIVE v2 storm-event rows for one state lane (null = territories/marine). */
+async function scanState(state: string | null, onRow: (r: LiveRow) => void): Promise<number> {
+  let cursor = "";
+  let seenAtCursor = new Set<string>(); // ids already processed at the cursor date
+  let scanned = 0;
+  const lane = state ?? "null";
   while (true) {
     const url =
       `${SUPABASE_URL}/rest/v1/hunt_knowledge` +
       `?content_type=eq.storm-event` +
+      `&metadata->superseded=is.null` +
       `&metadata->>ingest_v=eq.2` +
-      `&metadata->>superseded=is.null` +
-      `&created_at=gte.${encodeURIComponent(cursor)}` +
+      (state ? `&state_abbr=eq.${state}` : `&state_abbr=is.null`) +
+      (cursor ? `&effective_date=gte.${cursor}` : "") +
       `&select=id,created_at,effective_date,sid:metadata->>source_event_id` +
-      // created_at only — a secondary id sort forces a full sort of every match
-      // instead of a pure index walk (57014). Tie order across pages is handled
-      // by the seenAtCursor overlap set; keeper choice is made order-independent
-      // in run() by comparing (created_at, id) explicitly.
-      `&order=created_at.asc&limit=${PAGE_SIZE}`;
-    const res = await fetchWithRetry(url, { headers: supaHeaders() }, `scan@${cursor}`);
+      `&order=effective_date.asc&limit=${PAGE_SIZE}`;
+    const res = await fetchWithRetry(url, { headers: supaHeaders() }, `scan ${lane}@${cursor || "start"}`);
     const page: LiveRow[] = await res.json();
-    if (!Array.isArray(page)) throw new Error(`scan@${cursor}: non-array response`);
+    if (!Array.isArray(page)) throw new Error(`scan ${lane}: non-array response`);
     let fresh = 0;
     for (const r of page) {
-      if (r.created_at === cursor && seenAtCursor.has(r.id)) continue; // page-overlap tie
+      if (r.effective_date === cursor && seenAtCursor.has(r.id)) continue; // page-overlap tie
       onRow(r);
       scanned++;
       fresh++;
     }
     if (page.length < PAGE_SIZE) break;
     const last = page[page.length - 1];
-    if (last.created_at === cursor && fresh === 0) throw new Error(`scan stuck at ${cursor} — tie group exceeds page`);
-    if (last.created_at !== cursor) seenAtCursor = new Set();
-    for (const r of page) if (r.created_at === last.created_at) seenAtCursor.add(r.id);
-    cursor = last.created_at;
-    if (++pageN % 100 === 0) console.log(`  … ${scanned.toLocaleString()} rows scanned (cursor ${cursor})`);
+    if (last.effective_date === cursor && fresh === 0) {
+      throw new Error(`scan ${lane} stuck at ${cursor} — single-day tie group exceeds page size`);
+    }
+    if (last.effective_date !== cursor) seenAtCursor = new Set();
+    for (const r of page) if (r.effective_date === last.effective_date) seenAtCursor.add(r.id);
+    cursor = last.effective_date;
+  }
+  return scanned;
+}
+
+async function scanAll(onRow: (r: LiveRow) => void): Promise<number> {
+  let scanned = 0;
+  for (const state of [...STATES, null]) {
+    const n = await scanState(state, onRow);
+    scanned += n;
+    console.log(`  lane ${state ?? "non-state"}: ${n.toLocaleString()} live v2 rows (running ${scanned.toLocaleString()})`);
   }
   return scanned;
 }
