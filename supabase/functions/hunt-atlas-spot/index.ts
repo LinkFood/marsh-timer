@@ -97,6 +97,18 @@ function round(n: number | null, dp = 2): number | null {
   return Math.round(n * f) / f;
 }
 
+/** A metadata value that is a finite number, else null (never undefined/string). */
+function mnum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+// THAT-DAY event families: a storm-event on an earlier date only counts toward the
+// requested day when it plausibly SPANS onto it (multi-day systems). Single-day
+// convective types (tornado/wind/hail) never carry forward.
+const THATDAY_MULTIDAY_RE = /blizzard|winter storm|hurricane|tropical|flood/i;
+// Pre-1996 the federal storm ledger held only these types — used for the era note.
+const THATDAY_LEDGER_LIMITED_RE = /tornado|wind|hail/i;
+
 function isoPlusDays(iso: string, days: number): string {
   const dt = new Date(iso + 'T00:00:00Z');
   dt.setUTCDate(dt.getUTCDate() + days);
@@ -337,6 +349,151 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // ---- THAT DAY — the requested date's OWN rows (date-native) ---------------
+    // The rest of the dossier anchors to the most recent same month-day; this
+    // block answers "what did THIS exact date do", from the archive's own rows.
+    // Kicked off here so its four bounded queries run in parallel with every
+    // block below; awaited just before assembly. Any failure isolates to this
+    // block's honest_note — it never breaks the rest of the dossier.
+    const archiveEdge = new Date().toISOString().slice(0, 10);
+    const thatDayPromise: Promise<Record<string, unknown> | null> = (async () => {
+      if (target.iso > archiveEdge) return null; // a future date has no recorded "that day"
+      try {
+        const dMinus3 = isoPlusDays(target.iso, -3);
+        const [wRes, eRes, tRes, oRes] = await Promise.all([
+          // weather — the requested date's OWN state ghcn-daily row
+          supabase.from('hunt_knowledge')
+            .select('content, metadata')
+            .eq('content_type', 'ghcn-daily')
+            .eq('state_abbr', stateParam)
+            .eq('effective_date', target.iso)
+            .limit(1),
+          // events — this date, plus multi-day systems that began up to 3 days earlier.
+          // Ordered by deaths at the DB (bounded filter → cheap in-memory sort) so a
+          // mega-event's highest-severity rows are never lost to the PostgREST row cap
+          // before the JS rank runs; JS then re-ranks with the full deaths/damage/injuries key.
+          supabase.from('hunt_knowledge')
+            .select('effective_date, title, content, metadata')
+            .eq('content_type', 'storm-event')
+            .eq('state_abbr', stateParam)
+            .is('metadata->superseded', null)
+            .gte('effective_date', dMinus3)
+            .lte('effective_date', target.iso)
+            .order('metadata->deaths', { ascending: false, nullsFirst: false })
+            .limit(300),
+          // tide — every station's own reading that day
+          supabase.from('hunt_knowledge')
+            .select('metadata')
+            .eq('content_type', 'tide-gauge')
+            .eq('state_abbr', stateParam)
+            .eq('effective_date', target.iso)
+            .limit(50),
+          // world — onthisday-event rows on this EXACT date (year matters; null state_abbr)
+          supabase.from('hunt_knowledge')
+            .select('title, content')
+            .eq('content_type', 'onthisday-event')
+            .eq('effective_date', target.iso)
+            .limit(10),
+        ]);
+
+        // weather
+        let weather: Record<string, unknown> | null = null;
+        if (wRes.data && wRes.data.length > 0) {
+          const md = (wRes.data[0].metadata ?? {}) as Record<string, unknown>;
+          weather = {
+            avg_high_f: mnum(md.avg_high_f),
+            avg_low_f: mnum(md.avg_low_f),
+            precip_in: mnum(md.avg_precip_in),
+            stations: mnum(md.station_count),
+            max_f: mnum(md.max_temp_f),
+            min_f: mnum(md.min_temp_f),
+            narrative: (wRes.data[0].content as string) ?? null,
+          };
+        }
+
+        // events — keep same-day rows always; keep earlier rows only when they
+        // mark a multi-day family. Rank by deaths, then damage, then injuries.
+        const targetMs = Date.parse(target.iso + 'T00:00:00Z');
+        const events = (eRes.data ?? [])
+          .map((r) => {
+            const md = (r.metadata ?? {}) as Record<string, unknown>;
+            const iso = String(r.effective_date).slice(0, 10);
+            const isSameDay = iso === target.iso;
+            const family = THATDAY_MULTIDAY_RE.test(String(md.event_type ?? '') + ' ' + String(r.title ?? ''));
+            if (!isSameDay && !family) return null; // earlier single-day event doesn't span onto this date
+            const daysEarlier = Math.round((targetMs - Date.parse(iso + 'T00:00:00Z')) / 86400000);
+            return {
+              title: (r.title as string) ?? null,
+              narrative: (r.content as string) ?? null, // FULL content, never truncated
+              deaths: mnum(md.deaths),
+              injuries: mnum(md.injuries),
+              damage_usd: mnum(md.damage_usd),
+              county: (md.county as string) ?? null,
+              began: iso,
+              span_note: isSameDay ? null : `began ${daysEarlier} day${daysEarlier === 1 ? '' : 's'} earlier`,
+              provenance_url: (md.provenance_url as string) ?? null,
+              _event_type: String(md.event_type ?? r.title ?? ''),
+            };
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null)
+          .sort((a, b) =>
+            (b.deaths ?? -1) - (a.deaths ?? -1)
+            || (b.damage_usd ?? -1) - (a.damage_usd ?? -1)
+            || (b.injuries ?? -1) - (a.injuries ?? -1))
+          .slice(0, 8);
+        const eventTypes = events.map((e) => e._event_type);
+        for (const e of events) delete (e as Record<string, unknown>)._event_type;
+
+        // tide — all stations that day
+        const tide = (tRes.data ?? []).map((r) => {
+          const md = (r.metadata ?? {}) as Record<string, unknown>;
+          return {
+            station_name: (md.station_name as string) ?? null,
+            residual_max_ft: mnum(md.residual_max_ft),
+            residual_max_time_utc: (md.residual_max_time_utc as string) ?? null,
+            daily_max_ft: mnum(md.daily_max_ft),
+            provenance_url: (md.provenance_url as string) ?? null,
+          };
+        });
+
+        // world — onthisday-event, exact date, cap 3
+        const world = (oRes.data ?? []).slice(0, 3).map((r) => ({
+          title: (r.title as string) ?? null,
+          content: (r.content as string) ?? null,
+        }));
+
+        // era note — honest about the ledger's own limits before 1996 / 1950
+        const ledgerLimited = events.length === 0
+          || eventTypes.every((t) => THATDAY_LEDGER_LIMITED_RE.test(t));
+        let era_note: string | null = null;
+        if (target.iso < '1950-01-01' && events.length === 0) {
+          era_note = 'The federal storm ledger begins in 1950 — for this day, only the instruments speak.';
+        } else if (target.iso < '1996-01-01' && ledgerLimited) {
+          era_note = 'Before 1996 the federal storm ledger kept only tornadoes, thunderstorm wind, and hail — absence here is the ledger\'s limit, not the day\'s.';
+        }
+
+        return {
+          date: target.iso,
+          weather,
+          events,
+          tide,
+          world,
+          era_note,
+          honest_note: `Searched the archive's own rows for ${target.iso} — ghcn-daily and storm-event for ${centroid.name}, this state's tide gauges, and worldwide onthisday-event — every line above traces to a stored row; blank fields mean no row on file for that date.`,
+        };
+      } catch (e) {
+        return {
+          date: target.iso,
+          weather: null,
+          events: [],
+          tide: [],
+          world: [],
+          era_note: null,
+          honest_note: `that_day lookup failed: ${e instanceof Error ? e.message : String(e)} — the rest of the dossier is unaffected.`,
+        };
+      }
+    })();
 
     // ---- Build the −WINDOW_DAYS..+WINDOW_AFTER day-of-year date list ---------
     // Core pool is ±WINDOW_DAYS; the +4..+10 tail exists so every pool day has
@@ -736,7 +893,9 @@ Deno.serve(async (req: Request) => {
           honest_note:
             `Match = ${[moonPhrase, tempPhrase, tidePhrase].filter(Boolean).join('; ')}. `
             + `Searched ${searched} recorded days across ${nYears} years (±${WINDOW_DAYS} days of ${target.mm}-${target.dd}, ${FIRST_YEAR} → present).`
-            + (useTide ? '' : ` ${centroid.name} has no tide gauge in the archive — lineup is moon × temperature only.`)
+            + (useTide ? '' : (tidePool.size > 0
+                ? ` ${centroid.name}'s gauge has too few joint tide days in this window — lineup is moon × temperature only.`
+                : ` No tide-gauge days on file for ${centroid.name} in this window — lineup is moon × temperature only.`))
             + ` Temperature is state-level; moon is computed astronomy for ${target.iso}; temp as of ${defendant.date}`
             + (useTide ? `; tide as of ${(tideToday as { date: string }).date}.` : '.')
             + ' Recorded fact only — never a forecast.',
@@ -843,9 +1002,39 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ---- TIDE NOW (nearest coastal gauge) ------------------------------------
+    // ---- TIDE NOW (this state's own gauge, else nearest coastal) -------------
+    // FIRST: does this state actually have a gauge in the archive? The old path
+    // ranked a recent-snapshot roster by centroid and told states with a real
+    // gauge (e.g. MD/Baltimore) they had "no gauge in the archive" whenever the
+    // nearest snapshot row happened to be out-of-state. Only fall back to the
+    // nearest-roster language when the archive TRULY holds no gauge for the state.
     let tide: Record<string, unknown> | null = null;
-    {
+    const { data: ownGauge } = await supabase
+      .from('hunt_knowledge')
+      .select('effective_date, metadata')
+      .eq('content_type', 'tide-gauge')
+      .eq('state_abbr', stateParam)
+      .gte('effective_date', '1900-01-01')
+      .order('effective_date', { ascending: false })
+      .limit(1);
+    if (ownGauge && ownGauge.length > 0) {
+      const md = (ownGauge[0].metadata ?? {}) as Record<string, unknown>;
+      const date = String(ownGauge[0].effective_date).slice(0, 10);
+      tide = {
+        station_name: md.station_name ?? null,
+        station_id: md.station_id ?? null,
+        state: stateParam,
+        is_local: true,
+        date,
+        daily_mean_ft: md.daily_mean_ft ?? null,
+        predicted_ft: md.predicted_ft ?? null,
+        residual_ft: md.residual_ft ?? null,
+        datum: md.datum ?? null,
+        source: 'noaa-coops',
+        resolution: 'station',
+        note: `${md.station_name} gauge (in ${centroid.name}); most recent reading on file ${date}.`,
+      };
+    } else {
       const { data: snap } = await supabase
         .from('hunt_knowledge')
         .select('state_abbr, effective_date, metadata')
@@ -1081,9 +1270,12 @@ Deno.serve(async (req: Request) => {
             precip_in: round(p.precip),
             that_day: inPool ? thatDayFor(inPool) : null,
             outcome: am ? (am.outcome as string | null) : null,
-            note: p.high !== null
-              ? `Avg high ${round(p.high)}°F${p.precip !== null && p.precip > 0 ? ` · ${round(p.precip)}" precip` : ''}`
-              : null,
+            // Out-of-pool matches carry that_day:null/outcome:null — say why, don't leave bare nulls.
+            note: !inPool
+              ? 'aftermath not on file'
+              : (p.high !== null
+                  ? `Avg high ${round(p.high)}°F${p.precip !== null && p.precip > 0 ? ` · ${round(p.precip)}" precip` : ''}`
+                  : null),
           };
         });
 
@@ -1106,6 +1298,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- Assemble ------------------------------------------------------------
+    const that_day = await thatDayPromise;
     return new Response(JSON.stringify({
       spot: {
         state: stateParam,
@@ -1115,6 +1308,7 @@ Deno.serve(async (req: Request) => {
       },
       target_date: target.iso,
       month_day: `${target.mm}-${target.dd}`,
+      that_day,
       generated_at: new Date().toISOString(),
       sources: ['ghcn-daily', 'tide-gauge', 'nws-alert', 'storm-event', 'historical-newspaper', 'onthisday-event'],
       lineup,
