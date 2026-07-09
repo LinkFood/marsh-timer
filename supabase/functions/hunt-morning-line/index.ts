@@ -3,7 +3,7 @@
 // from recorded fact, at a permanent address.
 //
 // READ-ONLY. Writes nothing, ever (surfaces never write). For a given date
-// (default: today UTC), finds the most notable state — the largest |z|
+// (default: today in US Eastern), finds the most notable state — the largest |z|
 // weather anomaly with a scoreable baseline — via the already-deployed
 // hunt-atlas-anomaly, then pulls that state's lineup/rhyme/control via the
 // already-deployed hunt-atlas-spot. The line is TEMPLATED from those numbers:
@@ -35,7 +35,9 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
   'August', 'September', 'October', 'November', 'December'];
 
 function isoToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  // "Today" is an American day, not a UTC one — anchor the dateline to US
+  // Eastern, or the page flips to tomorrow at 8pm ET.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
 }
 
 function isoPlusDays(iso: string, days: number): string {
