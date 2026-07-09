@@ -413,7 +413,11 @@ Deno.serve(async (req: Request) => {
         }
 
         // events — keep same-day rows always; keep earlier rows only when they
-        // mark a multi-day family. Rank by deaths, then damage, then injuries.
+        // mark a multi-day family. Rank by blended severity: deaths dominate,
+        // but a mass-casualty/mass-damage event outranks a marginally deadlier
+        // small one (La Plata F4, 1 death/122 inj/$114M, must lead its day).
+        const severityScore = (e: { deaths: number | null; injuries: number | null; damage_usd: number | null }) =>
+          (e.deaths ?? 0) * 100 + (e.injuries ?? 0) + (e.damage_usd ?? 0) / 1e6;
         const targetMs = Date.parse(target.iso + 'T00:00:00Z');
         const events = (eRes.data ?? [])
           .map((r) => {
@@ -437,10 +441,7 @@ Deno.serve(async (req: Request) => {
             };
           })
           .filter((e): e is NonNullable<typeof e> => e !== null)
-          .sort((a, b) =>
-            (b.deaths ?? -1) - (a.deaths ?? -1)
-            || (b.damage_usd ?? -1) - (a.damage_usd ?? -1)
-            || (b.injuries ?? -1) - (a.injuries ?? -1))
+          .sort((a, b) => severityScore(b) - severityScore(a))
           .slice(0, 8);
         const eventTypes = events.map((e) => e._event_type);
         for (const e of events) delete (e as Record<string, unknown>)._event_type;
