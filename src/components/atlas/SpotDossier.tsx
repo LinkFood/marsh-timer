@@ -237,12 +237,75 @@ export interface ControlLine {
   all_outcome_n: number;
 }
 
+/**
+ * WHAT THIS DAY WAS — the recorded truth of the target date itself, above the
+ * rhyme. Weather as a composed lede, severity-ranked events with full recorded
+ * narrative, tide residuals per gauge, and quiet world context. Every field is
+ * optional; the block only renders when the archive actually holds something.
+ */
+export interface ThatDayWeather {
+  avg_high_f?: number | null;
+  avg_low_f?: number | null;
+  precip_in?: number | null;
+  /** number of reporting stations the day was averaged across */
+  stations?: number | null;
+  max_f?: number | null;
+  min_f?: number | null;
+  /** the archive's own prose for the day; the card composes its own lede */
+  narrative?: string | null;
+}
+
+export interface ThatDayEvent {
+  title: string;
+  /** FULL recorded narrative — rendered in body text, never truncated by the type */
+  narrative?: string | null;
+  deaths?: number | null;
+  injuries?: number | null;
+  damage_usd?: number | null;
+  county?: string | null;
+  began?: string | null;
+  /** e.g. "began 1 day earlier" — when the event's span predates the target date */
+  span_note?: string | null;
+  provenance_url?: string | null;
+}
+
+export interface ThatDayTide {
+  station_name?: string | null;
+  /** peak departure from predicted tide (ft; signed) */
+  residual_max_ft?: number | null;
+  /** ISO-8601 UTC (or "HH:MM") of the residual peak */
+  residual_max_time_utc?: string | null;
+  /** observed water level at peak (ft) */
+  daily_max_ft?: number | null;
+  provenance_url?: string | null;
+}
+
+/** World context for the date — NOT ground truth of this state; rendered quiet. */
+export interface ThatDayWorld {
+  title: string;
+  content?: string | null;
+}
+
+export interface ThatDayReport {
+  /** "YYYY-MM-DD" */
+  date: string;
+  weather?: ThatDayWeather | null;
+  /** severity-ranked (highest first) by the backend */
+  events?: ThatDayEvent[] | null;
+  tide?: ThatDayTide[] | null;
+  world?: ThatDayWorld[] | null;
+  era_note?: string | null;
+  honest_note?: string | null;
+}
+
 /** The full dossier payload — the merged hunt-atlas-spot + hunt-atlas-solunar shape. */
 export interface SpotData {
   resolution: SpotResolution;
   /** ISO timestamp the NOW reading is as-of */
   as_of?: string | null;
   coords?: { lat: number; lng: number } | null;
+  /** WHAT THIS DAY WAS — the recorded truth of the target date (renders first). */
+  thatDay?: ThatDayReport | null;
   lineup?: LineupLead | null;
   weather?: WeatherNow | null;
   front?: FrontSignal | null;
@@ -475,6 +538,131 @@ function AnomalyBadge({ anomaly }: { anomaly: AnomalyNow }) {
         <span className="shrink-0 text-[11px] tabular-nums opacity-60">
           vs {anomaly.n_years} yrs
         </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * WHAT THIS DAY WAS — the recorded truth of the target date, rendered first.
+ * Weather composed into a single serif lede, severity-ranked events with their
+ * FULL narrative, tide residuals per gauge, quiet world context, and the honest
+ * notes at the foot. Renders nothing unless the archive actually holds content.
+ */
+function ThatDayBlock({ report }: { report: ThatDayReport }) {
+  const events = report.events ?? [];
+  const tide = report.tide ?? [];
+  const world = report.world ?? [];
+  const lede = report.weather ? thatDayWeatherLede(report.weather) : null;
+
+  const hasContent =
+    !!lede || events.length > 0 || tide.length > 0 || world.length > 0;
+  if (!hasContent) return null;
+
+  return (
+    <div className="space-y-3 border-b border-white/[0.06] px-4 py-4">
+      <Eyebrow>What this day was</Eyebrow>
+
+      {/* Weather lede — one composed serif sentence, the product's dated voice. */}
+      {lede && (
+        <p className="font-display text-[19px] font-semibold leading-snug text-white">
+          {lede}
+        </p>
+      )}
+
+      {/* Severity-ranked events — stat idiom for the toll, FULL narrative below. */}
+      {events.length > 0 && (
+        <div className="space-y-2.5">
+          {events.map((ev, i) => (
+            <div
+              key={`${ev.title}-${i}`}
+              className="border-l-2 border-white/[0.08] pl-3"
+            >
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-[13px] font-semibold text-gray-100">
+                  {ev.title}
+                </span>
+                {ev.deaths != null && ev.deaths > 0 && (
+                  <span className="text-[11px] font-semibold tabular-nums text-orange-300">
+                    {ev.deaths} dead
+                  </span>
+                )}
+                {ev.injuries != null && ev.injuries > 0 && (
+                  <span className="text-[11px] tabular-nums text-gray-400">
+                    {ev.injuries} injured
+                  </span>
+                )}
+                {ev.damage_usd != null && ev.damage_usd > 0 && (
+                  <span className="text-[11px] tabular-nums text-gray-400">
+                    {formatDamage(ev.damage_usd)} damage
+                  </span>
+                )}
+              </div>
+              {ev.span_note && (
+                <div className="mt-0.5 text-[10px] text-gray-600">
+                  {ev.span_note}
+                </div>
+              )}
+              {ev.narrative && (
+                <p className="mt-1 font-body text-[12.5px] leading-relaxed text-gray-400">
+                  {ev.narrative}
+                </p>
+              )}
+              {ev.provenance_url && (
+                <a
+                  href={ev.provenance_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block text-[10px] text-gray-600 underline decoration-white/20 underline-offset-2 transition-colors hover:text-gray-400"
+                >
+                  source
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Tide residuals — one composed line per gauge. */}
+      {tide.length > 0 && (
+        <div className="space-y-1">
+          {tide.map((t, i) => (
+            <p
+              key={`${t.station_name ?? "gauge"}-${i}`}
+              className="text-[11px] leading-snug tabular-nums text-gray-400"
+            >
+              {tideLine(t)}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* World context — visually distinct; NOT ground truth of this state. */}
+      {world.length > 0 && (
+        <div className="space-y-1 rounded-lg bg-white/[0.02] px-2.5 py-2">
+          {world.map((wd, i) => (
+            <p
+              key={`${wd.title}-${i}`}
+              className="text-[11px] leading-snug text-gray-500"
+            >
+              <span className="text-gray-600">In the world: </span>
+              <span className="text-gray-400">{wd.title}</span>
+              {wd.content && <span> — {wd.content}</span>}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Era note + honest note — the small, muted method lines. */}
+      {report.era_note && (
+        <p className="text-[10px] leading-relaxed text-gray-600">
+          {report.era_note}
+        </p>
+      )}
+      {report.honest_note && (
+        <p className="text-[10px] leading-relaxed text-gray-600">
+          {report.honest_note}
+        </p>
       )}
     </div>
   );
@@ -738,6 +926,9 @@ export default function SpotDossier({
         </div>
       </div>
 
+      {/* ── WHAT THIS DAY WAS — the recorded truth of the target date ─ */}
+      {data.thatDay && <ThatDayBlock report={data.thatDay} />}
+
       {/* ── THE LEAD — the lineup sentence (the product's thesis) ─ */}
       {lineup && <LineupLeadBlock lineup={lineup} />}
 
@@ -959,6 +1150,82 @@ export default function SpotDossier({
 
 function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/** Integers show bare; anything else to one decimal. "92.6", "103", "0.5". */
+function trimNum(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/**
+ * The weather lede — one composed sentence from the day's recorded numbers.
+ * "An average high of 92.6°F across 48 stations — the warmest reading 103°F,
+ *  no measurable rain." Returns null when there's nothing recorded to compose.
+ */
+function thatDayWeatherLede(w: ThatDayWeather): string | null {
+  const lead =
+    w.avg_high_f != null && Number.isFinite(w.avg_high_f)
+      ? `An average high of ${trimNum(w.avg_high_f)}°F${
+          w.stations != null && Number.isFinite(w.stations)
+            ? ` across ${w.stations} station${w.stations === 1 ? "" : "s"}`
+            : ""
+        }`
+      : null;
+
+  const details: string[] = [];
+  if (w.max_f != null && Number.isFinite(w.max_f)) {
+    details.push(`the warmest reading ${trimNum(w.max_f)}°F`);
+  }
+  if (w.precip_in != null && Number.isFinite(w.precip_in)) {
+    details.push(
+      w.precip_in < 0.01
+        ? "no measurable rain"
+        : `${trimNum(w.precip_in)} in of rain`,
+    );
+  }
+
+  if (!lead && details.length === 0) return null;
+  const body = details.length ? ` — ${details.join(", ")}` : "";
+  return `${lead ?? "On record"}${body}.`;
+}
+
+/** "$2.4M", "$1.3B", "$40K" — compact recorded damage. */
+function formatDamage(usd: number): string {
+  if (usd >= 1e9) return `$${trimNum(usd / 1e9)}B`;
+  if (usd >= 1e6) return `$${trimNum(usd / 1e6)}M`;
+  if (usd >= 1e3) return `$${Math.round(usd / 1e3)}K`;
+  return `$${Math.round(usd)}`;
+}
+
+/** ISO-8601 UTC (or bare "HH:MM") → "HH:MM". null when unparseable. */
+function formatUtcHHMM(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isNaN(d.getTime())) {
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(
+      d.getUTCMinutes(),
+    ).padStart(2, "0")}`;
+  }
+  const m = /^(\d{1,2}):(\d{2})/.exec(iso);
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
+}
+
+/**
+ * One tide gauge's recorded residual as a sentence.
+ * "Baltimore gauge: +6.59 ft above predicted tide at 05:00 UTC (11.77 ft water level)."
+ */
+function tideLine(t: ThatDayTide): string {
+  let s = t.station_name ? `${t.station_name} gauge` : "Gauge";
+  const r = t.residual_max_ft;
+  if (r != null && Number.isFinite(r)) {
+    s += `: ${signed(r, 2)} ft ${r >= 0 ? "above" : "below"} predicted tide`;
+  }
+  const hhmm = formatUtcHHMM(t.residual_max_time_utc);
+  if (hhmm) s += ` at ${hhmm} UTC`;
+  if (t.daily_max_ft != null && Number.isFinite(t.daily_max_ft)) {
+    s += ` (${t.daily_max_ft.toFixed(2)} ft water level)`;
+  }
+  return `${s}.`;
 }
 
 function ratingWord(r: number): string {

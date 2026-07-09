@@ -46,9 +46,31 @@ interface LineupMatchResp {
   on_file?: OnFileResp[] | null;
 }
 
+interface ThatDayResp2 {
+  date?: string;
+  weather?: {
+    avg_high_f?: number; avg_low_f?: number; precip_in?: number;
+    stations?: number; max_f?: number; min_f?: number; narrative?: string;
+  } | null;
+  events?: {
+    title?: string; narrative?: string; deaths?: number; injuries?: number;
+    damage_usd?: number; county?: string; began?: string; span_note?: string;
+    provenance_url?: string;
+  }[] | null;
+  tide?: {
+    station_name?: string; residual_max_ft?: number;
+    residual_max_time_utc?: string; daily_max_ft?: number; provenance_url?: string;
+  }[] | null;
+  world?: { title?: string; content?: string }[] | null;
+  era_note?: string | null;
+  honest_note?: string | null;
+}
+
 interface SpotResp {
   spot?: { lat?: number; lng?: number; state?: string } | null;
   target_date?: string | null;
+  /** WHAT THIS DAY WAS — recorded truth of the target date (may be absent). */
+  that_day?: ThatDayResp2 | null;
   lineup?: {
     mode?: string;
     components?: string[];
@@ -165,6 +187,40 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
     place: placeLabel ?? spot.spot?.state ?? null,
     as_of: spot.target_date ?? null,
     coords: lat != null && lng != null ? { lat, lng } : null,
+
+    // WHAT THIS DAY WAS — recorded truth of the target date, rendered first.
+    // Absent until the backend ships the block; null → the card omits it.
+    thatDay: spot.that_day
+      ? {
+          date: spot.that_day.date ?? spot.target_date ?? "",
+          weather: spot.that_day.weather ?? null,
+          events: (Array.isArray(spot.that_day.events) ? spot.that_day.events : [])
+            .filter((e) => e && e.title)
+            .map((e) => ({
+              title: e.title as string,
+              narrative: e.narrative ?? null,
+              deaths: e.deaths ?? null,
+              injuries: e.injuries ?? null,
+              damage_usd: e.damage_usd ?? null,
+              county: e.county ?? null,
+              began: e.began ?? null,
+              span_note: e.span_note ?? null,
+              provenance_url: e.provenance_url ?? null,
+            })),
+          tide: (Array.isArray(spot.that_day.tide) ? spot.that_day.tide : []).map((t) => ({
+            station_name: t.station_name ?? null,
+            residual_max_ft: t.residual_max_ft ?? null,
+            residual_max_time_utc: t.residual_max_time_utc ?? null,
+            daily_max_ft: t.daily_max_ft ?? null,
+            provenance_url: t.provenance_url ?? null,
+          })),
+          world: (Array.isArray(spot.that_day.world) ? spot.that_day.world : [])
+            .filter((w) => w && w.title)
+            .map((w) => ({ title: w.title as string, content: w.content ?? null })),
+          era_note: spot.that_day.era_note ?? null,
+          honest_note: spot.that_day.honest_note ?? null,
+        }
+      : null,
 
     // The LEAD — the dated lineup sentence. Only rendered when the archive
     // actually searched something (n_years > 0); "never in N years" is a
