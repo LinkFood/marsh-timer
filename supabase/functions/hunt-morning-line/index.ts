@@ -195,10 +195,17 @@ Deno.serve(async (req: Request) => {
       else alertClause = `, with a ${a0.title.toLowerCase()} on file${more}`;
     }
 
-    const lede =
-      `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° on the most recent ` +
-      `recorded ${mdLabel} (${pick.as_of_year}) — ${zAbs}σ ${dir} against its own ` +
-      `${pick.n_years} years${alertClause}.`;
+    // Past the GHCN archive edge, day-0 is the live station feed (hunt_weather_history):
+    // quote the ACTUAL day's temp with no as-of-(year) almanac framing. The as-of
+    // phrasing stays ONLY where the fallback is genuinely in use (no live row on file).
+    const isLive = pick.day0_source === 'live';
+    const whenPhrase = dateIso === todayIso ? 'today' : `on ${fullDateLabel(dateIso)}`;
+    const lede = isLive
+      ? `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° ${whenPhrase} — ` +
+        `${zAbs}σ ${dir} against its own ${pick.n_years} recorded ${mdLabel}s${alertClause}.`
+      : `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° on the most recent ` +
+        `recorded ${mdLabel} (${pick.as_of_year}) — ${zAbs}σ ${dir} against its own ` +
+        `${pick.n_years} years${alertClause}.`;
 
     // The lineup sentence — "last time the moon, the tide, and the temperature
     // lined up like this" — straight from hunt-atlas-spot, outcome attached.
@@ -260,6 +267,7 @@ Deno.serve(async (req: Request) => {
           n_years: pick.n_years,
           resolution: 'state',
           source: 'ghcn-daily',
+          day0_source: pick.day0_source ?? 'archive',
           picked_by: `largest |z| across ${anom.count_with_data} states with data (n_years ≥ ${MIN_HEADLINE_YEARS} preferred)`,
         },
         alerts_on_file: alertsOnFile,
@@ -281,12 +289,18 @@ Deno.serve(async (req: Request) => {
         } : null,
       },
       provenance: {
-        source: 'ghcn-daily (state-level) + tide-gauge (station) + recorded alerts on file',
+        source: isLive
+          ? 'live station feed (day-0, hunt_weather_history) + ghcn-daily baseline (state-level) + tide-gauge (station) + recorded alerts on file'
+          : 'ghcn-daily (state-level) + tide-gauge (station) + recorded alerts on file',
         resolution: 'state',
+        day0_source: isLive ? 'live' : 'archive',
+        day0_basis: isLive ? 'live station feed (current through yesterday)' : `as of ${pick.as_of_year}`,
         as_of_year: pick.as_of_year,
         n_years: pick.n_years,
         moon: 'computed astronomy (no data gaps)',
-        law: 'Every number traces to a recorded row. Almanac framing: the as-of year is in the sentence.',
+        law: isLive
+          ? 'Every number traces to a recorded row. Day-0 is the live station feed; the baseline is the GHCN archive.'
+          : 'Every number traces to a recorded row. Almanac framing: the as-of year is in the sentence.',
       },
       nav: {
         yesterday: dateIso > FLOOR_DATE ? isoPlusDays(dateIso, -1) : null,

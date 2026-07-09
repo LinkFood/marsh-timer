@@ -669,30 +669,66 @@ Deno.serve(async (req: Request) => {
     const exact = obs.filter((o) => o.offset === 0 && o.high !== null)
       .sort((a, b) => a.year - b.year);
     // Never a silent {} — when the number can't be computed, `reason` says why.
+    // The most-recent recorded GHCN year for this day-of-year — the "defendant".
+    // Drives the historical blocks below (front / rhyme / lineup / semantic),
+    // which stay archive-based by design.
+    let defendant: DayObs | null = null;
+    if (exact.length > 0) defendant = exact[exact.length - 1];
+
+    // ---- LIVE DAY-0 (past the GHCN archive edge) -----------------------------
+    // For target dates beyond this state's latest recorded GHCN year, the actual
+    // day-0 reading comes from hunt_weather_history (cron-fed daily, current
+    // through yesterday) — a plain bounded .eq() select on a small table. It
+    // feeds ONLY weather NOW and the anomaly z; the historical blocks below keep
+    // using the GHCN defendant.
+    const targetYear = parseInt(target.iso.slice(0, 4), 10);
+    let liveDay0: { high: number | null; low: number | null; precip_in: number | null; date: string } | null = null;
+    if (defendant && targetYear > defendant.year) {
+      const { data: whRows, error: whErr } = await supabase
+        .from('hunt_weather_history')
+        .select('temp_high_f, temp_low_f, precipitation_total_mm')
+        .eq('state_abbr', stateParam)
+        .eq('date', target.iso)
+        .limit(1);
+      if (whErr) console.error('weather_history query failed:', whErr.message);
+      if (whRows && whRows.length > 0) {
+        const w = whRows[0];
+        const high = typeof w.temp_high_f === 'number' && Number.isFinite(w.temp_high_f) ? w.temp_high_f : null;
+        const low = typeof w.temp_low_f === 'number' && Number.isFinite(w.temp_low_f) ? w.temp_low_f : null;
+        const mm = typeof w.precipitation_total_mm === 'number' && Number.isFinite(w.precipitation_total_mm) ? w.precipitation_total_mm : null;
+        liveDay0 = { high, low, precip_in: mm !== null ? mm / 25.4 : null, date: target.iso };
+      }
+    }
+    const isLive = liveDay0 !== null && liveDay0.high !== null;
+
+    // ---- ANOMALY (exact day-of-year) -----------------------------------------
+    // Past the edge: observed = the live day, baseline = the FULL GHCN distribution
+    // (every recorded year). At/before the edge: unchanged — latest year is the
+    // defendant, the rest are the baseline.
     let anomaly: Record<string, unknown> = {
       metric: 'avg_high_f',
       value: null, as_of_year: null,
       baseline_mean: null, baseline_std: null, z: null, n_years: 0,
-      resolution: 'state', min_years: MIN_YEARS,
+      resolution: 'state', min_years: MIN_YEARS, day0_source: 'archive',
       baseline: `per-state avg-high for ${target.mm}-${target.dd}, ${FIRST_YEAR} → present`,
       reason: obs.length === 0
         ? `No GHCN-daily rows on file for ${centroid.name} in the ±${WINDOW_DAYS}-day window of ${target.mm}-${target.dd} — nothing to measure against.`
         : `No recorded ${target.mm}-${target.dd} with a usable avg-high on file for ${centroid.name} — the window has data but the exact day-of-year does not.`,
     };
-    let defendant: DayObs | null = null;
-    if (exact.length > 0) {
-      defendant = exact[exact.length - 1];
-      const baseline = exact.slice(0, exact.length - 1);
-      anomaly.value = round(defendant.high);
-      anomaly.as_of_year = defendant.year;
+    if (defendant) {
+      const baseline = isLive ? exact : exact.slice(0, exact.length - 1);
+      const observed = isLive ? (liveDay0!.high as number) : (defendant.high as number);
+      anomaly.value = round(observed);
+      anomaly.as_of_year = isLive ? targetYear : defendant.year;
       anomaly.n_years = baseline.length;
+      anomaly.day0_source = isLive ? 'live' : 'archive';
       if (baseline.length >= MIN_YEARS) {
         const mean = baseline.reduce((s, o) => s + (o.high as number), 0) / baseline.length;
         const variance = baseline.reduce((s, o) => s + ((o.high as number) - mean) ** 2, 0) / (baseline.length - 1);
         const std = Math.sqrt(variance);
         anomaly.baseline_mean = round(mean);
         anomaly.baseline_std = round(std);
-        anomaly.z = std > 0 ? round(((defendant.high as number) - mean) / std) : null;
+        anomaly.z = std > 0 ? round((observed - mean) / std) : null;
         anomaly.reason = anomaly.z === null
           ? 'Baseline has zero spread (std = 0) — z is undefined, not zero.'
           : null;
@@ -701,8 +737,20 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ---- WEATHER NOW (the defendant day) -------------------------------------
-    const weather = defendant ? {
+    // ---- WEATHER NOW ---------------------------------------------------------
+    // Past the edge: the actual recorded day from the live feed. Otherwise: the
+    // most-recent recorded GHCN day-of-year (the defendant).
+    const weather = isLive ? {
+      as_of_date: liveDay0!.date,
+      avg_high_f: round(liveDay0!.high),
+      avg_low_f: round(liveDay0!.low),
+      precip_in: round(liveDay0!.precip_in),
+      station_count: null,
+      resolution: 'state',
+      label: 'state-level (live station feed)',
+      day0_source: 'live',
+      note: `Live station feed for ${target.iso} (hunt_weather_history, current through yesterday) — day-0 basis past the GHCN archive edge (~2025-12).`,
+    } : (defendant ? {
       as_of_date: defendant.date,
       avg_high_f: round(defendant.high),
       avg_low_f: round(defendant.low),
@@ -710,8 +758,9 @@ Deno.serve(async (req: Request) => {
       station_count: defendant.stations,
       resolution: 'state',
       label: 'state-level (GHCN-daily)',
+      day0_source: 'archive',
       note: `Most recent recorded ${target.mm}-${target.dd} for ${centroid.name} (archive edge ~2025-12).`,
-    } : null;
+    } : null);
 
     // ---- FRONT signal (the defendant year's 3-day run-up) --------------------
     // `as_of` is the DATE THE FRONT READ IS BASED ON (the GHCN archive edge, ~a

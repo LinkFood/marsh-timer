@@ -41,12 +41,13 @@ interface StateResult {
   lat: number;
   lng: number;
   resolution: 'state';
-  value: number | null;          // most-recent recorded avg-high for this day-of-year (°F)
+  value: number | null;          // observed day-0 avg-high for this day-of-year (°F)
   as_of_year: number | null;     // the year that `value` was recorded
-  baseline_mean: number | null;  // mean of prior years (°F)
-  baseline_std: number | null;   // sample std of prior years (°F)
+  baseline_mean: number | null;  // mean of baseline years (°F)
+  baseline_std: number | null;   // sample std of baseline years (°F)
   z: number | null;              // (value - baseline_mean) / baseline_std
-  n_years: number;               // count of baseline (prior-year) observations
+  n_years: number;               // count of baseline observations
+  day0_source: 'live' | 'archive'; // 'live' = actual day from hunt_weather_history (past the GHCN edge); 'archive' = most-recent GHCN year
 }
 
 function round(n: number | null, dp = 2): number | null {
@@ -55,23 +56,28 @@ function round(n: number | null, dp = 2): number | null {
   return Math.round(n * f) / f;
 }
 
-// Resolve target month-day. Accepts YYYY-MM-DD, MM-DD, or MM/DD. Defaults to today (UTC).
-function resolveMonthDay(dateParam: string | null): { mm: string; dd: string } | null {
+// Resolve target date. Accepts YYYY-MM-DD, MM-DD, or MM/DD. Defaults to today (UTC).
+// The year matters now: past the GHCN archive edge, day-0 comes from the live feed.
+function resolveTargetDate(dateParam: string | null): { year: number; mm: string; dd: string } | null {
+  const now = new Date();
+  const thisYear = now.getUTCFullYear();
   if (!dateParam) {
-    const now = new Date();
     const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
     const dd = String(now.getUTCDate()).padStart(2, '0');
-    return { mm, dd };
+    return { year: thisYear, mm, dd };
   }
-  const m = dateParam.match(/(?:\d{4}[-/])?(\d{1,2})[-/](\d{1,2})$/);
+  const m = dateParam.match(/(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})$/);
   if (!m) return null;
-  const mm = m[1].padStart(2, '0');
-  const dd = m[2].padStart(2, '0');
+  const year = m[1] ? parseInt(m[1], 10) : thisYear;
+  const mm = m[2].padStart(2, '0');
+  const dd = m[3].padStart(2, '0');
   if (+mm < 1 || +mm > 12 || +dd < 1 || +dd > 31) return null;
-  return { mm, dd };
+  return { year, mm, dd };
 }
 
-function computeStateResult(abbr: string, obs: StateAgg): StateResult {
+// liveTemp: the actual recorded high for the target date from hunt_weather_history
+// (null when the row is missing or we're at/before the GHCN edge for this state).
+function computeStateResult(abbr: string, obs: StateAgg, targetYear: number, liveTemp: number | null): StateResult {
   const centroid = STATE_CENTROIDS[abbr];
   const base: StateResult = {
     state: abbr,
@@ -85,14 +91,35 @@ function computeStateResult(abbr: string, obs: StateAgg): StateResult {
     baseline_std: null,
     z: null,
     n_years: 0,
+    day0_source: 'archive',
   };
   if (obs.length === 0) return base;
 
-  // Sort ascending by year; the latest year is the "defendant", the rest are the baseline.
+  // Sort ascending by year; the latest year is the most-recent GHCN reading.
   obs.sort((a, b) => a.year - b.year);
   const latest = obs[obs.length - 1];
-  const baseline = obs.slice(0, obs.length - 1);
 
+  // Past the GHCN archive edge for this day-of-year: the target year is beyond the
+  // latest recorded GHCN year AND a live station reading exists. Measure the ACTUAL
+  // day against the full GHCN distribution (every recorded year is baseline).
+  const live = targetYear > latest.year && liveTemp !== null && Number.isFinite(liveTemp);
+  if (live) {
+    base.value = round(liveTemp);
+    base.as_of_year = targetYear;
+    base.day0_source = 'live';
+    base.n_years = obs.length;
+    if (obs.length < MIN_YEARS) return base;
+    const mean = obs.reduce((s, o) => s + o.value, 0) / obs.length;
+    const variance = obs.reduce((s, o) => s + (o.value - mean) ** 2, 0) / (obs.length - 1);
+    const std = Math.sqrt(variance);
+    base.baseline_mean = round(mean);
+    base.baseline_std = round(std);
+    base.z = std > 0 ? round(((liveTemp as number) - mean) / std) : null;
+    return base;
+  }
+
+  // At or before the edge — unchanged: latest year is the "defendant", the rest are the baseline.
+  const baseline = obs.slice(0, obs.length - 1);
   base.value = round(latest.value);
   base.as_of_year = latest.year;
   base.n_years = baseline.length;
@@ -121,8 +148,8 @@ Deno.serve(async (req: Request) => {
     const stateParam = url.searchParams.get('state')?.toUpperCase().trim() || null;
     const dateParam = url.searchParams.get('date');
 
-    const md = resolveMonthDay(dateParam);
-    if (!md) {
+    const target = resolveTargetDate(dateParam);
+    if (!target) {
       return new Response(
         JSON.stringify({ error: 'Invalid date. Use YYYY-MM-DD or MM-DD.' }),
         { status: 400, headers: jsonHeaders },
@@ -143,7 +170,7 @@ Deno.serve(async (req: Request) => {
     // Explicit per-year date list for this month-day (date column can't LIKE).
     const thisYear = new Date().getUTCFullYear();
     const dateList: string[] = [];
-    for (let y = FIRST_YEAR; y <= thisYear; y++) dateList.push(`${y}-${md.mm}-${md.dd}`);
+    for (let y = FIRST_YEAR; y <= thisYear; y++) dateList.push(`${y}-${target.mm}-${target.dd}`);
 
     // Group parsed observations by state.
     const byState = new Map<string, StateAgg>();
@@ -187,9 +214,30 @@ Deno.serve(async (req: Request) => {
       if (data.length < PAGE_SIZE) break;
     }
 
+    // Day-0 for dates past the GHCN archive edge: the actual recorded high from
+    // hunt_weather_history (cron-fed daily, current through yesterday). Small table
+    // — a plain bounded .eq() select. Substituted per-state only when the target
+    // year is beyond that state's latest GHCN year for this day-of-year.
+    const targetIso = `${target.year}-${target.mm}-${target.dd}`;
+    const liveByState = new Map<string, number>();
+    {
+      let wq = supabase
+        .from('hunt_weather_history')
+        .select('state_abbr, temp_high_f')
+        .eq('date', targetIso);
+      if (stateParam) wq = wq.eq('state_abbr', stateParam);
+      const { data: whData, error: whErr } = await wq;
+      if (whErr) console.error('weather_history query failed:', whErr.message);
+      for (const r of whData ?? []) {
+        const abbr = r.state_abbr as string | null;
+        const t = r.temp_high_f;
+        if (abbr && typeof t === 'number' && Number.isFinite(t)) liveByState.set(abbr, t);
+      }
+    }
+
     const targetStates = stateParam ? [stateParam] : Object.keys(STATE_CENTROIDS);
     const states = targetStates
-      .map((abbr) => computeStateResult(abbr, byState.get(abbr) ?? []))
+      .map((abbr) => computeStateResult(abbr, byState.get(abbr) ?? [], target.year, liveByState.get(abbr) ?? null))
       .sort((a, b) => (Math.abs(b.z ?? 0) - Math.abs(a.z ?? 0)));
 
     const withData = states.filter((s) => s.value !== null).length;
@@ -197,9 +245,11 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         metric: 'avg_high_f',
-        month_day: `${md.mm}-${md.dd}`,
+        month_day: `${target.mm}-${target.dd}`,
+        target_date: targetIso,
         resolution: 'state',
         source: 'ghcn-daily',
+        live_source: 'hunt_weather_history',
         baseline: 'per-state historical avg-high for this day-of-year, 1950 → present',
         min_years: MIN_YEARS,
         generated_at: new Date().toISOString(),
