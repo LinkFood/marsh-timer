@@ -41,3 +41,4 @@ scripts/.comcat-checkpoint.json
 scripts/.comcat-run.log
 scripts/.ndbc-pressure-checkpoint.json
 scripts/.tide-roster-checkpoint.json
+scripts/.dedupe-v2-storms-checkpoint.json
