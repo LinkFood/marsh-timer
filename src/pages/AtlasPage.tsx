@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from "@/components/EventMap";
 import { fetchStateAnomaly, colorForZ, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
 import { STATE_CENTROIDS } from "@/data/atlas/stateCentroids";
@@ -183,6 +183,9 @@ export default function AtlasPage() {
   const [loading, setLoading] = useState(false);
   const [storms, setStorms] = useState<StormInfo | null>(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // /atlas?date=YYYY-MM-DD falls into any recorded day, not just today.
+  const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("date") ?? "") ? searchParams.get("date") : null;
   const dossierRef = useRef<HTMLDivElement>(null);
 
   // Camera state. `descended` flips the grammar (dim periphery, stage text);
@@ -278,7 +281,7 @@ export default function AtlasPage() {
       .catch(() => setStorms(null));
     try {
       const [spot, sol] = await Promise.all([
-        getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-spot?state=${abbr}`),
+        getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-spot?state=${abbr}${dateParam ? `&date=${dateParam}` : ""}`),
         c ? getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-solunar?lat=${c[1]}&lng=${c[0]}`) : Promise.resolve({}),
       ]);
       setDossier(toSpotData(spot, sol, abbr));
