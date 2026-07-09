@@ -292,7 +292,7 @@ npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe s
 - NEVER use psql or `db execute` — REST API only.
 
 ### Performance Rules (Learned the Hard Way)
-- NEVER run more than 3 backfill pipes simultaneously (Supabase Pro IO budget).
+- **ONE WRITE PIPELINE — permanent doctrine (James, 2026-07-09).** Exactly one write pipe at a time, ever, run in an ordered queue with a claimed-lane entry in the state log. Multiple pipes scatter: mid-run deaths go unnoticed, completions go unlogged, checkpoints stop meaning anything (this killed us twice the week of 07-05). Readers/surfaces fan out freely; writers never do.
 - Use orchestrator-v2.ts with 60s layered startup between pipes.
 - Monitor IO every 20 min when running backfills.
 - NEVER use `{ count: 'exact' }` on hunt_knowledge — use `{ count: 'estimated' }`.
