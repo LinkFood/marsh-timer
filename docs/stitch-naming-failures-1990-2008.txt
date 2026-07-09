@@ -1,0 +1,42 @@
+TORNADO | 380 members | AL,AR,CO,GA,IA,IL,KS,KY,LA,MO,MS,NE,OK,TN,TX,WY | 1990-05-11..1990-05-21 | deaths 6 inj 155 dmg $81M | score 2986 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 3007 members | AL,AR,CO,FL,GA,IA,IL,IN,KS,KY,LA,MN,MO,MS,MT,NC,ND,NE,NM,OH,OK,SC,SD,TN,TX,VA,WV,WY | 1990-05-11..1990-06-04 | deaths 0 inj 0 dmg $0M | score 3682 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WIND | 66 members | AZ,CA,CO,KS,NE,NM,NV,OR,TX,UT | 1990-07-09..1990-07-16 | deaths 0 inj 87 dmg $0M | score 1161 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+TORNADO | 24 members | CO,NM,OK,TX | 1990-07-14..1990-07-15 | deaths 0 inj 18 dmg $0M | score 279 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WIND | 60 members | AL,FL,GA,LA,MS,NC | 1996-01-23..1996-01-24 | deaths 0 inj 0 dmg $6M | score 191 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WIND | 140 members | AL,GA,LA,MS,SC | 1996-01-26..1996-01-27 | deaths 0 inj 0 dmg $1M | score 241 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+TORNADO | 12 members | FL,GA | 1996-02-02..1996-02-03 | deaths 2 inj 0 dmg $8M | score 245 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 1925 members | AL,CT,DE,GA,IN,KY,MA,MD,ME,MI,MN,NC,ND,NH,NJ,NY,OH,PA,RI,SC,SD,VA,VT,WI,WV | 1996-02-26..1996-03-10 | deaths 16 inj 30 dmg $74M | score 4499 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 278 members | AR,IA,IL,IN,KS,KY,MI,MO,MS,OH,OK,PA,TN,TX,WI,WV | 1996-02-26..1996-02-28 | deaths 0 inj 0 dmg $0M | score 653 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 2780 members | AZ,CA,CO,CT,IA,ID,IL,KS,MA,MD,ME,MI,MN,MO,MS,MT,NC,NE,NH,NJ,NV,NY,OK,OR,PA,SD,TN,TX,UT,VA,VT,WA,WI,WV,WY | 1998-01-01..1998-01-24 | deaths 34 inj 141 dmg $72M | score 8512 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 1402 members | AL,AR,CT,FL,GA,IL,IN,KY,LA,MA,MD,MO,MS,NC,NY,OH,OK,PA,SC,TN,TX,VA,VT,WV | 1998-01-04..1998-01-11 | deaths 28 inj 30 dmg $50M | score 5127 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 58 members | ME | 1998-01-05..1998-01-05 | deaths 2 inj 0 dmg $311M | score 569 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 95 members | AL,KY,NC,NY,OH,PA,SC,TN,VA,WV | 1998-01-07..1998-01-09 | deaths 0 inj 0 dmg $0M | score 320 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 78 members | NC | 1998-01-18..1998-01-19 | deaths 4 inj 28 dmg $0M | score 758 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 164 members | AL,FL,GA,LA,MS,TX | 1998-01-21..1998-01-23 | deaths 0 inj 0 dmg $0M | score 289 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 42 members | CT,MA,NJ,NY,RI | 1998-01-23..1998-01-24 | deaths 0 inj 0 dmg $0M | score 142 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 160 members | AR,LA,MS,TX | 1998-02-09..1998-02-13 | deaths 0 inj 0 dmg $10M | score 245 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+TORNADO | 26 members | AR,MS,TX | 1998-02-09..1998-02-11 | deaths 0 inj 16 dmg $5M | score 241 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 842 members | AZ,CA,CO,ID,MT,ND,NE,NM,NV,OK,OR,SD,TX,UT,WA,WY | 1998-02-01..1998-02-27 | deaths 18 inj 166 dmg $2M | score 4679 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 314 members | AL,AR,FL,GA,KS,LA,MO,MS,NE,OK,SC,SD,TX | 1998-02-25..1998-03-01 | deaths 0 inj 0 dmg $0M | score 614 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 336 members | AL,AR,FL,GA,MS,NC,NM,OK,SC,TN,TX,VA | 1998-03-15..1998-03-21 | deaths 0 inj 0 dmg $0M | score 611 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 386 members | AR,DE,IL,IN,KS,MD,MI,MO,NC,NE,NJ,OH,OK,PA,TX,VA,WV | 1998-03-15..1998-03-23 | deaths 0 inj 0 dmg $1M | score 787 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+TORNADO | 32 members | FL,GA,NC,VA | 1998-03-19..1998-03-21 | deaths 28 inj 412 dmg $57M | score 7084 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 434 members | AZ,CA,CO,ID,MN,MT,ND,NE,NV,OR,SD,UT,WA,WY | 1998-03-23..1998-04-01 | deaths 2 inj 18 dmg $0M | score 1139 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 1094 members | AL,AR,GA,IA,IL,KS,KY,LA,MD,MI,MN,MO,MS,NC,NE,OK,SC,SD,TN,TX,VA,WI | 1998-03-24..1998-04-04 | deaths 0 inj 4 dmg $1M | score 1660 ★NOTABLE: Error: Command failed: claude -p --model opus
+TORNADO | 54 members | IA,IL,IN,MI,MN,WI | 1998-03-28..1998-03-30 | deaths 4 inj 48 dmg $239M | score 1298 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 232 members | AL,AR,FL,GA,LA,MO,MS,NC,SC,TN,VA | 2000-02-11..2000-02-15 | deaths 0 inj 0 dmg $0M | score 482 ★NOTABLE: SyntaxError: Unexpected end of JSON input
+TORNADO | 52 members | IL,IN,MN,WI | 2003-05-29..2003-05-31 | deaths 0 inj 8 dmg $12M | score 219 ★NOTABLE: SyntaxError: Unexpected end of JSON input
+WINTER | 97 members | MI,NY,VT,WI | 2003-12-22..2003-12-26 | deaths 0 inj 0 dmg $0M | score 172 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 86 members | CT,NJ,NY,PA,VT | 2003-12-24..2003-12-26 | deaths 0 inj 0 dmg $0M | score 186 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 15 members | CA | 2003-12-25..2003-12-25 | deaths 8 inj 20 dmg $7M | score 1022 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 882 members | IL,IN,KY,OH,PA,VA,WV | 2004-01-01..2004-01-07 | deaths 12 inj 4 dmg $11M | score 2283 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 192 members | ME,NH | 2004-01-23..2004-01-24 | deaths 0 inj 0 dmg $0M | score 217 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+HAIL | 90 members | AL,LA,MS,TX | 2004-02-04..2004-02-06 | deaths 0 inj 0 dmg $0M | score 165 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+FLOOD | 1075 members | AL,DE,GA,IL,IN,KY,LA,MD,MS,NC,NJ,OH,PA,SC,TN,TX,VA,WV | 2004-02-04..2004-02-10 | deaths 0 inj 0 dmg $42M | score 1542 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 54 members | CA,ID,NV,OR | 2004-02-06..2004-02-07 | deaths 0 inj 4 dmg $0M | score 169 ★NOTABLE: Error: spawnSync claude ENOENT
+WINTER | 456 members | CO,MT,ND,NM,SD,WY | 2004-02-10..2004-02-12 | deaths 0 inj 12 dmg $0M | score 701 ★NOTABLE: Error: spawnSync claude ENOENT
+WINTER | 569 members | AR,MS,NC,OK,TN,TX,VA | 2004-02-14..2004-02-16 | deaths 0 inj 0 dmg $0M | score 719 ★NOTABLE: Error: spawnSync claude ETIMEDOUT
+WINTER | 58 members | CA,ID,MT,NV,OR | 2004-02-16..2004-02-19 | deaths 0 inj 0 dmg $0M | score 158 ★NOTABLE: Error: spawnSync claude ENOENT
+WINTER | 105 members | IL,MI,WI | 2004-02-18..2004-02-21 | deaths 4 inj 0 dmg $0M | score 555 ★NOTABLE: Error: spawnSync claude ENOENT
+WINTER | 103 members | AZ,CA,CO,NM,NV,TX | 2004-02-21..2004-02-24 | deaths 0 inj 0 dmg $0M | score 228 ★NOTABLE: Error: spawnSync claude ENOENT
+WINTER | 687 members | AL,GA,NC,SC,TN,VA | 2004-02-25..2004-02-27 | deaths 0 inj 0 dmg $9M | score 821 ★NOTABLE: Error: spawnSync claude ENOENT
