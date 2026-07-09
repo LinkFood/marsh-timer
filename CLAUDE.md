@@ -288,6 +288,7 @@ npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe s
 - NEVER retry 4xx errors — only 5xx and network errors.
 - Every early-return path in cron functions calls `logCronRun`.
 - Shared module change → redeploy EVERY function that imports it.
+- **BEFORE ANY FUNCTION DEPLOY: `git status -s supabase/functions/` must be clean or contain ONLY your intended changes.** On 2026-07-08 JAC repo files (incl. a linkjac.cloud CORS allowlist) appeared in this tree from an outside process and silently rode three deploys to production, CORS-breaking the live site for ~25 min. Deploys bundle whatever is on disk — verify the tree, then deploy.
 - NEVER use `$$` inside pg_cron — use `$cron$`/`$body$`.
 - NEVER use psql or `db execute` — REST API only.
 
