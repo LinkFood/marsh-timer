@@ -505,8 +505,30 @@ function nameClusterViaCli(facts: string): Naming {
 
 async function nameCluster(c: Cluster, s: ClusterStats): Promise<Naming> {
   const facts = clusterFactSheet(c, s);
-  if (process.env.ANTHROPIC_API_KEY) return nameClusterViaApi(facts);
-  return nameClusterViaCli(facts);
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      if (process.env.ANTHROPIC_API_KEY) return await nameClusterViaApi(facts);
+      return nameClusterViaCli(facts);
+    } catch (err) {
+      lastErr = err;
+      await sleep(3_000 * attempt);
+    }
+  }
+  throw lastErr;
+}
+
+/** Mechanical naming when the model can't be reached — the rows must survive. */
+function fallbackNaming(c: Cluster, s: ClusterStats): Naming {
+  const span = `${s.dates[0]} to ${s.dates[s.dates.length - 1]}`;
+  const casualties = s.deaths ? ` ${s.deaths} deaths, ${s.injuries} injuries.` : "";
+  return {
+    name: `${c.family} — ${s.states.join(", ")} — ${span}`,
+    one_paragraph: `${s.n} recorded ${c.family.toLowerCase()} rows across ${s.states.join(", ")}, ${span}.${casualties} Named mechanically after model naming failed; awaiting a re-name pass.`,
+    families: [c.family],
+    states: s.states,
+    date_span: span,
+  };
 }
 
 // ─── Stage 3: build + stage stitched rows ───────────────────────────────────
@@ -636,6 +658,11 @@ async function runFull(start: string, end: string) {
       } catch (err) {
         nameFailed++;
         console.error(`  naming failed for ${fmtCluster(c, s)}: ${String(err).slice(0, 200)}`);
+        // Never drop a notable cluster — stage under a mechanical name tagged
+        // needs-naming so the rows survive to --commit; re-name pass finds them by tag.
+        const row = buildStitchedRow(c, s, fallbackNaming(c, s));
+        row.tags.push("needs-naming");
+        stageRow(row);
       }
       await sleep(300);
     }
@@ -692,13 +719,30 @@ async function runCommit() {
     .map((l) => JSON.parse(l));
   const already = await existingStitchedTitles();
   const seen = new Set<string>(already);
-  const pending = rows.filter((r) => {
+  const deduped = rows.filter((r) => {
     const k = `${r.title}|${r.effective_date}`;
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
-  console.log(`=== COMMIT === ${rows.length} staged, ${rows.length - pending.length} already present/dupe, ${pending.length} to insert`);
+  // Season-blob gate: an event is not a season. Wide+long clusters are the
+  // clusterer gluing a whole convective summer together (e.g. 23k-member
+  // "May–Aug 2001 thunderstorm wind", 48 states) — real multi-week events
+  // (Blizzard of '96: 5 days; a months-long 9-state flood) pass. Drop only
+  // when BOTH long (>21 days) and near-national (≥15 states), and log every
+  // drop — no silent caps.
+  const spanDays = (r: { metadata: { date_span: string } }) => {
+    const [a, b] = r.metadata.date_span.split(" to ");
+    return Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000) + 1;
+  };
+  const isBlob = (r: { metadata: { date_span: string; states: string[] } }) =>
+    spanDays(r) > 21 && r.metadata.states.length >= 15;
+  const blobs = deduped.filter(isBlob);
+  const pending = deduped.filter((r) => !isBlob(r));
+  for (const r of blobs) {
+    console.log(`  DROPPED season-blob: ${r.title} (${r.metadata.n_members} members, ${spanDays(r)} days, ${r.metadata.states.length} states)`);
+  }
+  console.log(`=== COMMIT === ${rows.length} staged, ${rows.length - deduped.length} already present/dupe, ${blobs.length} season-blobs dropped, ${pending.length} to insert`);
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   let inserted = 0;
   for (let b = 0; b * EMBED_BATCH < pending.length; b++) {
