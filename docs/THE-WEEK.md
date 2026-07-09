@@ -18,9 +18,9 @@
 4. **KID** — type a birthday + place, get wonder that is entirely real (Night You Were Born, proving ground at minimum).
 5. **CALLED SHOT** — PA precedent claim of 2026-07-05 ("all 4 lineup precedents cooled within 2–4 days") resolves this week and the product SHOWS itself being graded, win or lose.
 
-## THE PROVING GROUND: VIRGINIA
+## THE PROVING GROUND: MARYLAND (switched from VA 2026-07-08 — James's call; see state log)
 
-Depth-first, not breadth-first. VA goes ALL the way down this week: station-level baselines, county bloom, stitched events, tide gauge (Sewells Point), the full vision at full depth. All other states stay state-level and say so honestly. **Day-7 judgment happens at the proving ground.** Replication to 49 states is mechanical once one place is true.
+Depth-first, not breadth-first. MD goes ALL the way down this week: station-level baselines, county bloom, stitched events, tide gauges (Baltimore 1902+ / Annapolis / Cambridge / Solomons Island), the full vision at full depth. All other states stay state-level and say so honestly. **Day-7 judgment happens at the proving ground — and the judge lives on it.** James knows Maryland ground; a claim he can't personally verify is a weaker test. The Chesapeake is where Duck Countdown was born. Replication to 49 states is mechanical once one place is true.
 
 ## THE ROW CONTRACT (decided 2026-07-05 — all re-ingests conform; do not re-ingest without these)
 
@@ -42,7 +42,7 @@ Depth-first, not breadth-first. VA goes ALL the way down this week: station-leve
 | 3 | Tide roster + daily-MAX residual | BUILT — runs D2+ | `scripts/tide-roster-backfill.ts`. Dry-run: Battery Sandy max residual 9.15 ft, Kings Point 12.57 ft. See PIPE-3/4 runbook in STATE LOG |
 | 4 | Buoy pressure (BAR column) | BUILT — runs D2+ | BAR fix in backfill-ndbc-deep.ts + `scripts/ndbc-pressure-backfill.ts` (enrich+re-embed). Dry-run: 42040 bottoms 979.3 mb on 2005-08-29 — scorecard exact |
 | 5 | Full stitch pass | QUEUED (after 1–2) | ~2,500 named events, ~$50–90 LLM + $0.02 embed. `npx tsx scripts/event-stitcher.ts --full` then `--commit`. **Requires clean deduped data — never run on pipe-2-dirty rows** |
-| 6 | VA station-level baselines | QUEUED | Proving-ground depth: per-station × day-of-year rollups |
+| 6 | MD station-level baselines | QUEUED | Proving-ground depth: per-station × day-of-year rollups |
 | 7 | Curated 30 (gap report) | QUEUED | Hand-verified July-5 misses as curated-event rows |
 
 ## JAMES'S TWO MOVES (blocking, his hands only)
@@ -55,7 +55,7 @@ Depth-first, not breadth-first. VA goes ALL the way down this week: station-leve
 - **D1 Sat 07-05:** THE-WEEK.md committed. Row contract locked. Pipe 1 (ComCat) built+run. Morning Line v1 built + publishes its first line TODAY. NCEI pipe built (runs D2).
 - **D2 Sun 07-06:** Pipe 2 (NCEI) runs + dedup pass. James: tier-bump. Pipes 3–4. Morning Line day 2 publishes.
 - **D3 Mon 07-07:** Five-date test re-run #1 (expect big score jump; fix stragglers). Full stitch fires. Semantic rhyme wired into dossier (needs index).
-- **D4 Tue 07-08:** VA proving-ground depth: station baselines, county bloom (real TopoJSON counties, storm ledger shading), stitched events surface on VA.
+- **D4 Tue 07-08:** MD proving-ground depth: station baselines, county bloom (real TopoJSON counties, storm ledger shading), stitched events surface on MD. (Ran a day late; slots into D5.)
 - **D5 Wed 07-09:** APPLE PASS day 1: design-system sweep of atlas + dossier (type scale, spacing, motion timing, color discipline per dataviz skill), Night You Were Born v1.
 - **D6 Thu 07-10:** APPLE PASS day 2: mobile 375px end-to-end, first-tap hydration bug dead, load performance, empty/error states all honest. Freeze.
 - **D7 Fri 07-11:** Full five-test dry run by Claude. Fix only what fails. No new anything.
@@ -132,3 +132,5 @@ nohup npx tsx scripts/ndbc-pressure-backfill.ts > /tmp/ndbc-pressure.log 2>&1 & 
 **2026-07-08 ~22:45 — STITCH QUALITY READ (mid-run, 2,220 named). The finds are REAL: Blizzard of '96 (5,964 members), Front Range/Denver Hailstorm Jul 11 1990, Feb 9–10 1990 SE tornado outbreak, Jun 1–3 1990 Midwest outbreak — named from raw rows alone. TWO GATES BEFORE `--commit` (do not commit without them):** (1) **season-blob over-merge** — largest clusters are entire summers (23,390-member "May–Aug 2001 thunderstorm wind"); cap cluster time-span/diameter or drop national-scale blobs at commit, an event is not a season; (2) **42 naming failures** (`spawnSync claude ETIMEDOUT`, incl. two 28-death clusters) — logged with full stats in /tmp/stitch-full.log; retry-name pass before commit recovers them.
 
 **2026-07-08 ~23:20 — BOTH GATES BUILT + STITCHER HARDENED + RESTARTED (fa5dab9).** Morning Line UTC bug FIXED+DEPLOYED+curl-verified (5375e45 — dateline anchored America/New_York; at 23:00 ET it serves July 8 Massachusetts, was serving July 9). Stitcher: naming now retries 3× w/ backoff; failures stage under mechanical names tagged `needs-naming` (rows never dropped); `--commit` drops season-blobs (>21 days AND ≥15 states — Blizzard of '96 and long narrow floods pass) logging every drop. Old process killed at 2008-08 complete; 5 in-flight 2008-09 staged rows trimmed from JSONL (2,270→2,265, dupe-safe); relaunched `--full --start 2008-09` on fixed code. The 42 already-lost 1990–2008 clusters preserved to `docs/stitch-naming-failures-1990-2008.txt` — post-run recovery: re-probe those (family, month) windows or accept as documented 2% gap; two 28-death clusters make recovery worth it. **D4 VA depth still unstarted — first item post-midnight.**
+
+**2026-07-08 ~23:45 — PROVING GROUND SWITCHED: VA → MARYLAND (James's call: "is there a reason? i live in md").** Honest audit: VA was momentum, not a decision — the 07-02 demolition + precedent tests happened to run on VA data and the sprint doc inherited it. MD wins on the axes that matter: the day-7 judge lives on the ground (James can call BS on an MD claim — his eye IS the calibration), the Chesapeake is the product's birthplace, and Baltimore 8574680 is one of the longest continuous tide records in America (hourly to 1902). Switch cost ~zero: D4 depth work had not started; all shipped layers are state-generic. DONE TONIGHT: 4 Chesapeake gauges added to the tide roster (Baltimore 1902 / Annapolis 1928 / Cambridge 1943 / Solomons Island 1937) + **MD tide backfill FIRED and verified writing (Baltimore 1902: +184 days landing)** — runs overnight, /tmp/tide-md.log, checkpointed+idempotent, write lane is its alone (stitcher is read-only). All living doc sections updated VA→MD; historical state-log entries left as history. **POST-MIDNIGHT PICKUP: D4 = MD depth — station baselines, county bloom, stitched-on-MD — then D5 Apple pass.**

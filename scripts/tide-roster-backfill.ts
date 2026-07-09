@@ -54,6 +54,12 @@ const ROSTER: Station[] = [
   { id: "8761724", name: "Grand Isle", state: "LA", lat: 29.2633, lng: -89.9567, startYear: 1980 },
   { id: "8747437", name: "Bay Waveland", state: "MS", lat: 30.3264, lng: -89.3258, startYear: 1978 },
   { id: "8735180", name: "Dauphin Island", state: "AL", lat: 30.25, lng: -88.075, startYear: 1966 },
+  // Chesapeake — proving-ground depth. Baltimore is one of the longest
+  // continuous tide records in America.
+  { id: "8574680", name: "Baltimore", state: "MD", lat: 39.2669, lng: -76.5786, startYear: 1902 },
+  { id: "8575512", name: "Annapolis", state: "MD", lat: 38.9833, lng: -76.4816, startYear: 1928 },
+  { id: "8571892", name: "Cambridge", state: "MD", lat: 38.5725, lng: -76.0617, startYear: 1943 },
+  { id: "8577330", name: "Solomons Island", state: "MD", lat: 38.3172, lng: -76.4512, startYear: 1937 },
 ];
 
 // ─── Key bootstrap (same pattern as ncei-reingest.ts) ────────────────────────
