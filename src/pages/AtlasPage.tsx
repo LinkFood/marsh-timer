@@ -186,7 +186,14 @@ export default function AtlasPage() {
   const [searchParams] = useSearchParams();
   // /atlas?date=YYYY-MM-DD falls into any recorded day, not just today.
   const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("date") ?? "") ? searchParams.get("date") : null;
+  // /atlas?state=XX auto-descends into that state on load (the Born flow lands
+  // the visitor already fallen into their own ground, not on the national view).
+  const stateParamRaw = (searchParams.get("state") ?? "").toUpperCase();
+  const stateParam = TILE_GRID[stateParamRaw] ? stateParamRaw : null;
   const dossierRef = useRef<HTMLDivElement>(null);
+  const didAutoDescend = useRef(false);
+  // Where a tap began, so pointerup can tell a tap from a scroll-drag.
+  const tapStart = useRef<{ x: number; y: number } | null>(null);
 
   // Camera state. `descended` flips the grammar (dim periphery, stage text);
   // `landed` gates the sonar ring so the pulse blooms as the camera arrives.
@@ -202,6 +209,15 @@ export default function AtlasPage() {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, []);
+
+  // Auto-descend when arriving with ?state=XX (e.g. the Born flow). Fires once;
+  // the anomaly z fills in when its fetch lands. selectState carries dateParam.
+  useEffect(() => {
+    if (didAutoDescend.current || !stateParam) return;
+    didAutoDescend.current = true;
+    selectState(stateParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateParam]);
 
   const tween = useCallback((target: ViewBox, duration: number, onDone?: () => void) => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -378,13 +394,18 @@ export default function AtlasPage() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row lg:gap-10 lg:py-10">
         {/* The map of boxes — and the camera */}
         <div className="lg:flex-1">
-          <div className="mb-1 flex items-baseline justify-between">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <Link to="/" className="font-mono text-[11px] tracking-[0.24em] text-cyan-300/90 hover:text-cyan-200">
               DUCK COUNTDOWN
             </Link>
-            <Link to="/morning" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
-              The Morning Line &rarr;
-            </Link>
+            <div className="flex items-baseline gap-x-4">
+              <Link to="/born" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
+                The night you were born &rarr;
+              </Link>
+              <Link to="/morning" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
+                The Morning Line &rarr;
+              </Link>
+            </div>
           </div>
           <h1 className="text-2xl font-semibold text-gray-100">The ground you stand on</h1>
           <p className="mt-1 max-w-md text-sm text-gray-400">
@@ -435,7 +456,22 @@ export default function AtlasPage() {
                     }}
                     onMouseEnter={() => setHovered(abbr)}
                     onMouseLeave={() => setHovered(null)}
-                    onClick={() => onTileActivate(abbr)}
+                    // Activate on pointerup, not click: on touch the synthetic
+                    // click is generated only after the emulated mouseenter/hover
+                    // pass and is intermittently swallowed on the FIRST tap (the
+                    // tap lands as "acquire hover", the second tap descends).
+                    // pointerdown/up fire on the very first touch; the movement
+                    // guard keeps a scroll-drag from counting as a tap.
+                    onPointerDown={(e) => {
+                      tapStart.current = { x: e.clientX, y: e.clientY };
+                    }}
+                    onPointerUp={(e) => {
+                      const s = tapStart.current;
+                      tapStart.current = null;
+                      if (!s) return;
+                      if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) return;
+                      onTileActivate(abbr);
+                    }}
                     onFocus={() => setHovered(abbr)}
                     onBlur={() => setHovered(null)}
                     onKeyDown={(e) => {

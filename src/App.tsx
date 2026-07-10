@@ -17,6 +17,7 @@ const Auth = lazy(() => import("./pages/Auth"));
 const OpsPage = lazy(() => import("./pages/OpsPage"));
 const AtlasPage = lazy(() => import("./pages/AtlasPage"));
 const MorningPage = lazy(() => import("./pages/MorningPage"));
+const BornPage = lazy(() => import("./pages/BornPage"));
 
 const App = () => (
   <BrowserRouter>
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/atlas" element={<AtlasPage />} />
           <Route path="/morning" element={<MorningPage />} />
           <Route path="/morning/:date" element={<MorningPage />} />
+          <Route path="/born" element={<BornPage />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
