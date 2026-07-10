@@ -47,13 +47,22 @@ interface StateResult {
   baseline_std: number | null;   // sample std of baseline years (°F)
   z: number | null;              // (value - baseline_mean) / baseline_std
   n_years: number;               // count of baseline observations
-  day0_source: 'live' | 'archive'; // 'live' = actual day from hunt_weather_history (past the GHCN edge); 'archive' = most-recent GHCN year
+  // 'live' = actual target-day reading from hunt_weather_history; 'live-yesterday' =
+  // yesterday's reading (today's row not posted yet); 'archive' = most-recent GHCN year.
+  day0_source: 'live' | 'live-yesterday' | 'archive';
+  as_of_date: string | null;     // the calendar date `value` was recorded (today / yesterday / latest GHCN year)
 }
 
 function round(n: number | null, dp = 2): number | null {
   if (n === null || !Number.isFinite(n)) return null;
   const f = 10 ** dp;
   return Math.round(n * f) / f;
+}
+
+function isoPlusDays(iso: string, days: number): string {
+  const dt = new Date(iso + 'T00:00:00Z');
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
 }
 
 // Resolve target date. Accepts YYYY-MM-DD, MM-DD, or MM/DD. Defaults to today (UTC).
@@ -77,7 +86,15 @@ function resolveTargetDate(dateParam: string | null): { year: number; mm: string
 
 // liveTemp: the actual recorded high for the target date from hunt_weather_history
 // (null when the row is missing or we're at/before the GHCN edge for this state).
-function computeStateResult(abbr: string, obs: StateAgg, targetYear: number, liveTemp: number | null): StateResult {
+function computeStateResult(
+  abbr: string,
+  obs: StateAgg,
+  targetYear: number,
+  targetIso: string,
+  yesterdayIso: string,
+  liveTemp: number | null,
+  yesterdayTemp: number | null,
+): StateResult {
   const centroid = STATE_CENTROIDS[abbr];
   const base: StateResult = {
     state: abbr,
@@ -92,6 +109,7 @@ function computeStateResult(abbr: string, obs: StateAgg, targetYear: number, liv
     z: null,
     n_years: 0,
     day0_source: 'archive',
+    as_of_date: null,
   };
   if (obs.length === 0) return base;
 
@@ -99,14 +117,20 @@ function computeStateResult(abbr: string, obs: StateAgg, targetYear: number, liv
   obs.sort((a, b) => a.year - b.year);
   const latest = obs[obs.length - 1];
 
-  // Past the GHCN archive edge for this day-of-year: the target year is beyond the
-  // latest recorded GHCN year AND a live station reading exists. Measure the ACTUAL
-  // day against the full GHCN distribution (every recorded year is baseline).
-  const live = targetYear > latest.year && liveTemp !== null && Number.isFinite(liveTemp);
-  if (live) {
-    base.value = round(liveTemp);
+  // Past the GHCN archive edge for this day-of-year (target year beyond the latest
+  // recorded GHCN year): day-0 is the live station feed. Fallback chain — today's
+  // reading → yesterday's reading (labeled) → the GHCN defendant (below). The live
+  // observation is measured against the full GHCN distribution (every year baseline).
+  const pastEdge = targetYear > latest.year;
+  const haveToday = liveTemp !== null && Number.isFinite(liveTemp);
+  const haveYesterday = yesterdayTemp !== null && Number.isFinite(yesterdayTemp);
+  if (pastEdge && (haveToday || haveYesterday)) {
+    const useYesterday = !haveToday;
+    const observed = (useYesterday ? yesterdayTemp : liveTemp) as number;
+    base.value = round(observed);
     base.as_of_year = targetYear;
-    base.day0_source = 'live';
+    base.as_of_date = useYesterday ? yesterdayIso : targetIso;
+    base.day0_source = useYesterday ? 'live-yesterday' : 'live';
     base.n_years = obs.length;
     if (obs.length < MIN_YEARS) return base;
     const mean = obs.reduce((s, o) => s + o.value, 0) / obs.length;
@@ -114,7 +138,7 @@ function computeStateResult(abbr: string, obs: StateAgg, targetYear: number, liv
     const std = Math.sqrt(variance);
     base.baseline_mean = round(mean);
     base.baseline_std = round(std);
-    base.z = std > 0 ? round(((liveTemp as number) - mean) / std) : null;
+    base.z = std > 0 ? round((observed - mean) / std) : null;
     return base;
   }
 
@@ -122,6 +146,7 @@ function computeStateResult(abbr: string, obs: StateAgg, targetYear: number, liv
   const baseline = obs.slice(0, obs.length - 1);
   base.value = round(latest.value);
   base.as_of_year = latest.year;
+  base.as_of_date = `${latest.year}-${targetIso.slice(5)}`;
   base.n_years = baseline.length;
 
   if (baseline.length < MIN_YEARS) return base;
@@ -172,13 +197,28 @@ Deno.serve(async (req: Request) => {
     const dateList: string[] = [];
     for (let y = FIRST_YEAR; y <= thisYear; y++) dateList.push(`${y}-${target.mm}-${target.dd}`);
 
-    // Group parsed observations by state.
-    const byState = new Map<string, StateAgg>();
+    // Day-0 for dates past the GHCN archive edge: the actual recorded high from
+    // hunt_weather_history (cron-fed daily, current through yesterday). Small table
+    // — one bounded read of BOTH target + yesterday (the fallback: today's row →
+    // yesterday's, labeled → GHCN defendant). Fired in parallel with the page pulls.
+    const targetIso = `${target.year}-${target.mm}-${target.dd}`;
+    const yesterdayIso = isoPlusDays(targetIso, -1);
+    const whPromise = (async () => {
+      let wq = supabase
+        .from('hunt_weather_history')
+        .select('state_abbr, date, temp_high_f')
+        .in('date', [targetIso, yesterdayIso]);
+      if (stateParam) wq = wq.eq('state_abbr', stateParam);
+      return await wq;
+    })();
 
+    // GHCN page pulls fired in parallel — each .range() slice is ordered and
+    // self-contained, so parallel firing keeps deterministic pages while
+    // collapsing the serial round-trips into one wall-clock wait.
+    const pagePromises = [];
     for (let page = 0; page < MAX_PAGES; page++) {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-
       let q = supabase
         .from('hunt_knowledge')
         .select('state_abbr, effective_date, content')
@@ -186,19 +226,21 @@ Deno.serve(async (req: Request) => {
         .in('effective_date', dateList)
         .order('effective_date', { ascending: true })
         .range(from, to);
-
       if (stateParam) q = q.eq('state_abbr', stateParam);
+      pagePromises.push(q);
+    }
+    const pageResults = await Promise.all(pagePromises);
 
-      const { data, error } = await q;
+    // Group parsed observations by state.
+    const byState = new Map<string, StateAgg>();
+    for (const { data, error } of pageResults) {
       if (error) {
         return new Response(
           JSON.stringify({ error: `Query failed: ${error.message}` }),
           { status: 502, headers: jsonHeaders },
         );
       }
-      if (!data || data.length === 0) break;
-
-      for (const row of data) {
+      for (const row of data ?? []) {
         const abbr = row.state_abbr as string | null;
         if (!abbr || !STATE_CENTROIDS[abbr]) continue;
         const m = String(row.content ?? '').match(AVG_HIGH_RE);
@@ -210,34 +252,30 @@ Deno.serve(async (req: Request) => {
         if (!byState.has(abbr)) byState.set(abbr, []);
         byState.get(abbr)!.push({ year, value });
       }
-
-      if (data.length < PAGE_SIZE) break;
     }
 
-    // Day-0 for dates past the GHCN archive edge: the actual recorded high from
-    // hunt_weather_history (cron-fed daily, current through yesterday). Small table
-    // — a plain bounded .eq() select. Substituted per-state only when the target
-    // year is beyond that state's latest GHCN year for this day-of-year.
-    const targetIso = `${target.year}-${target.mm}-${target.dd}`;
+    // Collect the live day-0 readings — today's and yesterday's — per state.
     const liveByState = new Map<string, number>();
+    const yesterdayByState = new Map<string, number>();
     {
-      let wq = supabase
-        .from('hunt_weather_history')
-        .select('state_abbr, temp_high_f')
-        .eq('date', targetIso);
-      if (stateParam) wq = wq.eq('state_abbr', stateParam);
-      const { data: whData, error: whErr } = await wq;
+      const { data: whData, error: whErr } = await whPromise;
       if (whErr) console.error('weather_history query failed:', whErr.message);
       for (const r of whData ?? []) {
         const abbr = r.state_abbr as string | null;
         const t = r.temp_high_f;
-        if (abbr && typeof t === 'number' && Number.isFinite(t)) liveByState.set(abbr, t);
+        if (!abbr || typeof t !== 'number' || !Number.isFinite(t)) continue;
+        const d = String(r.date).slice(0, 10);
+        if (d === targetIso) liveByState.set(abbr, t);
+        else if (d === yesterdayIso) yesterdayByState.set(abbr, t);
       }
     }
 
     const targetStates = stateParam ? [stateParam] : Object.keys(STATE_CENTROIDS);
     const states = targetStates
-      .map((abbr) => computeStateResult(abbr, byState.get(abbr) ?? [], target.year, liveByState.get(abbr) ?? null))
+      .map((abbr) => computeStateResult(
+        abbr, byState.get(abbr) ?? [], target.year, targetIso, yesterdayIso,
+        liveByState.get(abbr) ?? null, yesterdayByState.get(abbr) ?? null,
+      ))
       .sort((a, b) => (Math.abs(b.z ?? 0) - Math.abs(a.z ?? 0)));
 
     const withData = states.filter((s) => s.value !== null).length;

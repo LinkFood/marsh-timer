@@ -51,7 +51,6 @@ const COOL_OUTCOME_F = 5;       // recorded avg-high drop that counts as "cooled
 const ON_FILE_PER_DATE = 2;     // max provenance items attached to a named date
 const ON_FILE_TYPES = ['storm-event', 'nws-alert', 'historical-newspaper', 'onthisday-event'];
 const FRONT_DROP_F = 8;         // avg-high fall (°F) over the window that reads as a front
-const TIDE_RECENT_FROM = '2025-11-25'; // recent tide snapshot floor (archive edge ~2025-12)
 const ALERT_LOOKBACK_DAYS = 30; // "recent" window for nws-alert count
 const LIVE_TYPES = ['nws-alert', 'weather-event', 'compound-risk-alert']; // recorded-today live layer
 const LIVE_LIMIT = 10;          // bounded pull; identical titles collapse to one chip with a count
@@ -513,6 +512,225 @@ Deno.serve(async (req: Request) => {
     }
     const dateList = Array.from(dateSet);
 
+    // ---- Fire every read independent of the GHCN pull in parallel ------------
+    // Each overlaps the GHCN pull below AND all the CPU compute that follows;
+    // every one is awaited only where its result is first needed. Nothing here
+    // depends on the pull, so the whole dossier collapses to roughly the cost of
+    // its single slowest query instead of a dozen serial round-trips.
+    const tidePoolPromise = (async (): Promise<{ tidePool: Map<string, number>; tideStation: string | null }> => {
+      const byStation = new Map<string, Map<string, number>>(); // sid -> date -> residual
+      const stationName = new Map<string, string>();
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const from = page * PAGE_SIZE;
+        const { data, error } = await supabase
+          .from('hunt_knowledge')
+          .select('effective_date, metadata')
+          .eq('content_type', 'tide-gauge')
+          .eq('state_abbr', stateParam)
+          .in('effective_date', dateList)
+          .order('effective_date', { ascending: true }) // deterministic pages (see ghcn pull note)
+          .range(from, from + PAGE_SIZE - 1);
+        if (error || !data || data.length === 0) break;
+        for (const r of data) {
+          const md = (r.metadata ?? {}) as Record<string, unknown>;
+          const sid = String(md.station_id ?? md.station_name ?? '');
+          const res = Number(md.residual_ft);
+          if (!sid || !Number.isFinite(res)) continue;
+          const iso = String(r.effective_date).slice(0, 10);
+          if (!byStation.has(sid)) byStation.set(sid, new Map());
+          byStation.get(sid)!.set(iso, res);
+          if (md.station_name) stationName.set(sid, String(md.station_name));
+        }
+        if (data.length < PAGE_SIZE) break;
+      }
+      let bestSid: string | null = null;
+      for (const sid of byStation.keys()) {
+        if (!bestSid || byStation.get(sid)!.size > byStation.get(bestSid)!.size) bestSid = sid;
+      }
+      const tidePool = bestSid ? byStation.get(bestSid)! : new Map<string, number>();
+      const tideStation = bestSid ? (stationName.get(bestSid) ?? bestSid) : null;
+      return { tidePool, tideStation };
+    })();
+
+    // TIDE NOW — this state's own recent gauge (fast, state-filtered window +
+    // JS max-date), else the nearest currently-reporting gauge from a recent
+    // roster. tide-gauge grew to ~747k rows and has no index serving
+    // (content_type, state_abbr, effective_date), so an ordered full-history
+    // scan runs 10–45s and the no-state roster read is planner-unstable (0.4–30s).
+    // Fix: (1) the local read is state-filtered + bounded to a recent window and
+    // picks the newest in JS (no ORDER BY to stall on empty states) — reliably
+    // sub-second; (2) the no-state roster is time-budgeted, so a slow plan yields
+    // an honest "no recent gauge" instead of stalling the whole dossier. Deep
+    // historical surge still lives in that_day.tide (its own bounded query).
+    // A hard outer budget wraps the whole block: states with a recent local gauge
+    // answer in <1s, but states with only OLD tide rows scan ~6s just to prove
+    // "no recent gauge" (and an ORDER BY there hits the 57014 statement timeout),
+    // because tide-gauge has no index serving state+effective_date. The budget
+    // yields an honest null in those cases rather than stalling the dossier.
+    const TIDENOW_BUDGET_MS = 2000;
+    const tideNowPromise: Promise<Record<string, unknown> | null> = Promise.race([
+      (async (): Promise<Record<string, unknown> | null> => {
+      const RECENT_TIDE_DAYS = 120;   // window that counts as a "current" reading
+      const ROSTER_BUDGET_MS = 1500;  // hard cap on the un-indexable roster read
+      const tideFloor = isoPlusDays(new Date().toISOString().slice(0, 10), -RECENT_TIDE_DAYS);
+
+      // 1. Local gauge — state-filtered recent window, newest by JS max.
+      const { data: localRows } = await supabase
+        .from('hunt_knowledge')
+        .select('effective_date, metadata')
+        .eq('content_type', 'tide-gauge')
+        .eq('state_abbr', stateParam)
+        .gte('effective_date', tideFloor)
+        .limit(500);
+      let localBest: { date: string; md: Record<string, unknown> } | null = null;
+      for (const r of localRows ?? []) {
+        const date = String(r.effective_date).slice(0, 10);
+        if (!localBest || date > localBest.date) localBest = { date, md: (r.metadata ?? {}) as Record<string, unknown> };
+      }
+      if (localBest) {
+        const md = localBest.md;
+        return {
+          station_name: md.station_name ?? null,
+          station_id: md.station_id ?? null,
+          state: stateParam,
+          is_local: true,
+          date: localBest.date,
+          daily_mean_ft: md.daily_mean_ft ?? null,
+          predicted_ft: md.predicted_ft ?? null,
+          residual_ft: md.residual_ft ?? null,
+          datum: md.datum ?? null,
+          source: 'noaa-coops',
+          resolution: 'station',
+          note: `${md.station_name} gauge (in ${centroid.name}); most recent reading on file ${localBest.date}.`,
+        };
+      }
+
+      // 2. No local recent gauge → nearest currently-reporting gauge, time-budgeted.
+      const roster = await Promise.race([
+        supabase
+          .from('hunt_knowledge')
+          .select('state_abbr, effective_date, metadata')
+          .eq('content_type', 'tide-gauge')
+          .gte('effective_date', tideFloor)
+          .limit(500)
+          .then((r) => r.data ?? null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), ROSTER_BUDGET_MS)),
+      ]);
+      if (!roster) return null; // no roster within budget → honestly no gauge to show
+      const latestByStation = new Map<string, { state: string; date: string; md: Record<string, unknown> }>();
+      for (const r of roster) {
+        const md = (r.metadata ?? {}) as Record<string, unknown>;
+        const sid = String(md.station_id ?? md.station_name ?? '');
+        if (!sid) continue;
+        const date = String(r.effective_date).slice(0, 10);
+        const prev = latestByStation.get(sid);
+        if (!prev || date > prev.date) latestByStation.set(sid, { state: r.state_abbr as string, date, md });
+      }
+      let best: { dist: number; state: string; date: string; md: Record<string, unknown> } | null = null;
+      for (const s of latestByStation.values()) {
+        const c = STATE_CENTROIDS[s.state];
+        if (!c) continue;
+        const dist = haversineish(lat, lng, c.lat, c.lng);
+        if (!best || dist < best.dist) best = { dist, ...s };
+      }
+      if (!best) return null;
+      const md = best.md;
+      const isLocal = best.state === stateParam;
+      return {
+        station_name: md.station_name ?? null,
+        station_id: md.station_id ?? null,
+        state: best.state,
+        is_local: isLocal,
+        date: best.date,
+        daily_mean_ft: md.daily_mean_ft ?? null,
+        predicted_ft: md.predicted_ft ?? null,
+        residual_ft: md.residual_ft ?? null,
+        datum: md.datum ?? null,
+        source: 'noaa-coops',
+        resolution: 'station',
+        note: isLocal
+          ? `${md.station_name} gauge (in ${centroid.name}); reading ${best.date}.`
+          : `Nearest currently-reporting gauge is ${md.station_name}, ${best.state} — ${centroid.name} has no recent gauge in the archive. Reading ${best.date}.`,
+      };
+      })(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), TIDENOW_BUDGET_MS)),
+    ]);
+
+    // NWS ALERTS — recent count for the state. Bounded count (never count:'exact'
+    // on hunt_knowledge): one light key-only pull capped at PAGE_SIZE for the
+    // count, one 5-row pull for the display list, both in parallel.
+    const nwsPromise = (async (): Promise<Record<string, unknown>> => {
+      const since = new Date();
+      since.setUTCDate(since.getUTCDate() - ALERT_LOOKBACK_DAYS);
+      const sinceIso = since.toISOString().slice(0, 10);
+      const [cntRes, recRes] = await Promise.all([
+        supabase.from('hunt_knowledge')
+          .select('effective_date')
+          .eq('content_type', 'nws-alert')
+          .eq('state_abbr', stateParam)
+          .gte('effective_date', sinceIso)
+          .limit(PAGE_SIZE),
+        supabase.from('hunt_knowledge')
+          .select('effective_date, content, metadata')
+          .eq('content_type', 'nws-alert')
+          .eq('state_abbr', stateParam)
+          .gte('effective_date', sinceIso)
+          .order('effective_date', { ascending: false })
+          .limit(5),
+      ]);
+      const recent = (recRes.data ?? []).map((r) => {
+        const md = (r.metadata ?? {}) as Record<string, unknown>;
+        const typeMatch = String(r.content ?? '').match(/type:([^|]+?)\s+severity:/i);
+        return {
+          date: String(r.effective_date).slice(0, 10),
+          type: typeMatch ? typeMatch[1].trim() : null,
+          severity: md.severity ?? null,
+        };
+      });
+      const count = cntRes.data ? cntRes.data.length : recent.length;
+      return { count, lookback_days: ALERT_LOOKBACK_DAYS, recent };
+    })();
+
+    // LIVE layer — recorded alerts on file for the ACTUAL today (independent read).
+    const livePromise = (async (): Promise<Array<Record<string, unknown>>> => {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const { data: liveRows, error: liveErr } = await supabase
+        .from('hunt_knowledge')
+        .select('content_type, title')
+        .in('content_type', LIVE_TYPES)
+        .eq('state_abbr', stateParam)
+        .eq('effective_date', todayIso)
+        .limit(LIVE_LIMIT);
+      if (liveErr) console.error('live query failed:', liveErr.message);
+      const byTitle = new Map<string, { type: string; title: string; count: number }>();
+      for (const r of liveRows ?? []) {
+        const ct = String(r.content_type);
+        const title = liveTitle(ct, String(r.title ?? ''));
+        if (!title) continue;
+        const key = `${ct}|${title}`;
+        const cur = byTitle.get(key);
+        if (cur) cur.count += 1;
+        else byTitle.set(key, { type: ct, title, count: 1 });
+      }
+      return Array.from(byTitle.values())
+        .sort((a, b) => (LIVE_PRIORITY[a.type] ?? 9) - (LIVE_PRIORITY[b.type] ?? 9));
+    })();
+
+    // DAY-0 live feed — today's + yesterday's hunt_weather_history for this state,
+    // in one bounded read. Past the GHCN edge, day-0 prefers today's live row,
+    // then yesterday's (labeled), then falls through to the GHCN defendant.
+    const whPromise = (async (): Promise<{ rows: Array<Record<string, unknown>>; yesterdayIso: string }> => {
+      const yesterdayIso = isoPlusDays(target.iso, -1);
+      const { data, error } = await supabase
+        .from('hunt_weather_history')
+        .select('date, temp_high_f, temp_low_f, precipitation_total_mm')
+        .eq('state_abbr', stateParam)
+        .in('date', [target.iso, yesterdayIso])
+        .limit(2);
+      if (error) console.error('weather_history query failed:', error.message);
+      return { rows: (data ?? []) as Array<Record<string, unknown>>, yesterdayIso };
+    })();
+
     // ---- One paginated pull of the state's window rows -----------------------
     const obs: DayObs[] = [];
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -616,41 +834,9 @@ Deno.serve(async (req: Request) => {
       return c && c.n >= MIN_YEARS ? c.s / c.n : null;
     };
 
-    // ---- Tide pool: same window, this state's own gauge history (if any) -----
-    // One paginated pull; if the state has multiple gauges, keep the one with
-    // the deepest record in the window. Feeds the lineup's tide component AND
-    // per-named-date tide residuals.
-    const byStation = new Map<string, Map<string, number>>(); // sid -> date -> residual
-    const stationName = new Map<string, string>();
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const from = page * PAGE_SIZE;
-      const { data, error } = await supabase
-        .from('hunt_knowledge')
-        .select('effective_date, metadata')
-        .eq('content_type', 'tide-gauge')
-        .eq('state_abbr', stateParam)
-        .in('effective_date', dateList)
-        .order('effective_date', { ascending: true }) // deterministic pages (see ghcn pull note)
-        .range(from, from + PAGE_SIZE - 1);
-      if (error || !data || data.length === 0) break;
-      for (const r of data) {
-        const md = (r.metadata ?? {}) as Record<string, unknown>;
-        const sid = String(md.station_id ?? md.station_name ?? '');
-        const res = Number(md.residual_ft);
-        if (!sid || !Number.isFinite(res)) continue;
-        const iso = String(r.effective_date).slice(0, 10);
-        if (!byStation.has(sid)) byStation.set(sid, new Map());
-        byStation.get(sid)!.set(iso, res);
-        if (md.station_name) stationName.set(sid, String(md.station_name));
-      }
-      if (data.length < PAGE_SIZE) break;
-    }
-    let bestSid: string | null = null;
-    for (const sid of byStation.keys()) {
-      if (!bestSid || byStation.get(sid)!.size > byStation.get(bestSid)!.size) bestSid = sid;
-    }
-    const tidePool = bestSid ? byStation.get(bestSid)! : new Map<string, number>();
-    const tideStation = bestSid ? (stationName.get(bestSid) ?? bestSid) : null;
+    // ---- Tide pool (awaited — the paginated pull was fired in parallel above) -
+    // Feeds the lineup's tide component AND per-named-date tide residuals.
+    const { tidePool, tideStation } = await tidePoolPromise;
 
     /** THAT DAY — a named date's own numbers, from the same pull + pure math. */
     const thatDayFor = (o: DayObs): Record<string, unknown> => {
@@ -682,21 +868,28 @@ Deno.serve(async (req: Request) => {
     // feeds ONLY weather NOW and the anomaly z; the historical blocks below keep
     // using the GHCN defendant.
     const targetYear = parseInt(target.iso.slice(0, 4), 10);
-    let liveDay0: { high: number | null; low: number | null; precip_in: number | null; date: string } | null = null;
+    // Day-0 fallback chain past the GHCN edge: today's live row → yesterday's
+    // live row (clearly labeled) → the GHCN defendant (handled below via isLive).
+    // Uses the parallel weather_history read (today + yesterday) fired above.
+    let liveDay0: { high: number | null; low: number | null; precip_in: number | null; date: string; source: 'live' | 'live-yesterday' } | null = null;
     if (defendant && targetYear > defendant.year) {
-      const { data: whRows, error: whErr } = await supabase
-        .from('hunt_weather_history')
-        .select('temp_high_f, temp_low_f, precipitation_total_mm')
-        .eq('state_abbr', stateParam)
-        .eq('date', target.iso)
-        .limit(1);
-      if (whErr) console.error('weather_history query failed:', whErr.message);
-      if (whRows && whRows.length > 0) {
-        const w = whRows[0];
-        const high = typeof w.temp_high_f === 'number' && Number.isFinite(w.temp_high_f) ? w.temp_high_f : null;
-        const low = typeof w.temp_low_f === 'number' && Number.isFinite(w.temp_low_f) ? w.temp_low_f : null;
-        const mm = typeof w.precipitation_total_mm === 'number' && Number.isFinite(w.precipitation_total_mm) ? w.precipitation_total_mm : null;
-        liveDay0 = { high, low, precip_in: mm !== null ? mm / 25.4 : null, date: target.iso };
+      const { rows: whRows, yesterdayIso } = await whPromise;
+      const byWhDate = new Map<string, Record<string, unknown>>();
+      for (const r of whRows) byWhDate.set(String(r.date).slice(0, 10), r);
+      const todayRow = byWhDate.get(target.iso);
+      const yestRow = byWhDate.get(yesterdayIso);
+      const pickRow = todayRow ?? yestRow ?? null;
+      if (pickRow) {
+        const isYesterday = !todayRow;
+        const high = typeof pickRow.temp_high_f === 'number' && Number.isFinite(pickRow.temp_high_f) ? pickRow.temp_high_f : null;
+        const low = typeof pickRow.temp_low_f === 'number' && Number.isFinite(pickRow.temp_low_f) ? pickRow.temp_low_f : null;
+        const mm = typeof pickRow.precipitation_total_mm === 'number' && Number.isFinite(pickRow.precipitation_total_mm) ? pickRow.precipitation_total_mm : null;
+        liveDay0 = {
+          high, low,
+          precip_in: mm !== null ? mm / 25.4 : null,
+          date: isYesterday ? yesterdayIso : target.iso,
+          source: isYesterday ? 'live-yesterday' : 'live',
+        };
       }
     }
     const isLive = liveDay0 !== null && liveDay0.high !== null;
@@ -707,7 +900,7 @@ Deno.serve(async (req: Request) => {
     // defendant, the rest are the baseline.
     let anomaly: Record<string, unknown> = {
       metric: 'avg_high_f',
-      value: null, as_of_year: null,
+      value: null, as_of_year: null, as_of_date: null,
       baseline_mean: null, baseline_std: null, z: null, n_years: 0,
       resolution: 'state', min_years: MIN_YEARS, day0_source: 'archive',
       baseline: `per-state avg-high for ${target.mm}-${target.dd}, ${FIRST_YEAR} → present`,
@@ -720,8 +913,9 @@ Deno.serve(async (req: Request) => {
       const observed = isLive ? (liveDay0!.high as number) : (defendant.high as number);
       anomaly.value = round(observed);
       anomaly.as_of_year = isLive ? targetYear : defendant.year;
+      anomaly.as_of_date = isLive ? liveDay0!.date : defendant.date;
       anomaly.n_years = baseline.length;
-      anomaly.day0_source = isLive ? 'live' : 'archive';
+      anomaly.day0_source = isLive ? liveDay0!.source : 'archive';
       if (baseline.length >= MIN_YEARS) {
         const mean = baseline.reduce((s, o) => s + (o.high as number), 0) / baseline.length;
         const variance = baseline.reduce((s, o) => s + ((o.high as number) - mean) ** 2, 0) / (baseline.length - 1);
@@ -747,9 +941,13 @@ Deno.serve(async (req: Request) => {
       precip_in: round(liveDay0!.precip_in),
       station_count: null,
       resolution: 'state',
-      label: 'state-level (live station feed)',
-      day0_source: 'live',
-      note: `Live station feed for ${target.iso} (hunt_weather_history, current through yesterday) — day-0 basis past the GHCN archive edge (~2025-12).`,
+      label: liveDay0!.source === 'live-yesterday'
+        ? 'state-level (live station feed — yesterday)'
+        : 'state-level (live station feed)',
+      day0_source: liveDay0!.source,
+      note: liveDay0!.source === 'live-yesterday'
+        ? `Yesterday's live station reading (${liveDay0!.date}) — today's row is not on file yet; day-0 basis past the GHCN archive edge (~2025-12).`
+        : `Live station feed for ${target.iso} (hunt_weather_history, current through yesterday) — day-0 basis past the GHCN archive edge (~2025-12).`,
     } : (defendant ? {
       as_of_date: defendant.date,
       avg_high_f: round(defendant.high),
@@ -853,7 +1051,13 @@ Deno.serve(async (req: Request) => {
       // is the gauge's most recent recorded day in the window.
       const moonToday = moonAgeOnDate(target.iso);
       const meanAtZero = offMean(0);
-      const tempAnomToday = meanAtZero !== null ? (defendant.high as number) - meanAtZero : null;
+      // Anchor "today"'s temperature to the live day-0 reading for CURRENT dates
+      // (same fallback chain as the NOW block: live → live-yesterday → archive);
+      // historical/dated requests keep the archive defendant, byte-identical.
+      const lineupTempBasis = isLive ? (liveDay0!.high as number) : (defendant.high as number);
+      const lineupDay0Source = isLive ? liveDay0!.source : 'archive';
+      const lineupTempAsOf = isLive ? liveDay0!.date : defendant.date;
+      const tempAnomToday = meanAtZero !== null ? lineupTempBasis - meanAtZero : null;
       let tideToday: { date: string; residual: number } | null = null;
       for (const [iso, res] of tidePool) {
         if (!tideToday || iso > tideToday.date) tideToday = { date: iso, residual: res };
@@ -923,12 +1127,13 @@ Deno.serve(async (req: Request) => {
           n_years: nYears,
           n_days_searched: searched,
           matches: matches.slice(0, 10),
+          day0_source: lineupDay0Source,
           today: {
             moon_date: target.iso,
             moon_age: round(moonToday),
             moon_phase: moonPhaseName(moonToday),
             temp_anomaly_f: round(tempAnomToday, 1),
-            temp_as_of: defendant.date,
+            temp_as_of: lineupTempAsOf,
             tide_residual_ft: useTide ? round((tideToday as { residual: number }).residual) : null,
             tide_as_of: useTide ? (tideToday as { date: string }).date : null,
             tide_station: useTide ? tideStation : null,
@@ -946,7 +1151,7 @@ Deno.serve(async (req: Request) => {
             + (useTide ? '' : (tidePool.size > 0
                 ? ` ${centroid.name}'s gauge has too few joint tide days in this window — lineup is moon × temperature only.`
                 : ` No tide-gauge days on file for ${centroid.name} in this window — lineup is moon × temperature only.`))
-            + ` Temperature is state-level; moon is computed astronomy for ${target.iso}; temp as of ${defendant.date}`
+            + ` Temperature is state-level; moon is computed astronomy for ${target.iso}; temp as of ${lineupTempAsOf}`
             + (useTide ? `; tide as of ${(tideToday as { date: string }).date}.` : '.')
             + ' Recorded fact only — never a forecast.',
         };
@@ -1001,7 +1206,9 @@ Deno.serve(async (req: Request) => {
     // State-scoped types match state_abbr; onthisday-event rows land with
     // state_abbr=null from a separate ingest pipe — matched by exact date only
     // and labeled "in the world" (they light up automatically as the pipe fills).
-    {
+    // Fired in parallel with the semantic rhyme below (each touches only its own
+    // results — on-file mutates rhyme/lineup, semantic returns a fresh object).
+    const onFilePromise = (async (): Promise<void> => {
       const namedDates = new Set<string>();
       for (const r of rhyme) namedDates.add(r.date as string);
       const lineupMatches = (lineup?.matches ?? []) as Array<Record<string, unknown>>;
@@ -1050,145 +1257,7 @@ Deno.serve(async (req: Request) => {
           m.on_file = onFileFor(m.date as string);
         }
       }
-    }
-
-    // ---- TIDE NOW (this state's own gauge, else nearest coastal) -------------
-    // FIRST: does this state actually have a gauge in the archive? The old path
-    // ranked a recent-snapshot roster by centroid and told states with a real
-    // gauge (e.g. MD/Baltimore) they had "no gauge in the archive" whenever the
-    // nearest snapshot row happened to be out-of-state. Only fall back to the
-    // nearest-roster language when the archive TRULY holds no gauge for the state.
-    let tide: Record<string, unknown> | null = null;
-    const { data: ownGauge } = await supabase
-      .from('hunt_knowledge')
-      .select('effective_date, metadata')
-      .eq('content_type', 'tide-gauge')
-      .eq('state_abbr', stateParam)
-      .gte('effective_date', '1900-01-01')
-      .order('effective_date', { ascending: false })
-      .limit(1);
-    if (ownGauge && ownGauge.length > 0) {
-      const md = (ownGauge[0].metadata ?? {}) as Record<string, unknown>;
-      const date = String(ownGauge[0].effective_date).slice(0, 10);
-      tide = {
-        station_name: md.station_name ?? null,
-        station_id: md.station_id ?? null,
-        state: stateParam,
-        is_local: true,
-        date,
-        daily_mean_ft: md.daily_mean_ft ?? null,
-        predicted_ft: md.predicted_ft ?? null,
-        residual_ft: md.residual_ft ?? null,
-        datum: md.datum ?? null,
-        source: 'noaa-coops',
-        resolution: 'station',
-        note: `${md.station_name} gauge (in ${centroid.name}); most recent reading on file ${date}.`,
-      };
-    } else {
-      const { data: snap } = await supabase
-        .from('hunt_knowledge')
-        .select('state_abbr, effective_date, metadata')
-        .eq('content_type', 'tide-gauge')
-        .gte('effective_date', TIDE_RECENT_FROM)
-        .limit(400);
-      // Latest reading per station.
-      const latestByStation = new Map<string, { state: string; date: string; md: Record<string, unknown> }>();
-      for (const r of snap ?? []) {
-        const md = (r.metadata ?? {}) as Record<string, unknown>;
-        const sid = String(md.station_id ?? md.station_name ?? '');
-        if (!sid) continue;
-        const date = String(r.effective_date).slice(0, 10);
-        const prev = latestByStation.get(sid);
-        if (!prev || date > prev.date) latestByStation.set(sid, { state: r.state_abbr as string, date, md });
-      }
-      // Nearest station by its state centroid to the target point.
-      let best: { dist: number; state: string; date: string; md: Record<string, unknown> } | null = null;
-      for (const s of latestByStation.values()) {
-        const c = STATE_CENTROIDS[s.state];
-        if (!c) continue;
-        const dist = haversineish(lat, lng, c.lat, c.lng);
-        if (!best || dist < best.dist) best = { dist, ...s };
-      }
-      if (best) {
-        const md = best.md;
-        const isLocal = best.state === stateParam;
-        tide = {
-          station_name: md.station_name ?? null,
-          station_id: md.station_id ?? null,
-          state: best.state,
-          is_local: isLocal,
-          date: best.date,
-          daily_mean_ft: md.daily_mean_ft ?? null,
-          predicted_ft: md.predicted_ft ?? null,
-          residual_ft: md.residual_ft ?? null,
-          datum: md.datum ?? null,
-          source: 'noaa-coops',
-          resolution: 'station',
-          note: isLocal
-            ? `${md.station_name} gauge (in ${centroid.name}); reading ${best.date}.`
-            : `Nearest coastal gauge is ${md.station_name}, ${best.state} — ${centroid.name} has no gauge in the archive. Reading ${best.date}.`,
-        };
-      } else {
-        tide = null;
-      }
-    }
-
-    // ---- NWS ALERTS (recent count for the state) -----------------------------
-    let alerts: Record<string, unknown> = { count: 0, lookback_days: ALERT_LOOKBACK_DAYS, recent: [] };
-    {
-      const since = new Date();
-      since.setUTCDate(since.getUTCDate() - ALERT_LOOKBACK_DAYS);
-      const sinceIso = since.toISOString().slice(0, 10);
-      const { data: al, count } = await supabase
-        .from('hunt_knowledge')
-        .select('effective_date, content, metadata', { count: 'exact' })
-        .eq('content_type', 'nws-alert')
-        .eq('state_abbr', stateParam)
-        .gte('effective_date', sinceIso)
-        .order('effective_date', { ascending: false })
-        .limit(5);
-      const recent = (al ?? []).map((r) => {
-        const md = (r.metadata ?? {}) as Record<string, unknown>;
-        const typeMatch = String(r.content ?? '').match(/type:([^|]+?)\s+severity:/i);
-        return {
-          date: String(r.effective_date).slice(0, 10),
-          type: typeMatch ? typeMatch[1].trim() : null,
-          severity: md.severity ?? null,
-        };
-      });
-      alerts = { count: count ?? recent.length, lookback_days: ALERT_LOOKBACK_DAYS, recent };
-    }
-
-    // ---- LIVE layer (recorded alerts on file for the ACTUAL today) -----------
-    // One bounded read-only query. These are rows the pipes already wrote with
-    // effective_date = today — RECORDED alerts, not forecasts. Identical titles
-    // (NWS zones fire duplicates) collapse into one chip with a count. This is
-    // what keeps the year-old GHCN front chip honest: "no front" is a statement
-    // about the archive edge; `live` is the statement about today.
-    let live: Array<Record<string, unknown>> = [];
-    {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const { data: liveRows, error: liveErr } = await supabase
-        .from('hunt_knowledge')
-        .select('content_type, title')
-        .in('content_type', LIVE_TYPES)
-        .eq('state_abbr', stateParam)
-        .eq('effective_date', todayIso)
-        .limit(LIVE_LIMIT);
-      if (liveErr) console.error('live query failed:', liveErr.message);
-      const byTitle = new Map<string, { type: string; title: string; count: number }>();
-      for (const r of liveRows ?? []) {
-        const ct = String(r.content_type);
-        const title = liveTitle(ct, String(r.title ?? ''));
-        if (!title) continue;
-        const key = `${ct}|${title}`;
-        const cur = byTitle.get(key);
-        if (cur) cur.count += 1;
-        else byTitle.set(key, { type: ct, title, count: 1 });
-      }
-      live = Array.from(byTitle.values())
-        .sort((a, b) => (LIVE_PRIORITY[a.type] ?? 9) - (LIVE_PRIORITY[b.type] ?? 9));
-    }
+    })();
 
     // ---- SEMANTIC RHYME ("days that READ like today, here") ------------------
     // The structured rhyme above matches on ONE number (avg-high). This layer
@@ -1199,30 +1268,36 @@ Deno.serve(async (req: Request) => {
     // station coverage — never the full atmospheric state, and NEVER a forecast.
     // When nothing on record reads like today, novel:true IS the finding, not
     // an error. Composed AFTER every other block; any failure isolates here.
-    let semanticRhyme: Record<string, unknown> = {
-      unavailable: true,
-      reason: 'No recorded day on file to search from.',
-    };
-    semantic: if (defendant) {
+    const semanticPromise = (async (): Promise<Record<string, unknown>> => {
+      if (!defendant) {
+        return { unavailable: true, reason: 'No recorded day on file to search from.' };
+      }
       try {
         // 1. The query vector — today's defendant row's own embedding (exact-
-        //    date bounded read; order-by scans on hunt_knowledge time out).
-        const { data: embRows, error: embErr } = await supabase
-          .from('hunt_knowledge')
-          .select('embedding')
-          .eq('content_type', 'ghcn-daily')
-          .eq('state_abbr', stateParam)
-          .eq('effective_date', defendant.date)
-          .not('embedding', 'is', null)
-          .limit(1);
+        //    date bounded read; order-by scans on hunt_knowledge time out). The
+        //    denominator (this state's estimated daily-record count) needs only
+        //    the state, so it runs in the SAME round-trip as the embedding read.
+        const [{ data: embRows, error: embErr }, denomRes] = await Promise.all([
+          supabase.from('hunt_knowledge')
+            .select('embedding')
+            .eq('content_type', 'ghcn-daily')
+            .eq('state_abbr', stateParam)
+            .eq('effective_date', defendant.date)
+            .not('embedding', 'is', null)
+            .limit(1),
+          supabase.from('hunt_knowledge')
+            .select('id', { count: 'estimated', head: true })
+            .eq('content_type', 'ghcn-daily')
+            .eq('state_abbr', stateParam),
+        ]);
+        const nSearched: number | null = typeof denomRes.count === 'number' ? denomRes.count : null;
         if (embErr || !embRows || embRows.length === 0 || !embRows[0].embedding) {
-          semanticRhyme = {
+          return {
             unavailable: true,
             reason: embErr
               ? `Defendant embedding read failed: ${embErr.message}`
               : `The defendant day (${defendant.date}) has no embedding on file.`,
           };
-          break semantic;
         }
         const queryEmbedding = embRows[0].embedding;
 
@@ -1240,13 +1315,30 @@ Deno.serve(async (req: Request) => {
           recency_weight: 0.0,
           exclude_du_report: false,
         };
-        let resp = await supabase.rpc('search_hunt_knowledge_v3', rpcArgs);
-        if (resp.error && resp.status >= 500) {
-          resp = await supabase.rpc('search_hunt_knowledge_v3', rpcArgs);
+        // The IVFFlat rebuild is pending, so this vector search can run long on
+        // data-heavy states. It is the last, non-load-bearing block — time-budget
+        // it so a slow search degrades to an honest `unavailable` instead of
+        // stalling the whole dossier (5xx-only single retry preserved).
+        const SEMANTIC_BUDGET_MS = 4000;
+        const runSearch = async () => {
+          let r = await supabase.rpc('search_hunt_knowledge_v3', rpcArgs);
+          if (r.error && r.status >= 500) r = await supabase.rpc('search_hunt_knowledge_v3', rpcArgs);
+          return r;
+        };
+        const TIMEOUT = Symbol('timeout');
+        const raced = await Promise.race([
+          runSearch(),
+          new Promise<typeof TIMEOUT>((res) => setTimeout(() => res(TIMEOUT), SEMANTIC_BUDGET_MS)),
+        ]);
+        if (raced === TIMEOUT) {
+          return {
+            unavailable: true,
+            reason: `Vector search exceeded the ${SEMANTIC_BUDGET_MS / 1000}s time budget — semantic rhyme withheld to keep the dossier fast (IVFFlat rebuild pending).`,
+          };
         }
+        const resp = raced;
         if (resp.error) {
-          semanticRhyme = { unavailable: true, reason: `Vector search failed: ${resp.error.message}` };
-          break semantic;
+          return { unavailable: true, reason: `Vector search failed: ${resp.error.message}` };
         }
 
         // 3. Filter in JS: drop the defendant itself and its ±3-calendar-day
@@ -1271,18 +1363,6 @@ Deno.serve(async (req: Request) => {
           .sort((a, b) => b[1].sim - a[1].sim)
           .slice(0, SEMANTIC_LIMIT);
 
-        // 4. Denominator — estimated row count of this state's daily records
-        //    (never count:'exact' on hunt_knowledge). Null when it can't be read.
-        let nSearched: number | null = null;
-        try {
-          const { count } = await supabase
-            .from('hunt_knowledge')
-            .select('id', { count: 'estimated', head: true })
-            .eq('content_type', 'ghcn-daily')
-            .eq('state_abbr', stateParam);
-          nSearched = typeof count === 'number' ? count : null;
-        } catch (_e) { /* denominator stays null — never blocks the block */ }
-
         const method = 'voyage-512 cosine over this state\'s own daily records';
         const basis = `each day's embedded daily narrative (avg high/low, precipitation, station coverage — not the full weather state)`;
         const depth = `${centroid.name}'s own GHCN-daily record, ${FIRST_YEAR} → ~2025-12`;
@@ -1291,7 +1371,7 @@ Deno.serve(async (req: Request) => {
         // 5. NOVELTY — Lorenz/sigma-dissimilarity teaching: when no good analog
         //    exists, say so at full weight instead of forcing weak matches.
         if (bestSim === null || bestSim < SEMANTIC_NOVEL_FLOOR) {
-          semanticRhyme = {
+          return {
             novel: true,
             note: 'today doesn\'t read like anything on record here — that itself is the finding',
             matches: [],
@@ -1304,7 +1384,6 @@ Deno.serve(async (req: Request) => {
               + (bestSim !== null ? ` (closest: ${round(bestSim, 3)})` : '')
               + `. Matched by meaning on ${basis} across ${nSearched !== null ? `~${nSearched}` : 'all'} recorded days in ${depth}. Recorded fact only — never a forecast.`,
           };
-          break semantic;
         }
 
         // 6. Matches — each carries its own parsed numbers; dates that overlap
@@ -1329,7 +1408,7 @@ Deno.serve(async (req: Request) => {
           };
         });
 
-        semanticRhyme = {
+        return {
           novel: false,
           matches,
           method,
@@ -1340,14 +1419,24 @@ Deno.serve(async (req: Request) => {
           honest_note: `${matches.length} recorded days read most like ${defendant.date} (the most recent recorded ${target.mm}-${target.dd} here). Matched by meaning on ${basis}, cosine over ${nSearched !== null ? `~${nSearched}` : 'all'} recorded days in ${depth}. Similarity is closeness of the recorded description — recorded fact only, never a forecast.`,
         };
       } catch (e) {
-        semanticRhyme = {
+        return {
           unavailable: true,
           reason: `Semantic rhyme failed: ${e instanceof Error ? e.message : String(e)}`,
         };
       }
-    }
+    })();
 
     // ---- Assemble ------------------------------------------------------------
+    // Everything above was fired in parallel — the two GHCN-independent reads
+    // (tide-now/nws/live), the on-file mutation into rhyme/lineup, the semantic
+    // search, and that-day. Collect them all here; the total wall-clock is the
+    // single slowest of them, not their sum. Semantic is time-budgeted so it can
+    // never dominate; the roster read is time-budgeted for the same reason.
+    const tide = await tideNowPromise;
+    const alerts = await nwsPromise;
+    const live = await livePromise;
+    await onFilePromise;
+    const semanticRhyme = await semanticPromise;
     const that_day = await thatDayPromise;
     return new Response(JSON.stringify({
       spot: {

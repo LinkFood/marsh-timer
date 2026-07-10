@@ -141,22 +141,25 @@ Deno.serve(async (req: Request) => {
       }), { status: 200, headers: jsonHeaders });
     }
 
-    // ---- 2) The picked state's lineup + control via hunt-atlas-spot ---------
-    let spot: Record<string, unknown> | null = null;
-    try {
-      const spotRes = await fetch(
-        `${base}/functions/v1/hunt-atlas-spot?state=${pick.state}&date=${dateIso}`,
-        { headers: fnHeaders });
-      if (spotRes.ok) spot = await spotRes.json();
-    } catch (_e) { /* the lede stands alone if the dossier read fails */ }
-
-    // ---- 3) Recorded alerts ON FILE for the requested date ------------------
-    // Direct bounded read (never a write): rows the pipes already wrote with
-    // effective_date = the requested date. Querying by the REQUESTED date (not
-    // the wall-clock today) is what keeps a past date's line recomputable.
+    // ---- 2 + 3) The dossier AND the alerts-on-file, fetched in parallel ------
+    // Both need only pick.state + dateIso and are independent of each other, so
+    // the internal spot fetch and the bounded alert read overlap. Alerts are a
+    // direct bounded read (never a write) of rows the pipes already wrote with
+    // effective_date = the REQUESTED date (not wall-clock today) — that is what
+    // keeps a past date's line recomputable.
     const supabase = createClient(base, key);
-    let alertsOnFile: Array<{ type: string; title: string; count: number }> = [];
-    {
+
+    const spotPromise = (async (): Promise<Record<string, unknown> | null> => {
+      try {
+        const spotRes = await fetch(
+          `${base}/functions/v1/hunt-atlas-spot?state=${pick.state}&date=${dateIso}`,
+          { headers: fnHeaders });
+        if (spotRes.ok) return await spotRes.json();
+      } catch (_e) { /* the lede stands alone if the dossier read fails */ }
+      return null;
+    })();
+
+    const alertsPromise = (async (): Promise<Array<{ type: string; title: string; count: number }>> => {
       const { data: liveRows, error: liveErr } = await supabase
         .from('hunt_knowledge')
         .select('content_type, title')
@@ -175,9 +178,12 @@ Deno.serve(async (req: Request) => {
         if (cur) cur.count += 1;
         else byTitle.set(k, { type: ct, title, count: 1 });
       }
-      alertsOnFile = Array.from(byTitle.values())
+      return Array.from(byTitle.values())
         .sort((a, b) => (LIVE_PRIORITY[a.type] ?? 9) - (LIVE_PRIORITY[b.type] ?? 9));
-    }
+    })();
+
+    const spot = await spotPromise;
+    const alertsOnFile = await alertsPromise;
 
     // ---- Compose the line (template from facts — no LLM, no forecast) -------
     const mdLabel = monthDayLabel(dateIso);
@@ -198,14 +204,29 @@ Deno.serve(async (req: Request) => {
     // Past the GHCN archive edge, day-0 is the live station feed (hunt_weather_history):
     // quote the ACTUAL day's temp with no as-of-(year) almanac framing. The as-of
     // phrasing stays ONLY where the fallback is genuinely in use (no live row on file).
+    // Day-0 fallback: today's live row → yesterday's live row (labeled as
+    // yesterday, never as today) → the GHCN almanac line. The as-of-(year)
+    // framing stays ONLY on the archive fallback.
     const isLive = pick.day0_source === 'live';
+    const isLiveYesterday = pick.day0_source === 'live-yesterday';
+    const liveish = isLive || isLiveYesterday;
     const whenPhrase = dateIso === todayIso ? 'today' : `on ${fullDateLabel(dateIso)}`;
-    const lede = isLive
-      ? `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° ${whenPhrase} — ` +
-        `${zAbs}σ ${dir} against its own ${pick.n_years} recorded ${mdLabel}s${alertClause}.`
-      : `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° on the most recent ` +
+    let lede: string;
+    if (isLiveYesterday) {
+      const yLabel = typeof pick.as_of_date === 'string' ? monthDayLabel(pick.as_of_date as string) : 'yesterday';
+      lede =
+        `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° yesterday (${yLabel}) — ` +
+        `${zAbs}σ ${dir} against its own ${pick.n_years} recorded ${mdLabel}s${alertClause}.`;
+    } else if (isLive) {
+      lede =
+        `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° ${whenPhrase} — ` +
+        `${zAbs}σ ${dir} against its own ${pick.n_years} recorded ${mdLabel}s${alertClause}.`;
+    } else {
+      lede =
+        `${mdLabel} in ${pick.name}: ${Math.round(pick.value as number)}° on the most recent ` +
         `recorded ${mdLabel} (${pick.as_of_year}) — ${zAbs}σ ${dir} against its own ` +
         `${pick.n_years} years${alertClause}.`;
+    }
 
     // The lineup sentence — "last time the moon, the tide, and the temperature
     // lined up like this" — straight from hunt-atlas-spot, outcome attached.
@@ -262,6 +283,7 @@ Deno.serve(async (req: Request) => {
           value: pick.value,
           z: pick.z,
           as_of_year: pick.as_of_year,
+          as_of_date: pick.as_of_date ?? null,
           baseline_mean: pick.baseline_mean,
           baseline_std: pick.baseline_std,
           n_years: pick.n_years,
@@ -289,16 +311,19 @@ Deno.serve(async (req: Request) => {
         } : null,
       },
       provenance: {
-        source: isLive
+        source: liveish
           ? 'live station feed (day-0, hunt_weather_history) + ghcn-daily baseline (state-level) + tide-gauge (station) + recorded alerts on file'
           : 'ghcn-daily (state-level) + tide-gauge (station) + recorded alerts on file',
         resolution: 'state',
-        day0_source: isLive ? 'live' : 'archive',
-        day0_basis: isLive ? 'live station feed (current through yesterday)' : `as of ${pick.as_of_year}`,
+        day0_source: pick.day0_source ?? 'archive',
+        day0_basis: isLiveYesterday
+          ? `live station feed — yesterday's reading (${pick.as_of_date ?? 'yesterday'}); today's row not posted yet`
+          : isLive ? 'live station feed (current through yesterday)' : `as of ${pick.as_of_year}`,
         as_of_year: pick.as_of_year,
+        as_of_date: pick.as_of_date ?? null,
         n_years: pick.n_years,
         moon: 'computed astronomy (no data gaps)',
-        law: isLive
+        law: liveish
           ? 'Every number traces to a recorded row. Day-0 is the live station feed; the baseline is the GHCN archive.'
           : 'Every number traces to a recorded row. Almanac framing: the as-of year is in the sentence.',
       },
