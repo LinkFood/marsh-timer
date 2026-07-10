@@ -407,8 +407,8 @@ export default function AtlasPage() {
               </Link>
             </div>
           </div>
-          <h1 className="text-2xl font-semibold text-gray-100">The ground you stand on</h1>
-          <p className="mt-1 max-w-md text-sm text-gray-400">
+          <h1 className="font-display text-2xl font-medium text-gray-50 sm:text-3xl">The ground you stand on</h1>
+          <p className="mt-1.5 max-w-md font-body text-sm leading-relaxed text-gray-400">
             Each state shaded by what it&rsquo;s doing today, measured against its own 76&nbsp;years.
             Tap one to fall in.
           </p>
@@ -613,6 +613,7 @@ export default function AtlasPage() {
               <SpotDossier
                 placeLabel={selected}
                 data={dossier}
+                datedVisit={!!dateParam}
                 onRhymeClick={(day) => navigate(`/date/${day.date}?state=${selected}`)}
               />
             </div>

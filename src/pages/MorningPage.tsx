@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase";
+import { SUPABASE_FUNCTIONS_URL, supabase } from "@/lib/supabase";
 
 /**
  * THE MORNING LINE — the product's front door and daily heartbeat
@@ -45,6 +45,22 @@ interface MorningLine {
   nav: { yesterday: string | null; tomorrow: string | null } | null;
 }
 
+/** One world event the record holds for this calendar day (Wikipedia on-this-day). */
+interface WorldEvent {
+  year: number;
+  text: string;
+}
+
+/** "1962: Pope John XXIII excommunicates Fidel Castro." → { year, text } */
+function parseWorldEvent(title: string, effectiveDate: string): WorldEvent | null {
+  const clean = (title || "").trim();
+  if (!clean) return null;
+  const m = /^(\d{1,4}):\s*(.+)$/.exec(clean);
+  if (m) return { year: Number(m[1]), text: m[2].trim() };
+  const yr = Number(effectiveDate.slice(0, 4));
+  return Number.isFinite(yr) ? { year: yr, text: clean } : null;
+}
+
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
   "August", "September", "October", "November", "December"];
 
@@ -59,6 +75,7 @@ export default function MorningPage() {
   const [line, setLine] = useState<MorningLine | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [world, setWorld] = useState<WorldEvent[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +109,37 @@ export default function MorningPage() {
       ? `The Morning Line — ${line.date_label}`
       : "The Morning Line — Duck Countdown";
   }, [line]);
+
+  // The world lane — what the record holds for this calendar day, anywhere on
+  // earth (Wikipedia on-this-day rows, keyed by month-day). A quiet companion to
+  // the ground reading, never the lede. onthisday-event effective_dates carry the
+  // real historical year, so we match on metadata.mmdd (the date-page pattern
+  // reads exact effective_dates; this reads the month-day across all years).
+  useEffect(() => {
+    const mmdd = line?.date ? line.date.slice(5) : null; // "MM-DD"
+    if (!supabase || !mmdd) {
+      setWorld([]);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("hunt_knowledge")
+      .select("title,effective_date")
+      .eq("content_type", "onthisday-event")
+      .eq("metadata->>mmdd", mmdd)
+      .order("effective_date", { ascending: false })
+      .limit(7)
+      .then(({ data, error: qErr }) => {
+        if (cancelled || qErr || !data) return;
+        const events = (data as { title: string; effective_date: string }[])
+          .map((r) => parseWorldEvent(r.title, r.effective_date))
+          .filter((e): e is WorldEvent => e !== null);
+        setWorld(events);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [line?.date]);
 
   const anomaly = line?.parts?.anomaly ?? null;
   const tideStation = line?.parts?.lineup?.tide_station ?? null;
@@ -185,6 +233,36 @@ export default function MorningPage() {
           </article>
         )}
       </main>
+
+      {/* THE WORLD LANE — a quiet panel below the fold. The lede owns the first
+          viewport; this sits beneath it, small: what the record holds for this
+          calendar day anywhere on earth, newest first. Only renders when the
+          record actually holds something — never an empty box or a spinner. */}
+      {line?.headline && world.length > 0 && (
+        <section className="mx-auto mt-4 w-full max-w-3xl border-t border-white/10 py-8">
+          <div className="font-mono text-[11px] tracking-[0.28em] text-cyan-300/90">
+            ON THIS DAY
+          </div>
+          <div className="mt-1.5 font-mono text-[11px] text-gray-500">
+            elsewhere in the world, on {line.month_day_label} &middot; newest first
+          </div>
+          <ul className="mt-5 space-y-3">
+            {world.map((ev, i) => (
+              <li key={`${ev.year}-${i}`} className="flex gap-3">
+                <span className="w-12 shrink-0 pt-0.5 text-right font-mono text-[12px] tabular-nums text-cyan-300/70">
+                  {ev.year}
+                </span>
+                <span className="font-body text-sm leading-relaxed text-gray-300">
+                  {ev.text}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-5 font-mono text-[10px] leading-relaxed text-gray-600">
+            from Wikipedia&rsquo;s on-this-day record &middot; the world&rsquo;s events, not this ground
+          </p>
+        </section>
+      )}
 
       <footer className="flex items-center justify-between font-mono text-[11px] text-gray-500">
         {line?.nav?.yesterday ? (

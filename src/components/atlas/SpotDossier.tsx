@@ -332,6 +332,13 @@ export interface SpotDossierProps {
   onRhymeClick?: (day: RhymeDay) => void;
   /** Optional: parent reacts to the front chip (e.g. open the pressure layer). */
   onFrontClick?: () => void;
+  /**
+   * A dated visit (?date= — a birthday, a historical day) vs the live current-
+   * day dossier. On a dated visit WHAT THIS DAY WAS leads and today's-conditions
+   * chips (live alerts + front) are suppressed so a year-old NOW anchor can't
+   * read as if it belongs to the requested date. Defaults to the live dossier.
+   */
+  datedVisit?: boolean;
   className?: string;
 }
 
@@ -361,6 +368,18 @@ const RES_LABEL: Record<SpotResolution, string> = {
 
 function asOfLabel(iso?: string | null): string {
   if (!iso) return "";
+  // Date-only (YYYY-MM-DD): render as a date, never a spurious midnight time.
+  // Parsing "1991-06-15" as UTC then formatting local shifts it to "Jun 14
+  // 8:00 PM" — the exact artifact that made a dated dossier read as stale.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const d = new Date(iso + "T00:00:00");
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleString(undefined, {
@@ -560,7 +579,7 @@ function ThatDayBlock({ report }: { report: ThatDayReport }) {
   if (!hasContent) return null;
 
   return (
-    <div className="space-y-3 border-b border-white/[0.06] px-4 py-4">
+    <div className="space-y-3 px-4 py-4">
       <Eyebrow>What this day was</Eyebrow>
 
       {/* Weather lede — one composed serif sentence, the product's dated voice. */}
@@ -682,7 +701,7 @@ function LineupLeadBlock({ lineup }: { lineup: LineupLead }) {
     : "state-level";
   return (
     <div
-      className="border-b border-white/[0.06] px-4 py-4"
+      className="px-4 py-4"
       title={lineup.note ?? undefined}
     >
       {lineup.last_date ? (
@@ -861,87 +880,92 @@ export default function SpotDossier({
   data,
   onRhymeClick,
   onFrontClick,
+  datedVisit = false,
   className,
 }: SpotDossierProps) {
   const { lineup, weather, front, moon, sun, tide, solunar, anomaly, rhyme, semantic } = data;
   const asOf = asOfLabel(data.as_of);
   const live = data.live ?? [];
-  // Live chips are TODAY's recorded read; the front chip's GHCN basis is ~a
-  // year old. When today has recorded alerts and the front would say "No
-  // front", the live chips lead and the stale-basis chip stands down.
+  // The today's-conditions cluster (live alerts + front chip) describes the
+  // ACTUAL today. On a dated visit (a birthday, a historical day) it must never
+  // render over a decades-old dossier — a year-old "front read from archive, as
+  // of 2025" NOW anchor above a 1991 day reads as if it belongs to that day.
+  // So it shows only on the live, current-day dossier.
+  const showTodayConditions = !datedVisit && (live.length > 0 || !!front);
+  // Within that cluster: live chips are TODAY's recorded read; the front chip's
+  // GHCN basis is ~a year old. When today has recorded alerts and the front
+  // would say "No front", the live chips lead and the stale-basis chip stands down.
   const showFrontChip = !!front && !(live.length > 0 && !front.moving);
 
   // Shooting-light window (fall back to sunrise/sunset if legal-light not computed).
   const lightStart = sun?.shooting_light_start ?? sun?.sunrise ?? null;
   const lightEnd = sun?.shooting_light_end ?? sun?.sunset ?? null;
 
-  return (
-    <div
-      className={[
-        "w-full max-w-sm overflow-hidden rounded-2xl",
-        "border border-white/[0.08] bg-gray-950",
-        "shadow-2xl shadow-black/60 ring-1 ring-black/40",
-        className ?? "",
-      ].join(" ")}
-      style={{
-        fontFamily:
-          'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-      }}
-    >
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="border-b border-white/[0.06] px-4 pb-3.5 pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-white">
-              {placeLabel}
-            </h2>
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
-              <span className="inline-flex items-center gap-1">
-                <span className="inline-block h-1 w-1 rounded-full bg-teal-500/70" />
-                {RES_LABEL[data.resolution]}
-              </span>
-              {asOf && (
-                <>
-                  <span className="text-gray-700">·</span>
-                  <span className="tabular-nums">{asOf}</span>
-                </>
-              )}
-            </div>
+  const hasNow = !!(
+    weather || moon || sun || tide || solunar || (anomaly && anomaly.z != null)
+  );
+
+  // ── Section elements ─────────────────────────────────────────────
+  // Each renders its own hairline via the divide-y wrapper below, so ORDER is
+  // free. On the live dossier the FUSED LINEUP leads — the moon × tide × cold
+  // assembly nobody else makes is the edge; retrieval (what this day was, now)
+  // becomes the receipts beneath it. On a DATED visit the that-day block leads —
+  // a birthday visitor came for their own day, not today's fusion.
+
+  const headerEl = (
+    <div className="px-4 pb-3.5 pt-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-white">
+            {placeLabel}
+          </h2>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-1 w-1 rounded-full bg-teal-500/70" />
+              {RES_LABEL[data.resolution]}
+            </span>
+            {asOf && (
+              <>
+                <span className="text-gray-700">·</span>
+                <span className="tabular-nums">{asOf}</span>
+              </>
+            )}
           </div>
-          {(live.length > 0 || front) && (
-            <div className="flex max-w-[60%] flex-col items-end gap-1.5">
-              {live.map((a, i) => (
-                <LiveChip key={`${a.type}-${a.title}-${i}`} alert={a} />
-              ))}
-              {showFrontChip && front && (
-                <FrontChip front={front} onClick={onFrontClick} />
-              )}
-              {showFrontChip && front?.as_of && (
-                <span className="text-[9px] tabular-nums text-gray-600">
-                  front read from archive, as of {front.as_of}
-                </span>
-              )}
-            </div>
-          )}
         </div>
+        {showTodayConditions && (
+          <div className="flex max-w-[60%] flex-col items-end gap-1.5">
+            {live.map((a, i) => (
+              <LiveChip key={`${a.type}-${a.title}-${i}`} alert={a} />
+            ))}
+            {showFrontChip && front && (
+              <FrontChip front={front} onClick={onFrontClick} />
+            )}
+            {showFrontChip && front?.as_of && (
+              <span className="text-[9px] tabular-nums text-gray-600">
+                front read from archive, as of {front.as_of}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+    </div>
+  );
 
-      {/* ── WHAT THIS DAY WAS — the recorded truth of the target date ─ */}
-      {data.thatDay && <ThatDayBlock report={data.thatDay} />}
+  const thatDayEl = data.thatDay ? <ThatDayBlock report={data.thatDay} /> : null;
 
-      {/* ── THE LEAD — the lineup sentence (the product's thesis) ─ */}
-      {lineup && <LineupLeadBlock lineup={lineup} />}
+  const lineupEl = lineup ? <LineupLeadBlock lineup={lineup} /> : null;
 
-      {/* ── NOW ────────────────────────────────────────────────── */}
-      <div className="space-y-3 px-4 py-4">
-        <Eyebrow>Now</Eyebrow>
+  const nowEl = hasNow ? (
+    <div className="space-y-3 px-4 py-4">
+      <Eyebrow>Now</Eyebrow>
 
-        {/* Weather hero: the temp is the headline number. */}
-        {weather && (
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="text-5xl font-semibold leading-none tracking-tight text-white tabular-nums">
-                {num(weather.temp_f)}
+      {/* Weather hero: the temp is the headline number — but a tier below the
+          fused serif lead, so the assembly stays the one true hero. */}
+      {weather && (
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="text-4xl font-semibold leading-none tracking-tight text-white tabular-nums">
+              {num(weather.temp_f)}
                 <span className="align-top text-2xl font-normal text-gray-500">
                   °
                 </span>
@@ -1065,12 +1089,16 @@ export default function SpotDossier({
           </div>
         )}
       </div>
+  ) : null;
 
-      {/* ── PAST ───────────────────────────────────────────────── */}
-      {rhyme && rhyme.matches.length > 0 && (
-        <div className="space-y-2.5 border-t border-white/[0.06] px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Eyebrow>Days like today, here</Eyebrow>
+  // ── The receipts / almanac layer: "days like today" (one-number rhyme) +
+  //    the control line. Retrieval that backs the fused lead — quiet, never the
+  //    hero. Denominator + honesty footer stay attached (honesty law #1).
+  const rhymeEl =
+    rhyme && rhyme.matches.length > 0 ? (
+      <div className="space-y-2.5 px-4 py-4">
+        <div className="flex items-center justify-between">
+          <Eyebrow>Days like today, here</Eyebrow>
             {/* THE DENOMINATOR — always shown (honesty law #1). */}
             <span className="text-[10px] tabular-nums text-gray-600">
               {rhyme.base_rate ??
@@ -1103,45 +1131,84 @@ export default function SpotDossier({
             Recorded fact only — matched against this spot&apos;s own history, never a forecast.
           </p>
         </div>
-      )}
+    ) : null;
 
-      {/* ── SEMANTIC RHYME — days that READ like today ─────────── */}
-      {/* Structured rhyme above matches one number; this matches meaning.
-          The novel state renders the no-precedent sentence at full weight —
-          it's a hero line, not an error. */}
-      {semantic && (semantic.novel || semantic.matches.length > 0) && (
-        <div className="space-y-2.5 border-t border-white/[0.06] px-4 py-4">
-          <Eyebrow>Days that read like today</Eyebrow>
+  // ── SEMANTIC RHYME — days that READ like today. The structured rhyme above
+  //    matches one number; this matches meaning. On the live dossier this is
+  //    the second-strongest surface (fusion first, then meaning). The novel
+  //    state renders the no-precedent sentence at full weight — a hero line.
+  const semanticEl =
+    semantic && (semantic.novel || semantic.matches.length > 0) ? (
+      <div className="space-y-2.5 px-4 py-4">
+        <Eyebrow>Days that read like today</Eyebrow>
 
-          {semantic.novel ? (
-            <p className="font-display text-[19px] font-semibold leading-snug text-white">
-              {semantic.note ??
-                "Today doesn't read like anything on record here — that itself is the finding."}
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {semantic.matches.slice(0, 4).map((day, i) => (
-                <RhymeRow
-                  key={`${day.date}-${i}`}
-                  day={day}
-                  onRhymeClick={onRhymeClick}
-                />
-              ))}
-            </ul>
-          )}
-
-          {/* The method line — small, honest, never forecast language. */}
-          <p className="pt-0.5 text-[10px] leading-relaxed tabular-nums text-gray-600">
-            matched by meaning
-            {semantic.n_searched != null &&
-              ` across ~${semantic.n_searched.toLocaleString()} recorded days`}
-            {" — not a forecast."}
-            {semantic.method && (
-              <span className="text-gray-700"> {semantic.method}.</span>
-            )}
+        {semantic.novel ? (
+          <p className="font-display text-[19px] font-semibold leading-snug text-white">
+            {semantic.note ??
+              "Today doesn't read like anything on record here — that itself is the finding."}
           </p>
-        </div>
-      )}
+        ) : (
+          <ul className="space-y-1.5">
+            {semantic.matches.slice(0, 4).map((day, i) => (
+              <RhymeRow
+                key={`${day.date}-${i}`}
+                day={day}
+                onRhymeClick={onRhymeClick}
+              />
+            ))}
+          </ul>
+        )}
+
+        {/* The method line — small, honest, never forecast language. */}
+        <p className="pt-0.5 text-[10px] leading-relaxed tabular-nums text-gray-600">
+          matched by meaning
+          {semantic.n_searched != null &&
+            ` across ~${semantic.n_searched.toLocaleString()} recorded days`}
+          {" — not a forecast."}
+          {semantic.method && (
+            <span className="text-gray-700"> {semantic.method}.</span>
+          )}
+        </p>
+      </div>
+    ) : null;
+
+  return (
+    <div
+      className={[
+        "w-full max-w-sm overflow-hidden rounded-2xl",
+        "border border-white/[0.08] bg-gray-950",
+        "shadow-2xl shadow-black/60 ring-1 ring-black/40",
+        className ?? "",
+      ].join(" ")}
+      style={{
+        fontFamily:
+          'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      }}
+    >
+      {/* One divider system for the whole stack: every section renders its own
+          top hairline via divide-y, so the mode-dependent order below never
+          doubles or drops a rule. THE FUSED LINEUP LEADS the live dossier;
+          WHAT THIS DAY WAS leads a dated visit. */}
+      <div className="divide-y divide-white/[0.06]">
+        {headerEl}
+        {datedVisit ? (
+          <>
+            {thatDayEl}
+            {lineupEl}
+            {semanticEl}
+            {nowEl}
+            {rhymeEl}
+          </>
+        ) : (
+          <>
+            {lineupEl}
+            {semanticEl}
+            {thatDayEl}
+            {nowEl}
+            {rhymeEl}
+          </>
+        )}
+      </div>
     </div>
   );
 }
