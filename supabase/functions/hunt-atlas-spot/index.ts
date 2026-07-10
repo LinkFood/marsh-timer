@@ -325,6 +325,13 @@ Deno.serve(async (req: Request) => {
     const dateParam = url.searchParams.get('date');
     const latParam = url.searchParams.get('lat');
     const lngParam = url.searchParams.get('lng');
+    // slim=1 → compute only the blocks hunt-morning-line consumes (lineup +
+    // control, plus the cheap pure-compute anomaly/weather/front/rhyme). Skips
+    // the expensive optional reads (semantic vector search, tide-now, nws/live
+    // alert reads, on-file provenance, that-day) so the internal spot call the
+    // morning line makes is ~2s instead of ~8s. Default (no param) is unchanged:
+    // the public/frontend response stays full and byte-identical.
+    const slim = url.searchParams.get('slim') === '1' || url.searchParams.get('slim') === 'true';
 
     if (!stateParam) {
       return new Response(JSON.stringify({ error: 'Missing required ?state= (2-letter).' }),
@@ -357,6 +364,7 @@ Deno.serve(async (req: Request) => {
     // block's honest_note — it never breaks the rest of the dossier.
     const archiveEdge = new Date().toISOString().slice(0, 10);
     const thatDayPromise: Promise<Record<string, unknown> | null> = (async () => {
+      if (slim) return null; // slim: morning-line doesn't read that_day
       if (target.iso > archiveEdge) return null; // a future date has no recorded "that day"
       try {
         const dMinus3 = isoPlusDays(target.iso, -3);
@@ -568,7 +576,7 @@ Deno.serve(async (req: Request) => {
     // because tide-gauge has no index serving state+effective_date. The budget
     // yields an honest null in those cases rather than stalling the dossier.
     const TIDENOW_BUDGET_MS = 2000;
-    const tideNowPromise: Promise<Record<string, unknown> | null> = Promise.race([
+    const tideNowPromise: Promise<Record<string, unknown> | null> = slim ? Promise.resolve(null) : Promise.race([
       (async (): Promise<Record<string, unknown> | null> => {
       const RECENT_TIDE_DAYS = 120;   // window that counts as a "current" reading
       const ROSTER_BUDGET_MS = 1500;  // hard cap on the un-indexable roster read
@@ -659,7 +667,9 @@ Deno.serve(async (req: Request) => {
     // NWS ALERTS — recent count for the state. Bounded count (never count:'exact'
     // on hunt_knowledge): one light key-only pull capped at PAGE_SIZE for the
     // count, one 5-row pull for the display list, both in parallel.
-    const nwsPromise = (async (): Promise<Record<string, unknown>> => {
+    const nwsPromise: Promise<Record<string, unknown>> = slim
+      ? Promise.resolve({ count: 0, lookback_days: ALERT_LOOKBACK_DAYS, recent: [] })
+      : (async (): Promise<Record<string, unknown>> => {
       const since = new Date();
       since.setUTCDate(since.getUTCDate() - ALERT_LOOKBACK_DAYS);
       const sinceIso = since.toISOString().slice(0, 10);
@@ -692,7 +702,7 @@ Deno.serve(async (req: Request) => {
     })();
 
     // LIVE layer — recorded alerts on file for the ACTUAL today (independent read).
-    const livePromise = (async (): Promise<Array<Record<string, unknown>>> => {
+    const livePromise: Promise<Array<Record<string, unknown>>> = slim ? Promise.resolve([]) : (async (): Promise<Array<Record<string, unknown>>> => {
       const todayIso = new Date().toISOString().slice(0, 10);
       const { data: liveRows, error: liveErr } = await supabase
         .from('hunt_knowledge')
@@ -1208,7 +1218,7 @@ Deno.serve(async (req: Request) => {
     // and labeled "in the world" (they light up automatically as the pipe fills).
     // Fired in parallel with the semantic rhyme below (each touches only its own
     // results — on-file mutates rhyme/lineup, semantic returns a fresh object).
-    const onFilePromise = (async (): Promise<void> => {
+    const onFilePromise: Promise<void> = slim ? Promise.resolve() : (async (): Promise<void> => {
       const namedDates = new Set<string>();
       for (const r of rhyme) namedDates.add(r.date as string);
       const lineupMatches = (lineup?.matches ?? []) as Array<Record<string, unknown>>;
@@ -1268,7 +1278,9 @@ Deno.serve(async (req: Request) => {
     // station coverage — never the full atmospheric state, and NEVER a forecast.
     // When nothing on record reads like today, novel:true IS the finding, not
     // an error. Composed AFTER every other block; any failure isolates here.
-    const semanticPromise = (async (): Promise<Record<string, unknown>> => {
+    const semanticPromise: Promise<Record<string, unknown>> = slim
+      ? Promise.resolve({ unavailable: true, reason: 'skipped (slim mode — lineup/control only)' })
+      : (async (): Promise<Record<string, unknown>> => {
       if (!defendant) {
         return { unavailable: true, reason: 'No recorded day on file to search from.' };
       }

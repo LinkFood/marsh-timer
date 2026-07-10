@@ -151,8 +151,11 @@ Deno.serve(async (req: Request) => {
 
     const spotPromise = (async (): Promise<Record<string, unknown> | null> => {
       try {
+        // slim=1: the morning line only reads spot.lineup + spot.control, so the
+        // dossier skips its expensive optional blocks (semantic search, tide-now,
+        // alert reads, on-file, that-day) — internal call is ~2s instead of ~8s.
         const spotRes = await fetch(
-          `${base}/functions/v1/hunt-atlas-spot?state=${pick.state}&date=${dateIso}`,
+          `${base}/functions/v1/hunt-atlas-spot?state=${pick.state}&date=${dateIso}&slim=1`,
           { headers: fnHeaders });
         if (spotRes.ok) return await spotRes.json();
       } catch (_e) { /* the lede stands alone if the dossier read fails */ }
