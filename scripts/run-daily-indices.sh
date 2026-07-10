@@ -25,13 +25,13 @@ cd /Users/jameschellis/marsh-timer
 
 # Get service role key from supabase CLI (JSON output; older CLI versions
 # printed a table — the old grep/awk parse silently returns empty now)
-SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd 2>/dev/null \
-  | jq -r '.keys[] | select(.id=="service_role") | .api_key')
+SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd --output json 2>/dev/null \
+  | jq -r '.[] | select(.id=="service_role") | .api_key' || true)
 
 if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ "$SUPABASE_SERVICE_ROLE_KEY" = "null" ]; then
-  # Fallback for table-format CLI output
-  SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd 2>/dev/null \
-    | grep service_role | awk '{print $NF}')
+  # Fallback for older jq shape { keys: [...] }
+  SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd --output json 2>/dev/null \
+    | jq -r '.keys[] | select(.id=="service_role") | .api_key' || true)
 fi
 
 if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ "$SUPABASE_SERVICE_ROLE_KEY" = "null" ]; then
