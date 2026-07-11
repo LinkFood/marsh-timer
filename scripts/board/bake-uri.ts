@@ -420,7 +420,7 @@ async function main() {
       const pool = baseline.filter((b) => doyOffset(b.date, d) <= 10).map((b) => b.v);
       series[d] = { v: round1(v), pct: coldPct(v, pool) };
     }
-    stateDots.push({ id: abbr.toLowerCase(), label: c.name, sublabel: "air temperature", kind: "temp", x, y, series });
+    stateDots.push({ id: abbr.toLowerCase(), label: c.name, sublabel: "air temperature", kind: "state-temp", x, y, series });
     const cov = Object.values(series).filter((s) => s.pct !== null).length;
     console.log(`  ${abbr}: ${cov}/${WIN.length} days, baseline n=${baseline.length}, Feb15 pct=${series["2021-02-15"].pct}`);
   }
@@ -438,7 +438,7 @@ async function main() {
       const v = win.get(d);
       series[d] = v === undefined ? { v: 0, pct: null } : { v: round1(v), pct: highPct(v, pool) };
     }
-    buoyDots.push({ id: b.id, label: `Buoy ${b.label}`, sublabel: "Gulf pressure (arctic ridge)", kind: "pressure", x, y, series });
+    buoyDots.push({ id: b.id, label: `Buoy ${b.label}`, sublabel: "Gulf pressure (arctic ridge)", kind: "buoy-pressure", x, y, series });
     const cov = Object.values(series).filter((s) => s.pct !== null).length;
     console.log(`  buoy ${b.station}: ${cov}/${WIN.length} days, winterN=${pool.length}, Feb16 pct=${series["2021-02-16"].pct}`);
   }
@@ -456,7 +456,7 @@ async function main() {
       const v = win.get(d);
       series[d] = v === undefined ? { v: 0, pct: null } : { v: round2(v), pct: coldPct(v, pool) };
     }
-    tideDots.push({ id: t.id, label: t.label, sublabel: "tide setdown", kind: "tide", x, y, series });
+    tideDots.push({ id: t.id, label: t.label, sublabel: "tide setdown", kind: "tide-setdown", x, y, series });
     const cov = Object.values(series).filter((s) => s.pct !== null).length;
     console.log(`  tide ${t.station}: ${cov}/${WIN.length} days, winterN=${pool.length}`);
   }

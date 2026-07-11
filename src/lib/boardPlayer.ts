@@ -336,6 +336,7 @@ function drawString(
   t: number,
   nowMs: number,
   pastBloom: boolean,
+  etchGlint: number,
 ) {
   const { from, to } = track;
   if (!from || !to) return;
@@ -359,9 +360,18 @@ function drawString(
   ctx.quadraticCurveTo(cx, cy, to.x, to.y);
 
   if (etched) {
-    ctx.strokeStyle = `rgba(${BRASS},0.85)`;
-    ctx.lineWidth = 1.1;
+    // Quietly permanent: the court made visible. Stronger than a live string so
+    // it reads clearly in the final hold, but brass — never gold confetti.
+    ctx.strokeStyle = `rgba(${BRASS},0.92)`;
+    ctx.lineWidth = 1.4;
     ctx.stroke();
+    // A single, restrained glint as the string sets — a pale brass sheen laid
+    // over the same path in the ~1.6 days right after the bloom, then gone.
+    if (etchGlint > 0.01) {
+      ctx.strokeStyle = `rgba(230,212,168,${0.5 * etchGlint})`;
+      ctx.lineWidth = 1.4 + etchGlint * 1.3;
+      ctx.stroke();
+    }
     return;
   }
   let alpha = 0.12 + act * 0.6;
@@ -462,40 +472,10 @@ function drawBloom(ctx: CanvasRenderingContext2D, mark: BloomMark, t: number) {
   ctx.arc(x, y, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  // label beneath, in Playfair, fading in after the flash settles
-  const labelAlpha = clamp01((raw - 0.5) / 0.8);
-  if (labelAlpha > 0.01 && mark.bloom.label) {
-    ctx.fillStyle = `rgba(240,232,214,${0.9 * labelAlpha})`;
-    ctx.font = "600 13px 'Playfair Display', Georgia, serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    wrapText(ctx, mark.bloom.label, x, y + 14, 220, 16);
-  }
-}
-
-/** Minimal centered word-wrap for the bloom label. */
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxW: number,
-  lineH: number,
-) {
-  const words = text.split(/\s+/);
-  let line = "";
-  let cy = y;
-  for (const w of words) {
-    const test = line ? `${line} ${w}` : w;
-    if (ctx.measureText(test).width > maxW && line) {
-      ctx.fillText(line, x, cy);
-      line = w;
-      cy += lineH;
-    } else {
-      line = test;
-    }
-  }
-  if (line) ctx.fillText(line, x, cy);
+  // The bloom's name is NOT drawn on the canvas — at phone width the whole
+  // projection is scaled to ~0.34, so canvas text renders ~4px and clips into
+  // the swollen dots below. The gravestone is a DOM card (BoardPage), which
+  // stays crisp and readable at 375px. Here we mark the spot; the card names it.
 }
 
 /** Draw one full frame at cursor t (fractional master-day index). */
@@ -511,10 +491,17 @@ export function drawFrame(
   if (!Number.isFinite(t)) t = 0;
   drawGround(ctx, proj);
   const pastBloom = t >= model.firstBloomIndex - 1e-6;
+  // A short, decaying glint window right after the bloom lands (in master-days),
+  // so the strings set with one quiet sheen instead of a permanent shimmer.
+  const GLINT_DAYS = 1.6;
+  const etchGlint =
+    pastBloom && Number.isFinite(model.firstBloomIndex)
+      ? clamp01(1 - (t - model.firstBloomIndex) / GLINT_DAYS)
+      : 0;
 
   // strings beneath dots
   ctx.lineCap = "round";
-  for (const s of model.strings) drawString(ctx, s, t, nowMs, pastBloom);
+  for (const s of model.strings) drawString(ctx, s, t, nowMs, pastBloom, etchGlint);
 
   // blooms beneath the ground dots but above strings (the flash reads as depth)
   for (const b of model.blooms) drawBloom(ctx, b, t);

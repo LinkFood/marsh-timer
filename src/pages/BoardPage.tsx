@@ -262,6 +262,18 @@ export default function BoardPage() {
   const currentDay = model ? dayAt(model, t) : null;
   const film = load.status === "ready" ? load.model.film : null;
 
+  // The bloom's gravestone: a DOM card that lands on the board when the bloom
+  // fires and stays (canvas text is unreadable at 375px). Split "Place: stats".
+  const bloomLanded =
+    !!model && model.firstBloomIndex !== Infinity && t >= model.firstBloomIndex - 1e-6;
+  const bloomLabel = model?.blooms[0]?.bloom.label ?? null;
+  const [bloomPlace, bloomStat] = useMemo(() => {
+    if (!bloomLabel) return ["", ""] as const;
+    const i = bloomLabel.indexOf(":");
+    if (i === -1) return [bloomLabel, ""] as const;
+    return [bloomLabel.slice(0, i).trim(), bloomLabel.slice(i + 1).trim()] as const;
+  }, [bloomLabel]);
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
       <header className="flex items-start justify-between gap-4">
@@ -377,6 +389,24 @@ export default function BoardPage() {
                   </div>
                 </>
               )}
+
+              {/* The gravestone — lands on the board when the bloom fires and
+                  stays. DOM (not canvas) so it's crisp and readable at 375px;
+                  pointer-events-none so taps still reach the dots beneath. */}
+              {bloomLanded && bloomPlace && (
+                <div className="board-gravestone pointer-events-none absolute inset-x-0 bottom-0 z-[5] flex justify-center px-3 pb-3">
+                  <div className="max-w-[92%] rounded-md bg-gray-950/85 px-4 py-2.5 text-center shadow-lg ring-1 ring-amber-200/20 backdrop-blur-sm">
+                    <div className="font-display text-sm font-semibold tracking-wide text-amber-100/90 sm:text-base">
+                      {bloomPlace}
+                    </div>
+                    {bloomStat && (
+                      <div className="mt-0.5 font-mono text-[11px] leading-relaxed text-amber-200/60 sm:text-xs">
+                        {bloomStat}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Controls — minimal and quiet */}
@@ -449,8 +479,13 @@ export default function BoardPage() {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        .board-gravestone { animation: board-grave-in 700ms ease-out both; }
+        @keyframes board-grave-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
         @media (prefers-reduced-motion: reduce) {
-          .board-beat { animation: none; }
+          .board-beat, .board-gravestone { animation: none; }
         }
       `}</style>
     </div>
