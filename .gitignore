@@ -25,6 +25,7 @@ dist-ssr
 
 # Backfill orchestrator
 scripts/.orchestrator-checkpoint.json
+scripts/.daily-indices-checkpoint.json
 scripts/.otd-raw.jsonl
 scripts/.otd-checkpoint.json
 scripts/.noaa-stations-cache.json
