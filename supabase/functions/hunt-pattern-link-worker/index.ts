@@ -50,7 +50,11 @@ import { classifyContentType } from '../_shared/contentTypes.ts';
 // producers first means even a small time-budgeted slice writes strings.
 const SCAN_TYPES = [
   'migration-spike-moderate', 'migration-spike-significant', 'migration-spike-extreme',
-  'migration-spike', 'migration-daily', 'nws-alert', 'storm-event',
+  // storm-event removed 2026-07-11: its created_at recent-window gather 57014s
+  // every run (3.5M-row type, no serving index) → permanent "partial" status.
+  // New storm rows are rare post-reingest; the 3-month link catch-up pipe covers
+  // the lane properly when it runs. Re-add after an index or catch-up lands.
+  'migration-spike', 'migration-daily', 'nws-alert',
   'weather-event', 'earthquake-event', 'birdcast-daily', 'climate-index',
   'wildfire-perimeter', 'space-weather', 'air-quality', 'ocean-buoy',
 ];
