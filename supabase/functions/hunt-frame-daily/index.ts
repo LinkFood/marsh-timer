@@ -159,8 +159,14 @@ serve(async (req) => {
     for (const i of needleInsts) {
       const m = ensure(`${i.id}:value`);
       if (i.source_ct === "cpc-daily-ao") {
-        const text = await (await fetch("https://ftp.cpc.ncep.noaa.gov/cwlinks/norm.daily.ao.index.b500101.current.ascii")).text();
-        for (const line of text.split("\n")) { const p = line.trim().split(/\s+/); if (p.length < 4) continue; const [yy, mo, dd, v] = p; const val = parseFloat(v); const iso = `${yy}-${mo.padStart(2, "0")}-${dd.padStart(2, "0")}`; if (Number.isFinite(val) && doyOffset(iso, todayIso) <= BAND) m.set(iso, val); }
+        // CPC's host is unreachable from edge functions (documented — the local
+        // daily-indices job exists for exactly this reason). Read the archive's
+        // own climate-index-daily rows, which that job + the 1950+ backfill keep
+        // current. Same per-year bounded pattern as the station reads.
+        for (const y of years) for (const [gte, lte] of rangesByYear.get(y)!) {
+          const rows = await restGet(`hunt_knowledge?content_type=eq.climate-index-daily&metadata->>index_id=eq.AO&effective_date=gte.${gte}&effective_date=lte.${lte}&select=effective_date,val:metadata->>value`, `daily-AO ${y}`);
+          for (const r of rows) { const val = parseFloat(r.val); if (Number.isFinite(val) && val > -99) m.set(r.effective_date, val); }
+        }
       } else {
         const rows = await restGet(`hunt_knowledge?content_type=eq.climate-index&metadata->>index_id=eq.${i.source_key.index_id}&select=effective_date,val:metadata->>value`, `idx ${i.source_key.index_id}`);
         for (const r of rows) { const val = parseFloat(r.val); if (!Number.isFinite(val) || val <= -99) continue; const [yy, mo] = r.effective_date.split("-").map(Number); const days = new Date(Date.UTC(yy, mo, 0)).getUTCDate(); for (let dd = 1; dd <= days; dd++) { const iso = `${yy}-${String(mo).padStart(2, "0")}-${String(dd).padStart(2, "0")}`; if (doyOffset(iso, todayIso) <= BAND) m.set(iso, val); } }
