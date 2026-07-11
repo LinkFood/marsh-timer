@@ -308,7 +308,12 @@ async function runVerify() {
   const anchors: { instId: string; field: string; side: "low" | "high"; day: string; expect: number; eps: number }[] = [
     { instId: "ghcn-tx", field: "avg_high_f", side: "low", day: "2021-02-15", expect: 1.000, eps: 0.002 },
     { instId: "needle-ao", field: "value", side: "low", day: "2021-02-10", expect: 0.997, eps: 0.005 },
-    { instId: "buoy-42035", field: "pressure_mb", side: "high", day: "2021-02-16", expect: 0.725, eps: 0.005 },
+    // 0.725 was the hand-bake's WHOLE-DJF pool value; the spine standardizes on
+    // doy±15 pools (poolN 531 = 31d × 17y here), which yields 0.778 for the same
+    // reading. Same engine, different denominator definition — recalibrated
+    // 2026-07-11 when the store's doy±15 became canonical. The film rebake from
+    // frames (Rung 2e) reconciles the JSON to this definition.
+    { instId: "buoy-42035", field: "pressure_mb", side: "high", day: "2021-02-16", expect: 0.778, eps: 0.005 },
   ];
   let fails = 0;
   for (const a of anchors) {
