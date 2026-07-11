@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import {
   activeBeat,
   compileFilm,
@@ -276,20 +276,10 @@ export default function BoardPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="font-mono text-[11px] tracking-[0.28em] text-cyan-300/90">THE BOARD</div>
-          <div className="mt-1.5 font-mono text-[11px] text-gray-500">
-            a fusion, replayed as the instruments saw it &middot; every ember, string, and bloom is a recorded row
-          </div>
-        </div>
-        <Link
-          to="/"
-          className="whitespace-nowrap font-mono text-[11px] tracking-[0.24em] text-gray-500 hover:text-cyan-300"
-        >
-          DUCK COUNTDOWN
-        </Link>
-      </header>
+      <InnerHeader
+        title="THE BOARD"
+        subtitle="a fusion, replayed as the instruments saw it · every ember, string, and bloom is a recorded row"
+      />
 
       <main className="flex flex-1 flex-col justify-center py-8">
         {load.status === "loading" && (
@@ -467,14 +457,7 @@ export default function BoardPage() {
         )}
       </main>
 
-      <footer className="flex items-center justify-between font-mono text-[11px] text-gray-500">
-        <Link to="/atlas" className="hover:text-cyan-300">
-          &larr; the whole map
-        </Link>
-        <Link to="/morning" className="hover:text-gray-200">
-          The Morning Line &rarr;
-        </Link>
-      </footer>
+      <InnerFooter current="board" />
 
       <style>{`
         .board-beat { animation: board-beat-in ${BEAT_FADE_MS}ms ease-out both; }

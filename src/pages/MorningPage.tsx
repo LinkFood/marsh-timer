@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SUPABASE_FUNCTIONS_URL, supabase } from "@/lib/supabase";
+import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 
 /**
  * THE MORNING LINE — the product's front door and daily heartbeat
@@ -156,21 +157,15 @@ export default function MorningPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="font-mono text-[11px] tracking-[0.28em] text-cyan-300/90">THE MORNING LINE</div>
-          <div className="mt-1.5 font-mono text-[11px] text-gray-500">
+      <InnerHeader
+        title="THE MORNING LINE"
+        subtitle={
+          <>
             {line ? line.date_label : date ? shortLabel(date) : "today"} &middot; one true sentence about
             American ground &middot; recorded fact, never a forecast
-          </div>
-        </div>
-        <Link
-          to="/"
-          className="whitespace-nowrap font-mono text-[11px] tracking-[0.24em] text-gray-500 hover:text-cyan-300"
-        >
-          DUCK COUNTDOWN
-        </Link>
-      </header>
+          </>
+        }
+      />
 
       <main className="flex flex-1 flex-col justify-center py-12">
         {loading && (
@@ -264,7 +259,7 @@ export default function MorningPage() {
         </section>
       )}
 
-      <footer className="flex items-center justify-between font-mono text-[11px] text-gray-500">
+      <nav className="flex items-center justify-between font-mono text-[11px] text-gray-500">
         {line?.nav?.yesterday ? (
           <Link to={`/morning/${line.nav.yesterday}`} className="hover:text-gray-200">
             &larr; {shortLabel(line.nav.yesterday)}
@@ -279,7 +274,9 @@ export default function MorningPage() {
         ) : (
           <span className="text-gray-700">tomorrow&rsquo;s line publishes when the day does</span>
         )}
-      </footer>
+      </nav>
+
+      <InnerFooter current="morning" />
     </div>
   );
 }

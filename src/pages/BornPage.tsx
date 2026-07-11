@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { TILE_GRID } from "@/components/EventMap";
 import { STATE_NAMES } from "@/data/atlas/stateBBoxes";
+import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 
 /**
  * THE NIGHT YOU WERE BORN — the entry surface for a birthday (acceptance
@@ -82,22 +83,10 @@ export default function BornPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="font-mono text-[11px] tracking-[0.28em] text-cyan-300/90">
-            THE NIGHT YOU WERE BORN
-          </div>
-          <div className="mt-1.5 font-mono text-[11px] text-gray-500">
-            a birthday, read back from the record &middot; nothing invented, only what was written down
-          </div>
-        </div>
-        <Link
-          to="/"
-          className="whitespace-nowrap font-mono text-[11px] tracking-[0.24em] text-gray-500 hover:text-cyan-300"
-        >
-          DUCK COUNTDOWN
-        </Link>
-      </header>
+      <InnerHeader
+        title="THE NIGHT YOU WERE BORN"
+        subtitle="a birthday, read back from the record · nothing invented, only what was written down"
+      />
 
       <main className="flex flex-1 flex-col justify-center py-12">
         <div className="max-w-2xl">
@@ -201,14 +190,7 @@ export default function BornPage() {
         </div>
       </main>
 
-      <footer className="flex items-center justify-between font-mono text-[11px] text-gray-500">
-        <Link to="/atlas" className="hover:text-cyan-300">
-          &larr; the whole map
-        </Link>
-        <Link to="/morning" className="hover:text-gray-200">
-          The Morning Line &rarr;
-        </Link>
-      </footer>
+      <InnerFooter current="born" />
     </div>
   );
 }

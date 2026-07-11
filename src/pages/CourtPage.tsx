@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Scale, Gavel, Flame, CheckCircle2, XCircle, FlaskConical, Landmark, Copy, Check } from 'lucide-react';
-import AppHeader from '@/components/AppHeader';
+import { InnerHeader, InnerFooter } from '@/components/InnerNav';
 import UserMenu from '@/components/UserMenu';
 import Denominator from '@/components/Denominator';
 import CountdownClock from '@/components/salvage/CountdownClock';
@@ -256,12 +256,16 @@ export default function CourtPage() {
 
   return (
     <div className="min-h-[100dvh] bg-gray-950 flex flex-col">
-      <AppHeader>
-        <UserMenu />
-      </AppHeader>
+      <div className="px-4 sm:px-6 pt-6">
+        <InnerHeader
+          title="THE COURT"
+          subtitle="the docket · every claim registered before its outcome, graded, published win or lose"
+          right={<UserMenu />}
+        />
+      </div>
 
       <main className="flex-1">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-8 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-8">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-8">
           {/* Masthead */}
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -331,6 +335,10 @@ export default function CourtPage() {
           <TheRecord />
         </div>
       </main>
+
+      <div className="max-w-3xl mx-auto w-full px-4 sm:px-6 pb-8">
+        <InnerFooter current="court" />
+      </div>
     </div>
   );
 }

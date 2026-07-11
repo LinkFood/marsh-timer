@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from "@/components/EventMap";
 import { fetchStateAnomaly, colorForZ, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
 import { STATE_CENTROIDS } from "@/data/atlas/stateCentroids";
@@ -391,22 +392,15 @@ export default function AtlasPage() {
           .atlas-stage-in, .atlas-dossier-enter { animation: none; }
         }
       `}</style>
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:pt-7">
+        <InnerHeader
+          title="THE ATLAS"
+          subtitle="the ground you stand on, state by state · measured against each state's own record"
+        />
+      </div>
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row lg:gap-10 lg:py-10">
         {/* The map of boxes — and the camera */}
         <div className="lg:flex-1">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <Link to="/" className="font-mono text-[11px] tracking-[0.24em] text-cyan-300/90 hover:text-cyan-200">
-              DUCK COUNTDOWN
-            </Link>
-            <div className="flex items-baseline gap-x-4">
-              <Link to="/born" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
-                The night you were born &rarr;
-              </Link>
-              <Link to="/morning" className="font-mono text-[11px] text-gray-500 hover:text-cyan-300">
-                The Morning Line &rarr;
-              </Link>
-            </div>
-          </div>
           <h1 className="font-display text-2xl font-medium text-gray-50 sm:text-3xl">The ground you stand on</h1>
           <p className="mt-1.5 max-w-md font-body text-sm leading-relaxed text-gray-400">
             Each state shaded by what it&rsquo;s doing today, measured against its own 76&nbsp;years.
@@ -624,6 +618,9 @@ export default function AtlasPage() {
             </div>
           )}
         </div>
+      </div>
+      <div className="mx-auto max-w-6xl px-4 pb-8">
+        <InnerFooter current="atlas" />
       </div>
     </div>
   );
