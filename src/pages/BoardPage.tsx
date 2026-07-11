@@ -390,21 +390,24 @@ export default function BoardPage() {
                 </>
               )}
 
-              {/* The gravestone — lands on the board when the bloom fires and
-                  stays. DOM (not canvas) so it's crisp and readable at 375px;
-                  pointer-events-none so taps still reach the dots beneath. */}
+            </div>
+
+            {/* The gravestone — the verdict. Placed BENEATH the board, not over
+                it: a browser check at 375px showed an on-board card occluded two
+                of the three etched Gulf threads — the whole "court made whole"
+                payoff. Space is reserved (min-h) so the controls never jump when
+                it lands mid-film. */}
+            <div className="mt-3 flex min-h-[3.5rem] items-center justify-center">
               {bloomLanded && bloomPlace && (
-                <div className="board-gravestone pointer-events-none absolute inset-x-0 bottom-0 z-[5] flex justify-center px-3 pb-3">
-                  <div className="max-w-[92%] rounded-md bg-gray-950/85 px-4 py-2.5 text-center shadow-lg ring-1 ring-amber-200/20 backdrop-blur-sm">
-                    <div className="font-display text-sm font-semibold tracking-wide text-amber-100/90 sm:text-base">
-                      {bloomPlace}
-                    </div>
-                    {bloomStat && (
-                      <div className="mt-0.5 font-mono text-[11px] leading-relaxed text-amber-200/60 sm:text-xs">
-                        {bloomStat}
-                      </div>
-                    )}
+                <div className="board-gravestone max-w-[92%] rounded-md bg-gray-950/80 px-4 py-2.5 text-center shadow-lg ring-1 ring-amber-200/20">
+                  <div className="font-display text-sm font-semibold tracking-wide text-amber-100/90 sm:text-base">
+                    {bloomPlace}
                   </div>
+                  {bloomStat && (
+                    <div className="mt-0.5 font-mono text-[11px] leading-relaxed text-amber-200/60 sm:text-xs">
+                      {bloomStat}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
