@@ -481,20 +481,27 @@ async function main() {
     const txP = txSeries[d].pct;
     s1[d] = txP === null ? 0 : round3(clamp01(2 * (aoTrace - 0.5)) * clamp01(txP));
   }
-  // 2. Buoy (Galveston) → TX: mean high-side pressure pct of the buoy group, gated.
+  // 2 & 3. Buoy/Tide → TX: a coastal thread tightens only when its cluster's
+  // STRONGEST gauge is extreme AND the Texas freeze is present that same day —
+  // the coincidence that makes the thread part of THIS fusion. Two lessons the
+  // first cut got wrong: (a) gate by TX's cold response, exactly as s1 does, or
+  // the string fires on unrelated January noise instead of the storm; (b) take
+  // the strongest gauge, not the cluster mean — averaging washed Bay Waveland's
+  // real -1.01 ft / 0.925-pct setdown (Feb 16) down to nothing against two quiet
+  // neighbors. A gauge at ~the 95th percentile of its own winter, coincident
+  // with the freeze, earns brass.
+  const strongest = (dots: any[], d: string): number => {
+    const ps = dots.map((x) => x.series[d].pct).filter((p: number | null): p is number => p !== null);
+    return ps.length ? Math.max(...ps) : 0;
+  };
+  const coincident = (srcMax: number, d: string): number => {
+    const txP = txSeries[d].pct;
+    return txP === null ? 0 : round3(clamp01((srcMax - 0.35) / 0.6) * clamp01(txP));
+  };
   const s2: Record<string, number> = {};
-  for (const d of WIN) {
-    const ps = buoyDots.map((b) => b.series[d].pct).filter((p): p is number => p !== null);
-    const mean = ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : 0;
-    s2[d] = round3(clamp01(1.6 * (mean - 0.4)));
-  }
-  // 3. Tide (Grand Isle) → TX: mean setdown pct of the tide group, gated.
+  for (const d of WIN) s2[d] = coincident(strongest(buoyDots, d), d);
   const s3: Record<string, number> = {};
-  for (const d of WIN) {
-    const ps = tideDots.map((t) => t.series[d].pct).filter((p): p is number => p !== null);
-    const mean = ps.length ? ps.reduce((a, b) => a + b, 0) / ps.length : 0;
-    s3[d] = round3(clamp01(1.6 * (mean - 0.4)));
-  }
+  for (const d of WIN) s3[d] = coincident(strongest(tideDots, d), d);
 
   // Cited numbers for receipts (pulled straight from the baked series) ----------
   const aoBottomDate = "2021-02-10";
@@ -526,10 +533,14 @@ async function main() {
       activation: s2,
     },
     {
-      from: "t8761724",
+      // Anchored to Bay Waveland — the gauge that actually fired — so the string
+      // emanates from the instrument that registered the extreme, and tapping
+      // that dot shows the -1.01 ft setdown the receipt cites (not Grand Isle's
+      // ordinary day).
+      from: "t8747437",
       to: "tx",
       receipt:
-        `Offshore northers blew the water off the coast: Grand Isle's daily-minimum residual fell to ${giSet} ft on Feb 15 and Bay Waveland to ${bwSet} ft on Feb 16 — ` +
+        `Offshore northers blew the water off the coast: Bay Waveland's daily-minimum residual fell to ${bwSet} ft on Feb 16 and Grand Isle to ${giSet} ft on Feb 15 — ` +
         `the setdown that empties the marshes while the land freezes.`,
       activation: s3,
     },
