@@ -50,3 +50,4 @@ scripts/frames/.frame-cache/
 scripts/frames/.frame-checkpoint.json
 scripts/frames/.lut-checkpoint.json
 scripts/board/.uri-cache/
+scripts/mine/out/
