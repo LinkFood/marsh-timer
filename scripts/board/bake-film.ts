@@ -217,10 +217,16 @@ async function loadFrames(win: [string, string]): Promise<FrameDoc> {
  *  frame bytes are unreliable at the tip (see header) so this only NOMINATES;
  *  the honest engine confirms. Returns id → { proposePeak, slotByField }. */
 function proposeFromFrames(doc: FrameDoc, reg: Instrument[], core: Set<string>): Map<string, number> {
-  // Build slot layout in slot_offset order (each instrument's metrics expand to slots).
+  // Slot layout comes from board_instruments' STORED slot_offset/slot_count —
+  // never re-derived by counting. The RPC's instruments[].slots is the METRICS
+  // array: a two-sided metric occupies TWO byte slots, so counting entries
+  // drifted -54 by the coastal instruments and read neighbors' bytes (the
+  // "corrupt frames" incident of 2026-07-11 — the store was right, this reader
+  // was wrong).
   const slots: { instId: string; offset: number }[] = [];
-  let off = 0;
-  for (const inst of doc.instruments) for (const _ of inst.slots) { slots.push({ instId: inst.id, offset: off }); off++; }
+  for (const inst of reg) {
+    for (let k = 0; k < inst.slot_count; k++) slots.push({ instId: inst.id, offset: inst.slot_offset + k });
+  }
   const propose = new Map<string, number>();
   for (const f of doc.frames) {
     if (!core.has(f.day)) continue;
