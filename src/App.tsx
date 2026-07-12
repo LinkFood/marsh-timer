@@ -20,6 +20,10 @@ const AtlasPage = lazy(() => import("./pages/AtlasPage"));
 const MorningPage = lazy(() => import("./pages/MorningPage"));
 const BornPage = lazy(() => import("./pages/BornPage"));
 const BoardPage = lazy(() => import("./pages/BoardPage"));
+const ConceptsIndex = lazy(() => import("./pages/concepts/ConceptsIndex"));
+const ConceptA = lazy(() => import("./pages/concepts/ConceptA"));
+const ConceptB = lazy(() => import("./pages/concepts/ConceptB"));
+const ConceptC = lazy(() => import("./pages/concepts/ConceptC"));
 
 const App = () => (
   <BrowserRouter>
@@ -40,6 +44,10 @@ const App = () => (
           <Route path="/morning/:date" element={<MorningPage />} />
           <Route path="/born" element={<BornPage />} />
           <Route path="/board/uri" element={<BoardPage />} />
+          <Route path="/concepts" element={<ConceptsIndex />} />
+          <Route path="/concepts/a" element={<ConceptA />} />
+          <Route path="/concepts/b" element={<ConceptB />} />
+          <Route path="/concepts/c" element={<ConceptC />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
