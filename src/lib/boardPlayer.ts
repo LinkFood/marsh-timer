@@ -27,7 +27,7 @@ export interface BoardDot {
   id: string;
   label: string;
   sublabel?: string;
-  kind: "needle" | "state-temp" | "buoy-pressure" | "tide-setdown" | string;
+  kind: "needle" | "state-temp" | "buoy-pressure" | "tide-surge" | "tide-setdown" | string;
   x: number;
   y: number;
   series: Record<string, BoardDatum>;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import {
   activeBeat,
@@ -33,6 +34,15 @@ import { makeUriFixture } from "@/data/board/uriFixture";
 const MS_PER_DAY = 800; // playback cadence
 const BEAT_FADE_MS = 450;
 
+// The story registry: each film is a baked JSON + a route slug. The player is
+// story-agnostic — the film carries its own title, cast, strings, and beats.
+interface StoryDef { slug: string; file: string; hasFixture: boolean; label: string; }
+const STORIES: Record<string, StoryDef> = {
+  uri: { slug: "uri", file: "/board/uri-2021.json", hasFixture: true, label: "Winter Storm Uri" },
+  sandy: { slug: "sandy", file: "/board/sandy-2012.json", hasFixture: false, label: "Hurricane Sandy" },
+};
+const DEFAULT_STORY = "uri";
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -57,9 +67,14 @@ function readingFor(hit: Extract<BoardHit, { type: "dot" }>): string {
     case "needle":
       return `${hit.v.toFixed(2)} — ${deeper}`;
     case "state-temp":
-      return `${hit.v.toFixed(1)}°F — colder than ${p}% of its recorded mid-Februaries`;
+      // Honest for either tail and any month: the winning side rides in the
+      // dot's sublabel (warm/cold), so the reading stays true without a month
+      // or direction hardcode (Uri's cold-Feb dots + Sandy's warm sector both).
+      return `${hit.v.toFixed(1)}°F — more extreme than ${p}% of the same days on record`;
     case "buoy-pressure":
       return `${hit.v.toFixed(1)} mb — lower than ${p}% of its recorded pressures`;
+    case "tide-surge":
+      return `${hit.v.toFixed(2)} ft — a surge higher than ${p}% of its recorded tides`;
     case "tide-setdown":
       return `${hit.v.toFixed(2)} ft — a setdown ${deeper}`;
     default:
@@ -75,6 +90,11 @@ interface CardState {
 }
 
 export default function BoardPage() {
+  const { story: storyParam } = useParams<{ story: string }>();
+  const story = (storyParam && STORIES[storyParam]) ? storyParam : DEFAULT_STORY;
+  const storyDef = STORIES[story];
+  const sibling = Object.values(STORIES).find((s) => s.slug !== story) ?? null;
+
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [t, setT] = useState(0); // fractional master-day cursor
   const [playing, setPlaying] = useState(false);
@@ -101,10 +121,16 @@ export default function BoardPage() {
       : "The Board — Duck Countdown";
   }, [model, load]);
 
-  // Fetch the film. Real file wins; in dev the fixture stands in when absent.
+  // Fetch the film for the current story. Real file wins; in dev the Uri fixture
+  // stands in when its file is absent (other stories fall to the honest quiet state).
   useEffect(() => {
     let cancelled = false;
-    fetch("/board/uri-2021.json", { cache: "no-cache" })
+    setLoad({ status: "loading" });
+    setT(0);
+    setEnded(false);
+    setCard(null);
+    autoPlayedRef.current = false;
+    fetch(storyDef.file, { cache: "no-cache" })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         const json = (await res.json()) as BoardFilm;
@@ -113,7 +139,7 @@ export default function BoardPage() {
       })
       .catch(() => {
         if (cancelled) return;
-        if (import.meta.env.DEV) {
+        if (import.meta.env.DEV && storyDef.hasFixture) {
           setLoad({ status: "ready", model: compileFilm(makeUriFixture()), live: false });
         } else {
           setLoad({ status: "absent" });
@@ -122,7 +148,7 @@ export default function BoardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storyDef]);
 
   // Fit the canvas to its container width, redraw once at the current cursor.
   // Depends only on the model (NOT t) — per-frame drawing is the RAF loop's job;
@@ -456,6 +482,17 @@ export default function BoardPage() {
           </div>
         )}
       </main>
+
+      {sibling && (
+        <div className="mt-2 text-center">
+          <Link
+            to={`/board/${sibling.slug}`}
+            className="font-mono text-[11px] tracking-wide text-gray-500 transition-colors hover:text-cyan-300"
+          >
+            another film · {sibling.label} &rarr;
+          </Link>
+        </div>
+      )}
 
       <InnerFooter current="board" />
 

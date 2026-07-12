@@ -27,7 +27,7 @@ const BOARD_DIR = join(REPO_ROOT, "public", "board");
 
 // The player's dot-kind contract (src/lib/boardPlayer.ts + readingFor()). Any
 // kind outside this set renders but loses its tuned tap-card phrasing.
-const ALLOWED_KINDS = new Set(["needle", "state-temp", "buoy-pressure", "tide-setdown"]);
+const ALLOWED_KINDS = new Set(["needle", "state-temp", "buoy-pressure", "tide-surge", "tide-setdown"]);
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 interface Report {

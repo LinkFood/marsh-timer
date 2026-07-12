@@ -44,7 +44,7 @@ const App = () => (
           <Route path="/morning" element={<MorningPage />} />
           <Route path="/morning/:date" element={<MorningPage />} />
           <Route path="/born" element={<BornPage />} />
-          <Route path="/board/uri" element={<BoardPage />} />
+          <Route path="/board/:story" element={<BoardPage />} />
           <Route path="/concepts" element={<ConceptsIndex />} />
           <Route path="/concepts/a" element={<ConceptA />} />
           <Route path="/concepts/b" element={<ConceptB />} />
