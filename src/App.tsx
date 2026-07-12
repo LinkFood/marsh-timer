@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { AuthProvider } from "@/hooks/useAuth";
-import HomeLanding from "./pages/HomeLanding";
+const HomeLanding = lazy(() => import("./pages/HomeLanding"));
 import NotFound from "./pages/NotFound";
 
 // Landing + catch-all stay eager for fastest first paint on `/`.
@@ -21,7 +21,7 @@ const MorningPage = lazy(() => import("./pages/MorningPage"));
 const BornPage = lazy(() => import("./pages/BornPage"));
 const BoardPage = lazy(() => import("./pages/BoardPage"));
 const ConceptsIndex = lazy(() => import("./pages/concepts/ConceptsIndex"));
-const ConceptA = lazy(() => import("./pages/concepts/ConceptA"));
+import ConceptA from "./pages/concepts/ConceptA";
 const ConceptB = lazy(() => import("./pages/concepts/ConceptB"));
 const ConceptC = lazy(() => import("./pages/concepts/ConceptC"));
 
@@ -30,7 +30,8 @@ const App = () => (
     <AuthProvider>
       <Suspense fallback={<div className="min-h-screen bg-gray-950" />}>
         <Routes>
-          <Route path="/" element={<HomeLanding />} />
+          <Route path="/" element={<ConceptA />} />
+          <Route path="/welcome" element={<HomeLanding />} />
           <Route path="/explore" element={<ExplorerLanding />} />
           <Route path="/date/:dateStr" element={<DatePage />} />
           <Route path="/state/:stateAbbr" element={<StatePage />} />
