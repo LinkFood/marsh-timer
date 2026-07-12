@@ -299,15 +299,35 @@ async function runBackfill(dry: boolean) {
   console.log(`\n=== DONE ===`);
 }
 
-// ─── VERIFY — the Rung-2b anchors (spine §7.1) ───────────────────────────────────
+// ─── Read a stored frame's packed bytes back (bytea → uint8[]) ───────────────────
+// PostgREST returns bytea as a hex string "\x<hex>"; decode to the raw byte array
+// so verify can assert the STORED byte at an anchor's manifest offset — not just a
+// fresh recompute. This closes the gap the Sandy film exposed: a reader can read the
+// WRONG slot even when the fresh math is right, so verify must read what's on disk.
+async function readStoredBytes(day: string): Promise<Uint8Array | null> {
+  const res = await fetchWithRetry(`${SUPABASE_URL}/rest/v1/board_frames?day=eq.${day}&select=dots`, { headers: supaHeaders() }, `frame ${day}`);
+  const rowsJson = await res.json();
+  if (!Array.isArray(rowsJson) || rowsJson.length === 0 || typeof rowsJson[0].dots !== "string") return null;
+  const hex = rowsJson[0].dots.startsWith("\\x") ? rowsJson[0].dots.slice(2) : rowsJson[0].dots;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+// ─── VERIFY — the Rung-2b anchors (spine §7.1) + a STORED read-back (spine §7.2) ──
 async function runVerify() {
   bootstrapKeys();
   const { rows, layout } = buildRegistry();
   const slots = buildSlots(rows, layout.manifest);
   const endYear = Number(todayIso().slice(0, 4));
+  // expectByte = the byte the STORED frame must carry at this slot's manifest offset.
   const anchors: { instId: string; field: string; side: "low" | "high"; day: string; expect: number; eps: number }[] = [
     { instId: "ghcn-tx", field: "avg_high_f", side: "low", day: "2021-02-15", expect: 1.000, eps: 0.002 },
     { instId: "needle-ao", field: "value", side: "low", day: "2021-02-10", expect: 0.997, eps: 0.005 },
+    // The Battery's record 9.15 ft Sandy surge — the very reading the film agent
+    // decoded as 0.272 by rebuilding offsets per-METRIC instead of per-SIDE. The
+    // STORED byte at the manifest offset is 254; the read-back below proves it.
+    { instId: "tide-8518750", field: "residual_max_ft", side: "high", day: "2012-10-30", expect: 0.999, eps: 0.003 },
     // 0.725 was the hand-bake's WHOLE-DJF pool value; the spine standardizes on
     // doy±15 pools (poolN 531 = 31d × 17y here), which yields 0.778 for the same
     // reading. Same engine, different denominator definition — recalibrated
@@ -326,11 +346,22 @@ async function runVerify() {
     const { pool, years } = poolForDay(fieldSeries, a.day, slot.nDays);
     const res = tailDepth(v, pool, a.side as Direction, years);
     const pct = res.pct ?? -1;
-    const ok = Math.abs(pct - a.expect) <= a.eps;
-    console.log(`  ${ok ? "✓" : "✗"} ${a.instId} ${a.day} ${a.side}: v=${v} poolN=${pool.length} years=${years} → pct=${pct} (expect ${a.expect}±${a.eps}) byte=${byteOf(res.pct)}`);
+    const freshByte = byteOf(res.pct);
+    const okFresh = Math.abs(pct - a.expect) <= a.eps;
+
+    // READ-BACK: the stored frame's byte at this slot's manifest offset MUST equal
+    // the freshly computed byte (±1 rounding). A slot-order/packing drift lands a
+    // neighbor's byte here and this fails — exactly the Sandy tell, caught on disk.
+    const stored = await readStoredBytes(a.day);
+    let okStored = false, storedByte = -1;
+    if (stored && slot.offset < stored.length) { storedByte = stored[slot.offset]; okStored = Math.abs(storedByte - freshByte) <= 1; }
+    const storedNote = stored ? `stored@off${slot.offset}=${storedByte} (pct=${(storedByte / 254).toFixed(3)})` : "NO STORED FRAME";
+
+    const ok = okFresh && okStored;
+    console.log(`  ${ok ? "✓" : "✗"} ${a.instId} ${a.day} ${a.side}: v=${v} poolN=${pool.length} years=${years} → pct=${pct} (expect ${a.expect}±${a.eps}) freshByte=${freshByte} | ${storedNote} ${okStored ? "✓match" : "✗DRIFT"}`);
     if (!ok) fails++;
   }
-  console.log(`\n${fails ? "✗" : "✓"} verify — ${fails} anchor failure(s)`);
+  console.log(`\n${fails ? "✗" : "✓"} verify — ${fails} anchor failure(s) [fresh math + stored read-back]`);
   process.exit(fails ? 1 : 0);
 }
 
