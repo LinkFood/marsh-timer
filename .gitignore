@@ -46,3 +46,7 @@ scripts/.comcat-run.log
 scripts/.ndbc-pressure-checkpoint.json
 scripts/.tide-roster-checkpoint.json
 scripts/.dedupe-v2-storms-checkpoint.json
+scripts/frames/.frame-cache/
+scripts/frames/.frame-checkpoint.json
+scripts/frames/.lut-checkpoint.json
+scripts/board/.uri-cache/
