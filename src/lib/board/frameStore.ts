@@ -54,6 +54,28 @@ export interface ResolvedInstrument {
 
 export const BOARD_PROJECTION = { width: 975, height: 610 } as const;
 
+/** What followed a rhyme day, if the record holds anything. */
+export interface RhymeFollowed {
+  title: string;
+  began: string | null;
+  days_after: number;
+  deaths: number | null;
+  injuries: number | null;
+  damage_usd: number | null;
+}
+
+/** One row of board_rhymes: the day the archive says `day` reads most like. */
+export interface BoardRhyme {
+  day: string;
+  rank: number;
+  rhyme_day: string;
+  score: number;
+  cos: number;
+  mag: number;
+  drivers: { label: string; side: string; kind: string }[] | null;
+  followed: RhymeFollowed | null;
+}
+
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 
 export async function fetchInstruments(): Promise<Instrument[]> {
@@ -75,6 +97,30 @@ export async function fetchFrames(from: string, to: string): Promise<DayFrame[]>
   const frames = ((data as { frames?: DayFrame[] })?.frames ?? []) as DayFrame[];
   // Newest first so "scroll down = fall backward through time" is a straight map.
   return frames.slice().sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+}
+
+/**
+ * Rank-1 rhymes for every day in [from, to], keyed by day. The table is
+ * anon-readable like board_frames; if it doesn't exist yet or the query fails,
+ * return an empty map — the room renders NOTHING for a missing rhyme, never a
+ * placeholder lie.
+ */
+export async function fetchRhymes(from: string, to: string): Promise<Map<string, BoardRhyme>> {
+  const out = new Map<string, BoardRhyme>();
+  if (!supabase) return out;
+  try {
+    const { data, error } = await supabase
+      .from("board_rhymes")
+      .select("day,rank,rhyme_day,score,cos,mag,drivers,followed")
+      .eq("rank", 1)
+      .gte("day", from)
+      .lte("day", to);
+    if (error || !data) return out;
+    for (const row of data as BoardRhyme[]) out.set(row.day, row);
+  } catch {
+    /* absent table = no rhymes yet; say nothing */
+  }
+  return out;
 }
 
 // ── Decode ────────────────────────────────────────────────────────────────────
@@ -131,6 +177,7 @@ export function buildDayFilm(day: string, resolved: ResolvedInstrument[]): Board
       label: r.inst.label,
       sublabel: r.inst.sublabel ?? undefined,
       kind: r.inst.kind,
+      side: r.side,
       x: r.inst.albers_x,
       y: r.inst.albers_y,
       series: {
@@ -154,30 +201,74 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-/** A single instrument's swell as a short, honest clause. */
-function clauseFor(r: ResolvedInstrument): string {
+/** Deterministic per-day seed so a day's sentence is stable across renders but
+ *  consecutive days phrase themselves differently. FNV-1a over the ISO date. */
+function daySeed(day: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < day.length; i++) {
+    h ^= day.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Avalanche-mix a seed with a salt so nearby days (and different clause slots)
+ *  pick variants independently — raw FNV seeds of adjacent dates collide mod 3. */
+function mix(seed: number, salt: number): number {
+  let x = (seed + Math.imul(salt, 0x9e3779b9)) >>> 0;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x85ebca6b) >>> 0;
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35) >>> 0;
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+
+const pickBy = (seed: number, variants: string[]): string => variants[seed % variants.length];
+
+/** A single instrument's swell as a short, honest, kind-aware clause. */
+function clauseFor(r: ResolvedInstrument, seed: number): string {
   const name = r.inst.label;
   const high = r.side === "high";
   switch (r.inst.kind) {
     case "needle":
-      return high ? `the ${name} is riding high` : `the ${name} has sunk low`;
+      return high
+        ? pickBy(seed, [`the ${name} is riding high`, `the ${name} needle leans high`, `the ${name} is pinned high`])
+        : pickBy(seed, [`the ${name} has sunk low`, `the ${name} needle leans low`, `the ${name} is pinned low`]);
     case "state-temp":
-      return high ? `${name} is running hot` : `${name} is running cold`;
+      return high
+        ? pickBy(seed, [`${name} is running hot`, `${name} sits deep in its warm tail`, `heat is leaning on ${name}`])
+        : pickBy(seed, [`${name} is running cold`, `${name} sits deep in its cold tail`, `cold has settled over ${name}`]);
     case "tide":
-      return high ? `${name} is running high` : `${name} is running low`;
-    case "buoy":
-      return high ? `pressure is climbing off ${name}` : `pressure is sinking off ${name}`;
+      return high
+        ? pickBy(seed, [`${name} harbor is riding high`, `the water stands high at ${name}`, `${name} tide is running above its history`])
+        : pickBy(seed, [`${name} harbor has drawn down`, `the water sits low at ${name}`, `${name} tide is running under its history`]);
+    case "buoy": {
+      const n = name.replace(/^Buoy\s+/i, "");
+      return high
+        ? pickBy(seed, [`pressure is riding high off ${n}`, `${n} pressure is climbing`])
+        : pickBy(seed, [`pressure is falling off ${n}`, `${n} pressure has sunk low`]);
+    }
     default:
       return high ? `${name} is running high` : `${name} is running low`;
   }
 }
 
-/** Join clauses as a natural, comma-then-and list. */
-function joinClauses(parts: string[]): string {
+/** Join 1–3 clauses with a per-day connective so days don't read identically. */
+function joinClauses(parts: string[], seed: number): string {
   if (parts.length === 0) return "";
   if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return `${parts[0]}, and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  if (parts.length === 2)
+    return pickBy(seed, [
+      `${parts[0]}, and ${parts[1]}`,
+      `${parts[0]} while ${parts[1]}`,
+      `${parts[0]} — and ${parts[1]}`,
+    ]);
+  return pickBy(seed, [
+    `${parts[0]}, ${parts[1]}, and ${parts[2]}`,
+    `${parts[0]}; ${parts[1]}; and ${parts[2]}`,
+    `${parts[0]}, ${parts[1]} — and ${parts[2]}`,
+  ]);
 }
 
 export interface PorchLine {
@@ -188,16 +279,27 @@ export interface PorchLine {
 
 /**
  * Derive the porch sentence for a day. Deep = tail depth >= 0.85. We name at
- * most the three deepest, capitalize the sentence, and close with an honest
- * coda: nothing is "forming" unless the frame carries strings or blooms — and
- * today's frames carry neither, so the coda tells the truth ("nothing forming").
+ * most three, leading with the deepest but preferring KIND DIVERSITY for the
+ * follow-ons (a tide or a buoy beats a fourth hot state), phrase each clause
+ * kind-aware with per-day variety, and close with an honest coda: nothing is
+ * "forming" unless the frame carries strings or blooms — and today's frames
+ * carry neither, so the coda tells the truth ("nothing forming").
  */
 export function porchLine(day: string, resolved: ResolvedInstrument[], frame: DayFrame): PorchLine {
+  const seed = daySeed(day);
   const withData = resolved.filter((r) => r.hasData);
   const deep = withData
     .filter((r) => (r.pct ?? 0) >= 0.85)
     .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
-  const named = deep.slice(0, 3);
+
+  // Deepest first, then prefer instruments of a kind not yet named.
+  const named: ResolvedInstrument[] = [];
+  const rest = deep.slice();
+  while (named.length < 3 && rest.length > 0) {
+    const kinds = new Set(named.map((r) => r.inst.kind));
+    const i = rest.findIndex((r) => !kinds.has(r.inst.kind));
+    named.push(rest.splice(i === -1 ? 0 : i, 1)[0]);
+  }
 
   const forming = (frame.strings && Object.keys(frame.strings).length > 0) || (frame.blooms?.length ?? 0) > 0;
 
@@ -206,10 +308,17 @@ export function porchLine(day: string, resolved: ResolvedInstrument[], frame: Da
     // Nothing deep. Say so plainly, but stay specific about coverage.
     lead =
       withData.length === 0
-        ? "The board is dark today — no instrument has reported."
-        : "Nothing is deep in its tail today.";
+        ? "The board is dark — no instrument has reported."
+        : pickBy(mix(seed, 7), [
+            "Nothing is deep in its tail.",
+            "A quiet board — nothing deep.",
+            "No instrument sits deep in its history.",
+          ]);
   } else {
-    const sentence = joinClauses(named.map(clauseFor));
+    const sentence = joinClauses(
+      named.map((r, i) => clauseFor(r, mix(seed, daySeed(r.inst.id) + i))),
+      mix(seed, 97),
+    );
     lead = sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
   }
 
@@ -239,6 +348,13 @@ export function shortDate(iso: string): string {
   const [, m, d] = iso.split("-").map(Number);
   if (!m || !d) return iso;
   return `${MONTHS[m - 1].slice(0, 3)} ${d}`;
+}
+
+/** "Jan 30, 2014" — for rhyme lines, where the year is the whole point. */
+export function medDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return `${MONTHS[m - 1].slice(0, 3)} ${d}, ${y}`;
 }
 
 /** ISO date N days before `iso` (UTC-safe, no timezone drift). */

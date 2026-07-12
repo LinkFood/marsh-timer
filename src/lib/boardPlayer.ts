@@ -28,6 +28,10 @@ export interface BoardDot {
   label: string;
   sublabel?: string;
   kind: "needle" | "state-temp" | "buoy-pressure" | "tide-surge" | "tide-setdown" | string;
+  /** Which tail is deeper (live one-day films set this; baked story films omit
+   *  it and keep the classic teal→gold ramp). Temp dots tint by it: amber for
+   *  high, ice-blue for low — hue shift only, same luminance discipline. */
+  side?: "low" | "high" | null;
   x: number;
   y: number;
   series: Record<string, BoardDatum>;
@@ -269,19 +273,41 @@ export function activeBeat(model: BoardModel, t: number): { line: string; date: 
 
 // ── Color ramp ────────────────────────────────────────────────────────────────
 
-// ember teal (#2dd4bf) → hot coal (cyan-white core, warm halo)
-function haloColor(pct: number, alpha: number): string {
-  // warm the halo slightly as pct climbs (teal → warm gold-white edge)
-  const r = Math.round(lerp(45, 255, pct * pct));
-  const g = Math.round(lerp(212, 236, pct));
-  const b = Math.round(lerp(191, 179, pct));
+// ember teal (#2dd4bf) → hot coal (cyan-white core, warm halo). Temp dots with
+// a known side tint by it — amber for a hot tail, ice-blue for a cold one —
+// same easing, same alphas, hue shift only.
+type EmberTint = "default" | "warm" | "cold";
+
+function tintFor(dot: BoardDot): EmberTint {
+  if (dot.kind !== "state-temp") return "default";
+  if (dot.side === "high") return "warm";
+  if (dot.side === "low") return "cold";
+  return "default";
+}
+
+const HALO_TO: Record<EmberTint, [number, number, number]> = {
+  default: [255, 236, 179], // warm gold-white edge
+  warm: [255, 176, 96], // amber
+  cold: [148, 196, 255], // ice blue
+};
+const CORE_TO: Record<EmberTint, [number, number, number]> = {
+  default: [245, 255, 252], // near-white cyan
+  warm: [255, 243, 224], // warm white
+  cold: [227, 241, 255], // blue-white
+};
+
+function haloColor(pct: number, alpha: number, tint: EmberTint = "default"): string {
+  const to = HALO_TO[tint];
+  const r = Math.round(lerp(45, to[0], pct * pct));
+  const g = Math.round(lerp(212, to[1], pct));
+  const b = Math.round(lerp(191, to[2], pct));
   return `rgba(${r},${g},${b},${alpha})`;
 }
-function coreColor(pct: number, alpha: number): string {
-  // teal core → near-white cyan core
-  const r = Math.round(lerp(120, 245, pct));
-  const g = Math.round(lerp(240, 255, pct));
-  const b = Math.round(lerp(230, 252, pct));
+function coreColor(pct: number, alpha: number, tint: EmberTint = "default"): string {
+  const to = CORE_TO[tint];
+  const r = Math.round(lerp(120, to[0], pct));
+  const g = Math.round(lerp(240, to[1], pct));
+  const b = Math.round(lerp(230, to[2], pct));
   return `rgba(${r},${g},${b},${alpha})`;
 }
 const BRASS = "184,160,106"; // etched-string brass
@@ -392,6 +418,7 @@ function drawDot(
 ) {
   const s = sampleTrack(track, t);
   const isNeedle = track.dot.kind === "needle";
+  const tint = tintFor(track.dot);
   // no-data → minimum ember, slightly dimmer
   const pct = s.dim ? 0.03 : clamp01(s.pct);
   const coreR = 1.5 + pct * pct * 22;
@@ -400,16 +427,16 @@ function drawDot(
 
   // soft outer glow (radial)
   const g = ctx.createRadialGradient(track.dot.x, track.dot.y, 0, track.dot.x, track.dot.y, glowR);
-  g.addColorStop(0, haloColor(pct, 0.5 * dimK));
-  g.addColorStop(0.45, haloColor(pct, 0.18 * dimK));
-  g.addColorStop(1, haloColor(pct, 0));
+  g.addColorStop(0, haloColor(pct, 0.5 * dimK, tint));
+  g.addColorStop(0.45, haloColor(pct, 0.18 * dimK, tint));
+  g.addColorStop(1, haloColor(pct, 0, tint));
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.arc(track.dot.x, track.dot.y, glowR, 0, Math.PI * 2);
   ctx.fill();
 
   // bright core
-  ctx.fillStyle = coreColor(pct, (0.85 + pct * 0.15) * dimK);
+  ctx.fillStyle = coreColor(pct, (0.85 + pct * 0.15) * dimK, tint);
   ctx.beginPath();
   ctx.arc(track.dot.x, track.dot.y, coreR, 0, Math.PI * 2);
   ctx.fill();

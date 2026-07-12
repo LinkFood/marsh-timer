@@ -1,48 +1,53 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { drawFrame, fitCanvas, hitTest, type BoardModel } from "@/lib/boardPlayer";
+import { BOARD_PROJECTION, CONUS_BORDERS } from "@/data/board/conusBorders";
+import { InnerFooter } from "@/components/InnerNav";
 import {
-  albersXRange,
   compileDayFilm,
-  drawRibbon,
   fetchFrames,
   fetchInstruments,
+  fetchRhymes,
   longDate,
+  medDate,
   porchLine,
   resolveDay,
-  shortDate,
   todayIso,
   isoDaysBefore,
+  type BoardRhyme,
   type DayFrame,
   type Instrument,
   type ResolvedInstrument,
   type PorchLine,
+  type RhymeFollowed,
 } from "@/lib/board/frameStore";
 
 /**
- * THE ONE ROOM (concept A → the facelift candidate).
+ * THE FRONT DOOR (`/`). One room, one true sentence per screen.
  *
- * Not a page. A room. You open it and you are standing on the ground: today's
- * live frame as embers on the dark CONUS, one true sentence over it in Playfair,
- * the date whispered in a corner. Tap a swollen ember and it tells you, inline,
- * how deep it sits. Scroll down and you fall backward through the days — each
- * prior day one honest row, its ribbon and, if anything swelled, its one line.
- * At the floor of the room, the other doors, whispered.
- *
- * The embers are drawn by the film's own renderer (boardPlayer.drawFrame) over a
- * synthesized one-day film, so the room and the film speak with one hand. No
- * header bar, no section labels, no card chrome. Every word earns its place.
+ * Identity first — brand, thesis, and a dim US skeleton render statically
+ * before a single row arrives; the page never opens on a bare black screen.
+ * Then the porch: today's frame spoken in one honest, kind-aware sentence
+ * over the live board (hot states glow amber, cold states ice; tides and
+ * buoys keep the ember teal). Under it, when the archive holds one, the
+ * rhyme: the day today reads most like, and what followed then. Scroll down
+ * and the past days read as a typographic ledger — a diary, not dot-blobs —
+ * and tapping any row loads that day's full board into the hero. The films
+ * get their own cards; the doors footer is the same one every sibling page
+ * shares.
  */
 
 const DAYS_BACK = 30;
 
+interface DayEntry {
+  frame: DayFrame;
+  resolved: ResolvedInstrument[];
+  porch: PorchLine;
+}
+
 interface RoomData {
   instruments: Instrument[];
-  today: DayFrame;
-  todayResolved: ResolvedInstrument[];
-  porch: PorchLine;
-  model: BoardModel;
-  history: { frame: DayFrame; resolved: ResolvedInstrument[]; porch: PorchLine }[];
+  days: DayEntry[]; // newest first
 }
 
 type LoadState =
@@ -76,82 +81,113 @@ function readingText(r: ResolvedInstrument): string {
   }
 }
 
-// ── Mini heat-ribbon: a day's swell laid west→east by Albers x ──────────────────
+/** "$9.5B" / "$320M" — plain, no fake precision below a million. */
+function fmtDamage(usd: number): string {
+  if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
+  if (usd >= 1e6) return `$${Math.round(usd / 1e6)}M`;
+  return `$${Math.round(usd).toLocaleString()}`;
+}
 
-function DayRibbon({
-  resolved,
-  xMin,
-  xMax,
-}: {
-  resolved: ResolvedInstrument[];
-  xMin: number;
-  xMax: number;
-}) {
+/** "What followed then: {title}, N days later — X dead, $Y.YB in damage." */
+function followedLine(f: RhymeFollowed): string {
+  const when =
+    f.days_after === 0 ? "that same day" : f.days_after === 1 ? "1 day later" : `${f.days_after} days later`;
+  const toll: string[] = [];
+  if (f.deaths) toll.push(`${f.deaths} dead`);
+  if (f.injuries) toll.push(`${f.injuries} injured`);
+  if (f.damage_usd) toll.push(`${fmtDamage(f.damage_usd)} in damage`);
+  return `What followed then: ${f.title}, ${when}${toll.length ? ` — ${toll.join(", ")}` : ""}.`;
+}
+
+// ── The skeleton ground: dim US outline before any data arrives ────────────────
+
+function SkeletonGround() {
   const ref = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const draw = () => drawRibbon(c, resolved, xMin, xMax);
+    const draw = () => {
+      const cssW = c.clientWidth || c.parentElement?.clientWidth || 0;
+      if (cssW <= 0) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const cssH = (cssW * BOARD_PROJECTION.height) / BOARD_PROJECTION.width;
+      c.width = Math.round(cssW * dpr);
+      c.height = Math.round(cssH * dpr);
+      const ctx = c.getContext("2d");
+      if (!ctx) return;
+      const s = (cssW / BOARD_PROJECTION.width) * dpr;
+      ctx.setTransform(s, 0, 0, s, 0, 0);
+      ctx.fillStyle = "#0a0f14";
+      ctx.fillRect(0, 0, BOARD_PROJECTION.width, BOARD_PROJECTION.height);
+      ctx.strokeStyle = "rgba(255,255,255,0.05)";
+      ctx.lineWidth = 1.1;
+      ctx.lineJoin = "round";
+      for (const ring of CONUS_BORDERS) {
+        ctx.beginPath();
+        ctx.moveTo(ring[0], ring[1]);
+        for (let i = 2; i < ring.length; i += 2) ctx.lineTo(ring[i], ring[i + 1]);
+        ctx.stroke();
+      }
+    };
     draw();
     window.addEventListener("resize", draw);
     return () => window.removeEventListener("resize", draw);
-  }, [resolved, xMin, xMax]);
-  return <canvas ref={ref} className="block h-9 w-full" />;
+  }, []);
+  return <canvas ref={ref} className="block h-full w-full" />;
 }
 
-// ── A prior day, one honest row ─────────────────────────────────────────────────
+// ── A film card: the site's best artifacts, promoted ───────────────────────────
 
-function HistoryRow({
-  frame,
-  resolved,
-  porch,
-  xMin,
-  xMax,
-}: {
-  frame: DayFrame;
-  resolved: ResolvedInstrument[];
-  porch: PorchLine;
-  xMin: number;
-  xMax: number;
-}) {
-  const [open, setOpen] = useState(false);
-  const swelled = porch.swollen.length > 0;
-
+function FilmCard({ to, era, title }: { to: string; era: string; title: string }) {
   return (
-    <div className="border-b border-white/5">
-      <button
-        type="button"
-        onClick={() => swelled && setOpen((o) => !o)}
-        className={`flex w-full items-center gap-3 py-3.5 text-left transition-colors ${
-          swelled ? "cursor-pointer hover:bg-white/[0.02]" : "cursor-default"
-        }`}
+    <Link
+      to={to}
+      className="group flex flex-col rounded-xl border border-white/10 bg-gray-900/30 px-5 py-4 transition-colors hover:border-cyan-400/30 hover:bg-gray-900/60"
+    >
+      <span className="font-mono text-[10px] tracking-[0.2em] text-gray-500">{era}</span>
+      <span className="mt-1.5 font-display text-base leading-snug text-gray-100 transition-colors group-hover:text-cyan-200 sm:text-lg">
+        {title} <span className="text-cyan-400/70">&rarr;</span>
+      </span>
+    </Link>
+  );
+}
+
+// ── A ledger row: one past day as a diary entry ─────────────────────────────────
+
+function LedgerRow({
+  entry,
+  rhyme,
+  selected,
+  onSelect,
+}: {
+  entry: DayEntry;
+  rhyme: BoardRhyme | undefined;
+  selected: boolean;
+  onSelect: (day: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(entry.frame.day)}
+      className={`block w-full border-b border-white/5 px-2 py-4 text-left transition-colors hover:bg-white/[0.03] ${
+        selected ? "bg-white/[0.04]" : ""
+      }`}
+    >
+      <span
+        className={`font-mono text-[10px] tracking-[0.22em] ${selected ? "text-cyan-300/90" : "text-gray-500"}`}
       >
-        <span
-          className={`w-14 shrink-0 text-right font-mono text-[11px] tabular-nums ${
-            swelled ? "text-gray-400" : "text-gray-600"
-          }`}
-        >
-          {shortDate(frame.day)}
+        {longDate(entry.frame.day).toUpperCase()}
+      </span>
+      <span className="mt-1 block font-body text-[15px] leading-relaxed text-gray-300">
+        {entry.porch.lead}
+      </span>
+      {rhyme && (
+        <span className="mt-1 block font-mono text-[11px] leading-relaxed text-gray-500">
+          read like {medDate(rhyme.rhyme_day)} &rarr;{" "}
+          {rhyme.followed ? rhyme.followed.title : "a quiet week followed"}
         </span>
-        <span className="min-w-0 flex-1">
-          <DayRibbon resolved={resolved} xMin={xMin} xMax={xMax} />
-        </span>
-      </button>
-      {swelled && (
-        <p className="-mt-1 pb-3.5 pl-[4.25rem] pr-2 font-body text-[13px] leading-snug text-gray-400">
-          {porch.lead}
-          {open && (
-            <span className="mt-1.5 block font-mono text-[11px] text-gray-500">
-              {porch.swollen.map((r) => (
-                <span key={r.inst.id} className="mr-3 inline-block">
-                  {r.inst.label} · {readingText(r)}
-                </span>
-              ))}
-            </span>
-          )}
-        </p>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -166,15 +202,18 @@ interface CardState {
 
 export default function ConceptA() {
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
+  const [rhymes, setRhymes] = useState<Map<string, BoardRhyme>>(new Map());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [card, setCard] = useState<CardState | null>(null);
 
+  const heroRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cssWRef = useRef(0);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
-    document.title = "Duck Countdown";
+    document.title = "Duck Countdown — the honest memory of American ground";
   }, []);
 
   useEffect(() => {
@@ -192,26 +231,17 @@ export default function ConceptA() {
           setLoad({ status: "empty" });
           return;
         }
-        // frames come newest-first. The first is the room's "today"; even if the
-        // real calendar today is missing, the newest frame is the honest now.
-        const [head, ...rest] = frames;
-        const todayResolved = resolveDay(head, instruments);
-        const model = compileDayFilm(head.day, todayResolved);
-        const history = rest.map((frame) => {
+        // frames come newest-first. The first is the room's "today"; even if
+        // the real calendar today is missing, the newest frame is the honest now.
+        const days = frames.map((frame) => {
           const resolved = resolveDay(frame, instruments);
           return { frame, resolved, porch: porchLine(frame.day, resolved, frame) };
         });
-        setLoad({
-          status: "ready",
-          data: {
-            instruments,
-            today: head,
-            todayResolved,
-            porch: porchLine(head.day, todayResolved, head),
-            model,
-            history,
-          },
-        });
+        setLoad({ status: "ready", data: { instruments, days } });
+        // The rhymes ride in behind the frames; a missing table or empty rows
+        // simply render nothing.
+        const map = await fetchRhymes(days[days.length - 1].frame.day, days[0].frame.day);
+        if (!cancelled) setRhymes(map);
       } catch {
         if (!cancelled) setLoad({ status: "error" });
       }
@@ -222,20 +252,27 @@ export default function ConceptA() {
   }, []);
 
   const data = load.status === "ready" ? load.data : null;
-  const model = data?.model ?? null;
 
-  const [xMin, xMax] = useMemo(
-    () => (data ? albersXRange(data.instruments) : [0, 975]),
-    [data],
+  const selected = useMemo(() => {
+    if (!data) return null;
+    return data.days.find((d) => d.frame.day === selectedDay) ?? data.days[0];
+  }, [data, selectedDay]);
+  const isNewest = !!data && !!selected && selected.frame.day === data.days[0].frame.day;
+
+  const model: BoardModel | null = useMemo(
+    () => (selected ? compileDayFilm(selected.frame.day, selected.resolved) : null),
+    [selected],
   );
+
+  const rhyme = selected ? rhymes.get(selected.frame.day) : undefined;
 
   const resolvedById = useMemo(() => {
     const m = new Map<string, ResolvedInstrument>();
-    if (data) for (const r of data.todayResolved) m.set(r.inst.id, r);
+    if (selected) for (const r of selected.resolved) m.set(r.inst.id, r);
     return m;
-  }, [data]);
+  }, [selected]);
 
-  // Fit + draw the room's ground. One frame; redraw on resize.
+  // Fit + draw the room's ground. One frame; redraw on resize or day change.
   const refit = useCallback(() => {
     const canvas = canvasRef.current;
     const stage = stageRef.current;
@@ -253,6 +290,12 @@ export default function ConceptA() {
     window.addEventListener("resize", refit);
     return () => window.removeEventListener("resize", refit);
   }, [refit]);
+
+  const selectDay = useCallback((day: string) => {
+    setSelectedDay(day);
+    setCard(null);
+    heroRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const onCanvasDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     pointerDownRef.current = { x: e.clientX, y: e.clientY };
@@ -289,133 +332,188 @@ export default function ConceptA() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* THE ROOM — first screen, full height */}
-      <section className="relative flex min-h-[100svh] flex-col items-center justify-center px-5 pb-16 pt-20 sm:px-8">
-        {/* whispered corners — they belong to the room, and scroll away with it */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between px-5 py-4 sm:px-8">
-          <span className="font-mono text-[11px] tabular-nums text-gray-500">
-            {data ? longDate(data.today.day) : ""}
-          </span>
-          <span className="font-mono text-[10px] tracking-[0.28em] text-gray-600">DUCK COUNTDOWN</span>
+      {/* IDENTITY — static, before any row arrives */}
+      <header className="mx-auto w-full max-w-3xl px-5 pt-10 text-center sm:px-8 sm:pt-14">
+        <div className="font-mono text-[11px] tracking-[0.3em] text-cyan-300/90">DUCK COUNTDOWN</div>
+        <h1 className="mx-auto mt-4 max-w-2xl font-display text-lg font-normal leading-normal text-gray-300 sm:text-xl">
+          The honest memory of American ground — what today is here, what it rhymes with, and what
+          followed.
+        </h1>
+        <p className="mt-2 font-mono text-[10px] tracking-wide text-gray-600">
+          every sentence traceable to a row &middot; never a forecast
+        </p>
+      </header>
+
+      {/* THE PORCH — the hero sentence over the live board */}
+      <section ref={heroRef} className="mx-auto w-full max-w-3xl scroll-mt-6 px-5 sm:px-8">
+        <div className="mt-10 text-center sm:mt-12">
+          <p className="font-mono text-[11px] tabular-nums text-gray-500">
+            {selected ? longDate(selected.frame.day) : " "}
+          </p>
+
+          {load.status === "loading" && (
+            <p className="mt-3 font-mono text-xs text-gray-600">reading the instruments&hellip;</p>
+          )}
+          {load.status === "empty" && (
+            <p className="mx-auto mt-3 max-w-md font-display text-xl leading-snug text-gray-400">
+              The board is dark right now — no instrument has reported.
+            </p>
+          )}
+          {load.status === "error" && (
+            <p className="mx-auto mt-3 max-w-md font-display text-xl leading-snug text-gray-400">
+              The board can&rsquo;t be reached right now.
+            </p>
+          )}
+
+          {selected && (
+            <>
+              <h2 className="mx-auto mt-2 max-w-2xl font-display text-[1.7rem] font-medium leading-[1.28] text-gray-50 sm:text-[2.2rem]">
+                {selected.porch.lead}
+              </h2>
+              <p className="mt-2 font-body text-sm text-gray-500 sm:text-base">{selected.porch.coda}</p>
+              {!isNewest && (
+                <button
+                  type="button"
+                  onClick={() => selectDay(data!.days[0].frame.day)}
+                  className="mt-2.5 font-mono text-[11px] tracking-wide text-cyan-300/80 transition-colors hover:text-cyan-200"
+                >
+                  &larr; back to today
+                </button>
+              )}
+            </>
+          )}
+
+          {/* THE RHYME — only when the archive holds one; never a placeholder */}
+          {selected && rhyme && (
+            <div className="mx-auto mt-6 max-w-xl">
+              <p className="font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
+                {isNewest ? "Today reads" : "This day read"} most like{" "}
+                <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
+                same instruments, deep the same way.
+              </p>
+              <p className="mt-1 font-body text-[14px] leading-relaxed text-gray-400">
+                {rhyme.followed
+                  ? followedLine(rhyme.followed)
+                  : "A quiet week followed — that's on the record too."}
+              </p>
+              <Link
+                to={`/atlas?date=${rhyme.rhyme_day}`}
+                className="mt-1.5 inline-block font-mono text-[11px] tracking-wide text-cyan-300/80 transition-colors hover:text-cyan-200"
+              >
+                read that day &rarr;
+              </Link>
+            </div>
+          )}
         </div>
 
-        {load.status === "loading" && (
-          <p className="font-mono text-xs text-gray-600">lighting the board&hellip;</p>
-        )}
-
-        {load.status === "empty" && (
-          <p className="max-w-md text-center font-display text-xl leading-snug text-gray-400">
-            The board is dark right now — no instrument has reported.
-          </p>
-        )}
-        {load.status === "error" && (
-          <p className="max-w-md text-center font-display text-xl leading-snug text-gray-400">
-            The board can&rsquo;t be reached right now.
-          </p>
-        )}
-
-        {load.status === "ready" && data && (
-          <div className="mx-auto flex w-full max-w-3xl flex-col items-center">
-            {/* the one true sentence */}
-            <p className="mb-1 max-w-2xl text-center font-display text-[1.6rem] font-medium leading-[1.28] text-gray-50 sm:text-[2.1rem]">
-              {data.porch.lead}
-            </p>
-            <p className="mb-6 font-body text-sm text-gray-500 sm:text-base">{data.porch.coda}</p>
-
-            {/* the ground */}
-            <div
-              ref={stageRef}
-              className="relative w-full overflow-hidden rounded-2xl"
-              style={{ background: "#0a0f14" }}
-            >
-              <canvas
-                ref={canvasRef}
-                className="block w-full touch-none select-none"
-                onPointerDown={onCanvasDown}
-                onPointerUp={onCanvasUp}
+        {/* THE GROUND — skeleton until the frame lands, never a bare black screen */}
+        <div
+          ref={stageRef}
+          className="relative mt-8 w-full overflow-hidden rounded-2xl"
+          style={{ background: "#0a0f14", aspectRatio: "975 / 610" }}
+        >
+          {model ? (
+            <canvas
+              ref={canvasRef}
+              className="block w-full touch-none select-none"
+              onPointerDown={onCanvasDown}
+              onPointerUp={onCanvasUp}
+            />
+          ) : (
+            <SkeletonGround />
+          )}
+          {card && (
+            <>
+              <button
+                aria-label="Dismiss"
+                className="absolute inset-0 z-10 cursor-default"
+                onPointerUp={() => setCard(null)}
               />
-              {card && (
-                <>
-                  <button
-                    aria-label="Dismiss"
-                    className="absolute inset-0 z-10 cursor-default"
-                    onPointerUp={() => setCard(null)}
-                  />
-                  <div
-                    className="pointer-events-none absolute z-20 max-w-[240px] rounded-lg bg-gray-900/95 px-3 py-2.5 ring-1 ring-white/10 backdrop-blur"
-                    style={{
-                      left: Math.min(Math.max(8, card.left - 110), (cssWRef.current || 320) - 232),
-                      ...(card.bottom !== undefined
-                        ? { bottom: card.bottom }
-                        : { top: Math.max(8, card.top ?? 0) }),
-                    }}
-                  >
-                    <div className="font-mono text-[11px] tracking-wide text-cyan-300/90">
-                      {card.r.inst.label}
-                    </div>
-                    {card.r.inst.sublabel && (
-                      <div className="mt-0.5 font-mono text-[10px] text-gray-500">
-                        {card.r.inst.sublabel}
-                      </div>
-                    )}
-                    <div className="mt-1.5 font-body text-[13px] leading-snug text-gray-200">
-                      {readingText(card.r)}
-                    </div>
+              <div
+                className="pointer-events-none absolute z-20 max-w-[240px] rounded-lg bg-gray-900/95 px-3 py-2.5 ring-1 ring-white/10 backdrop-blur"
+                style={{
+                  left: Math.min(Math.max(8, card.left - 110), (cssWRef.current || 320) - 232),
+                  ...(card.bottom !== undefined
+                    ? { bottom: card.bottom }
+                    : { top: Math.max(8, card.top ?? 0) }),
+                }}
+              >
+                <div className="font-mono text-[11px] tracking-wide text-cyan-300/90">
+                  {card.r.inst.label}
+                </div>
+                {card.r.inst.sublabel && (
+                  <div className="mt-0.5 font-mono text-[10px] text-gray-500">
+                    {card.r.inst.sublabel}
                   </div>
-                </>
-              )}
-            </div>
-
-            {/* the film — one quiet line inside the room */}
-            <Link
-              to="/board/uri"
-              className="mt-7 font-mono text-[12px] tracking-wide text-cyan-300/70 transition-colors hover:text-cyan-200"
-            >
-              watch a storm form &rarr;
-            </Link>
-
-            {/* the way down */}
-            <div className="mt-10 flex flex-col items-center gap-1 text-gray-600">
-              <span className="font-mono text-[11px] tracking-wide">fall back through the days</span>
-              <span className="animate-bounce text-lg leading-none">&darr;</span>
-            </div>
-          </div>
-        )}
+                )}
+                <div className="mt-1.5 font-body text-[13px] leading-snug text-gray-200">
+                  {readingText(card.r)}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        <p className="mt-2.5 text-center font-mono text-[10px] leading-relaxed text-gray-600">
+          each light is an instrument deep in its own history —{" "}
+          <span className="text-amber-300/80">amber hot</span> &middot;{" "}
+          <span className="text-sky-300/80">ice cold</span> &middot; size = depth
+        </p>
       </section>
 
-      {/* THE DESCENT — scroll is time */}
-      {load.status === "ready" && data && (
-        <section className="mx-auto w-full max-w-3xl px-5 pb-6 sm:px-8">
-          {data.history.map((d) => (
-            <HistoryRow
-              key={d.frame.day}
-              frame={d.frame}
-              resolved={d.resolved}
-              porch={d.porch}
-              xMin={xMin}
-              xMax={xMax}
-            />
-          ))}
+      {/* THE FILMS — the site's best artifacts, given their own cards */}
+      <section className="mx-auto mt-14 w-full max-w-3xl px-5 sm:px-8">
+        <p className="text-center font-mono text-[10px] tracking-[0.24em] text-gray-500">
+          WATCH A DAY ASSEMBLE ITSELF
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <FilmCard
+            to="/board/uri"
+            era="FEBRUARY 2021"
+            title="Winter Storm Uri, as the instruments saw it coming"
+          />
+          <FilmCard
+            to="/board/sandy"
+            era="OCTOBER 2012"
+            title="Hurricane Sandy, six harbors saw it first"
+          />
+        </div>
+      </section>
 
-          {/* the floor of the room — every other door, whispered */}
-          <div className="mt-14 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 pb-16 pt-8">
-            {[
-              { to: "/atlas", label: "fall into your ground" },
-              { to: "/morning", label: "the morning line" },
-              { to: "/born", label: "the day you were born" },
-              { to: "/court", label: "the court" },
-            ].map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                className="font-mono text-[11px] tracking-wide text-gray-600 transition-colors hover:text-cyan-300"
-              >
-                {l.label}
-              </Link>
+      {/* THE LEDGER — the past days as a diary, each row a door */}
+      {data && data.days.length > 1 && (
+        <section className="mx-auto mt-16 w-full max-w-3xl px-5 sm:px-8">
+          <p className="text-center font-mono text-[10px] tracking-[0.24em] text-gray-500">
+            THE DAYS BEFORE
+          </p>
+          <div className="mt-4 border-t border-white/5">
+            {data.days.slice(1).map((entry) => (
+              <LedgerRow
+                key={entry.frame.day}
+                entry={entry}
+                rhyme={rhymes.get(entry.frame.day)}
+                selected={!!selected && selected.frame.day === entry.frame.day}
+                onSelect={selectDay}
+              />
             ))}
           </div>
         </section>
       )}
+
+      {/* THE INVITATION */}
+      <section className="mx-auto mt-16 w-full max-w-3xl px-5 text-center sm:px-8">
+        <Link
+          to="/born"
+          className="font-display text-lg leading-snug text-gray-200 transition-colors hover:text-cyan-200 sm:text-xl"
+        >
+          Pick a day you remember — see what the ground remembers.{" "}
+          <span className="text-cyan-400/70">&rarr;</span>
+        </Link>
+      </section>
+
+      {/* THE DOORS — the same footer every sibling page shares */}
+      <div className="mx-auto w-full max-w-3xl px-5 pb-10 sm:px-8">
+        <InnerFooter />
+      </div>
     </div>
   );
 }

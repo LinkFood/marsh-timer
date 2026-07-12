@@ -67,11 +67,12 @@ export function InnerHeader({
 
 /**
  * The doors footer: every OTHER surface, offered as a quiet row of links (the
- * current page omitted). Centered flex-wrap so at 375px it degrades to two rows
- * instead of overflowing — never an ugly wrap.
+ * current page omitted; the front door passes no `current` and offers all
+ * five). Centered flex-wrap so at 375px it degrades to two rows instead of
+ * overflowing — never an ugly wrap.
  */
-export function InnerFooter({ current }: { current: DoorKey }) {
-  const doors = DOORS.filter((d) => d.key !== current);
+export function InnerFooter({ current }: { current?: DoorKey }) {
+  const doors = current ? DOORS.filter((d) => d.key !== current) : DOORS;
   return (
     <footer className="mt-10 border-t border-white/10 pt-5">
       <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-center font-mono text-[11px]">
