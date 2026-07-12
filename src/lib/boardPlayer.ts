@@ -411,10 +411,21 @@ function drawString(
   ctx.stroke();
 }
 
+/** Stable per-dot phase so the field breathes as fireflies, never a strobe. */
+function dotPhase(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 6283) / 1000; // 0..2π
+}
+
 function drawDot(
   ctx: CanvasRenderingContext2D,
   track: DotTrack,
   t: number,
+  nowMs: number,
 ) {
   const s = sampleTrack(track, t);
   const isNeedle = track.dot.kind === "needle";
@@ -422,23 +433,34 @@ function drawDot(
   // no-data → minimum ember, slightly dimmer
   const pct = s.dim ? 0.03 : clamp01(s.pct);
   const coreR = 1.5 + pct * pct * 22;
-  const glowR = coreR * 2.7 + (isNeedle ? 10 : 6);
   const dimK = s.dim ? 0.55 : 1;
+
+  // the breath: severity sets both depth and tempo. Quiet ground holds still;
+  // a reading deep in its tail breathes visibly and a record-deep one urgently.
+  let breath = 0;
+  if (!s.dim && pct >= 0.5) {
+    const depth = (pct - 0.5) / 0.5; // 0..1 over the deep half
+    const periodMs = 4200 - depth * 2600; // 4.2s gentle → 1.6s urgent
+    const amp = 0.1 + depth * 0.22;
+    breath = amp * Math.sin(nowMs / (periodMs / (2 * Math.PI)) + dotPhase(track.dot.id));
+  }
+  const glowR = (coreR * 2.7 + (isNeedle ? 10 : 6)) * (1 + breath * 0.2);
+  const breathK = 1 + breath;
 
   // soft outer glow (radial)
   const g = ctx.createRadialGradient(track.dot.x, track.dot.y, 0, track.dot.x, track.dot.y, glowR);
-  g.addColorStop(0, haloColor(pct, 0.5 * dimK, tint));
-  g.addColorStop(0.45, haloColor(pct, 0.18 * dimK, tint));
+  g.addColorStop(0, haloColor(pct, Math.min(1, 0.5 * dimK * breathK), tint));
+  g.addColorStop(0.45, haloColor(pct, Math.min(1, 0.18 * dimK * breathK), tint));
   g.addColorStop(1, haloColor(pct, 0, tint));
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.arc(track.dot.x, track.dot.y, glowR, 0, Math.PI * 2);
   ctx.fill();
 
-  // bright core
-  ctx.fillStyle = coreColor(pct, (0.85 + pct * 0.15) * dimK, tint);
+  // bright core (steadier than the halo — the ember glows, the light breathes)
+  ctx.fillStyle = coreColor(pct, Math.min(1, (0.85 + pct * 0.15) * dimK * (1 + breath * 0.35)), tint);
   ctx.beginPath();
-  ctx.arc(track.dot.x, track.dot.y, coreR, 0, Math.PI * 2);
+  ctx.arc(track.dot.x, track.dot.y, coreR * (1 + breath * 0.1), 0, Math.PI * 2);
   ctx.fill();
 
   // the needle is the sky, not the ground — a cool ring sets it apart
@@ -536,8 +558,8 @@ export function drawFrame(
   // dots on top; needle(s) last so the sky sits above the ground
   const ground = model.dots.filter((d) => d.dot.kind !== "needle");
   const sky = model.dots.filter((d) => d.dot.kind === "needle");
-  for (const d of ground) drawDot(ctx, d, t);
-  for (const d of sky) drawDot(ctx, d, t);
+  for (const d of ground) drawDot(ctx, d, t, nowMs);
+  for (const d of sky) drawDot(ctx, d, t, nowMs);
 }
 
 // ── Hit testing (for tap → overlay card) ──────────────────────────────────────

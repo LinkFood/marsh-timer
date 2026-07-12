@@ -272,7 +272,9 @@ export default function ConceptA() {
     return m;
   }, [selected]);
 
-  // Fit + draw the room's ground. One frame; redraw on resize or day change.
+  // Fit + draw the room's ground. The board breathes — deep readings pulse by
+  // severity (drawDot's per-dot breath), so the room runs a gentle ~30fps loop.
+  // Reduced-motion visitors get the single still frame.
   const refit = useCallback(() => {
     const canvas = canvasRef.current;
     const stage = stageRef.current;
@@ -288,8 +290,24 @@ export default function ConceptA() {
   useEffect(() => {
     refit();
     window.addEventListener("resize", refit);
-    return () => window.removeEventListener("resize", refit);
-  }, [refit]);
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0;
+    let last = 0;
+    const breathe = (now: number) => {
+      if (now - last >= 33) {
+        last = now;
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext("2d");
+        if (ctx && model) drawFrame(ctx, model, 0, now);
+      }
+      raf = requestAnimationFrame(breathe);
+    };
+    if (!still && model) raf = requestAnimationFrame(breathe);
+    return () => {
+      window.removeEventListener("resize", refit);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [refit, model]);
 
   const selectDay = useCallback((day: string) => {
     setSelectedDay(day);
