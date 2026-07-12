@@ -447,11 +447,12 @@ async function main() {
   // 4) Bloom — verified storm-event tally + the physical anchors.
   const tally = await stormTally(spec.bloomStates, spec.landfall);
   console.log(`\n${spec.bloomPlace} storm tally: ${tally.count} events · ${tally.deaths} deaths · $${tally.damage.toLocaleString()}`);
+  const money = (usd: number) => (usd >= 1e9 ? `$${(usd / 1e9).toFixed(1)}B` : `$${(usd / 1e6).toFixed(1)}M`);
   const blooms = [{
     date: spec.landfall,
     x: project(spec.bloomLatLng[0], spec.bloomLatLng[1]).x,
     y: project(spec.bloomLatLng[0], spec.bloomLatLng[1]).y,
-    label: `${spec.bloomPlace}: ${tally.count} recorded events · ${tally.deaths} deaths · $${(tally.damage / 1e6).toFixed(0)}M`,
+    label: `${spec.bloomPlace}: ${tally.count} recorded events · ${tally.deaths} deaths · ${money(tally.damage)}`,
   }];
 
   // 5) Strings — EARNED only (Uri gating): a thread tightens only when its source
