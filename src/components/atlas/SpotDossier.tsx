@@ -277,6 +277,20 @@ export interface ThatDayTide {
   residual_max_time_utc?: string | null;
   /** observed water level at peak (ft) */
   daily_max_ft?: number | null;
+  /** v1-era rows recorded daily MEANS, not maxima — rendered on their own terms */
+  residual_mean_ft?: number | null;
+  daily_mean_ft?: number | null;
+  /** 'daily-max' (v2 contract) | 'daily-mean' (v1 record) */
+  basis?: string | null;
+  provenance_url?: string | null;
+}
+
+export interface ThatDayQuake {
+  magnitude?: number | null;
+  place?: string | null;
+  event_time_utc?: string | null;
+  depth_km?: number | null;
+  felt?: number | null;
   provenance_url?: string | null;
 }
 
@@ -293,6 +307,7 @@ export interface ThatDayReport {
   /** severity-ranked (highest first) by the backend */
   events?: ThatDayEvent[] | null;
   tide?: ThatDayTide[] | null;
+  quakes?: ThatDayQuake[] | null;
   world?: ThatDayWorld[] | null;
   era_note?: string | null;
   honest_note?: string | null;
@@ -571,11 +586,12 @@ function AnomalyBadge({ anomaly }: { anomaly: AnomalyNow }) {
 function ThatDayBlock({ report }: { report: ThatDayReport }) {
   const events = report.events ?? [];
   const tide = report.tide ?? [];
+  const quakes = report.quakes ?? [];
   const world = report.world ?? [];
   const lede = report.weather ? thatDayWeatherLede(report.weather) : null;
 
   const hasContent =
-    !!lede || events.length > 0 || tide.length > 0 || world.length > 0;
+    !!lede || events.length > 0 || tide.length > 0 || quakes.length > 0 || world.length > 0;
   if (!hasContent) return null;
 
   return (
@@ -638,6 +654,33 @@ function ThatDayBlock({ report }: { report: ThatDayReport }) {
                 </a>
               )}
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Quakes — one composed line per event, magnitude-desc from the backend. */}
+      {quakes.length > 0 && (
+        <div className="space-y-1">
+          {quakes.map((q, i) => (
+            <p
+              key={`${q.place ?? "quake"}-${i}`}
+              className="text-[11px] leading-snug tabular-nums text-gray-400"
+            >
+              {quakeLine(q)}
+              {q.provenance_url && (
+                <>
+                  {" "}
+                  <a
+                    href={q.provenance_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-gray-600 underline decoration-white/20 underline-offset-2 transition-colors hover:text-gray-400"
+                  >
+                    source
+                  </a>
+                </>
+              )}
+            </p>
           ))}
         </div>
       )}
@@ -1286,11 +1329,39 @@ function tideLine(t: ThatDayTide): string {
   const r = t.residual_max_ft;
   if (r != null && Number.isFinite(r)) {
     s += `: ${signed(r, 2)} ft ${r >= 0 ? "above" : "below"} predicted tide`;
+    const hhmm = formatUtcHHMM(t.residual_max_time_utc);
+    if (hhmm) s += ` at ${hhmm} UTC`;
+    if (t.daily_max_ft != null && Number.isFinite(t.daily_max_ft)) {
+      s += ` (${t.daily_max_ft.toFixed(2)} ft water level)`;
+    }
+    return `${s}.`;
   }
-  const hhmm = formatUtcHHMM(t.residual_max_time_utc);
+  // v1-era record: daily means, not maxima — say so on its own terms.
+  const rm = t.residual_mean_ft;
+  if (rm != null && Number.isFinite(rm)) {
+    s += `: ${signed(rm, 2)} ft mean departure from predicted tide that day`;
+    if (t.daily_mean_ft != null && Number.isFinite(t.daily_mean_ft)) {
+      s += ` (${t.daily_mean_ft.toFixed(2)} ft mean water level)`;
+    }
+    return `${s} — daily-mean record.`;
+  }
+  if (t.daily_mean_ft != null && Number.isFinite(t.daily_mean_ft)) {
+    return `${s}: ${t.daily_mean_ft.toFixed(2)} ft mean water level — daily-mean record.`;
+  }
+  return `${s}.`;
+}
+
+/**
+ * One quake as a sentence.
+ * "M7.1 — Ridgecrest Earthquake Sequence at 03:19 UTC (depth 8 km)."
+ */
+function quakeLine(q: ThatDayQuake): string {
+  let s = q.magnitude != null ? `M${q.magnitude}` : "Quake";
+  if (q.place) s += ` — ${q.place}`;
+  const hhmm = formatUtcHHMM(q.event_time_utc);
   if (hhmm) s += ` at ${hhmm} UTC`;
-  if (t.daily_max_ft != null && Number.isFinite(t.daily_max_ft)) {
-    s += ` (${t.daily_max_ft.toFixed(2)} ft water level)`;
+  if (q.depth_km != null && Number.isFinite(q.depth_km)) {
+    s += ` (depth ${q.depth_km} km)`;
   }
   return `${s}.`;
 }

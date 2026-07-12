@@ -8,7 +8,9 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 //
 // Atlas map layer: earthquake points from the archive. This is the ONLY deep,
 // true-point layer — every quake carries metadata.lat / metadata.lng back to
-// 1990+ (USGS ComCat, content_type = 'earthquake-event').
+// 1900+ (USGS ComCat re-ingest, content_type = 'earthquake-event-v2': M4.5+ US,
+// event_time_utc + source_event_id on every row; the legacy 'earthquake-event'
+// layer had zero M7 rows and 2x-duplicated rows — never read it).
 //
 // GET params:
 //   minMag  number   default 4.0     magnitude floor
@@ -28,7 +30,7 @@ import { createSupabaseClient } from '../_shared/supabase.ts';
 // deletes, or runs DDL against the archive.
 // ---------------------------------------------------------------------------
 
-const CONTENT_TYPE = 'earthquake-event';
+const CONTENT_TYPE = 'earthquake-event-v2';
 const MAX_ROWS = 2000;
 const DEFAULT_MIN_MAG = 4.0;
 const DEFAULT_YEARS_BACK = 5;
@@ -110,7 +112,8 @@ serve(async (req) => {
       return errorResponse(req, `query failed: ${error.message}`, 500);
     }
 
-    // --- shape + dedup (archive contains some duplicate event rows) ---
+    // --- shape + dedup (USGS source_event_id is the true key; fall back to
+    // date|lat|lng|mag for any row without one) ---
     const seen = new Set<string>();
     const points: QuakePoint[] = [];
 
@@ -123,7 +126,9 @@ serve(async (req) => {
         continue; // never emit a point without a real lat/lng
       }
       const date = String((row as { effective_date?: string }).effective_date ?? '');
-      const key = `${date}|${lat}|${lng}|${magnitude}`;
+      const key = typeof m.source_event_id === 'string' && m.source_event_id
+        ? m.source_event_id
+        : `${date}|${lat}|${lng}|${magnitude}`;
       if (seen.has(key)) continue;
       seen.add(key);
 

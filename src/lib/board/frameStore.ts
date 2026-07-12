@@ -216,12 +216,12 @@ export function porchLine(day: string, resolved: ResolvedInstrument[], frame: Da
   let coda: string;
   if (forming) {
     coda = "Something is starting to line up.";
-  } else if (named.length === 0) {
+  } else if (deep.length === 0) {
     coda = "Nothing forming.";
-  } else if (named.length === 1) {
+  } else if (deep.length === 1) {
     coda = "One needle in its tail; nothing forming.";
   } else {
-    coda = `${named.length} readings deep in their tails; nothing forming yet.`;
+    coda = `${deep.length} readings deep in their tails; nothing forming yet.`;
   }
 
   return { lead, coda, swollen: named };

@@ -59,7 +59,13 @@ interface ThatDayResp2 {
   }[] | null;
   tide?: {
     station_name?: string; residual_max_ft?: number;
-    residual_max_time_utc?: string; daily_max_ft?: number; provenance_url?: string;
+    residual_max_time_utc?: string; daily_max_ft?: number;
+    residual_mean_ft?: number; daily_mean_ft?: number;
+    basis?: string; provenance_url?: string;
+  }[] | null;
+  quakes?: {
+    magnitude?: number; place?: string; event_time_utc?: string;
+    depth_km?: number; felt?: number; provenance_url?: string;
   }[] | null;
   world?: { title?: string; content?: string }[] | null;
   era_note?: string | null;
@@ -212,7 +218,18 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
             residual_max_ft: t.residual_max_ft ?? null,
             residual_max_time_utc: t.residual_max_time_utc ?? null,
             daily_max_ft: t.daily_max_ft ?? null,
+            residual_mean_ft: t.residual_mean_ft ?? null,
+            daily_mean_ft: t.daily_mean_ft ?? null,
+            basis: t.basis ?? null,
             provenance_url: t.provenance_url ?? null,
+          })),
+          quakes: (Array.isArray(spot.that_day.quakes) ? spot.that_day.quakes : []).map((q) => ({
+            magnitude: q.magnitude ?? null,
+            place: q.place ?? null,
+            event_time_utc: q.event_time_utc ?? null,
+            depth_km: q.depth_km ?? null,
+            felt: q.felt ?? null,
+            provenance_url: q.provenance_url ?? null,
           })),
           world: (Array.isArray(spot.that_day.world) ? spot.that_day.world : [])
             .filter((w) => w && w.title)

@@ -368,7 +368,7 @@ Deno.serve(async (req: Request) => {
       if (target.iso > archiveEdge) return null; // a future date has no recorded "that day"
       try {
         const dMinus3 = isoPlusDays(target.iso, -3);
-        const [wRes, eRes, tRes, oRes] = await Promise.all([
+        const [wRes, eRes, tRes, oRes, qRes] = await Promise.all([
           // weather — the requested date's OWN state ghcn-daily row
           supabase.from('hunt_knowledge')
             .select('content, metadata')
@@ -402,6 +402,15 @@ Deno.serve(async (req: Request) => {
             .eq('content_type', 'onthisday-event')
             .eq('effective_date', target.iso)
             .limit(10),
+          // quakes — the date's own earthquake-event-v2 rows (ComCat, M4.5+ US,
+          // event_time_utc on every row). Point events: same-day only.
+          supabase.from('hunt_knowledge')
+            .select('title, metadata')
+            .eq('content_type', 'earthquake-event-v2')
+            .eq('state_abbr', stateParam)
+            .eq('effective_date', target.iso)
+            .order('metadata->magnitude', { ascending: false, nullsFirst: false })
+            .limit(6),
         ]);
 
         // weather
@@ -453,14 +462,35 @@ Deno.serve(async (req: Request) => {
         const eventTypes = events.map((e) => e._event_type);
         for (const e of events) delete (e as Record<string, unknown>)._event_type;
 
-        // tide — all stations that day
+        // tide — all stations that day. v2 rows carry daily-MAX residuals; v1
+        // rows (pre-contract) recorded daily MEANS under different keys. A
+        // stored row must never render blank — surface the mean-basis reading
+        // honestly rather than deny data the archive holds.
         const tide = (tRes.data ?? []).map((r) => {
           const md = (r.metadata ?? {}) as Record<string, unknown>;
+          const hasMax = md.residual_max_ft != null || md.daily_max_ft != null;
+          const hasMean = md.residual_ft != null || md.daily_mean_ft != null;
           return {
             station_name: (md.station_name as string) ?? null,
             residual_max_ft: mnum(md.residual_max_ft),
             residual_max_time_utc: (md.residual_max_time_utc as string) ?? null,
             daily_max_ft: mnum(md.daily_max_ft),
+            residual_mean_ft: hasMax ? null : mnum(md.residual_ft),
+            daily_mean_ft: hasMax ? null : mnum(md.daily_mean_ft),
+            basis: hasMax ? 'daily-max' : hasMean ? 'daily-mean' : null,
+            provenance_url: (md.provenance_url as string) ?? null,
+          };
+        });
+
+        // quakes — the day's own seismic rows, magnitude-desc
+        const quakes = (qRes.data ?? []).map((r) => {
+          const md = (r.metadata ?? {}) as Record<string, unknown>;
+          return {
+            magnitude: mnum(md.magnitude),
+            place: (md.place as string) ?? (r.title as string) ?? null,
+            event_time_utc: (md.event_time_utc as string) ?? null,
+            depth_km: mnum(md.depth_km),
+            felt: mnum(md.felt),
             provenance_url: (md.provenance_url as string) ?? null,
           };
         });
@@ -485,16 +515,18 @@ Deno.serve(async (req: Request) => {
           date: target.iso,
           weather,
           events,
+          quakes,
           tide,
           world,
           era_note,
-          honest_note: `Searched the archive's own rows for ${target.iso} — ghcn-daily and storm-event for ${centroid.name}, this state's tide gauges, and worldwide onthisday-event — every line above traces to a stored row; blank fields mean no row on file for that date.`,
+          honest_note: `Searched the archive's own rows for ${target.iso} — ghcn-daily, storm-event, and earthquake rows for ${centroid.name}, this state's tide gauges, and worldwide onthisday-event — every line above traces to a stored row; blank fields mean no row on file for that date.`,
         };
       } catch (e) {
         return {
           date: target.iso,
           weather: null,
           events: [],
+          quakes: [],
           tide: [],
           world: [],
           era_note: null,
