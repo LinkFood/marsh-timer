@@ -131,12 +131,16 @@ serve(async (req) => {
     };
     const sideOf = (i: any, f: string): "low" | "high" | "last" => { const m = i.metrics.find((x: any) => x.field === f); return m.direction === "two-sided" ? "last" : m.direction; };
 
-    // state-temp — one query for ALL states in the window.
+    // state-temp — one query for ALL states in the window. ghcn-daily's backfill
+    // edge ends ~2025-12 (no current-year rows), so day-0 comes from
+    // hunt_weather_history (cron-fed daily, temp_high_f current through
+    // yesterday) — the same live-vs-GHCN-pool pattern the dossiers shipped
+    // 2026-07-08 (9efc29f). The LUT pools stay GHCN; both are state avg highs.
     const stateInsts = insts.filter((i: any) => i.source_ct === "ghcn-daily");
     if (stateInsts.length) {
       const byAbbr = new Map<string, any>(stateInsts.map((i: any) => [i.source_key.state_abbr, i]));
-      const rows = await restGet(`hunt_knowledge?content_type=eq.ghcn-daily&effective_date=gte.${winGte}&effective_date=lte.${todayIso}&select=effective_date,state_abbr,ah:metadata->>avg_high_f`, "ghcn window");
-      for (const r of rows) { const i = byAbbr.get(r.state_abbr); if (i) put(ensure(`${i.id}:avg_high_f`), r.effective_date, parseFloat(r.ah), "last"); }
+      const rows = await restGet(`hunt_weather_history?date=gte.${winGte}&date=lte.${todayIso}&select=date,state_abbr,temp_high_f`, "weather_history window");
+      for (const r of rows) { const i = byAbbr.get(r.state_abbr); if (i) put(ensure(`${i.id}:avg_high_f`), r.date, parseFloat(r.temp_high_f), "last"); }
     }
     // tide + buoy — one query each for the whole roster (station_id in-list).
     for (const [ct, fields] of [["tide-gauge", ["residual_max_ft", "residual_min_ft"]], ["ocean-buoy-historical", ["pressure_mb", "min_pressure_mb"]]] as const) {
