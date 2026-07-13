@@ -134,6 +134,7 @@ export interface MinePayload {
   };
   coverage: string[]; // honesty preamble lines
   controlYearGaps: { tier: string; controls: number; meanGap: number }[]; // epoch-matching audit
+  trendDiagnostics: { column: string; label: string; slopePerDecade: number; years: number }[]; // v1.1 detrend audit, sorted by |slope|
   tierCells: { family: string; region: string; tier: string; nEff: number; distinctYears: number; eligible: boolean }[];
   cellBaseRates: { cell: string; tier: string; nEff: number; baseRateDay: number; scanDays: number }[];
   totalTests: number;
@@ -249,6 +250,20 @@ export function renderReport(p: MinePayload): string {
     L.push(``);
   }
 
+  L.push(`## Detrend (v1.1 — the secular-trend confound removed at the source)`);
+  L.push(``);
+  L.push(
+    `Every slot's per-year mean pct was fit with a Theil–Sen robust trend and the trend subtracted from every day ` +
+      `(re-centered, clamped; see coverage note). The 10 steepest slopes removed — the confound's face:`
+  );
+  L.push(``);
+  L.push(`| slope (pct/decade) | slot | year-means fit |`);
+  L.push(`|--------------------|------|----------------|`);
+  for (const t of p.trendDiagnostics.slice(0, 10)) {
+    L.push(`| ${t.slopePerDecade >= 0 ? "+" : ""}${(t.slopePerDecade * 100).toFixed(2)}% | ${t.label} | ${t.years} |`);
+  }
+  L.push(``);
+
   L.push(`## The sweep`);
   L.push(``);
   L.push(
@@ -278,8 +293,14 @@ export function renderReport(p: MinePayload): string {
       `p ≈ 2e-49). Epoch-matched controls were then applied (this run) — and the honest receipt is that they DID NOT collapse the bar ` +
       `(daily: 1.23e-23 → 1.36e-23; daily null min 7.27e-48 → 5.44e-48). The achieved mean |year gap| above (~14y, not ~4y) says why: for ` +
       `dense national families the any-tier ±45d exclusion blocks virtually every nearby year, so the nearest CLEAN control years sit decades ` +
-      `away and the trend contrast survives epoch matching. The tide-dominated daily survivor list must therefore be read as trend-suspect: ` +
-      `every one is DECORATION by the near-miss law, and none is claims-eligible.`
+      `away and the trend contrast survived epoch matching (daily survivor list was 73/78 tide gauges, trend-suspect). ` +
+      `v1.1 DETREND (this run) then removed the LINEAR trend at the source — Theil–Sen per slot, see the Detrend section — with the daily bar at ` +
+      `1.36e-23 (null min 5.44e-48) going in. THE RECEIPT (seed 42): the bar did NOT collapse — it deepened (daily bar → 1.80e-26, daily null ` +
+      `min → 3.80e-58). A linear detrend removes the linear component; the permutation nulls show the remaining confound is NONLINEAR/decadal ` +
+      `structure (trend acceleration, regime steps, datum shifts) that year-permutation still converts into fake association at scale. Per the ` +
+      `v1.1 ruling this is where the machinery STOPS: the calibrated survivor list below must be read as structure-suspect, every survivor is ` +
+      `DECORATION by the near-miss law, none is claims-eligible, and the honest conclusion is that this archive's slow columns cannot currently ` +
+      `be separated from their own decadal structure by this design.`
   );
   L.push(``);
   L.push(

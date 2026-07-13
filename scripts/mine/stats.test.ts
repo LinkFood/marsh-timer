@@ -11,6 +11,7 @@ import {
   lift,
   cliffSweep,
   nearMissVerdict,
+  theilSen,
   seededRng,
 } from "./stats";
 
@@ -166,6 +167,47 @@ assert(tiny.verdict === "DECORATION", "huge ratio on 1 fire → DECORATION (p ga
 // Never-fired lookout is dead on arrival.
 const dead = nearMissVerdict({ fires: 0, followed: 0 }, { fires: 50, followed: 5 }, 0.05);
 assert(dead.verdict === "DECORATION" && dead.ratio === 0 && dead.p === 1, "zero fires → DECORATION");
+
+// ---------------------------------------------------------------------------
+console.log("theilSen");
+
+// Exact recovery on clean linear data: y = 2x + 1 over x = 0..9.
+{
+  const xs = Array.from({ length: 10 }, (_, i) => i);
+  const ys = xs.map((x) => 2 * x + 1);
+  const { slope, intercept } = theilSen(xs, ys);
+  approx(slope, 2, 1e-12, "clean line slope = 2");
+  approx(intercept, 1, 1e-12, "clean line intercept = 1");
+}
+
+// Robustness fixture (the reason it's Theil–Sen, not OLS): y = 0.5x + 3 over
+// x = 0..20 with two wrecked years (y[5] = 100, y[15] = −50). Only ~19% of
+// pairwise slopes are corrupted → the median slope stays exactly 0.5. OLS on
+// the same data gives slope ≈ −0.42 — the outliers would have set the trend.
+{
+  const xs = Array.from({ length: 21 }, (_, i) => i);
+  const ys = xs.map((x) => 0.5 * x + 3);
+  ys[5] = 100;
+  ys[15] = -50;
+  const { slope, intercept } = theilSen(xs, ys);
+  approx(slope, 0.5, 1e-9, "two-outlier slope stays 0.5");
+  approx(intercept, 3, 0.5, "two-outlier intercept ≈ 3");
+}
+
+// Constant series: slope 0, intercept = the constant.
+{
+  const { slope, intercept } = theilSen([1, 2, 3, 4], [7, 7, 7, 7]);
+  approx(slope, 0, 1e-12, "constant series slope = 0");
+  approx(intercept, 7, 1e-12, "constant series intercept = 7");
+}
+
+// Degenerate: no points → {0,0}; all-same-x → slope 0, intercept = median(y).
+{
+  const empty = theilSen([], []);
+  assert(empty.slope === 0 && empty.intercept === 0, "empty input → {0, 0}");
+  const sameX = theilSen([5, 5, 5], [1, 9, 2]);
+  assert(sameX.slope === 0 && sameX.intercept === 2, "all-same-x → slope 0, intercept median(y)", JSON.stringify(sameX));
+}
 
 // ---------------------------------------------------------------------------
 console.log("seededRng");

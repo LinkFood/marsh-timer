@@ -332,7 +332,49 @@ export function nearMissVerdict(
 }
 
 // ---------------------------------------------------------------------------
-// 7. Seeded PRNG
+// 7. Theil–Sen robust linear trend
+// ---------------------------------------------------------------------------
+
+/**
+ * Theil–Sen estimator: slope = median of all pairwise slopes
+ * (y_j − y_i)/(x_j − x_i) over pairs with x_j ≠ x_i; intercept =
+ * median(y_i − slope·x_i).
+ *
+ * Honesty rationale — THE DETREND LAW (v1.1): the secular-trend confound lives
+ * in the slot values themselves (tide-residual percentiles climb with sea-level
+ * rise across the 1950–2026 pools), and the correction must not let a few
+ * extreme years set the slope the way OLS would — one Katrina year would tilt
+ * the whole gauge. Median-of-slopes has a ~29% breakdown point and is exact on
+ * clean linear data.
+ *
+ * Degenerate inputs: n = 0 → {0, 0}; fewer than 2 distinct x values → slope 0,
+ * intercept = median(y) (no trend estimable, series left as-is up to centering).
+ */
+export function theilSen(xs: number[], ys: number[]): { slope: number; intercept: number } {
+  if (xs.length !== ys.length) {
+    throw new Error(`theilSen: xs (${xs.length}) and ys (${ys.length}) must be the same length`);
+  }
+  const n = xs.length;
+  if (n === 0) return { slope: 0, intercept: 0 };
+  const median = (arr: number[]): number => {
+    const s = [...arr].sort((a, b) => a - b);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  const slopes: number[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (xs[j] !== xs[i]) slopes.push((ys[j] - ys[i]) / (xs[j] - xs[i]));
+    }
+  }
+  if (slopes.length === 0) return { slope: 0, intercept: median(ys) };
+  const slope = median(slopes);
+  const intercept = median(ys.map((y, i) => y - slope * xs[i]));
+  return { slope, intercept };
+}
+
+// ---------------------------------------------------------------------------
+// 8. Seeded PRNG
 // ---------------------------------------------------------------------------
 
 /**
