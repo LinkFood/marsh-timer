@@ -17,7 +17,7 @@ RUN THESE CHECKS (record latency for every network call; >15s on a primary surfa
 6. DOSSIER HISTORY, rotating by weekday (Mon..Sun): Mon LA 2005-08-29 · Tue NY 2012-10-29 · Wed TX 2021-02-15 · Thu NY 2001-09-11 · Fri CA 2019-07-05 · Sat MD 1933-08-24 · Sun FL 1969-07-20. Call hunt-atlas-spot?state={S}&date={D}: that_day non-empty (weather, events, tide, or quakes), era_note present for pre-1996 dates, and cross-check 2–3 numbers against direct PostgREST reads of hunt_knowledge (e.g. an event's deaths against its stored row; a tide residual against its tide-gauge row). A number that disagrees with its own stored row is a FAIL.
 7. VISUAL: `node scripts/qa/shoot.mjs https://www.duckcountdown.com/ /tmp/dcd-qa-shot-phone.png 375 812` and `... /tmp/dcd-qa-shot-ledger.png 375 812 2600` — then READ both images. The first must show the thesis line, a porch sentence, and a lit board (not a black rectangle); the second must show legible ledger rows. Judge them with your eyes; a blank or broken render is a FAIL even if every API was green.
 
-OUTPUT — exactly two files (overwrite if present):
+OUTPUT — exactly two files (overwrite if present). All {date} stamps use the UTC date (`date -u +%Y-%m-%d`) so verdicts match the wrapper's report filenames:
 - `/tmp/dcd-qa-report.md` — full report: date header, verdict line, then a table (check | result ✅/⚠️/❌ | latency | evidence values), then a short "notable" section (anything drifting: latencies creeping up, rhyme quality, sentence variety). No keys, no secrets.
 - `/tmp/dcd-qa-verdict.txt` — ONE line: `✅ DCD QA {date}: all {N} checks green` or `❌ DCD QA {date}: {check names that failed} failed` or `⚠️ DCD QA {date}: {N} warnings`.
 
