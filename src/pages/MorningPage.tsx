@@ -52,6 +52,28 @@ interface WorldEvent {
   text: string;
 }
 
+/**
+ * THE GRADE — the published record of this day's line (morning_lines, anon
+ * read) and the verdict hunt-morning-grader ruled at +7 days. Product law:
+ * the product shows itself being graded, win or lose.
+ */
+interface LineRecord {
+  day: string;
+  basis: string;
+  grade: {
+    verdict: "CONFIRMED" | "MISSED" | "NO_CLAIM" | "UNGRADEABLE";
+    summary: string;
+    graded_at: string;
+  } | null;
+}
+
+const VERDICT_STYLE: Record<string, string> = {
+  CONFIRMED: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20",
+  MISSED: "bg-red-400/10 text-red-400 border-red-400/20",
+  NO_CLAIM: "bg-white/[0.04] text-white/40 border-white/10",
+  UNGRADEABLE: "bg-white/[0.04] text-white/40 border-white/10",
+};
+
 /** "1962: Pope John XXIII excommunicates Fidel Castro." → { year, text } */
 function parseWorldEvent(title: string, effectiveDate: string): WorldEvent | null {
   const clean = (title || "").trim();
@@ -71,12 +93,30 @@ function shortLabel(iso: string): string {
   return `${MONTHS[m - 1]} ${d}`;
 }
 
+function isoPlusDays(iso: string, days: number): string {
+  const dt = new Date(iso + "T00:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+/** The Morning Line publishes-and-persists since this day; earlier days have no record to grade. */
+const PUBLISH_ERA_START = "2026-07-05";
+
+/** Timestamp → the American day it happened on (product law: US Eastern, not UTC). */
+function etDayLabel(iso: string): string {
+  return shortLabel(
+    new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date(iso)),
+  );
+}
+
 export default function MorningPage() {
   const { date } = useParams<{ date?: string }>();
   const [line, setLine] = useState<MorningLine | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [world, setWorld] = useState<WorldEvent[]>([]);
+  const [record, setRecord] = useState<LineRecord | null>(null);
+  const [recent, setRecent] = useState<{ confirmed: number; missed: number; total: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,8 +182,60 @@ export default function MorningPage() {
     };
   }, [line?.date]);
 
+  // The grade lane — this day's published record + its verdict (anon read of
+  // morning_lines), and the last 30 graded lines for the quiet track-record
+  // line. The court's law on the flagship voice: graded win or lose.
+  useEffect(() => {
+    setRecord(null);
+    if (!supabase || !line?.date || line.date < PUBLISH_ERA_START) return;
+    let cancelled = false;
+    supabase
+      .from("morning_lines")
+      .select("day, basis, grade")
+      .eq("day", line.date)
+      .maybeSingle()
+      .then(({ data, error: qErr }) => {
+        if (cancelled || qErr || !data) return;
+        setRecord({ ...(data as LineRecord), day: String((data as LineRecord).day).slice(0, 10) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [line?.date]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    supabase
+      .from("morning_lines")
+      .select("grade")
+      .not("grade", "is", null)
+      .order("day", { ascending: false })
+      .limit(30)
+      .then(({ data, error: qErr }) => {
+        if (cancelled || qErr || !data || data.length === 0) return;
+        const grades = (data as { grade: { verdict: string } }[]).map((r) => r.grade?.verdict);
+        setRecent({
+          confirmed: grades.filter((v) => v === "CONFIRMED").length,
+          missed: grades.filter((v) => v === "MISSED").length,
+          total: grades.length,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const anomaly = line?.parts?.anomaly ?? null;
   const tideStation = line?.parts?.lineup?.tide_station ?? null;
+
+  const grade = record?.grade ?? null;
+  // An ungraded line in the publish era gets its court date named — the +7-day
+  // grading is a standing appointment, shown before the verdict exists.
+  const gradeDue =
+    line?.date && line.date >= PUBLISH_ERA_START && !grade
+      ? shortLabel(isoPlusDays(line.date, 7))
+      : null;
 
   const chips: string[] = [];
   if (anomaly) {
@@ -206,6 +298,40 @@ export default function MorningPage() {
               <p className="mt-9 max-w-2xl font-mono text-[11px] leading-relaxed text-gray-500">
                 {line.control_line}
               </p>
+            )}
+            {/* THE GRADE — the product grading its own published line, win or
+                lose (court idiom, kept quiet). Verdict when ruled; the court
+                date when not; the running record beneath. */}
+            {(grade || gradeDue) && (
+              <div className="mt-5 max-w-2xl border-l-2 border-white/10 pl-3">
+                {grade ? (
+                  <p className="font-mono text-[11px] leading-relaxed text-gray-500">
+                    This line was graded{" "}
+                    <span
+                      className={`inline-block rounded-full border px-2 py-px text-[9px] font-bold uppercase tracking-wider align-[1px] ${
+                        VERDICT_STYLE[grade.verdict] ?? VERDICT_STYLE.NO_CLAIM
+                      }`}
+                    >
+                      {grade.verdict.replace(/_/g, " ")}
+                    </span>{" "}
+                    on {etDayLabel(grade.graded_at)}
+                    {grade.summary ? <> &mdash; {grade.summary}</> : "."}
+                    {record?.basis === "recomputed" && (
+                      <span className="text-gray-600"> (line recomputed by the current engine)</span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="font-mono text-[11px] leading-relaxed text-gray-500">
+                    This line will be graded against what actually happens &mdash; {gradeDue}.
+                  </p>
+                )}
+                {recent && recent.total > 0 && (
+                  <p className="mt-1.5 font-mono text-[10px] text-gray-600">
+                    recent grades: {recent.confirmed} confirmed &middot; {recent.missed} missed of{" "}
+                    {recent.total} graded
+                  </p>
+                )}
+              </div>
             )}
             {chips.length > 0 && (
               <div className="mt-5 flex max-w-2xl flex-wrap gap-1.5">

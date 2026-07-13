@@ -645,6 +645,9 @@ verify_jwt = false
 [functions.hunt-morning-line]
 verify_jwt = false
 
+[functions.hunt-morning-grader]
+verify_jwt = false
+
 [functions.hunt-frame-daily]
 verify_jwt = false
 

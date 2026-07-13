@@ -2,8 +2,8 @@
 // heartbeat. One dated lede sentence about American ground, built entirely
 // from recorded fact, at a permanent address.
 //
-// READ-ONLY. Writes nothing, ever (surfaces never write). For a given date
-// (default: today in US Eastern), finds the most notable state — the largest |z|
+// READ-mostly. For a given date (default: today in US Eastern), finds the most
+// notable state — the largest |z|
 // weather anomaly with a scoreable baseline — via the already-deployed
 // hunt-atlas-anomaly, then pulls that state's lineup/rhyme/control via the
 // already-deployed hunt-atlas-spot. The line is TEMPLATED from those numbers:
@@ -19,9 +19,16 @@
 //     directly (not via the spot function's wall-clock "live" layer) so a past
 //     date's line stays stable when recomputed later.
 //   - Zero lineup matches is a valid line: "never in N recorded years."
+//
+// THE ONE WRITE (product law: the product shows itself being graded): the first
+// time a CURRENT-day line is composed (no explicit ?date param) it is persisted
+// to morning_lines — day PK, first write wins, never overwritten. That row is
+// the published record hunt-morning-grader rules on at +7 days. Dated
+// recomputes never write; the write is non-fatal to the response.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.84.0';
 import { handleCors, getCorsHeaders } from '../_shared/cors.ts';
+import { buildMorningLineRow } from '../_shared/morningLine.ts';
 
 const FLOOR_DATE = '1950-01-01';    // GHCN archive floor — no lines before it
 const MIN_HEADLINE_YEARS = 10;      // thin baselines can't fake a headline
@@ -270,7 +277,7 @@ Deno.serve(async (req: Request) => {
 
     const headline = lineupSentence ? `${lede} ${lineupSentence}` : lede;
 
-    return new Response(JSON.stringify({
+    const payload = {
       date: dateIso,
       date_label: fullDateLabel(dateIso),
       month_day_label: mdLabel,
@@ -335,7 +342,28 @@ Deno.serve(async (req: Request) => {
         tomorrow: dateIso < todayIso ? isoPlusDays(dateIso, 1) : null,
       },
       generated_at: new Date().toISOString(),
-    }), { status: 200, headers: jsonHeaders });
+    };
+
+    // ---- Persist the published line (current-day only, first write wins) ----
+    // No explicit ?date param = this is the line the day actually published.
+    // ignoreDuplicates keeps the first write as THE record — a later recompute
+    // of the same day (engine changes, data landing) never rewrites history.
+    // Non-fatal: the line still serves if the write fails.
+    if (!dateParam && payload.headline) {
+      try {
+        const row = buildMorningLineRow(payload as Record<string, unknown>, 'published');
+        if (row) {
+          const { error: persistErr } = await supabase
+            .from('morning_lines')
+            .upsert(row, { onConflict: 'day', ignoreDuplicates: true });
+          if (persistErr) console.error('morning_lines persist failed:', persistErr.message);
+        }
+      } catch (persistEx) {
+        console.error('morning_lines persist failed:', persistEx);
+      }
+    }
+
+    return new Response(JSON.stringify(payload), { status: 200, headers: jsonHeaders });
 
   } catch (e) {
     return new Response(JSON.stringify({
