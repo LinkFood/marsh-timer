@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily QA for duckcountdown.com — runs a headless claude -p QA agent locally
+  (real Chrome screenshots + service-role reads the cloud environment can't do),
+  commits the report to the qa-daily branch, posts a macOS notification.
+  Window: through 2026-07-19 (the wrapper self-expires).
+
+  Install:
+    cp scripts/qa/com.duckcountdown.daily-qa.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.duckcountdown.daily-qa.plist
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.duckcountdown.daily-qa
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.duckcountdown.daily-qa</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jameschellis/marsh-timer/scripts/qa/run-daily-qa.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/dcd-daily-qa.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/dcd-daily-qa.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
