@@ -88,6 +88,18 @@ function fmtDamage(usd: number): string {
   return `$${Math.round(usd).toLocaleString()}`;
 }
 
+/**
+ * Stitched titles sometimes carry machine date stamps ("Mid-Atlantic Heat
+ * Event, 2015-06-23" · "Tornado — O'BRIEN IA 1971-10-01"). The ledger speaks
+ * in dates already — strip the stamp, keep the name.
+ */
+function cleanEventTitle(title: string): string {
+  return title
+    .replace(/[,\s—–-]*\(?\d{4}-\d{2}-\d{2}\)?\s*$/, "")
+    .replace(/[,\s—–-]+$/, "")
+    .trim();
+}
+
 /** "What followed then: {title}, N days later — X dead, $Y.YB in damage." */
 function followedLine(f: RhymeFollowed): string {
   const when =
@@ -96,7 +108,7 @@ function followedLine(f: RhymeFollowed): string {
   if (f.deaths) toll.push(`${f.deaths} dead`);
   if (f.injuries) toll.push(`${f.injuries} injured`);
   if (f.damage_usd) toll.push(`${fmtDamage(f.damage_usd)} in damage`);
-  return `What followed then: ${f.title}, ${when}${toll.length ? ` — ${toll.join(", ")}` : ""}.`;
+  return `What followed then: ${cleanEventTitle(f.title)}, ${when}${toll.length ? ` — ${toll.join(", ")}` : ""}.`;
 }
 
 // ── The skeleton ground: dim US outline before any data arrives ────────────────
@@ -184,7 +196,7 @@ function LedgerRow({
       {rhyme && (
         <span className="mt-1 block font-mono text-[11px] leading-relaxed text-gray-500">
           read like {medDate(rhyme.rhyme_day)} &rarr;{" "}
-          {rhyme.followed ? rhyme.followed.title : "a quiet week followed"}
+          {rhyme.followed ? cleanEventTitle(rhyme.followed.title) : "a quiet week followed"}
         </span>
       )}
     </button>
