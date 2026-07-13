@@ -3,11 +3,12 @@
  * LOOKOUT MINE / THE NEAR-MISS LAW / THE SENTRY).
  *
  * Outcome-first retrodiction: anchor on every stitched OUTCOME (anchors.ts),
- * detrend every slot in RAM (Theil–Sen per-slot secular-trend removal — see the
- * detrendSlots block; the trend confound lives in the values themselves), then
- * walk every board column (frames.ts — 142 manifest slots + 2 moon pseudo-slots
- * + 1 board-energy depth column, all fed the detrended values) backward through
- * D-30..D0 vs seeded epoch-matched controls, Fisher-test every (cell × column × τ × k × lead)
+ * walk every board column (frames.ts — 142 RAW manifest slots + 2 moon
+ * pseudo-slots + 1 board-energy depth column; per-slot secular trends are
+ * MEASURED for the report but not removed — v1.2) backward through D-30..D0 vs
+ * seeded epoch-matched controls, with EPOCH-BLOCK permutation nulls (years
+ * shuffle only within fixed decade blocks, so nulls carry the real data's
+ * decadal structure — see shuffleAnchorYears), Fisher-test every (cell × column × τ × k × lead)
  * candidate, correct the ENTIRE sweep as ONE family — BH per spec as a
  * diagnostic, plus a shuffle-calibrated empirical FDR as the shipping filter
  * (see empiricalQValues: G2 proved window-level Fisher + BH admits year-
@@ -248,40 +249,28 @@ interface Column {
   scale: number; // 254 for slot/moon; 1 for depth (thr already in value units)
 }
 
-// ─── v1.1 DETREND (coordinator ruling 2026-07-12) ──────────────────────────────────
-// The secular-trend confound lives in the slot VALUES themselves (tide-residual
-// doy-percentiles climb with sea-level rise/subsidence across the 1950–2026 pools),
-// and epoch-matched controls could not neutralize it — the any-tier ±45d exclusion
-// leaves the nearest CLEAN control years ~14y away for dense families. So the trend
-// is removed at the source, in RAM, uniformly on ALL 142 slots (a slot with no
-// trend gets ~zero correction — no cherry-picking):
-//   1. per-year mean pct over the slot's readable days (doy-matched season is
-//      already baked into the percentiles), years with ≥30 readable days only;
-//   2. robust linear trend across years via Theil–Sen (stats.ts — a few extreme
-//      years must not set the slope the way OLS would);
-//   3. each day's pct −= fitted trend, re-centered on the slot's overall mean,
-//      clamped to [0,1], re-quantized to the byte scale. 255-nulls stay null.
-// Detrended values feed EVERYTHING — sweep, controls, FA scans, near-miss bands,
-// and the K=20 permutation nulls — never detrended real data against raw nulls.
-// Moon pseudo-slots are trend-free by construction; the depth column is
-// recomputed FROM the detrended slots so no raw byte leaks downstream.
-// CAVEAT for report copy: LUT inversions describe the slot's full-pool
-// climatology, so raw-unit sentences on detrended slots read as the mid-epoch
-// equivalent of the threshold.
+// ─── slot trend DIAGNOSTICS (v1.2 — measured, NOT removed) ─────────────────────────
+// v1.1 removed each slot's Theil–Sen linear trend from the data. Its receipt: the
+// daily calibration bar did NOT collapse (1.36e-23 → 1.80e-26; null min → 3.80e-58
+// — the residual confound is NONLINEAR/decadal), and uniform detrending blurred
+// real signals (AO-MAJOR's near-miss cliff, ratio 2.15, died to 1.83). v1.2
+// therefore fixes the NULL MODEL instead of the data (see shuffleAnchorYears:
+// epoch-block permutation) and the shipping sweep runs RAW slots. The Theil–Sen
+// trend measurement stays as COVERAGE HONESTY — the report prints each slot's
+// secular slope so a reader can see which instruments carry trend (tide gauges,
+// ±17%/decade at Grand Isle) — but no value is modified.
 interface TrendDiag {
   column: string;
   label: string;
   slopePerDecade: number; // pct/decade (Theil–Sen slope × 10)
   years: number; // year-means that fed the fit
 }
-const DETREND_MIN_DAYS_PER_YEAR = 30; // a year-mean needs a real sample
+const TREND_MIN_DAYS_PER_YEAR = 30; // a year-mean needs a real sample
 
-function detrendSlots(slotCols: Column[]): TrendDiag[] {
+function measureSlotTrends(slotCols: Column[]): TrendDiag[] {
   const diags: TrendDiag[] = [];
   for (const col of slotCols) {
     const byYear = new Map<number, { s: number; n: number }>();
-    let allS = 0;
-    let allN = 0;
     for (let d = 0; d < TOTAL_DAYS; d++) {
       const v = col.vals[d];
       if (v < 0) continue;
@@ -290,29 +279,20 @@ function detrendSlots(slotCols: Column[]): TrendDiag[] {
       if (!e) byYear.set(y, (e = { s: 0, n: 0 }));
       e.s += v / 254;
       e.n++;
-      allS += v / 254;
-      allN++;
     }
     const xs: number[] = [];
     const ys: number[] = [];
     for (const [y, e] of [...byYear.entries()].sort((a, b) => a[0] - b[0])) {
-      if (e.n >= DETREND_MIN_DAYS_PER_YEAR) {
+      if (e.n >= TREND_MIN_DAYS_PER_YEAR) {
         xs.push(y);
         ys.push(e.s / e.n);
       }
     }
-    if (xs.length < 2 || allN === 0) {
+    if (xs.length < 2) {
       diags.push({ column: col.id, label: col.label, slopePerDecade: 0, years: xs.length });
       continue;
     }
-    const { slope, intercept } = theilSen(xs, ys);
-    const overallMean = allS / allN;
-    for (let d = 0; d < TOTAL_DAYS; d++) {
-      const v = col.vals[d];
-      if (v < 0) continue;
-      const adj = v / 254 - (slope * YEAR_BY_IDX[d] + intercept) + overallMean;
-      col.vals[d] = Math.round(Math.min(1, Math.max(0, adj)) * 254);
-    }
+    const { slope } = theilSen(xs, ys);
     diags.push({ column: col.id, label: col.label, slopePerDecade: slope * 10, years: xs.length });
   }
   diags.sort(
@@ -350,10 +330,9 @@ function buildColumns(store: FrameStore): { cols: Column[]; trendDiags: TrendDia
     }
   }
 
-  // v1.1: remove each slot's secular trend IN PLACE before anything reads a byte —
-  // sweep, controls, FA, near-miss, nulls, and the depth column all see the same
-  // detrended values.
-  const trendDiags = detrendSlots(cols);
+  // v1.2: slots stay RAW (v1.1 receipt: detrending blurred real signals and did
+  // not collapse the bar). Trends are MEASURED for the report's honesty table.
+  const trendDiags = measureSlotTrends(cols);
 
   // Moon pseudo-slots: pseudo-pct = 1 − dist/(synodic/2), quantized to a byte so
   // they ride the same τ grid. τ=0.90 ⇔ within ~1.48d of new/full ("within-1.5-days").
@@ -371,7 +350,6 @@ function buildColumns(store: FrameStore): { cols: Column[]; trendDiags: TrendDia
   cols.push({ id: "moon:full", kind: "moon", cls: "moon", label: "Moon — proximity to FULL", instId: null, metric: null, side: null, taus: slotTaus, vals: mFull, scale: 254 });
 
   // Board-energy depth column: n slots ≥ 0.98 that day; τ grid on counts.
-  // Computed from the DETRENDED slot values (no raw byte leaks downstream).
   const depth = new Int16Array(TOTAL_DAYS).fill(-1);
   for (let d = 0; d < TOTAL_DAYS; d++) {
     let c = 0;
@@ -478,12 +456,43 @@ function controlD0s(anchor: EffectiveAnchor, blocked: Uint8Array, seed: number, 
 }
 
 // ─── year permutation: --shuffle (G2) AND the internal null calibration ──────────
+// v1.2 — EPOCH-BLOCK PERMUTATION (coordinator ruling 2026-07-12). The v1.1 receipt
+// proved the confound is NONLINEAR decadal structure that FREE year-permutation
+// converts into fake association (daily null min reached 3.8e-58). Fix the null
+// model, not the data: anchor years are permuted ONLY WITHIN fixed decade blocks —
+// 1990–99, 2000–09, 2010–19, 2020–26 (the last block is uneven, 7 years, because
+// the labeled era ends at the present) — so every null anchor keeps its decade and
+// the nulls carry the same decadal structure as the real data. Real-data
+// computation is untouched. Applies with the SAME discipline to the calibration
+// nulls and to G2's outer --shuffle. A block with ≤1 anchor permutes to itself
+// (degenerate) — counted and reported.
+const EPOCH_BLOCKS: [number, number][] = [
+  [1990, 1999],
+  [2000, 2009],
+  [2010, 2019],
+  [2020, 2026], // uneven last block — labeled era ends at the present
+];
+const blockOf = (y: number) => EPOCH_BLOCKS.findIndex(([lo, hi]) => y >= lo && y <= hi);
+
 function shuffleAnchorYears(effective: EffectiveAnchor[], seed: number, salt: string): EffectiveAnchor[] {
   const years = effective.map((e) => Number(e.d0.slice(0, 4)));
   const rng = seededRng(fnv(`${seed}|shuffle-anchor-years|${salt}`));
-  for (let i = years.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [years[i], years[j]] = [years[j], years[i]];
+  const byBlock = new Map<number, number[]>(); // block index → anchor indices
+  years.forEach((y, i) => {
+    const b = blockOf(y);
+    if (b < 0) return; // outside all blocks: year kept (degenerate by definition)
+    if (!byBlock.has(b)) byBlock.set(b, []);
+    byBlock.get(b)!.push(i);
+  });
+  for (const [, idxs] of [...byBlock.entries()].sort((a, b) => a[0] - b[0])) {
+    const labels = idxs.map((i) => years[i]);
+    for (let k = labels.length - 1; k > 0; k--) {
+      const j = Math.floor(rng() * (k + 1));
+      [labels[k], labels[j]] = [labels[j], labels[k]];
+    }
+    idxs.forEach((i, k) => {
+      years[i] = labels[k];
+    });
   }
   return effective.map((e, i) => {
     const y = years[i];
@@ -1111,6 +1120,27 @@ async function main() {
     if (cells.length === 0) throw new Error(`--family ${family}: no eligible cells`);
   }
   const families = [...new Set(cells.map((c) => c.family))].sort();
+  // v1.2 epoch-block census: sizes + degenerate blocks (≤1 anchor permutes to itself)
+  const blocks = EPOCH_BLOCKS.map(([lo, hi]) => {
+    const n = effective.filter((e) => {
+      const y = Number(e.d0.slice(0, 4));
+      return y >= lo && y <= hi;
+    }).length;
+    return { range: `${lo}-${hi}`, anchors: n, degenerate: n <= 1 };
+  });
+  const outsideBlocks = effective.length - blocks.reduce((s, b) => s + b.anchors, 0);
+  const degenerateAnchors = blocks.filter((b) => b.degenerate).reduce((s, b) => s + b.anchors, 0) + outsideBlocks;
+  const epochBlockStats = {
+    blocks,
+    outsideBlocks,
+    degenerateAnchors,
+    degeneratePct: effective.length > 0 ? degenerateAnchors / effective.length : 0,
+  };
+  console.log(
+    `[mine] epoch blocks: ` +
+      blocks.map((b) => `${b.range} ${b.anchors}${b.degenerate ? " (DEGENERATE)" : ""}`).join(" · ") +
+      ` | outside ${outsideBlocks} | degenerate anchors ${degenerateAnchors} (${(epochBlockStats.degeneratePct * 100).toFixed(1)}%)`
+  );
   console.log(
     `[mine] tiered cells: ` +
       TIERS.map((t) => `${t} ${cells.filter((c) => c.tier === t).length}`).join(" · ") +
@@ -1120,8 +1150,8 @@ async function main() {
   // 3. columns
   t0 = Date.now();
   const { cols, trendDiags } = buildColumns(store);
-  phase(`built ${cols.length} columns (142 slots + 2 moon + 1 depth), slots detrended (Theil–Sen per slot)`, t0);
-  console.log(`[mine] steepest secular trends removed (pct/decade):`);
+  phase(`built ${cols.length} columns (142 slots + 2 moon + 1 depth), RAW; trends measured (Theil–Sen per slot)`, t0);
+  console.log(`[mine] steepest secular trends MEASURED, not removed (pct/decade):`);
   for (const tdg of trendDiags.slice(0, 10)) {
     console.log(
       `[mine]   ${tdg.slopePerDecade >= 0 ? "+" : ""}${(tdg.slopePerDecade * 100).toFixed(2)}%/decade  ${tdg.label}  (${tdg.years} yr means)`
@@ -1348,14 +1378,15 @@ async function main() {
       `D0 candidates are computed and reported as DETECTORS — the outcome lives in the slots on D0; they are never lookouts.`,
       `Severity tiers: ALL (baseline) / SEVERE (deaths ≥1 or ≥$50M) / MAJOR (deaths ≥10 or ≥$250M), summed on the merged effective anchor. ` +
         `Tiered cells grade FA/near-miss follows against SAME-TIER-OR-WORSE outcomes only; control exclusion avoids anchors of ANY tier.`,
-      `v1.1 DETREND: every slot's secular trend is removed in-RAM before anything is swept — per-year mean pct (years with ≥30 readable days) → ` +
-        `Theil–Sen robust slope → subtract, re-center on the slot's overall mean, clamp [0,1]; applied uniformly to all 142 slots (trend-free slots ` +
-        `get ~zero correction); depth column recomputed from detrended slots; moon pseudo-slots trend-free by construction; 255-nulls stay null. ` +
-        `Detrended values feed the sweep, controls, FA scans, near-miss bands, AND the permutation nulls. Raw-unit LUT sentences on detrended ` +
-        `slots read as the MID-EPOCH equivalent of the threshold.`,
+      `v1.2 NULL MODEL: slots run RAW (v1.1's uniform detrend blurred real signals — AO's cliff died — and did not collapse the bar). ` +
+        `Instead the permutation nulls are EPOCH-BLOCKED: anchor years shuffle only within fixed decade blocks (1990–99, 2000–09, 2010–19, ` +
+        `2020–26 — last block uneven, the labeled era ends at the present), so nulls carry the same decadal structure as the real data and ` +
+        `secular-trend artifacts can no longer masquerade as signal. Per-slot Theil–Sen trends are still MEASURED and printed below as ` +
+        `coverage honesty — they are not removed.`,
       `v1.1 knob (skipped in v1 per ruling): state-scoped outcome columns in FA/near-miss grading for family×national tiered cells.`,
     ],
     controlYearGaps,
+    epochBlocks: epochBlockStats,
     trendDiagnostics: trendDiags,
     tierCells: allTierCells.map((c) => ({
       family: c.family,

@@ -134,7 +134,13 @@ export interface MinePayload {
   };
   coverage: string[]; // honesty preamble lines
   controlYearGaps: { tier: string; controls: number; meanGap: number }[]; // epoch-matching audit
-  trendDiagnostics: { column: string; label: string; slopePerDecade: number; years: number }[]; // v1.1 detrend audit, sorted by |slope|
+  trendDiagnostics: { column: string; label: string; slopePerDecade: number; years: number }[]; // measured slopes (NOT removed in v1.2), sorted by |slope|
+  epochBlocks: {
+    blocks: { range: string; anchors: number; degenerate: boolean }[];
+    outsideBlocks: number;
+    degenerateAnchors: number;
+    degeneratePct: number;
+  };
   tierCells: { family: string; region: string; tier: string; nEff: number; distinctYears: number; eligible: boolean }[];
   cellBaseRates: { cell: string; tier: string; nEff: number; baseRateDay: number; scanDays: number }[];
   totalTests: number;
@@ -250,11 +256,11 @@ export function renderReport(p: MinePayload): string {
     L.push(``);
   }
 
-  L.push(`## Detrend (v1.1 — the secular-trend confound removed at the source)`);
+  L.push(`## Trend diagnostics (measured, NOT removed — v1.2 runs raw slots with epoch-block nulls)`);
   L.push(``);
   L.push(
-    `Every slot's per-year mean pct was fit with a Theil–Sen robust trend and the trend subtracted from every day ` +
-      `(re-centered, clamped; see coverage note). The 10 steepest slopes removed — the confound's face:`
+    `Every slot's per-year mean pct was fit with a Theil–Sen robust trend for coverage honesty. The values are untouched; ` +
+      `the epoch-block null model (see the sweep section) is what neutralizes these trends. The 10 steepest slopes — the confound's face:`
   );
   L.push(``);
   L.push(`| slope (pct/decade) | slot | year-means fit |`);
@@ -262,6 +268,16 @@ export function renderReport(p: MinePayload): string {
   for (const t of p.trendDiagnostics.slice(0, 10)) {
     L.push(`| ${t.slopePerDecade >= 0 ? "+" : ""}${(t.slopePerDecade * 100).toFixed(2)}% | ${t.label} | ${t.years} |`);
   }
+  L.push(``);
+  L.push(
+    `Epoch blocks for the null permutation (years shuffle only WITHIN a block): ` +
+      p.epochBlocks.blocks.map((b) => `${b.range}: ${b.anchors} anchors${b.degenerate ? " (DEGENERATE — permutes to itself)" : ""}`).join(" · ") +
+      `${p.epochBlocks.outsideBlocks > 0 ? ` · outside all blocks: ${p.epochBlocks.outsideBlocks}` : ""}. ` +
+      `Degenerate-block anchors: ${p.epochBlocks.degenerateAnchors} (${(p.epochBlocks.degeneratePct * 100).toFixed(1)}%)` +
+      (p.epochBlocks.degeneratePct > 0.2
+        ? ` — **OVER THE 20% LINE: a large share of anchors cannot be meaningfully permuted, and the null is weakened accordingly.**`
+        : ` — well under the 20% line; the null permutes meaningfully.`)
+  );
   L.push(``);
 
   L.push(`## The sweep`);
@@ -294,13 +310,17 @@ export function renderReport(p: MinePayload): string {
       `(daily: 1.23e-23 → 1.36e-23; daily null min 7.27e-48 → 5.44e-48). The achieved mean |year gap| above (~14y, not ~4y) says why: for ` +
       `dense national families the any-tier ±45d exclusion blocks virtually every nearby year, so the nearest CLEAN control years sit decades ` +
       `away and the trend contrast survived epoch matching (daily survivor list was 73/78 tide gauges, trend-suspect). ` +
-      `v1.1 DETREND (this run) then removed the LINEAR trend at the source — Theil–Sen per slot, see the Detrend section — with the daily bar at ` +
-      `1.36e-23 (null min 5.44e-48) going in. THE RECEIPT (seed 42): the bar did NOT collapse — it deepened (daily bar → 1.80e-26, daily null ` +
-      `min → 3.80e-58). A linear detrend removes the linear component; the permutation nulls show the remaining confound is NONLINEAR/decadal ` +
-      `structure (trend acceleration, regime steps, datum shifts) that year-permutation still converts into fake association at scale. Per the ` +
-      `v1.1 ruling this is where the machinery STOPS: the calibrated survivor list below must be read as structure-suspect, every survivor is ` +
-      `DECORATION by the near-miss law, none is claims-eligible, and the honest conclusion is that this archive's slow columns cannot currently ` +
-      `be separated from their own decadal structure by this design.`
+      `v1.1 DETREND then removed the LINEAR trend at the source (Theil–Sen per slot) — receipt: the daily bar did NOT collapse ` +
+      `(1.36e-23 → 1.80e-26; daily null min → 3.80e-58) because the residual confound is NONLINEAR/decadal, and uniform detrending also ` +
+      `blurred real signals (AO-MAJOR's near-miss cliff, ratio 2.15, died to 1.83). v1.2 (this run) therefore reverts to RAW slots and fixes ` +
+      `the NULL MODEL instead: EPOCH-BLOCK permutation (years shuffle only within 1990–99 / 2000–09 / 2010–19 / 2020–26), so the nulls carry ` +
+      `the same decadal structure as the real data. THE v1.2 RECEIPT (seed 42): the expectation did NOT hold — the daily bar deepened again ` +
+      `(1.80e-26 → 3.09e-34; daily null min 6.00e-51) and the survivor list is still tide-dominated (Grand Isle 13 of 32). Even WITHIN-decade ` +
+      `permutation converts the tide instruments' structure (year-scale regimes, post-storm datum/gauge steps) into monster null p's, and no ` +
+      `honest candidate can clear a bar set by that physics. v1.2 CLOSES HERE per its own stopping rule: the survivor list below is ` +
+      `structure-suspect, every survivor is DECORATION by the near-miss law, none is claims-eligible, and the standing conclusion is that this ` +
+      `archive's trending instruments cannot be separated from their own internal structure by permutation design at any block width tried — ` +
+      `the next move, if any, is a new ruling, not more machinery.`
   );
   L.push(``);
   L.push(
