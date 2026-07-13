@@ -6,9 +6,10 @@
  * walk every board column (frames.ts — 142 RAW manifest slots + 2 moon
  * pseudo-slots + 1 board-energy depth column; per-slot secular trends are
  * MEASURED for the report but not removed — v1.2) backward through D-30..D0 vs
- * seeded epoch-matched controls, with EPOCH-BLOCK permutation nulls (years
- * shuffle only within fixed decade blocks, so nulls carry the real data's
- * decadal structure — see shuffleAnchorYears), Fisher-test every (cell × column × τ × k × lead)
+ * seeded epoch-matched controls, with CIRCULAR WHOLE-YEAR TIME-SHIFT nulls
+ * (each replicate rotates the entire frame store's day axis by an integer
+ * number of years, anchors fixed — see shiftColumns; permutation nulls, free
+ * and epoch-blocked, were retired by their own receipts), Fisher-test every (cell × column × τ × k × lead)
  * candidate, correct the ENTIRE sweep as ONE family — BH per spec as a
  * diagnostic, plus a shuffle-calibrated empirical FDR as the shipping filter
  * (see empiricalQValues: G2 proved window-level Fisher + BH admits year-
@@ -455,56 +456,47 @@ function controlD0s(anchor: EffectiveAnchor, blocked: Uint8Array, seed: number, 
     .sort((a, b) => a - b);
 }
 
-// ─── year permutation: --shuffle (G2) AND the internal null calibration ──────────
-// v1.2 — EPOCH-BLOCK PERMUTATION (coordinator ruling 2026-07-12). The v1.1 receipt
-// proved the confound is NONLINEAR decadal structure that FREE year-permutation
-// converts into fake association (daily null min reached 3.8e-58). Fix the null
-// model, not the data: anchor years are permuted ONLY WITHIN fixed decade blocks —
-// 1990–99, 2000–09, 2010–19, 2020–26 (the last block is uneven, 7 years, because
-// the labeled era ends at the present) — so every null anchor keeps its decade and
-// the nulls carry the same decadal structure as the real data. Real-data
-// computation is untouched. Applies with the SAME discipline to the calibration
-// nulls and to G2's outer --shuffle. A block with ≤1 anchor permutes to itself
-// (degenerate) — counted and reported.
-const EPOCH_BLOCKS: [number, number][] = [
-  [1990, 1999],
-  [2000, 2009],
-  [2010, 2019],
-  [2020, 2026], // uneven last block — labeled era ends at the present
-];
-const blockOf = (y: number) => EPOCH_BLOCKS.findIndex(([lo, hi]) => y >= lo && y <= hi);
+// ─── v1.3 NULL MODEL: circular whole-year time-shift (the LAST design family) ─────
+// Coordinator ruling 2026-07-12. Permutation nulls — free (v1.0/v1.1) and
+// epoch-blocked (v1.2) — were retired by their own receipts: any permutation of
+// anchor years scrambles the anchors against instruments whose internal structure
+// (secular trends, regimes, post-storm gauge/datum steps, autocorrelation) then
+// masquerades as alignment, driving null p's to 1e-48..1e-58 and burying honest
+// candidates. v1.3 replaces permutation entirely: each null replicate rotates the
+// ENTIRE frame store's day axis by one integer number of YEARS (uniform in
+// [5, 71], seeded, K=20; 2026 wraps to 1950; every slot shifts together), while
+// anchors stay fixed at their true dates. Whole-year rotation preserves (a) every
+// instrument's internal structure intact, (b) doy alignment — seasonality and the
+// doy-pool percentile semantics survive exactly, and (c) cross-instrument
+// correlation. The ONLY thing destroyed is instrument↔anchor alignment — which is
+// precisely the null hypothesis. The 1950–89 pre-anchor era does real work here
+// as rotation landing space. One seam per replicate (the partial 2026 abutting
+// 1950): days mapping into the store's missing tail read as nulls and the
+// null-guard machinery absorbs them — negligible against 27,952 days, noted in
+// the report. Implementation: an index remap per replicate materialized into
+// fresh column arrays (~8 MB, transient) so every downstream reader — tallies,
+// controls, FA scans, near-miss bands — is untouched and sees shifted frames
+// through the exact same code path.
+const SHIFT_MIN = 5;
+const SHIFT_MAX = 71; // uniform integer offset in [5, 71] years
 
-function shuffleAnchorYears(effective: EffectiveAnchor[], seed: number, salt: string): EffectiveAnchor[] {
-  const years = effective.map((e) => Number(e.d0.slice(0, 4)));
-  const rng = seededRng(fnv(`${seed}|shuffle-anchor-years|${salt}`));
-  const byBlock = new Map<number, number[]>(); // block index → anchor indices
-  years.forEach((y, i) => {
-    const b = blockOf(y);
-    if (b < 0) return; // outside all blocks: year kept (degenerate by definition)
-    if (!byBlock.has(b)) byBlock.set(b, []);
-    byBlock.get(b)!.push(i);
-  });
-  for (const [, idxs] of [...byBlock.entries()].sort((a, b) => a[0] - b[0])) {
-    const labels = idxs.map((i) => years[i]);
-    for (let k = labels.length - 1; k > 0; k--) {
-      const j = Math.floor(rng() * (k + 1));
-      [labels[k], labels[j]] = [labels[j], labels[k]];
-    }
-    idxs.forEach((i, k) => {
-      years[i] = labels[k];
-    });
+function shiftColumns(cols: Column[], offsetYears: number): Column[] {
+  const yearMin = YEAR_BY_IDX[0];
+  const yearSpan = YEAR_BY_IDX[TOTAL_DAYS - 1] - yearMin + 1;
+  const remap = new Int32Array(TOTAL_DAYS);
+  for (let d = 0; d < TOTAL_DAYS; d++) {
+    const iso = ISO_BY_IDX[d];
+    const m = Number(iso.slice(5, 7));
+    const dd = Number(iso.slice(8, 10));
+    const y2 = yearMin + ((YEAR_BY_IDX[d] - yearMin + offsetYears) % yearSpan);
+    const dd2 = m === 2 && dd === 29 && !isLeap(y2) ? 28 : dd;
+    const idx2 = idxOfIso(`${y2}-${pad2(m)}-${pad2(dd2)}`);
+    remap[d] = idx2 >= 0 && idx2 < TOTAL_DAYS ? idx2 : -1; // seam / partial-2026 tail → null
   }
-  return effective.map((e, i) => {
-    const y = years[i];
-    const [, m, d] = e.d0.split("-").map(Number);
-    const dd = m === 2 && d === 29 && !isLeap(y) ? 28 : d;
-    const d0 = `${y}-${pad2(m)}-${pad2(dd)}`;
-    const spanLen = Math.max(
-      0,
-      Math.round((Date.parse(`${e.span.end}T00:00:00Z`) - Date.parse(`${e.span.start}T00:00:00Z`)) / DAY_MS)
-    );
-    const end = new Date(Date.parse(`${d0}T00:00:00Z`) + spanLen * DAY_MS).toISOString().slice(0, 10);
-    return { ...e, d0, span: { start: d0, end } };
+  return cols.map((c) => {
+    const vals = new Int16Array(TOTAL_DAYS);
+    for (let d = 0; d < TOTAL_DAYS; d++) vals[d] = remap[d] >= 0 ? c.vals[remap[d]] : -1;
+    return { ...c, vals };
   });
 }
 
@@ -1108,11 +1100,8 @@ async function main() {
   initCalendar(store.days);
 
   // 2. shuffle (G2) — permute anchor years, rebuild cells from the permuted set
-  let effective = anchorSet.effective;
-  if (shuffle) {
-    effective = shuffleAnchorYears(effective, seed, "outer");
-    console.log(`[mine] G2 SHUFFLE MODE — anchor years permuted (seeded); expecting ≈0 calibrated survivors`);
-  }
+  // v1.3: anchors ALWAYS stay at their true dates — the null moves the frames.
+  const effective = anchorSet.effective;
   const allTierCells = buildTieredCells(effective);
   let cells = allTierCells.filter((c) => c.eligible);
   if (family) {
@@ -1120,27 +1109,6 @@ async function main() {
     if (cells.length === 0) throw new Error(`--family ${family}: no eligible cells`);
   }
   const families = [...new Set(cells.map((c) => c.family))].sort();
-  // v1.2 epoch-block census: sizes + degenerate blocks (≤1 anchor permutes to itself)
-  const blocks = EPOCH_BLOCKS.map(([lo, hi]) => {
-    const n = effective.filter((e) => {
-      const y = Number(e.d0.slice(0, 4));
-      return y >= lo && y <= hi;
-    }).length;
-    return { range: `${lo}-${hi}`, anchors: n, degenerate: n <= 1 };
-  });
-  const outsideBlocks = effective.length - blocks.reduce((s, b) => s + b.anchors, 0);
-  const degenerateAnchors = blocks.filter((b) => b.degenerate).reduce((s, b) => s + b.anchors, 0) + outsideBlocks;
-  const epochBlockStats = {
-    blocks,
-    outsideBlocks,
-    degenerateAnchors,
-    degeneratePct: effective.length > 0 ? degenerateAnchors / effective.length : 0,
-  };
-  console.log(
-    `[mine] epoch blocks: ` +
-      blocks.map((b) => `${b.range} ${b.anchors}${b.degenerate ? " (DEGENERATE)" : ""}`).join(" · ") +
-      ` | outside ${outsideBlocks} | degenerate anchors ${degenerateAnchors} (${(epochBlockStats.degeneratePct * 100).toFixed(1)}%)`
-  );
   console.log(
     `[mine] tiered cells: ` +
       TIERS.map((t) => `${t} ${cells.filter((c) => c.tier === t).length}`).join(" · ") +
@@ -1149,8 +1117,19 @@ async function main() {
 
   // 3. columns
   t0 = Date.now();
-  const { cols, trendDiags } = buildColumns(store);
+  let { cols, trendDiags } = buildColumns(store);
   phase(`built ${cols.length} columns (142 slots + 2 moon + 1 depth), RAW; trends measured (Theil–Sen per slot)`, t0);
+  // G2 (--shuffle): same circular-shift discipline as the calibration nulls — the
+  // "real" data becomes one seeded whole-year rotation of the store; nulls then
+  // rotate it further. Anchors and every other machine stay untouched.
+  let outerOffset: number | null = null;
+  if (shuffle) {
+    outerOffset = SHIFT_MIN + Math.floor(seededRng(fnv(`${seed}|outer-shift`))() * (SHIFT_MAX - SHIFT_MIN + 1));
+    cols = shiftColumns(cols, outerOffset);
+    console.log(
+      `[mine] G2 SHIFT MODE — frame store rotated by ${outerOffset} years (circular, seeded); expecting ≈0 calibrated survivors`
+    );
+  }
   console.log(`[mine] steepest secular trends MEASURED, not removed (pct/decade):`);
   for (const tdg of trendDiags.slice(0, 10)) {
     console.log(
@@ -1190,18 +1169,24 @@ async function main() {
   const bhSurvivors = rejected.filter(Boolean).length;
   phase(`BH one family (diagnostic): threshold p ≤ ${threshold.toExponential(3)}, ${bhSurvivors} BH survivors of ${tests.length}`, t0);
 
-  // 6b. CLASS-STRATIFIED permutation-calibrated FDR — K internal year-permuted
-  //     null sweeps; each candidate judged against its own class's null pool.
+  // 6b. CLASS-STRATIFIED shift-calibrated FDR — K circular whole-year time-shift
+  //     null replicates (v1.3); each candidate judged against its own class's
+  //     null pool. Anchors, cells, controls: the REAL ones — only the frame
+  //     lookup shifts. Fresh tally cache per replicate (tallies depend on the
+  //     shifted data).
   t0 = Date.now();
   const nullPoolsArr: Record<ColClass, number[]> = { daily: [], monthly: [], moon: [], depth: [] };
+  const offRng = seededRng(fnv(`${seed}|null-shift-offsets`));
+  const offsets: number[] = [];
   for (let j = 1; j <= K_NULL; j++) {
-    const nullEff = shuffleAnchorYears(effective, seed, `null-${j}`);
-    let nullCells = buildTieredCells(nullEff).filter((c) => c.eligible);
-    if (family) nullCells = nullCells.filter((c) => c.family === family);
-    const nullData = prepareCells(nullCells, nullEff, cols, seed, cache);
-    const { tests: nullTests } = runSweep(nullData, cols);
-    for (const nt of nullTests) nullPoolsArr[cols[nt.colIdx].cls].push(nt.p);
+    const offset = SHIFT_MIN + Math.floor(offRng() * (SHIFT_MAX - SHIFT_MIN + 1));
+    offsets.push(offset);
+    const shifted = shiftColumns(cols, offset);
+    const nullData = prepareCells(cells, effective, shifted, seed, new Map());
+    const { tests: nullTests } = runSweep(nullData, shifted);
+    for (const nt of nullTests) nullPoolsArr[shifted[nt.colIdx].cls].push(nt.p);
   }
+  console.log(`[mine] null shift offsets (years, seeded): ${offsets.join(", ")}`);
   const qvals = new Array<number>(tests.length).fill(1);
   const survivorIdx: number[] = [];
   const classStats: { cls: string; tests: number; nullTests: number; nullMinP: number; barP: number | null; survivors: number }[] = [];
@@ -1378,15 +1363,23 @@ async function main() {
       `D0 candidates are computed and reported as DETECTORS — the outcome lives in the slots on D0; they are never lookouts.`,
       `Severity tiers: ALL (baseline) / SEVERE (deaths ≥1 or ≥$50M) / MAJOR (deaths ≥10 or ≥$250M), summed on the merged effective anchor. ` +
         `Tiered cells grade FA/near-miss follows against SAME-TIER-OR-WORSE outcomes only; control exclusion avoids anchors of ANY tier.`,
-      `v1.2 NULL MODEL: slots run RAW (v1.1's uniform detrend blurred real signals — AO's cliff died — and did not collapse the bar). ` +
-        `Instead the permutation nulls are EPOCH-BLOCKED: anchor years shuffle only within fixed decade blocks (1990–99, 2000–09, 2010–19, ` +
-        `2020–26 — last block uneven, the labeled era ends at the present), so nulls carry the same decadal structure as the real data and ` +
-        `secular-trend artifacts can no longer masquerade as signal. Per-slot Theil–Sen trends are still MEASURED and printed below as ` +
-        `coverage honesty — they are not removed.`,
+      `v1.3 NULL MODEL: CIRCULAR WHOLE-YEAR TIME-SHIFT replicates replace permutation entirely. Each null rotates the whole frame store's day ` +
+        `axis by a seeded integer offset in [5, 71] years (2026 wraps to 1950; all slots shift together; anchors stay at their true dates). ` +
+        `Rotation preserves every instrument's internal structure (trends, regimes, datum steps, autocorrelation), doy/percentile semantics, ` +
+        `and cross-instrument correlation — destroying ONLY instrument↔anchor alignment, which is exactly the null hypothesis. One wrap seam ` +
+        `per replicate (partial 2026 abutting 1950) reads as nulls and is absorbed by the null guard — negligible against 27,952 days. The ` +
+        `1950–89 pre-anchor era serves as rotation landing space. Slots run RAW; per-slot Theil–Sen trends are MEASURED and printed below as ` +
+        `coverage honesty, not removed.`,
       `v1.1 knob (skipped in v1 per ruling): state-scoped outcome columns in FA/near-miss grading for family×national tiered cells.`,
     ],
     controlYearGaps,
-    epochBlocks: epochBlockStats,
+    nullModel: {
+      kind: "circular-whole-year-shift",
+      offsets,
+      outerOffset,
+      offsetRange: [SHIFT_MIN, SHIFT_MAX],
+      yearSpan: YEAR_BY_IDX[TOTAL_DAYS - 1] - YEAR_BY_IDX[0] + 1,
+    },
     trendDiagnostics: trendDiags,
     tierCells: allTierCells.map((c) => ({
       family: c.family,
@@ -1425,7 +1418,7 @@ async function main() {
   console.log(
     `tests ${tests.length} | calibrated survivors ${survivorIdx.length} ` +
       `(BH-as-specified would pass ${bhSurvivors} at p ≤ ${threshold.toExponential(3)} — anti-conservative under year clustering) | ` +
-      `null pool ${nullTestsTotal} p's from ${K_NULL} year-permuted sweeps, class-stratified`
+      `null pool ${nullTestsTotal} p's from ${K_NULL} circular whole-year shift replicates, class-stratified`
   );
   console.log(
     `per class: ` +
@@ -1443,8 +1436,8 @@ async function main() {
   );
   if (shuffle) {
     console.log(
-      `G2 SHUFFLE: calibrated survivor count = ${survivorIdx.length} (the mine's own honesty line — expect ≈0; ` +
-        `raw post-BH on the same shuffled anchors = ${bhSurvivors}, which is WHY BH could not be the shipping filter)`
+      `G2 SHIFT: calibrated survivor count = ${survivorIdx.length} (the mine's own honesty line — expect ≈0; ` +
+        `outer rotation ${outerOffset}y; raw post-BH on the same shifted store = ${bhSurvivors}, which is WHY BH could not be the shipping filter)`
     );
   }
   if (g1.ran) {

@@ -134,12 +134,13 @@ export interface MinePayload {
   };
   coverage: string[]; // honesty preamble lines
   controlYearGaps: { tier: string; controls: number; meanGap: number }[]; // epoch-matching audit
-  trendDiagnostics: { column: string; label: string; slopePerDecade: number; years: number }[]; // measured slopes (NOT removed in v1.2), sorted by |slope|
-  epochBlocks: {
-    blocks: { range: string; anchors: number; degenerate: boolean }[];
-    outsideBlocks: number;
-    degenerateAnchors: number;
-    degeneratePct: number;
+  trendDiagnostics: { column: string; label: string; slopePerDecade: number; years: number }[]; // measured slopes (NOT removed), sorted by |slope|
+  nullModel: {
+    kind: string; // "circular-whole-year-shift"
+    offsets: number[]; // the K seeded rotation offsets (years) — part of determinism
+    outerOffset: number | null; // --shuffle mode's outer rotation (null in real runs)
+    offsetRange: [number, number];
+    yearSpan: number;
   };
   tierCells: { family: string; region: string; tier: string; nEff: number; distinctYears: number; eligible: boolean }[];
   cellBaseRates: { cell: string; tier: string; nEff: number; baseRateDay: number; scanDays: number }[];
@@ -256,11 +257,12 @@ export function renderReport(p: MinePayload): string {
     L.push(``);
   }
 
-  L.push(`## Trend diagnostics (measured, NOT removed — v1.2 runs raw slots with epoch-block nulls)`);
+  L.push(`## Trend diagnostics (measured, NOT removed — v1.3 runs raw slots with circular-shift nulls)`);
   L.push(``);
   L.push(
     `Every slot's per-year mean pct was fit with a Theil–Sen robust trend for coverage honesty. The values are untouched; ` +
-      `the epoch-block null model (see the sweep section) is what neutralizes these trends. The 10 steepest slopes — the confound's face:`
+      `the circular whole-year shift null model (see below) carries these trends into the nulls intact, so they can no longer ` +
+      `masquerade as signal. The 10 steepest slopes — the confound's face:`
   );
   L.push(``);
   L.push(`| slope (pct/decade) | slot | year-means fit |`);
@@ -270,13 +272,11 @@ export function renderReport(p: MinePayload): string {
   }
   L.push(``);
   L.push(
-    `Epoch blocks for the null permutation (years shuffle only WITHIN a block): ` +
-      p.epochBlocks.blocks.map((b) => `${b.range}: ${b.anchors} anchors${b.degenerate ? " (DEGENERATE — permutes to itself)" : ""}`).join(" · ") +
-      `${p.epochBlocks.outsideBlocks > 0 ? ` · outside all blocks: ${p.epochBlocks.outsideBlocks}` : ""}. ` +
-      `Degenerate-block anchors: ${p.epochBlocks.degenerateAnchors} (${(p.epochBlocks.degeneratePct * 100).toFixed(1)}%)` +
-      (p.epochBlocks.degeneratePct > 0.2
-        ? ` — **OVER THE 20% LINE: a large share of anchors cannot be meaningfully permuted, and the null is weakened accordingly.**`
-        : ` — well under the 20% line; the null permutes meaningfully.`)
+    `Null model (v1.3): ${p.nullModel.kind} — each replicate rotates the whole store by an integer year offset in ` +
+      `[${p.nullModel.offsetRange[0]}, ${p.nullModel.offsetRange[1]}] over a ${p.nullModel.yearSpan}-year span, anchors fixed. ` +
+      `Offsets used (seeded, part of determinism): ${p.nullModel.offsets.join(", ")}` +
+      (p.nullModel.outerOffset !== null ? ` · outer G2 rotation: ${p.nullModel.outerOffset}y` : "") +
+      `. One wrap seam per replicate (partial 2026 abutting 1950) reads as nulls — negligible against the store's ${"27,952"} days.`
   );
   L.push(``);
 
@@ -285,9 +285,9 @@ export function renderReport(p: MinePayload): string {
   L.push(
     `- **${T.toLocaleString("en-US")} tests**, ONE family. BH at q=${p.params.bhQ} (threshold p ≤ ${sci(p.bhThresholdP)}) would pass ` +
       `**${p.bhSurvivors}** — but window-level Fisher is anti-conservative here (slow columns make same-year windows perfectly correlated; ` +
-      `the year-permutation shuffle proved BH admits noise wholesale). The SHIPPING q is a **class-stratified, shuffle-calibrated empirical FDR**: ` +
-      `${p.calibration.nullSweeps} seeded year-permuted null sweeps; each candidate is judged against its OWN column class's null pool ` +
-      `(classes fixed a priori by data resolution — pooling had forced daily columns to clear the monthly needles' regime-noise bar). ` +
+      `the null replicates prove BH admits noise wholesale). The SHIPPING q is a **class-stratified, shift-calibrated empirical FDR**: ` +
+      `${p.calibration.nullSweeps} seeded circular whole-year time-shift replicates (structure-preserving — see the null-model note above); ` +
+      `each candidate is judged against its OWN column class's null pool (classes fixed a priori by data resolution). ` +
       `A candidate survives iff its class's nulls say its p-level carries ≤${p.params.bhQ} expected false fraction.`
   );
   L.push(``);
@@ -313,14 +313,17 @@ export function renderReport(p: MinePayload): string {
       `v1.1 DETREND then removed the LINEAR trend at the source (Theil–Sen per slot) — receipt: the daily bar did NOT collapse ` +
       `(1.36e-23 → 1.80e-26; daily null min → 3.80e-58) because the residual confound is NONLINEAR/decadal, and uniform detrending also ` +
       `blurred real signals (AO-MAJOR's near-miss cliff, ratio 2.15, died to 1.83). v1.2 (this run) therefore reverts to RAW slots and fixes ` +
-      `the NULL MODEL instead: EPOCH-BLOCK permutation (years shuffle only within 1990–99 / 2000–09 / 2010–19 / 2020–26), so the nulls carry ` +
-      `the same decadal structure as the real data. THE v1.2 RECEIPT (seed 42): the expectation did NOT hold — the daily bar deepened again ` +
-      `(1.80e-26 → 3.09e-34; daily null min 6.00e-51) and the survivor list is still tide-dominated (Grand Isle 13 of 32). Even WITHIN-decade ` +
-      `permutation converts the tide instruments' structure (year-scale regimes, post-storm datum/gauge steps) into monster null p's, and no ` +
-      `honest candidate can clear a bar set by that physics. v1.2 CLOSES HERE per its own stopping rule: the survivor list below is ` +
-      `structure-suspect, every survivor is DECORATION by the near-miss law, none is claims-eligible, and the standing conclusion is that this ` +
-      `archive's trending instruments cannot be separated from their own internal structure by permutation design at any block width tried — ` +
-      `the next move, if any, is a new ruling, not more machinery.`
+      `the NULL MODEL: EPOCH-BLOCK permutation (v1.2, years shuffled only within decade blocks) — receipt: the expectation did NOT hold, the ` +
+      `daily bar deepened again (1.80e-26 → 3.09e-34; daily null min 6.00e-51) and survivors stayed tide-dominated. Even within-decade ` +
+      `permutation converts gauge regime/datum structure into monster nulls: ANY permutation scrambles anchors against instruments whose ` +
+      `internal structure then masquerades as alignment. v1.3 (this run, the LAST design family for this archive generation) therefore retires ` +
+      `permutation entirely for CIRCULAR WHOLE-YEAR TIME-SHIFT nulls: the frame store rotates as one piece (offsets above), anchors stay true, ` +
+      `every instrument keeps its trends, regimes, steps, and autocorrelation intact — only instrument↔anchor alignment dies, which IS the ` +
+      `null hypothesis. THE v1.3 RECEIPT (seed 42): under the structure-preserving null the pools deepen past everything the real data holds — ` +
+      `null min p ≈ 1.45e-133 (daily), 6.36e-54 (monthly), 1.12e-75 (depth) — and ZERO candidates survive calibration in any class or tier. ` +
+      `Every association previously mined from this archive, the tide monsters and AO's FUSION-shaped MAJOR cliff alike, is indistinguishable ` +
+      `from what a causally unrelated rotation of the same instruments produces against the same anchor calendar. See the Closing section — ` +
+      `this is the final standing conclusion for this archive generation.`
   );
   L.push(``);
   L.push(
@@ -382,6 +385,24 @@ export function renderReport(p: MinePayload): string {
   } else {
     L.push(`### G1 — not run in this mode (${p.params.shuffle ? "shuffle" : "family filter excludes winter"})`);
   }
+  L.push(``);
+
+  L.push(`## Closing — the standing conclusion for this archive generation (v1.3, FINAL)`);
+  L.push(``);
+  L.push(
+    `Three null-model families were tried, each forced by the previous one's receipt: free year-permutation (v1.0/v1.1), ` +
+      `epoch-block permutation (v1.2), and the canonical structure-preserving null — circular whole-year rotation of the entire frame ` +
+      `store (v1.3). Under rotation, where every instrument keeps its trends, regimes, datum steps, and autocorrelation and only the ` +
+      `instrument↔anchor alignment is destroyed, nothing in this archive clears the bar: zero calibrated survivors in every class and tier. ` +
+      `The honest reading, in order: (1) the tide lane needs either LONGER RECORDS or EVENT-AWARE DATUM CORRECTION before lookout mining can ` +
+      `trust it — its internal structure aligns with any dense anchor calendar wherever it lands; (2) the anchor calendar is dense enough ` +
+      `that alignment-by-structure is cheap for every slow or trending column; (3) the real lookout signal, if present (AO's MAJOR-tier ` +
+      `roll call remains meteorologically real: ratio 2.15 at its cliff, Feb-2010/Dec-2010/Uri/Dec-2022 all fired, Jan-1977 and Feb-1978 ` +
+      `in the unlabeled era), sits below what ~36 labeled years can certify against a sweep of this breadth. ` +
+      `THE MINE GOES DORMANT PENDING NEW SUBSTRATE — no further design rulings on this archive generation. The machinery is proven and ` +
+      `waiting: deterministic (G3), self-honest on null input (G2), near-miss-disciplined, every design iteration's receipt preserved above. ` +
+      `When longer records, corrected tide series, or a deeper labeled era arrive, point it at them and re-run the gates.`
+  );
   L.push(``);
 
   return L.join("\n");
