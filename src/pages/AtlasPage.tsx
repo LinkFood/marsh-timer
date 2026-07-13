@@ -1,50 +1,164 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
-import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from "@/components/EventMap";
-import { fetchStateAnomaly, colorForZ, QUIET_COLOR } from "@/lib/atlas/stateChoropleth";
+import { STATE_SHAPES, ATLAS_PROJECTION } from "@/data/atlas/stateShapesAlbers";
+import { fetchStateAnomalyResponse } from "@/lib/atlas/stateChoropleth";
 import { STATE_CENTROIDS } from "@/data/atlas/stateCentroids";
-import { STATE_NAMES, projectToTile } from "@/data/atlas/stateBBoxes";
+import { STATE_NAMES } from "@/data/atlas/stateBBoxes";
 import SpotDossier, { type SpotData } from "@/components/atlas/SpotDossier";
 import { toSpotData } from "@/lib/atlas/spotDossierAdapter";
 import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase";
 
 /**
  * ATLAS — the ground you stand on (docs/THE-VISION-AND-ROADMAP.md).
- * NESTED BOXES, not a dot-scatter: the US as a calm grid of state boxes, each
- * shaded by what it's doing NOW (anomaly vs its own history).
  *
- * THE DESCENT (Double Fall plan, item 2): tapping a state no longer mounts a
- * card — it moves a CAMERA. The SVG viewBox rAF-tweens (ease-out cubic) into
- * the tapped tile while the other 49 states dim to 15%. The landing stage
- * carries the full state name in Playfair with its anomaly z engraved
- * quietly; the dossier lands as a consequence. Esc or tapping the dimmed
- * periphery surfaces back out. prefers-reduced-motion: instant cut.
+ * ONE grammar with the front door: the same 975x610 Albers USA ground the
+ * board films use (src/data/atlas/stateShapesAlbers.ts registers exactly with
+ * conusBorders), each state tinted by what it's doing NOW — amber running
+ * hot, ice running cold, near-invisible when normal. Same hue discipline as
+ * boardPlayer's ember tints.
  *
- * THE SONAR RING: when the camera lands, one silent pulse blooms at a real
- * historical storm event inside the state (hunt-atlas-storms — read-only over
- * the 1.5M-row storm-event archive), anchored by a dashed leader to one dated
- * sentence with the denominator. The tile is an abbreviation box, so the
- * event's lat/lng is placed PROPORTIONALLY via the state's bbox — a located
- * memory at state altitude, and labeled as such.
+ * THE DESCENT: tapping a state moves a CAMERA — the SVG viewBox rAF-tweens
+ * (ease-out cubic) into the state's real geography while the other states dim.
+ * Neighbors stay visible as map geography, not letter tiles. The reading lands
+ * as a composed sentence under the map ("Maryland is about normal today —
+ * +0.3σ against its own 76 Julys"), speaking the porch-clause vocabulary
+ * (pinned / deep / leaning / about normal) so the two surfaces sound the same.
+ * One recorded storm surfaces as a quiet caption with its denominator; the
+ * dossier lands as a consequence. Esc or tapping outside surfaces back out.
+ * prefers-reduced-motion: instant cut.
  *
- * Reliable SVG (no WebGL). Read-only. The hunter operates it; the kid
- * marvels at it.
+ * Reliable SVG (no WebGL). Read-only. The hunter operates it; the kid marvels.
  */
 const APIKEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+
+const VIEW_W = ATLAS_PROJECTION.width;
+const VIEW_H = ATLAS_PROJECTION.height;
 
 async function getJson(url: string): Promise<Record<string, unknown>> {
   const res = await fetch(url, { headers: { apikey: APIKEY, Authorization: `Bearer ${APIKEY}` } });
   return res.json();
 }
 
-function anomalyPhrase(z: number | undefined): string {
-  if (z === undefined) return "no reading here today";
-  if (z >= 2) return `much warmer than normal (z +${z.toFixed(1)})`;
-  if (z >= 1) return `warmer than normal (z +${z.toFixed(1)})`;
-  if (z <= -2) return `much colder than normal (z ${z.toFixed(1)})`;
-  if (z <= -1) return `colder than normal (z ${z.toFixed(1)})`;
-  return `about normal (z ${z >= 0 ? "+" : ""}${z.toFixed(1)})`;
+// ---------------------------------------------------------------------------
+// Ground geometry — per-state paths, bboxes, centers (module-level, computed once)
+// ---------------------------------------------------------------------------
+interface StateGeo {
+  abbr: string;
+  d: string; // SVG path
+  rings: readonly (readonly number[])[];
+  bbox: [number, number, number, number]; // minX, minY, maxX, maxY
+  cx: number;
+  cy: number;
+}
+
+const STATE_GEO: Record<string, StateGeo> = {};
+for (const [abbr, rings] of Object.entries(STATE_SHAPES)) {
+  let d = "";
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const ring of rings) {
+    d += `M${ring[0]} ${ring[1]}`;
+    for (let i = 2; i < ring.length; i += 2) d += `L${ring[i]} ${ring[i + 1]}`;
+    d += "Z";
+    for (let i = 0; i < ring.length; i += 2) {
+      if (ring[i] < minX) minX = ring[i];
+      if (ring[i] > maxX) maxX = ring[i];
+      if (ring[i + 1] < minY) minY = ring[i + 1];
+      if (ring[i + 1] > maxY) maxY = ring[i + 1];
+    }
+  }
+  STATE_GEO[abbr] = {
+    abbr,
+    d,
+    rings,
+    bbox: [minX, minY, maxX, maxY],
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+  };
+}
+
+/** Even-odd point-in-polygon across all of a state's rings. */
+function pointInState(geo: StateGeo, x: number, y: number): boolean {
+  const [minX, minY, maxX, maxY] = geo.bbox;
+  if (x < minX || x > maxX || y < minY || y > maxY) return false;
+  let inside = false;
+  for (const ring of geo.rings) {
+    const n = ring.length;
+    for (let i = 0, j = n - 2; i < n; j = i, i += 2) {
+      const xi = ring[i], yi = ring[i + 1];
+      const xj = ring[j], yj = ring[j + 1];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Which state a projection-space point lands in; falls back to the nearest
+ *  state center within `near` projection px (small-state tap forgiveness). */
+function hitState(x: number, y: number, near: number): string | null {
+  for (const geo of Object.values(STATE_GEO)) {
+    if (pointInState(geo, x, y)) return geo.abbr;
+  }
+  let best: string | null = null;
+  let bestD = near;
+  for (const geo of Object.values(STATE_GEO)) {
+    const d = Math.hypot(geo.cx - x, geo.cy - y);
+    if (d < bestD) {
+      bestD = d;
+      best = geo.abbr;
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// The ember tint — same hue discipline as boardPlayer (amber hot, ice cold),
+// near-invisible when normal so the quiet ground stays quiet.
+// ---------------------------------------------------------------------------
+const Z_FLOOR = 0.35; // below this a state shows nothing
+const Z_CEIL = 3;
+const QUIET_FILL = "rgba(255,255,255,0.015)";
+
+function fillForZ(z: number | undefined): string {
+  if (z === undefined) return QUIET_FILL;
+  const mag = Math.min(Z_CEIL, Math.abs(z));
+  if (mag < Z_FLOOR) return QUIET_FILL;
+  const t = (mag - Z_FLOOR) / (Z_CEIL - Z_FLOOR);
+  const a = 0.07 + t * 0.48;
+  return z > 0 ? `rgba(255,176,96,${a.toFixed(3)})` : `rgba(148,196,255,${a.toFixed(3)})`;
+}
+
+// ---------------------------------------------------------------------------
+// The porch-clause vocabulary — the atlas speaks like the front door.
+// ---------------------------------------------------------------------------
+const FULL_MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function sigmaStr(z: number): string {
+  return `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}σ`;
+}
+
+/** "is pinned hot today" / "sits deep in its cold tail today" / ... */
+function magnitudeClause(z: number): string {
+  const warm = z >= 0;
+  const mag = Math.abs(z);
+  if (mag >= 2.5) return `is pinned ${warm ? "hot" : "cold"} today`;
+  if (mag >= 1.5) return `sits deep in its ${warm ? "warm" : "cold"} tail today`;
+  if (mag >= 0.75) return `is leaning ${warm ? "warm" : "cool"} today`;
+  return "is about normal today";
+}
+
+/** Short form for the hover readout. */
+function magnitudeWord(z: number | undefined): string {
+  if (z === undefined) return "no reading today";
+  const warm = z >= 0;
+  const mag = Math.abs(z);
+  if (mag >= 2.5) return `pinned ${warm ? "hot" : "cold"}`;
+  if (mag >= 1.5) return `deep in its ${warm ? "warm" : "cold"} tail`;
+  if (mag >= 0.75) return `leaning ${warm ? "warm" : "cool"}`;
+  return "about normal";
 }
 
 // ---------------------------------------------------------------------------
@@ -53,17 +167,25 @@ function anomalyPhrase(z: number | undefined): string {
 interface ViewBox { x: number; y: number; w: number; h: number }
 
 const FULL_VIEW: ViewBox = { x: 0, y: 0, w: VIEW_W, h: VIEW_H };
-const DESCEND_MS = 700;
-const SURFACE_MS = 550;
-/** Landing frame: ~4 tiles wide, same aspect as the full view (no distortion). */
-const FRAME_W = CELL * 4.2;
-const FRAME_H = FRAME_W * (VIEW_H / VIEW_W);
+const DESCEND_MS = 650;
+const SURFACE_MS = 500;
 
-function frameForTile(col: number, row: number): ViewBox {
-  const cx = col * PITCH + CELL / 2;
-  const cy = row * PITCH + CELL / 2;
-  // Tile rides the upper-center of the frame; the sonar sentence lives below.
-  return { x: cx - FRAME_W / 2, y: cy - FRAME_H * 0.42, w: FRAME_W, h: FRAME_H };
+/** Landing frame: the state's bbox padded so neighbors stay visible, matched
+ *  to the map's aspect (no distortion), never tighter than 240 units wide. */
+function frameForState(abbr: string): ViewBox {
+  const geo = STATE_GEO[abbr];
+  if (!geo) return FULL_VIEW;
+  const [minX, minY, maxX, maxY] = geo.bbox;
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  const aspect = VIEW_H / VIEW_W;
+  let w = Math.max(bw * 1.7, 240);
+  let h = w * aspect;
+  if (h < bh * 1.7) {
+    h = bh * 1.7;
+    w = h / aspect;
+  }
+  return { x: geo.cx - w / 2, y: geo.cy - h / 2, w, h };
 }
 
 function easeOutCubic(t: number): number {
@@ -75,7 +197,7 @@ function prefersReducedMotion(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Sonar ring data (hunt-atlas-storms)
+// Recorded-storm caption data (hunt-atlas-storms)
 // ---------------------------------------------------------------------------
 interface StormEvent {
   date: string;
@@ -83,9 +205,6 @@ interface StormEvent {
   county: string | null;
   deaths: number;
   injuries: number;
-  lat: number | null;
-  lng: number | null;
-  located: "point" | "county";
   kind: "today-in-history" | "notable";
 }
 
@@ -109,57 +228,10 @@ function parseStorms(raw: Record<string, unknown>): StormInfo | null {
             county: typeof e.county === "string" ? e.county : null,
             deaths: typeof e.deaths === "number" ? e.deaths : 0,
             injuries: typeof e.injuries === "number" ? e.injuries : 0,
-            lat: typeof e.lat === "number" ? e.lat : null,
-            lng: typeof e.lng === "number" ? e.lng : null,
-            located: e.located === "point" ? "point" : "county",
             kind: e.kind === "today-in-history" ? "today-in-history" : "notable",
           }
         : null,
   };
-}
-
-/**
- * The sonar pulse, driven by rAF on the circle's `r` + `stroke-opacity`
- * attributes directly (CSS transform/scale animation on an SVG circle under a
- * tweened viewBox rendered as a giant disc — verified live). One 3.5s bloom,
- * then rest; slow repeat every 6s. Max radius ~18% of the tile. Stroke stays
- * a thin screen-space line via vector-effect. Reduced motion: a still ring.
- */
-function SonarRing({ cx, cy }: { cx: number; cy: number }) {
-  const [pulse, setPulse] = useState<{ r: number; opacity: number }>({ r: 0.2, opacity: 0 });
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      setPulse({ r: 1.2, opacity: 0.45 });
-      return;
-    }
-    let raf: number;
-    const t0 = performance.now();
-    const CYCLE_MS = 6000;
-    const BLOOM_MS = 3500;
-    const step = (now: number) => {
-      const t = ((now - t0) % CYCLE_MS) / BLOOM_MS;
-      if (t <= 1) {
-        setPulse({ r: 0.2 + easeOutCubic(t) * 1.6, opacity: 0.85 * (1 - t) });
-      } else {
-        setPulse({ r: 0.2, opacity: 0 }); // resting between pulses
-      }
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [cx, cy]);
-  return (
-    <circle
-      cx={cx}
-      cy={cy}
-      r={pulse.r}
-      fill="none"
-      stroke="#22d3ee"
-      strokeOpacity={pulse.opacity}
-      strokeWidth={1.5}
-      vectorEffect="non-scaling-stroke"
-    />
-  );
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -176,8 +248,14 @@ function titleCase(s: string): string {
 
 // ---------------------------------------------------------------------------
 
+interface StateReading {
+  z: number;
+  years: number | null;
+}
+
 export default function AtlasPage() {
-  const [zByState, setZByState] = useState<Record<string, number>>({});
+  const [readings, setReadings] = useState<Record<string, StateReading>>({});
+  const [readingsLoaded, setReadingsLoaded] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [dossier, setDossier] = useState<SpotData | null>(null);
@@ -190,29 +268,39 @@ export default function AtlasPage() {
   // /atlas?state=XX auto-descends into that state on load (the Born flow lands
   // the visitor already fallen into their own ground, not on the national view).
   const stateParamRaw = (searchParams.get("state") ?? "").toUpperCase();
-  const stateParam = TILE_GRID[stateParamRaw] ? stateParamRaw : null;
-  const dossierRef = useRef<HTMLDivElement>(null);
+  const stateParam = STATE_GEO[stateParamRaw] ? stateParamRaw : null;
+  const mapCardRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const didAutoDescend = useRef(false);
   // Where a tap began, so pointerup can tell a tap from a scroll-drag.
   const tapStart = useRef<{ x: number; y: number } | null>(null);
 
-  // Camera state. `descended` flips the grammar (dim periphery, stage text);
-  // `landed` gates the sonar ring so the pulse blooms as the camera arrives.
+  // Camera state. `descended` flips the grammar (dim periphery, sentence).
   const [viewBox, setViewBox] = useState<ViewBox>(FULL_VIEW);
   const [descended, setDescended] = useState(false);
-  const [landed, setLanded] = useState(false);
   const vbRef = useRef<ViewBox>(FULL_VIEW);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    fetchStateAnomaly().then(setZByState).catch(() => setZByState({}));
+    fetchStateAnomalyResponse()
+      .then((res) => {
+        const out: Record<string, StateReading> = {};
+        for (const s of res.states) {
+          if (s.z !== null && Number.isFinite(s.z)) {
+            out[s.state] = { z: s.z, years: s.n_years > 0 ? s.n_years : null };
+          }
+        }
+        setReadings(out);
+        setReadingsLoaded(true);
+      })
+      .catch(() => setReadingsLoaded(true));
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
   // Auto-descend when arriving with ?state=XX (e.g. the Born flow). Fires once;
-  // the anomaly z fills in when its fetch lands. selectState carries dateParam.
+  // the reading fills in when its fetch lands. selectState carries dateParam.
   useEffect(() => {
     if (didAutoDescend.current || !stateParam) return;
     didAutoDescend.current = true;
@@ -252,20 +340,8 @@ export default function AtlasPage() {
     rafRef.current = requestAnimationFrame(step);
   }, []);
 
-  const descend = useCallback(
-    (abbr: string) => {
-      const cell = TILE_GRID[abbr];
-      if (!cell) return;
-      setDescended(true);
-      setLanded(false);
-      tween(frameForTile(cell[0], cell[1]), DESCEND_MS, () => setLanded(true));
-    },
-    [tween],
-  );
-
   const surface = useCallback(() => {
     setDescended(false);
-    setLanded(false);
     setSelected(null);
     setDossier(null);
     setStorms(null);
@@ -283,14 +359,17 @@ export default function AtlasPage() {
   }, [descended, surface]);
 
   async function selectState(abbr: string) {
+    if (!STATE_GEO[abbr]) return;
     setSelected(abbr);
     setDossier(null);
     setStorms(null);
     setLoading(true);
-    descend(abbr);
-    // On phones the dossier stacks below the grid — bring it into view on tap.
+    setDescended(true);
+    tween(frameForState(abbr), DESCEND_MS);
+    // On phones the sentence + dossier stack below the map — keep the map (and
+    // the fall) in view, with the sentence landing right under it.
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      requestAnimationFrame(() => dossierRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      requestAnimationFrame(() => mapCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
     const c = STATE_CENTROIDS[abbr]; // [lng, lat]
     getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-storms?state=${abbr}`)
@@ -309,46 +388,77 @@ export default function AtlasPage() {
     }
   }
 
-  function onTileActivate(abbr: string) {
+  // --- pointer plumbing: the state polygons ARE the targets ---
+  const clientToProj = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const vb = vbRef.current;
+    return {
+      x: vb.x + ((clientX - rect.left) / rect.width) * vb.w,
+      y: vb.y + ((clientY - rect.top) / rect.height) * vb.h,
+    };
+  };
+
+  const hitAt = (clientX: number, clientY: number): string | null => {
+    const p = clientToProj(clientX, clientY);
+    if (!p) return null;
+    // tap forgiveness ~2.5% of the visible width (small coastal states)
+    return hitState(p.x, p.y, vbRef.current.w * 0.025);
+  };
+
+  function activate(abbr: string | null) {
     if (descended) {
-      // Tapping the dimmed periphery (any tile but the one you're in) surfaces.
+      // Tapping anywhere but the state you're in surfaces.
       if (abbr !== selected) surface();
       return;
     }
-    selectState(abbr);
+    if (abbr) selectState(abbr);
   }
 
-  const readout = hovered ?? selected;
-  const readoutZ = readout ? zByState[readout] : undefined;
+  // Activate on pointerup, not click: on touch the synthetic click is generated
+  // only after the emulated hover pass and is intermittently swallowed on the
+  // FIRST tap. pointerdown/up fire on the very first touch; the movement guard
+  // keeps a scroll-drag from counting as a tap.
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    tapStart.current = { x: e.clientX, y: e.clientY };
+  };
+  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const s = tapStart.current;
+    tapStart.current = null;
+    if (!s) return;
+    if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) return;
+    activate(hitAt(e.clientX, e.clientY));
+  };
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType !== "mouse") return;
+    setHovered(hitAt(e.clientX, e.clientY));
+  };
+
   const reduceMotion = prefersReducedMotion();
 
-  // --- stage geometry (only meaningful while descended) ---
-  const selCell = selected ? TILE_GRID[selected] : undefined;
-  const tileX = selCell ? selCell[0] * PITCH : 0;
-  const tileY = selCell ? selCell[1] * PITCH : 0;
-  const tileCx = tileX + CELL / 2;
+  // --- the composed sentence (only meaningful while descended) ---
   const stateName = selected ? STATE_NAMES[selected] ?? selected : "";
-  const selectedZ = selected ? zByState[selected] : undefined;
-
-  // --- sonar ring placement + sentence ---
-  const event = storms?.event ?? null;
-  let ringX: number | null = null;
-  let ringY: number | null = null;
-  if (selected && event) {
-    if (event.lat !== null && event.lng !== null) {
-      const pt = projectToTile(selected, event.lat, event.lng, tileX, tileY, CELL);
-      if (pt) {
-        ringX = pt.x;
-        ringY = pt.y;
-      }
-    }
-    if (ringX === null || ringY === null) {
-      // County-scale record with no coordinate: the ring rests at box center.
-      ringX = tileCx;
-      ringY = tileY + CELL / 2;
+  const reading = selected ? readings[selected] : undefined;
+  const monthName = FULL_MONTHS[new Date().getMonth()];
+  let sentenceLead = "";
+  let sentenceTail = "";
+  if (selected) {
+    if (!readingsLoaded) {
+      sentenceLead = `${stateName} — reading the ground…`;
+    } else if (reading === undefined) {
+      sentenceLead = `${stateName} has no temperature reading on file today.`;
+    } else {
+      sentenceLead = `${stateName} ${magnitudeClause(reading.z)}`;
+      sentenceTail = ` — ${sigmaStr(reading.z)} against its own ${
+        reading.years ? `${reading.years} ${monthName}s` : "record"
+      }.`;
     }
   }
 
+  // --- the recorded-storm caption, denominator mandatory ---
+  const event = storms?.event ?? null;
   const nowYear = new Date().getFullYear();
   const fileYears = storms?.earliest_year ? Math.max(1, nowYear - storms.earliest_year) : null;
   const casualtyNote = event
@@ -358,25 +468,19 @@ export default function AtlasPage() {
         ? ` — ${event.injuries} injured`
         : ""
     : "";
-  const sentenceL1 = event
-    ? `${formatEventDate(event.date)} — ${event.event_type}${event.county ? `, ${titleCase(event.county)} County` : ""}${casualtyNote}`
+  const stormL1 = event
+    ? `On this ground: ${event.event_type}${event.county ? `, ${titleCase(event.county)} County` : ""} — ${formatEventDate(event.date)}${casualtyNote}`
     : "";
-  const sentenceL2 =
+  const stormL2 =
     storms && fileYears
       ? `1 of ${storms.total.toLocaleString()} recorded storms in this state's ${fileYears}-year file`
       : "";
-  const sentenceL3 = event
-    ? event.located === "point"
-      ? "ring placed by recorded coordinate — approximate at this altitude"
-      : "located to county — ring rests at box center"
-    : "";
-  // The leader runs from the ring toward the bottom edge of the landing frame,
-  // pointing at the HTML sentence just below the map.
-  const leaderEndY = tileY + CELL / 2 + FRAME_H * 0.58 - 1.6;
+
+  const hoveredName = hovered ? STATE_NAMES[hovered] ?? hovered : null;
+  const hoveredReading = hovered ? readings[hovered] : undefined;
 
   return (
     <div className="min-h-screen w-full bg-gray-950 text-gray-100">
-      {/* The sonar pulse + dossier landing. Scoped to this page; media query keeps reduced-motion silent. */}
       <style>{`
         @keyframes atlas-stage-in {
           from { opacity: 0; }
@@ -399,7 +503,7 @@ export default function AtlasPage() {
         />
       </div>
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row lg:gap-10 lg:py-10">
-        {/* The map of boxes — and the camera */}
+        {/* The ground — and the camera */}
         <div className="lg:flex-1">
           <h1 className="font-display text-2xl font-medium text-gray-50 sm:text-3xl">The ground you stand on</h1>
           <p className="mt-1.5 max-w-md font-body text-sm leading-relaxed text-gray-400">
@@ -407,191 +511,128 @@ export default function AtlasPage() {
             Tap one to fall in.
           </p>
 
-          <div className="mt-5 rounded-lg bg-gray-900/40 p-3 ring-1 ring-white/5">
-            <svg
-              viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
-              className="w-full"
-              role="group"
-              aria-label={
-                descended
-                  ? `${stateName} — press Escape or tap outside to surface`
-                  : "US states shaded by today's anomaly — pick a state"
-              }
-            >
-              {/* Dimmed-periphery catcher: tapping empty space while descended surfaces. */}
-              {descended && (
-                <rect
-                  x={viewBox.x - VIEW_W}
-                  y={viewBox.y - VIEW_H}
-                  width={VIEW_W * 3}
-                  height={VIEW_H * 3}
-                  fill="transparent"
-                  onClick={surface}
-                />
-              )}
-              {Object.entries(TILE_GRID).map(([abbr, [col, row]]) => {
-                const z = zByState[abbr];
-                const fill = z !== undefined ? colorForZ(z, "dark") : QUIET_COLOR.dark;
-                const isSel = selected === abbr;
-                const isHov = hovered === abbr;
-                const dimmed = descended && !isSel;
-                return (
-                  <g
-                    key={abbr}
-                    className="cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    aria-label={
-                      dimmed ? `surface back to the full map` : `${abbr} — ${anomalyPhrase(z)}`
-                    }
-                    style={{
-                      opacity: dimmed ? 0.15 : 1,
-                      transition: reduceMotion ? undefined : "opacity 650ms ease",
-                    }}
-                    onMouseEnter={() => setHovered(abbr)}
-                    onMouseLeave={() => setHovered(null)}
-                    // Activate on pointerup, not click: on touch the synthetic
-                    // click is generated only after the emulated mouseenter/hover
-                    // pass and is intermittently swallowed on the FIRST tap (the
-                    // tap lands as "acquire hover", the second tap descends).
-                    // pointerdown/up fire on the very first touch; the movement
-                    // guard keeps a scroll-drag from counting as a tap.
-                    onPointerDown={(e) => {
-                      tapStart.current = { x: e.clientX, y: e.clientY };
-                    }}
-                    onPointerUp={(e) => {
-                      const s = tapStart.current;
-                      tapStart.current = null;
-                      if (!s) return;
-                      if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) return;
-                      onTileActivate(abbr);
-                    }}
-                    onFocus={() => setHovered(abbr)}
-                    onBlur={() => setHovered(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onTileActivate(abbr);
-                      }
-                    }}
-                  >
-                    <rect
-                      x={col * PITCH}
-                      y={row * PITCH}
-                      width={CELL}
-                      height={CELL}
-                      rx={1.4}
-                      fill={fill}
-                      stroke={
-                        isSel
-                          ? descended
-                            ? "rgba(103,232,249,0.55)"
-                            : "#67e8f9"
-                          : isHov
-                            ? "rgba(255,255,255,0.45)"
-                            : "rgba(255,255,255,0.06)"
-                      }
-                      strokeWidth={isSel ? (descended ? 0.22 : 0.7) : isHov ? 0.5 : 0.3}
-                    />
-                    {/* The abbreviation yields the stage to the full name while descended. */}
-                    {!(isSel && descended) && (
-                      <text
-                        x={col * PITCH + CELL / 2}
-                        y={row * PITCH + CELL / 2 + 1.6}
-                        textAnchor="middle"
-                        fontSize={3.4}
-                        fontFamily="ui-monospace, monospace"
-                        fill="rgba(255,255,255,0.75)"
-                        pointerEvents="none"
-                      >
-                        {abbr}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-
-              {/* THE LANDING STAGE — name in Playfair, z engraved, the sonar ring */}
-              {descended && selected && selCell && (
-                <g className="atlas-stage-in" pointerEvents="none">
-                  <text
-                    x={tileCx}
-                    y={tileY - 2.1}
-                    textAnchor="middle"
-                    fontSize={3}
-                    fontFamily="'Playfair Display', Georgia, serif"
-                    fill="#f3f4f6"
-                  >
-                    {stateName}
-                  </text>
-                  <text
-                    x={tileCx}
-                    y={tileY + CELL / 2 + 0.7}
-                    textAnchor="middle"
-                    fontSize={2}
-                    fontFamily="ui-monospace, monospace"
-                    fill="rgba(255,255,255,0.30)"
-                  >
-                    {selectedZ !== undefined
-                      ? `z ${selectedZ >= 0 ? "+" : ""}${selectedZ.toFixed(1)}`
-                      : "no reading today"}
-                  </text>
-                </g>
-              )}
-
-              {/* THE SONAR RING — one silent pulse at a located memory, then a slow
-                  repeat. The dated sentence lives in HTML below the map (SVG text
-                  clipped at viewport edges); the dashed leader points down to it. */}
-              {landed && selected && event && ringX !== null && ringY !== null && (
-                <g className="atlas-stage-in" pointerEvents="none">
-                  <circle cx={ringX} cy={ringY} r={0.3} fill="#67e8f9" opacity={0.85} />
-                  <SonarRing cx={ringX} cy={ringY} />
-                  <line
-                    x1={ringX}
-                    y1={ringY}
-                    x2={tileCx}
-                    y2={leaderEndY}
-                    stroke="rgba(103,232,249,0.45)"
-                    strokeWidth={1}
-                    strokeDasharray="4 3.5"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
-              )}
-            </svg>
-            {/* One dated sentence, denominator mandatory — HTML so it never clips,
-                wraps at narrow widths, and clicking it falls into the day. */}
-            {landed && selected && event && (
-              <button
-                type="button"
-                className="atlas-stage-in mt-2 block w-full cursor-pointer rounded-md px-1 py-1 text-center hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-cyan-300/50"
-                aria-label={`${sentenceL1} — open ${event.date}`}
-                onClick={() => navigate(`/date/${event.date}?state=${selected}`)}
+          <div ref={mapCardRef} className="mt-5 scroll-mt-4 rounded-lg bg-gray-900/40 p-3 ring-1 ring-white/5">
+            <div className="overflow-hidden rounded-md" style={{ background: "#0a0f14" }}>
+              <svg
+                ref={svgRef}
+                viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+                className="block w-full cursor-pointer"
+                style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
+                role="group"
+                aria-label={
+                  descended
+                    ? `${stateName} — press Escape or tap outside to surface`
+                    : "US map, states shaded by today's reading — pick a state"
+                }
+                onPointerDown={onPointerDown}
+                onPointerUp={onPointerUp}
+                onPointerMove={onPointerMove}
+                onPointerLeave={() => setHovered(null)}
               >
-                <span className="block font-mono text-[12px] leading-snug text-gray-200">{sentenceL1}.</span>
-                <span className="block font-mono text-[11px] leading-snug text-gray-400">{sentenceL2}</span>
-                <span className="block font-mono text-[10px] leading-snug text-gray-600">{sentenceL3}</span>
-              </button>
-            )}
-            <div className="mt-2 min-h-[1.25rem] font-mono text-[11px] text-gray-400">
-              {descended && selected ? (
-                <span>
-                  <span className="text-gray-200">{stateName}</span> &middot; {anomalyPhrase(selectedZ)}{" "}
-                  <span className="text-gray-600">&middot; esc or tap outside to surface</span>
-                </span>
-              ) : readout ? (
-                <span>
-                  <span className="text-gray-200">{readout}</span> &middot; {anomalyPhrase(readoutZ)}
-                </span>
-              ) : (
-                <span className="text-gray-600">hover a state &middot; tap to fall in</span>
-              )}
+                {Object.values(STATE_GEO).map((geo) => {
+                  const z = readings[geo.abbr]?.z;
+                  const isSel = selected === geo.abbr;
+                  const isHov = hovered === geo.abbr && !descended;
+                  const dimmed = descended && !isSel;
+                  // The state you fell into always reads as present ground —
+                  // a whisper of fill even when its reading is dead normal.
+                  const tint = fillForZ(z);
+                  const fill =
+                    isSel && descended && tint === QUIET_FILL ? "rgba(255,255,255,0.045)" : tint;
+                  return (
+                    <path
+                      key={geo.abbr}
+                      d={geo.d}
+                      fill={fill}
+                      fillRule="evenodd"
+                      stroke={
+                        isSel && descended
+                          ? "rgba(103,232,249,0.45)"
+                          : isHov
+                            ? "rgba(255,255,255,0.35)"
+                            : "rgba(255,255,255,0.08)"
+                      }
+                      strokeWidth={isSel && descended ? 1.4 : 1.1}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
+                      tabIndex={0}
+                      role="button"
+                      aria-label={
+                        dimmed
+                          ? "surface back to the full map"
+                          : `${STATE_NAMES[geo.abbr] ?? geo.abbr} — ${magnitudeWord(z)}`
+                      }
+                      style={{
+                        opacity: dimmed ? 0.28 : 1,
+                        transition: reduceMotion ? undefined : "opacity 600ms ease",
+                        outline: "none",
+                      }}
+                      onFocus={() => setHovered(geo.abbr)}
+                      onBlur={() => setHovered(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          activate(geo.abbr);
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </svg>
             </div>
+
+            {descended && selected ? (
+              /* THE LANDING — the reading as a sentence, then one located memory */
+              <div className="atlas-stage-in mt-3 px-1 pb-1">
+                <p className="font-display text-lg leading-snug text-gray-50 sm:text-xl">
+                  {sentenceLead}
+                  {sentenceTail && <span className="text-gray-400">{sentenceTail}</span>}
+                </p>
+                {event && stormL1 && (
+                  <button
+                    type="button"
+                    className="mt-2.5 block w-full cursor-pointer rounded-md py-0.5 text-left hover:bg-white/5 focus:outline-none focus:ring-1 focus:ring-cyan-300/50"
+                    aria-label={`${stormL1} — open ${event.date}`}
+                    onClick={() => navigate(`/date/${event.date}?state=${selected}`)}
+                  >
+                    <span className="block font-body text-[13px] leading-snug text-gray-300">{stormL1}.</span>
+                    {stormL2 && (
+                      <span className="mt-0.5 block font-mono text-[11px] leading-snug text-gray-500">
+                        {stormL2}
+                      </span>
+                    )}
+                  </button>
+                )}
+                <p className="mt-2 font-mono text-[10px] text-gray-600">esc or tap outside to surface</p>
+              </div>
+            ) : (
+              <div className="mt-2 px-1">
+                <p className="font-mono text-[10px] leading-relaxed text-gray-600">
+                  <span className="text-amber-300/80">amber</span> running hot &middot;{" "}
+                  <span className="text-sky-300/80">ice</span> running cold &middot; measured against each
+                  state&rsquo;s own 76 years
+                </p>
+                <div className="mt-1 min-h-[1rem] font-mono text-[11px] text-gray-400">
+                  {hoveredName ? (
+                    <span>
+                      <span className="text-gray-200">{hoveredName}</span> &middot;{" "}
+                      {magnitudeWord(hoveredReading?.z)}
+                      {hoveredReading !== undefined && (
+                        <span className="text-gray-600"> &middot; {sigmaStr(hoveredReading.z)}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600">hover a state &middot; tap to fall in</span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* The spot dossier — lands as a consequence of the descent */}
-        <div ref={dossierRef} className="scroll-mt-4 lg:w-[380px] lg:flex-none">
+        <div className="scroll-mt-4 lg:w-[380px] lg:flex-none">
           {!selected && (
             <div className="flex h-full min-h-[200px] items-center justify-center rounded-lg bg-gray-900/40 p-6 text-center text-sm text-gray-500 ring-1 ring-white/5">
               Pick a state to fall into it &mdash; what it&rsquo;s doing now, and the last time it looked like this.
