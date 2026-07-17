@@ -141,7 +141,7 @@ serve(async (req) => {
           const outcomeDeadline = new Date();
           outcomeDeadline.setUTCHours(outcomeDeadline.getUTCHours() + 72);
 
-          await supabase.from('hunt_alert_outcomes').insert({
+          const { error: outcomeErr } = await supabase.from('hunt_alert_outcomes').insert({
             alert_source: 'bio-absence-signal',
             state_abbr: entry.meta.state_abbr,
             alert_date: today,
@@ -153,7 +153,8 @@ serve(async (req) => {
             },
             outcome_window_hours: 72,
             outcome_deadline: outcomeDeadline.toISOString(),
-          }).catch(err => console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, err));
+          });
+          if (outcomeErr) console.error(`[${FUNCTION_NAME}] Outcome insert failed:`, outcomeErr);
         }
       }
     }

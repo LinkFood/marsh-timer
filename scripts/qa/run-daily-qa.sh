@@ -21,9 +21,11 @@ REPO=/Users/jameschellis/marsh-timer
 QA_WT="$HOME/.dcd-qa-worktree"
 TODAY=$(date -u +%Y-%m-%d)
 
-# The one-week QA window ends 2026-07-19 (extend here if the week earns it).
-if [[ "$TODAY" > "2026-07-19" ]]; then
-  echo "QA window ended ($TODAY > 2026-07-19); exiting."
+# Extended through the timebox (2026-08-10): the blind-spot sweep is the
+# Formation Layer's daily examiner (new thesis, 2026-07-17) — it must outlive
+# the original one-week trial. Re-decide at the timebox verdict.
+if [[ "$TODAY" > "2026-08-10" ]]; then
+  echo "QA window ended ($TODAY > 2026-08-10); exiting."
   exit 0
 fi
 
