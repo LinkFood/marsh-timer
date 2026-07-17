@@ -69,3 +69,22 @@ The almanac FORM is the output shape; the Formation Layer is the live edge; the 
 every page honest. Verticals are chapters, not products.
 
 (Post-timebox growth doctrine — the box's gates still govern what gets built before 08-10.)
+
+## The stack (James, 2026-07-17 — the six-line doctrine, verbatim)
+
+> Data, data, data
+> Ingest, ingest, ingest
+> Embed, embed, embed
+> Fuse, fuse, fuse
+> Ground in truth
+> Present like an almanac
+
+Every line has a running machine: the archive · the ingest fleet · the embedding law ·
+the frame store + Formation Layer + rhymes · the court + receipts · the identity.
+
+**The cicada-tomato law** (James: "what if tomato season in Arkansas lines up with the
+cicadas that spring in Mississippi — weird fucking shit no one would ever know unless you
+had an almanac"): cross-domain conjunctions are the almanac's deepest promise AND its
+astrology trap. The house carry: show the records side by side freely (that's the museum —
+curiosity is free), but any CLAIM of alignment goes through the court — pre-registered,
+mechanism-named or labeled-curiosity, graded. Wonder shown freely; connections earned.
