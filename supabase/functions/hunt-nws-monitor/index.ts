@@ -14,6 +14,12 @@ const EVENT_BATCHES = [
   ['Freeze Warning', 'Freeze Watch', 'Frost Advisory', 'Hard Freeze Warning', 'Wind Advisory', 'High Wind Warning', 'High Wind Watch'],
   ['Dense Fog Advisory', 'Blizzard Warning', 'Blizzard Watch', 'Ice Storm Warning', 'Flood Warning', 'Flood Watch', 'Flash Flood Warning'],
   ['Lake Effect Snow Warning', 'Lake Effect Snow Watch'],
+  // Heat family — NWS renamed Excessive Heat → Extreme Heat (March 2025); keep both spellings
+  ['Excessive Heat Warning', 'Excessive Heat Watch', 'Extreme Heat Warning', 'Extreme Heat Watch', 'Heat Advisory'],
+  // Fire + convective watch→warning families
+  ['Red Flag Warning', 'Fire Weather Watch', 'Severe Thunderstorm Watch', 'Severe Thunderstorm Warning'],
+  // Tornado + coastal watch→warning families
+  ['Tornado Watch', 'Tornado Warning', 'Coastal Flood Watch', 'Coastal Flood Warning', 'Storm Surge Watch', 'Storm Surge Warning'],
 ];
 
 interface NWSFeature {
