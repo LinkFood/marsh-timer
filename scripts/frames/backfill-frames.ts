@@ -124,12 +124,28 @@ function put(map: Map<string, number>, date: string, v: number, side: "low" | "h
 }
 
 // Load one instrument's per-field series (Map<field, Map<date, value>>), disk-cached.
+//
+// CACHE COVERAGE LAW (2026-07-17): a cached series is only valid if it was fetched
+// with coverage ≥ the requested endYear — the cache stores the endYear it was baked
+// for and a stale file is refetched. Without this check, a bounded run poisons every
+// later run: the 2026-07-11 "2021 smoke" (YEAR_TO=2021) wrote series-*.json files
+// truncated at 2021-12-31, and the subsequent full bake silently reused them —
+// blanking board_frames 2022→present (~4-5 of 142 slots reporting) for four years.
+// Legacy cache files (bare field map, no endYear envelope) are unverifiable → refetch.
+//
+// CROSS-ERA POOL DRIFT (documented, accepted): frames baked before this fix
+// (1950-2021, the 2026-07-11 bake) carry bytes computed against that bake's pools;
+// a fresh fetch includes 2022-2026 readings, so the same-doy pools — and therefore
+// the percentile bytes — differ slightly across the 2021/2022 boundary. Pre-2022
+// frames are NOT re-baked for this; a byte-exact store needs one full 1950→present
+// re-bake with a single fresh cache.
+type SeriesCache = { endYear: number; fields: Record<string, Record<string, number>> };
 async function loadSeries(inst: Instrument, endYear: number): Promise<Map<string, Map<string, number>>> {
   const cacheName = `series-${inst.id}.json`;
-  const cached = cacheGet<Record<string, Record<string, number>>>(cacheName);
-  if (cached) {
+  const cached = cacheGet<SeriesCache>(cacheName);
+  if (cached && cached.fields && typeof cached.endYear === "number" && cached.endYear >= endYear) {
     const m = new Map<string, Map<string, number>>();
-    for (const [f, obj] of Object.entries(cached)) m.set(f, new Map(Object.entries(obj)));
+    for (const [f, obj] of Object.entries(cached.fields)) m.set(f, new Map(Object.entries(obj)));
     return m;
   }
   const fields = inst.metrics.map((mt) => mt.field);
@@ -184,7 +200,7 @@ async function loadSeries(inst: Instrument, endYear: number): Promise<Map<string
 
   const dump: Record<string, Record<string, number>> = {};
   for (const [f, m] of series) dump[f] = Object.fromEntries(m);
-  cacheSet(cacheName, dump);
+  cacheSet(cacheName, { endYear, fields: dump } satisfies SeriesCache);
   return series;
 }
 
