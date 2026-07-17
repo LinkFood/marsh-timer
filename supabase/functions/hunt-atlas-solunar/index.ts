@@ -289,44 +289,59 @@ function moonEvents(dateUTC: Date, lat: number, lng: number): MoonEvents {
   const stepMin = 5;
   const steps = (24 * 60) / stepMin; // 288
 
-  let prevAlt = moonAltitude(dayStartJD, lat, lng);
-  let prevMin = 0;
+  // Sample the full day once (plus one step beyond each boundary, so the
+  // day-edge samples can be judged as genuine turning points or not).
+  const altAt = (min: number) => moonAltitude(dayStartJD + min / 1440, lat, lng);
+  const alts: number[] = [];
+  for (let s = 0; s <= steps; s++) alts.push(altAt(s * stepMin));
+  const altPre = altAt(-stepMin);
+  const altPost = altAt((steps + 1) * stepMin);
 
+  // Horizon crossings (relative to MOON_H0) — first rise / first set.
   let riseMin: number | null = null;
   let setMin: number | null = null;
-  let maxAlt = prevAlt;
-  let transitMin = 0;
-  let minAlt = prevAlt;
-  let underfootMin = 0;
-
   for (let s = 1; s <= steps; s++) {
-    const min = s * stepMin;
-    const jd = dayStartJD + min / 1440;
-    const alt = moonAltitude(jd, lat, lng);
-
-    // horizon crossings (relative to MOON_H0)
-    const a0 = prevAlt - MOON_H0;
-    const a1 = alt - MOON_H0;
+    const a0 = alts[s - 1] - MOON_H0;
+    const a1 = alts[s] - MOON_H0;
     if (a0 <= 0 && a1 > 0 && riseMin === null) {
       // rising crossing — linear interpolate
-      const frac = a0 / (a0 - a1);
-      riseMin = prevMin + frac * stepMin;
+      riseMin = (s - 1) * stepMin + (a0 / (a0 - a1)) * stepMin;
     }
     if (a0 >= 0 && a1 < 0 && setMin === null) {
-      const frac = a0 / (a0 - a1);
-      setMin = prevMin + frac * stepMin;
+      setMin = (s - 1) * stepMin + (a0 / (a0 - a1)) * stepMin;
     }
-
-    if (alt > maxAlt) { maxAlt = alt; transitMin = min; }
-    if (alt < minAlt) { minAlt = alt; underfootMin = min; }
-
-    prevAlt = alt;
-    prevMin = min;
   }
 
-  // Transit is only meaningful if the moon actually gets above the horizon
-  const transit = maxAlt > MOON_H0 ? transitMin : null;
-  const underfoot = underfootMin >= 0 ? underfootMin : null;
+  // Transit / underfoot = genuine LOCAL extrema of the altitude curve, never
+  // a bare within-day max/min. The old max-of-the-day scan had a boundary
+  // artifact: when the true transit sits in the ADJACENT UTC day, the 00:00Z
+  // sample won the comparison and a phantom "major" window landed centered
+  // exactly on the day boundary (the 5:00–7:00p MDT wart, 2026-07-17,
+  // surfaced by the TODAY fitted block's today+tomorrow merge). A boundary
+  // sample only counts when the altitude just outside the day confirms the
+  // turn happens here; an interior true transit is found even when a
+  // boundary sample happens to sit higher.
+  const nbr = (i: number): [number, number] => [
+    i === 0 ? altPre : alts[i - 1],
+    i === steps ? altPost : alts[i + 1],
+  ];
+  let transit: number | null = null;
+  let transitAlt = -Infinity;
+  let underfoot: number | null = null;
+  let underfootAlt = Infinity;
+  for (let s = 0; s <= steps; s++) {
+    const [before, after] = nbr(s);
+    if (alts[s] >= before && alts[s] >= after && alts[s] > transitAlt) {
+      transit = s * stepMin;
+      transitAlt = alts[s];
+    }
+    if (alts[s] <= before && alts[s] <= after && alts[s] < underfootAlt) {
+      underfoot = s * stepMin;
+      underfootAlt = alts[s];
+    }
+  }
+  // Transit is only meaningful if the moon actually gets above the horizon.
+  if (transit !== null && transitAlt <= MOON_H0) transit = null;
 
   return {
     riseMin,
