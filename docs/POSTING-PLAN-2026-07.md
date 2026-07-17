@@ -51,6 +51,29 @@ don't, fallback = a tiny `hunt_site_events` table written from the client (anon 
 dedup on a random local id) — one migration, same two events, readable by a one-line REST
 count at judgment time.
 
+**BUILD STATUS — §0 SHIPPED 2026-07-17 (commit 9d4ecbf), verified live by headless probe:**
+
+- `date_lookup` fires on successful data render, all four doors confirmed on
+  duckcountdown.com — `{door:"date"}` (/date/1933-08-23?state=MD), `{door:"morning"}`
+  (/morning), `{door:"atlas"}` (/atlas?date=…), `{door:"born"}` (the /born form's atlas
+  render, attributed via sessionStorage handoff). Every POST to `/_vercel/insights/event`
+  returned 200.
+- `return_visit {days_since_first}` confirmed (stamped first-seen 3 days back → event
+  fired with `days_since_first: 3`, 200). Fires at most once per calendar day, days 1–7.
+- **Owner exclusion verified:** with the flag set, a full lookup emitted a pageview and
+  ZERO event POSTs. James: on each of your devices, either visit any page with `?owner=1`
+  appended, or run once in the console: `localStorage.setItem('dc_owner', '1')`
+  (`?owner=0` clears it). Implementation: `src/lib/analytics.ts`.
+- Vercel's script bot-detects: headless/webdriver visitors get no beacons at all (probe
+  had to mask automation to see them) — bot traffic self-excludes from the gate counts.
+- Docs check (2026-06-26 docs): custom events are included on Pro (2 properties/event —
+  we use 1), NOT on Hobby; **UTM breakout requires the Web Analytics Plus add-on
+  ($10/mo)**. The one check left is James's: open the project's Analytics tab and confirm
+  the two events appear in the Events panel from the probe's test hits (dashboard needs
+  auth; browser access was declined during the build, honestly noted). If they don't
+  appear (plan gap), the Supabase fallback table below is the pre-specified move — it was
+  NOT built, per prefer-Vercel-native.
+
 **Operational definitions, fixed now so 08-10 isn't argued:**
 - *Unique external visitor completing a date lookup* = unique visitors on the
   `date_lookup` event (Vercel's visitor dedup), owner-excluded.
