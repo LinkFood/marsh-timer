@@ -55,6 +55,24 @@ export function isRoutineWeather(contentType: string, title?: string | null): bo
 }
 
 /**
+ * Machine row keys must never reach a visitor's eye. The wildfire-perimeter
+ * lane titles rows "fire-{IRWIN-UUID}-2026-07-17" / "fire-Nelson-MN-2025-10-06";
+ * its content column holds the real sentence ("Wildfire Nelson in MN: 0 acres,
+ * 0% contained, started 2025-10-06, cause: Human. fire"). Turn that sentence
+ * into the museum headline: "Wildfire Nelson — 0 acres, 0% contained".
+ */
+const MACHINE_KEY_RE = /^fire-|[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}/i;
+
+function fireHeadline(content: string | null | undefined): string | null {
+  const m = (content || '').match(/^Wildfire\s+(.+?)\s+in\s+[A-Z]{2}:\s*([\d,]+|unknown)\s*acres,\s*(\d+)%\s*contained/i);
+  if (!m) return null;
+  const acres = m[2].toLowerCase() === 'unknown'
+    ? 'unknown acreage'
+    : `${Number(m[2].replace(/,/g, '')).toLocaleString()} acres`;
+  return `Wildfire ${m[1]} — ${acres}, ${m[3]}% contained`;
+}
+
+/**
  * One raw ingestion title → one human headline. Never returns machine suffixes.
  *
  * Examples:
@@ -64,9 +82,24 @@ export function isRoutineWeather(contentType: string, title?: string | null): bo
  *   "TX river-discharge"                           → "River discharge reading"
  *   "Thunderstorm Wind 60 MONTGOMERY"              → "Thunderstorm wind 60 — Montgomery"
  *   "M2.6 earthquake 37 km SSW of Ferndale, California" → "M2.6 earthquake near Ferndale, California"
+ *   "fire-{C12BFCD9-…}-2026-07-17" + content       → "Wildfire Cedar Creek — 14,102 acres, 3% contained"
+ *
+ * `content` is optional: when the title is a machine row key, the human
+ * sentence is rebuilt from the content column instead — never the raw key.
  */
-export function humanizeEntry(title: string | null | undefined, contentType: string): string {
+export function humanizeEntry(title: string | null | undefined, contentType: string, content?: string | null): string {
   let t = (title || '').trim();
+
+  // Machine row keys (UUIDs, fire-… identity strings): honest fallbacks only.
+  if (MACHINE_KEY_RE.test(t)) {
+    const fire = fireHeadline(content);
+    if (fire) return fire;
+    const firstSentence = (content || '').split(/(?<=\.)\s/)[0]?.trim();
+    if (firstSentence && !MACHINE_KEY_RE.test(firstSentence)) {
+      return firstSentence.length > 90 ? firstSentence.slice(0, 87).trimEnd() + '…' : firstSentence;
+    }
+    return TYPE_LABELS[contentType] ?? readableType(contentType);
+  }
 
   // Strip trailing machine suffixes: "… AL 1950-07-02", "… 1950-07-02"
   t = t.replace(/[\s—–:-]*(?:\b[A-Z]{2}\s+)?\d{4}-\d{2}-\d{2}\s*$/, '').trim();
@@ -139,21 +172,11 @@ export function yearLines(entries: RawEntry[]): YearLine[] {
   const lines: YearLine[] = [];
   const seen = new Set<string>();
   for (const e of ranked) {
-    const text = humanizeEntry(e.title || e.content, e.content_type);
+    const text = humanizeEntry(e.title || e.content, e.content_type, e.content);
     if (seen.has(text)) continue;
     seen.add(text);
     lines.push({ text, stateTag: e.state_abbr });
     if (lines.length === 2) break;
   }
   return lines;
-}
-
-/** Category metadata for the latest-from-the-layers feed. */
-export function layerMeta(contentType: string): { label: string; color: string } {
-  if (contentType === 'anomaly-alert') return { label: 'anomaly', color: '#fbbf24' };
-  if (contentType.startsWith('migration-spike')) return { label: 'migration', color: '#2dd4bf' };
-  if (contentType === 'nws-alert' || contentType === 'storm-event') return { label: 'weather', color: '#f87171' };
-  if (contentType === 'bio-absence-signal') return { label: 'absence', color: '#a78bfa' };
-  if (contentType === 'wildfire-perimeter') return { label: 'wildfire', color: '#fb923c' };
-  return { label: contentType.replace(/-/g, ' '), color: '#64748b' };
 }

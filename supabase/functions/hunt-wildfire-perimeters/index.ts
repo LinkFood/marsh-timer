@@ -101,8 +101,11 @@ serve(async (req) => {
       const acresStr = acres != null ? `${Math.round(acres)} acres` : "unknown acres";
       const text = `Wildfire ${name} in ${state}: ${acresStr}, ${pct}% contained as of ${today}, started ${startDate}, cause: ${cause}. ${severity}`;
 
-      // Date-suffixed: one snapshot row per fire per day (acres/containment move daily).
-      const title = irwinId ? `fire-${irwinId}-${today}` : `fire-${name}-${state}-${today}`;
+      // Museum-quality title: a human sentence, never a raw row key. Identity
+      // (irwin_id + snapshot_date) lives in metadata; one snapshot row per fire
+      // per day (acres/containment move daily).
+      const acresTitle = acres != null ? `${Math.round(acres).toLocaleString("en-US")} acres` : "unknown acreage";
+      const title = `Wildfire ${name} (${state}) — ${acresTitle}, ${pct}% contained`;
 
       entries.push({
         text,
@@ -112,7 +115,11 @@ serve(async (req) => {
           content_type: CONTENT_TYPE,
           tags: [state.toLowerCase(), "wildfire", "fire", severity.replace(" ", "-"), CONTENT_TYPE],
           state_abbr: state,
-          effective_date: startDate !== "unknown date" ? startDate : new Date().toISOString().slice(0, 10),
+          // A snapshot speaks of the day it was taken — key it to that day, or
+          // every later snapshot of a long fire piles onto the discovery date's
+          // museum page saying "as of <another day>". Discovery date stays in
+          // metadata.discovery_date.
+          effective_date: today,
           metadata: {
             source: FUNCTION_NAME,
             incident_name: name,
