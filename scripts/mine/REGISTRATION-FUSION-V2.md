@@ -115,3 +115,20 @@ Honesty lines printed: achieved mean |year gap|; mean reporting-count gap (ancho
 | scan era | 1990-01-01..2021-12-31 |
 | anchor source assert | EXPECTED_RAW = 4233 |
 | seed of record | 42 |
+
+---
+
+## AMENDMENT v2.1 (2026-07-16 — the ONE permitted G0 metric repair, §10; frozen before the repair is implemented)
+
+**G0 FAILED on the v2.0 run of record** (seed 42, pipeline commit deb3130, report scripts/mine/out/FUSION-REPORT.md): 1/5 roll-call events passed; G2/G3 passed; no verdict read. **Diagnosis, from the report's own receipts: the §4 merged-episode construction displaces tested onsets weeks before the famous storms.** Uri was tested at episode onset 2020-12-10 (its winter chain began with December storms; Uri's ground onset is ~2021-02; its own stitched row "February 2021 North American Cold Wave" is dated 2021-02-02). Jonas tested at 2015-12-09, Snowmageddon at 2010-01-17. Season-chains (within-family ±7d union at anchors.ts, extended by cross-family merge) make event-level formation untestable: the famous fusion sat INSIDE its own episode, masked out. This is a test-construction artifact, not evidence about the board.
+
+**THE REPAIR (everything not named here stays frozen):**
+1. **Test anchors descend from merged episodes to MAJOR MEMBER ROWS**: the 4,233 raw stitched anchors as loaded by `fetchRawAnchors()`, filtered to rows individually meeting the MAJOR bar (deaths ≥ 10 OR damage ≥ $250M **on the row's own severity fields as anchors.ts loads them** — if raw rows carry no per-row severity, the repair FAILS LOUDLY and stops; no improvisation), era onset 1990-01-01..2021-12-31.
+2. **Same-system dedup**: rows whose spans overlap AND state sets intersect group transitively (union-find); keep one tested anchor per group — max severity (deaths×100 + damageUsd/$1M), then earliest d0, then lexicographic id. Receipt printed: raw MAJOR rows → deduped tested anchors.
+3. **Windows unchanged** (D-14..D-1 at the tested row's own d0). **Masking now excludes days inside ANY MAJOR row's span (any family) other than the tested row's own** — chain-mates' storm days never count as formation.
+4. **Controls**: rules unchanged; eligibility clause (iii) reads "inside no MAJOR row span and no effective-anchor span of any tier."
+5. **Test 2**: outcome = deduped tested-anchor onset in +1..+14; scan-day in-span exclusion = any MAJOR row span; b recomputed post-masking before any contrast, bar = 2b.
+6. **G0 unchanged** (same 5 events, same quantitative bar), matched to their own MAJOR rows (span-intersect, winter-family preferred).
+7. All floors, rotations (exhaustive 67), pass bars, G2, G3, §11 diagnostics, §12 semantics: UNCHANGED.
+
+**This is the final permitted repair. If G0 fails on the v2.1 run of record, the metric is INVALID FINAL for this registration family; the report ships that way and timebox gate 2 is graded on it.**
