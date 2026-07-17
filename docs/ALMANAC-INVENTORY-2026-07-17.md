@@ -1,3 +1,5 @@
+> **DRAFT — PENDING PRIMARY SOURCE.** This inventory was built from web sources (tables of contents, section pages). James has a physical Almanac and is scanning it in; the page-by-page read of the real object supersedes this document. No almanac-form build suggestions are final until that read is done (James's ruling, 2026-07-17).
+
 Research complete. The owner was right — the Almanac form is a much bigger machine than the famous parts. Here's the full report.
 
 ---
