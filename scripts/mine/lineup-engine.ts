@@ -256,16 +256,18 @@ export interface StateEnv {
   off0Sq: Float64Array; // [mdCount] sum of squares at offset 0 (S1 z)
   // grading precompute (§5): cumulative max drop/rise over RECORDED days
   // d+1..d+k (−Infinity when none recorded), and a hole bitmask (bit k−1 set =
-  // day d+k has no recorded high)
-  cumDrop: Float32Array; // [T*7]
-  cumRise: Float32Array; // [T*7]
+  // day d+k has no recorded high). Float64 — the grader compares in float64
+  // (hunt-morning-grader move(d) ≥ OUTCOME_BAR_F), and float32 storage flips
+  // exact-5.0°F boundary cases the grader would MISS.
+  cumDrop: Float64Array; // [T*7]
+  cumRise: Float64Array; // [T*7]
   holeBits: Uint8Array; // [T]
   // the day's claim AS A PRECEDENT: aftermathFor(day) → outcome string →
   // parseOutcomeString (the product's own parser). verb: 0 = no claim
   // (thin/none), 1 = cooled, 2 = warmed, 3 = held. win = claim window days.
   verb: Int8Array; // [T]
   win: Int8Array; // [T]
-  cooled: Uint8Array; // [T] control-line cooled flag: n≥3 AND maxDrop ≥ 5 (S6)
+  cooled: Uint8Array; // [T] control-line cooled flag: n≥3 AND round(maxDrop,1) ≥ 5 — the spot's cooled() reads the 1-dp max_drop_f (S6 + spotLive parity)
   stations: TideStationData[]; // sorted by id asc (argmax tie-break)
 }
 
@@ -412,8 +414,8 @@ export function buildEnv(store: LineupStore): Env {
       }
     }
 
-    const cumDrop = new Float32Array(T * 7).fill(-Infinity);
-    const cumRise = new Float32Array(T * 7).fill(-Infinity);
+    const cumDrop = new Float64Array(T * 7).fill(-Infinity);
+    const cumRise = new Float64Array(T * 7).fill(-Infinity);
     const holeBits = new Uint8Array(T);
     const verb = new Int8Array(T);
     const win = new Int8Array(T);
@@ -437,7 +439,10 @@ export function buildEnv(store: LineupStore): Env {
       }
       holeBits[d] = holes;
       maxDrop = mDrop;
-      cooled[d] = n >= 3 && maxDrop >= OUTCOME_BAR_F ? 1 : 0;
+      // the spot's cooled() reads max_drop_f = round(maxDrop, 1) — apply the
+      // same 1-dp rounding before the bar, or exact-5.0°F drops that compute
+      // as 4.999… in float64 diverge from the deployed control counts
+      cooled[d] = n >= 3 && roundDp(maxDrop, 1) >= OUTCOME_BAR_F ? 1 : 0;
       // the claim this day makes AS A PRECEDENT — built as the product's own
       // outcome string, parsed by the product's own parser (round-trip law)
       const parsed = parseOutcomeString(aftermathOutcome(high, d, T));
@@ -688,15 +693,26 @@ export function evalReplicate(env: Env, remap: Int32Array | null, opts: EvalOpts
 
       const q = mdOfDay[d];
       const yi = cal.year[d] - cal.year0;
+      const yd = cal.year[d];
 
-      // LOYO per-offset baselines (D2): total-minus-index-year
+      // LOYO per-offset baselines (D2): the registered rule excludes the value
+      // whose CALENDAR year is year(d) from each offset column. At Dec/Jan
+      // boundaries that value comes from a yi±1-anchored window (e.g. for
+      // d = Dec 31, the offset +3 column's year(d) value is Jan 3 year(d),
+      // reached only from the year(d)−1 anchor), so search the three adjacent
+      // anchors for the (unique) year(d) day per offset.
       for (let off = 0; off < 7; off++) {
         let sum = S.offSum[q * 7 + off];
         let cnt = S.offCnt[q * 7 + off];
-        const p = d + off - WINDOW_DAYS;
-        if (p >= 0 && p < T) {
+        for (let yy = yi - 1; yy <= yi + 1; yy++) {
+          if (yy < 0 || yy >= ys) continue;
+          const b = mdBase[q * ys + yy];
+          if (b < 0) continue;
+          const p = b + off - WINDOW_DAYS;
+          if (p < 0 || p >= T || cal.year[p] !== yd) continue;
           const v = S.high[p];
           if (Number.isFinite(v)) { sum -= v; cnt--; }
+          break; // at most one year(d) day per offset column
         }
         means[off] = cnt >= MIN_YEARS ? sum / cnt : NaN;
       }
@@ -730,20 +746,24 @@ export function evalReplicate(env: Env, remap: Int32Array | null, opts: EvalOpts
       const ageToday = moonAge[remap ? remap[d] : d];
 
       // candidate scan, date-DESC (years desc, offsets +3→−3): the first
-      // member found per arm IS matches[0] (most-recent precedent, verbatim)
+      // member found per arm IS matches[0] (most-recent precedent, verbatim).
+      // Pool rule (§3): every recorded window day whose CALENDAR year ≠
+      // year(d) — the yi-anchored window is scanned too, because its Dec/Jan
+      // cross-boundary days belong to year(d)±1; the D4 guard then excludes
+      // exactly those calendar-adjacent days (the A2 leakage S7 measures).
       let lIdx = -1, nIdx = -1;
       for (let yy = ys - 1; yy >= 0; yy--) {
-        if (yy === yi) continue;
         const b = mdBase[q * ys + yy];
         if (b < 0) continue;
         for (let off = 6; off >= 0; off--) {
           const p = b + off - WINDOW_DAYS;
           if (p < 0 || p >= T) continue;
+          if (cal.year[p] === yd) continue; // pool: all years ≠ year(d) (§3)
+          if (guard > 0 && Math.abs(p - d) <= guard) continue; // D4 anti-leakage
           const v = S.high[p];
           if (!Number.isFinite(v)) continue;
           const me = means[off];
           if (!Number.isFinite(me)) continue;
-          if (guard > 0 && Math.abs(p - d) <= guard) continue; // D4 anti-leakage
           let r = 0;
           if (useTide) {
             r = resArr![remap ? remap[p] : p];

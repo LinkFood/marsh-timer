@@ -602,6 +602,8 @@ export async function loadProductionStore(seed: number, log: (s: string) => void
   const T = Math.round((Date.parse(`${ERA_END}T00:00:00Z`) - Date.parse(`${ERA_START}T00:00:00Z`)) / 864e5) + 1;
   const ts0 = Date.parse(`${ERA_START}T00:00:00Z`);
   const idxOf = (iso: string) => Math.round((Date.parse(`${iso}T00:00:00Z`) - ts0) / 864e5);
+  const yearOfDay = new Int16Array(T); // calendar year per day index (receipts — never d/365.25)
+  for (let d = 0; d < T; d++) yearOfDay[d] = Number(new Date(ts0 + d * 864e5).toISOString().slice(0, 4));
   const stateIdx = new Map(STATE_ABBRS.map((s, i) => [s, i] as const));
 
   // GHCN — per-year ascending bounded pages (§2 substrate)
@@ -672,7 +674,7 @@ export async function loadProductionStore(seed: number, log: (s: string) => void
     for (const s of stations) {
       for (let d = 0; d < T; d++) {
         if (Number.isFinite(s.res[d])) {
-          const decade = `${Math.floor((y0 + Math.floor(d / 365.25)) / 10) * 10}s`;
+          const decade = `${Math.floor(yearOfDay[d] / 10) * 10}s`;
           perDecade.set(decade, (perDecade.get(decade) ?? 0) + 1);
         }
       }

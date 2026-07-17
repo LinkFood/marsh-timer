@@ -328,53 +328,52 @@ console.log("(e) tide — useTide floor 60, argmax station (ties id asc), mode f
   assert(one.s6.lN + one.s6.nN === 7 * 7, "full-gauge pool: every day carries a reading", `${one.s6.lN + one.s6.nN}`);
 }
 
-// ─── (f) the ±10d anti-leakage guard (D4) ───────────────────────────────────────
-console.log("(f) guard — Dec/Jan cross-year pool days inside ±10 calendar days");
+// ─── (f) pool-year semantics (§3) + the ±10d anti-leakage guard (D4) ────────────
+console.log("(f) pool — calendar year(d) excluded; guard bites Dec/Jan cross-boundary days");
 {
   const store = flatStore(1950, 1957, ["MT"]);
   const env = buildEnv(store);
   const d = env.cal.idx("1953-12-31");
-  // md 12-31 window in year 1954 = Dec 28 1954 .. Jan 3 1955 — none within ±10d
-  // of 1953-12-31; but year 1954's window INCLUDES Jan 1..3 1954, which sit
-  // 1..3 days after the index day. Wait: mdBase(12-31, 1954) = 1954-12-31;
-  // offsets −3..+3 = 1954-12-28..1955-01-03 — a year away. The ±10 bite comes
-  // from the index day's OWN md in the ADJACENT year only when the window
-  // crosses the boundary toward it: md 01-02, year 1953, index 1954-01-02 —
-  // pool year 1953 offset +3 = 1953-01-05 (≈364 days). Cross-boundary
-  // proximity arises for md near Jan 1 with pool year = index year − 1:
-  // index 1954-01-02, pool md-base 1953-01-02 … no. The true bite: index
-  // 1954-01-02, pool year 1953 is a year back; pool year 1954 is EXCLUDED
-  // (index year). The ±10 guard bites days like index 1953-12-31 vs pool year
-  // 1954 md-base 1954-12-31 — no. It bites via offsets crossing INTO the
-  // index year: md 12-31 base 1952 + offsets reaches 1953-01-03, which is 362
-  // days from 1953-12-31. So on THIS calendar the guard can only bite when
-  // |off| pushes a pool day within 10 days of d — i.e. pool year = year(d)±1
-  // AND md within ~13 days of the year boundary AND offsets point toward d.
-  // index 1954-01-02: pool year 1953, md-base 1953-01-02, offsets −3..+3 →
-  // 1952-12-30..1953-01-05 — ~1 year away. Conclusion: with md anchored to
-  // the POOL year (the spot's construction), cross-year proximity happens for
-  // md 12-29..12-31 → base year(d)−1 … no wait: index 1954-01-02 (md 01-02);
-  // pool year 1955: base 1955-01-02 — a year ahead. NONE of these approach d.
-  // The genuinely adjacent case: md 12-30, index year 1953 (d = 1953-12-30);
-  // pool year 1954: base 1954-12-30 — a year ahead. Still no.
-  // Adjacency requires the OFFSET to cross the year boundary from a base in
-  // year(d)+1 backward: base 1954-01-01 (md 01-01, pool year 1954) offset −3
-  // → 1953-12-29, which is 2 days BEFORE d = 1953-12-31. And md 01-01 pool
-  // year 1954 belongs to index days with md 01-01 — i.e. index 1953-01-01's
-  // pool contains 1954-01-01 − 3 = 1953-12-29, which is ~362d away from d.
-  // The REAL adjacency: index d = 1954-01-01; pool year 1953 md-base
-  // 1953-01-01; AND pool year 1955 … all ~1 year away. BUT index 1954-01-01
-  // vs pool day at year 1954 is excluded. So for THIS predicate (md anchored
-  // per pool year), |p − d| ≤ 10 occurs ONLY when year(p) = year(d) ± 1 and
-  // the md sits within 13 days of the boundary: e.g. d = 1953-12-31 (md
-  // 12-31), pool year 1954 base = 1954-12-31 → no; pool year 1953 excluded.
-  // Hence: the guard's bite is via d near Jan: d = 1954-01-02, pool year 1953,
-  // base 1953-01-02 → no. — Constructed proof instead: verify directly that a
-  // pool day within ±10 of d is excluded by comparing member counts.
-  const s6Guarded = evalReplicate(env, null, { predicate: "lineup", guardDays: GUARD_DAYS, only: { state: 0, day: d } }).s6;
-  const s6Open = evalReplicate(env, null, { predicate: "lineup", guardDays: 0, only: { state: 0, day: d } }).s6;
-  assert(s6Open.lN + s6Open.nN >= s6Guarded.lN + s6Guarded.nN,
-    "unguarded pool is never smaller", `${s6Open.lN + s6Open.nN} vs ${s6Guarded.lN + s6Guarded.nN}`);
+  // Registered pool for d = 1953-12-31 (flat store: near-normal matches all,
+  // so pool size = s6.lN + s6.nN). Per anchor-year window (md 12-31 ± 3):
+  //   1950/1951/1954/1955/1956 → 7 days each (their cross-boundary Jan 1–3
+  //     days belong to years ≠ 1953 and sit ~1yr from d — admitted);
+  //   1952 → 4 (Dec 28–31 1952; Jan 1–3 1953 are year(d) days — excluded);
+  //   1953 → Dec 28–31 1953 excluded (year(d)); Jan 1–3 1954 admitted by the
+  //     year rule but 1–3 calendar days from d: GUARDED in the primary,
+  //     ADMITTED in S7 (guard 0) — the A2 leakage the guard exists to remove;
+  //   1957 → 4 (Jan 1–3 1958 are off-store).
+  const poolAt = (guardDays: number): number => {
+    const s6 = evalReplicate(env, null, { predicate: "lineup", guardDays, only: { state: 0, day: d } }).s6;
+    return s6.lN + s6.nN;
+  };
+  assert(poolAt(GUARD_DAYS) === 43, "guarded pool = 43 (year(d) days out, Dec/Jan adjacents guarded)", `${poolAt(GUARD_DAYS)}`);
+  assert(poolAt(0) === 46, "S7 (guard 0) admits the 3 leaky Jan 1–3 year(d)+1 days — S7 ≠ primary", `${poolAt(0)}`);
+  assert(poolAt(7) === 43 && poolAt(14) === 43,
+    "S8 ±7/±14 ≡ ±10 here — every cross-boundary adjacent sits ≤ 4 calendar days out (structural, not dead code)");
+
+  // mid-year day: no boundary in reach → all guards identical, pool 7y × 7d
+  const dMid = env.cal.idx("1953-06-15");
+  const poolMid = (g: number): number => {
+    const s6 = evalReplicate(env, null, { predicate: "lineup", guardDays: g, only: { state: 0, day: dMid } }).s6;
+    return s6.lN + s6.nN;
+  };
+  assert(poolMid(GUARD_DAYS) === 49 && poolMid(0) === 49, "mid-year pool = 7 other years × 7 offsets, guard moot");
+
+  // LOYO baseline (D2) excludes year(d)-CALENDAR values per offset: for
+  // d = 1953-12-31 the offset +3 column's year(d) value is Jan 3 1953
+  // (reached only from the 1952 anchor). Poke it hot — the baseline must not
+  // move, so the offset +3 candidates stay near-normal-matched and the pool
+  // stays 43. (If the code subtracted the yi-window's Jan 3 1954 instead, the
+  // 170°F value would drag the mean to ~84°F and drop all 5 offset-+3
+  // candidates from the pool.)
+  const poked = flatStore(1950, 1957, ["MT"]);
+  poked.high.get("MT")![env.cal.idx("1953-01-03")] = 170;
+  const envP = buildEnv(poked);
+  const s6P = evalReplicate(envP, null, { predicate: "lineup", guardDays: GUARD_DAYS, only: { state: 0, day: d } }).s6;
+  assert(s6P.lN + s6P.nN === 43,
+    "poked Jan 3 1953 (a year(d) value) is excluded from the offset baseline — pool unchanged",
+    `${s6P.lN + s6P.nN}`);
 }
 
 // ─── (g) precedent = most-recent match (matches[0] verbatim, date desc) ─────────
