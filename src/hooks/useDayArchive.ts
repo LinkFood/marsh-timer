@@ -21,19 +21,87 @@ export interface DomainGroupResult {
   key: string;
   label: string;
   entries: ArchiveEntry[];
+  sources: LaneSource[];
 }
 
-export const DOMAIN_GROUPS: { key: string; label: string; types: string[] }[] = [
-  { key: 'weather', label: 'Weather', types: ['ghcn-daily', 'weather-event', 'nws-alert'] },
-  { key: 'storms', label: 'Storms', types: ['storm-event'] },
-  { key: 'water', label: 'Water', types: ['river-discharge', 'usgs-water', 'tide-gauge', 'noaa-tide', 'ocean-buoy'] },
-  { key: 'land', label: 'Drought & Land', types: ['drought-weekly', 'drought-index', 'soil-conditions', 'snotel-daily', 'snow-cover-monthly', 'crop-progress-weekly'] },
-  { key: 'life', label: 'Life', types: ['migration-spike-extreme', 'migration-spike-significant', 'migration-daily', 'birdweather-acoustic', 'inaturalist-daily', 'bio-absence-signal', 'bio-environmental-correlation'] },
-  { key: 'sky', label: 'Sky & Space', types: ['geomagnetic-kp', 'space-weather', 'astronomical', 'astronomical-event', 'nasa-daily'] },
-  { key: 'climate', label: 'Climate', types: ['climate-index', 'climate-index-daily'] },
-  { key: 'quakes', label: 'Quakes', types: ['earthquake-event'] },
-  { key: 'air', label: 'Air', types: ['air-quality'] },
-  { key: 'fire', label: 'Fire', types: ['wildfire-perimeter'] },
+export interface LaneSource {
+  label: string;
+  href: string;
+}
+
+/**
+ * Each lane block prints where its rows came from — provenance as visible
+ * furniture (SITE-BLUEPRINT §Wave 3), linking the public dataset of record.
+ */
+export const DOMAIN_GROUPS: { key: string; label: string; types: string[]; sources: LaneSource[] }[] = [
+  {
+    key: 'weather', label: 'Weather',
+    types: ['ghcn-daily', 'weather-event', 'nws-alert'],
+    sources: [
+      { label: 'NOAA GHCN-Daily', href: 'https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily' },
+      { label: 'NWS alerts', href: 'https://www.weather.gov/alerts' },
+    ],
+  },
+  {
+    key: 'storms', label: 'Storms',
+    types: ['storm-event'],
+    sources: [{ label: 'NCEI Storm Events Database', href: 'https://www.ncdc.noaa.gov/stormevents/' }],
+  },
+  {
+    key: 'water', label: 'Water',
+    types: ['river-discharge', 'usgs-water', 'tide-gauge', 'noaa-tide', 'ocean-buoy'],
+    sources: [
+      { label: 'USGS Water Data', href: 'https://waterdata.usgs.gov' },
+      { label: 'NOAA CO-OPS tides', href: 'https://tidesandcurrents.noaa.gov' },
+      { label: 'NDBC buoys', href: 'https://www.ndbc.noaa.gov' },
+    ],
+  },
+  {
+    key: 'land', label: 'Drought & Land',
+    types: ['drought-weekly', 'drought-index', 'soil-conditions', 'snotel-daily', 'snow-cover-monthly', 'crop-progress-weekly'],
+    sources: [
+      { label: 'U.S. Drought Monitor', href: 'https://droughtmonitor.unl.edu' },
+      { label: 'USDA NASS', href: 'https://www.nass.usda.gov' },
+      { label: 'NRCS SNOTEL', href: 'https://wcc.sc.egov.usda.gov/snow/' },
+    ],
+  },
+  {
+    key: 'life', label: 'Life',
+    types: ['migration-spike-extreme', 'migration-spike-significant', 'migration-daily', 'birdweather-acoustic', 'inaturalist-daily', 'bio-absence-signal', 'bio-environmental-correlation'],
+    sources: [
+      { label: 'eBird', href: 'https://ebird.org' },
+      { label: 'BirdWeather', href: 'https://www.birdweather.com' },
+      { label: 'iNaturalist', href: 'https://www.inaturalist.org' },
+    ],
+  },
+  {
+    key: 'sky', label: 'Sky & Space',
+    types: ['geomagnetic-kp', 'space-weather', 'astronomical', 'astronomical-event', 'nasa-daily'],
+    sources: [
+      { label: 'NOAA SWPC', href: 'https://www.swpc.noaa.gov' },
+      { label: 'NASA POWER', href: 'https://power.larc.nasa.gov' },
+    ],
+  },
+  {
+    key: 'climate', label: 'Climate',
+    types: ['climate-index', 'climate-index-daily'],
+    sources: [{ label: 'NOAA CPC indices', href: 'https://www.cpc.ncep.noaa.gov' }],
+  },
+  {
+    key: 'quakes', label: 'Quakes',
+    types: ['earthquake-event'],
+    sources: [{ label: 'USGS earthquakes', href: 'https://earthquake.usgs.gov' }],
+  },
+  {
+    key: 'air', label: 'Air',
+    types: ['air-quality'],
+    sources: [{ label: 'EPA AirNow', href: 'https://www.airnow.gov' }],
+  },
+  {
+    key: 'fire', label: 'Fire',
+    types: ['wildfire-perimeter'],
+    sources: [{ label: 'NIFC wildfire perimeters', href: 'https://data-nifc.opendata.arcgis.com' }],
+  },
 ];
 
 export function useDayArchive(dateStr: string | undefined, state: string | null) {
@@ -66,7 +134,7 @@ export function useDayArchive(dateStr: string | undefined, state: string | null)
       const found: DomainGroupResult[] = [];
       results.forEach((res, i) => {
         const data = (res.data || []) as ArchiveEntry[];
-        if (data.length > 0) found.push({ key: DOMAIN_GROUPS[i].key, label: DOMAIN_GROUPS[i].label, entries: data });
+        if (data.length > 0) found.push({ key: DOMAIN_GROUPS[i].key, label: DOMAIN_GROUPS[i].label, entries: data, sources: DOMAIN_GROUPS[i].sources });
       });
       setGroups(found);
       setLoading(false);

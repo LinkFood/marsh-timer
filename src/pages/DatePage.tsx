@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import { InnerHeader, InnerFooter } from '@/components/InnerNav';
@@ -18,6 +18,26 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const MIN_DATE = '1950-01-01';
+
+/**
+ * The museum's built exhibits, keyed by the window of days each one covers.
+ * When the visitor's date falls inside a window, the main hall points to the
+ * room — cross-reference as furniture (SITE-BLUEPRINT §2c): a date-page day
+ * that has a film or a verified replay says so and hands over the door.
+ */
+const EXHIBITS: { from: string; to: string; kicker: string; title: string; href: string; cta: string }[] = [
+  { from: '2021-01-15', to: '2021-02-20', kicker: 'This day is in a film', title: 'Winter Storm Uri — the instruments saw it coming', href: '/board/uri', cta: 'Watch the board replay' },
+  { from: '2012-10-08', to: '2012-11-08', kicker: 'This day is in a film', title: 'Hurricane Sandy — as the instruments saw it come ashore', href: '/board/sandy', cta: 'Watch the board replay' },
+  { from: '2026-06-09', to: '2026-07-04', kicker: 'This day is in a strangest-days replay', title: 'The heat wave the layers saw coming', href: '/cascade/july-2026-heat', cta: 'Replay it' },
+  { from: '2020-09-05', to: '2020-09-10', kicker: 'This day is in a strangest-days replay', title: 'The weekend the weather snapped', href: '/cascade/sept-2020-whiplash', cta: 'Replay it' },
+];
+
+/** The other rooms of the museum wing, offered as furniture, not bare nav. */
+const WING_DOORS: { to: string; label: string; line: string }[] = [
+  { to: '/born', label: 'The night you were born', line: 'your own date, read back from the record' },
+  { to: '/board/uri', label: 'The films', line: 'storm boards that replay themselves, day by day' },
+  { to: '/cascade', label: 'Strangest days', line: 'verified replays of days the layers moved together' },
+];
 
 function todayStr(): string {
   const d = new Date();
@@ -328,17 +348,41 @@ export default function DatePage() {
                         <EntryLine key={i} entry={entry} />
                       ))}
                     </ul>
+                    {/* Provenance as visible furniture — the dataset of record, linked */}
+                    <div className="mt-2.5 pt-2 border-t border-white/[0.05] flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                      <span className="text-[9px] font-mono text-white/25">source:</span>
+                      {group.sources.map(s => (
+                        <a
+                          key={s.href}
+                          href={s.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[9px] font-mono text-cyan-400/50 hover:text-cyan-400 transition-colors"
+                        >
+                          {s.label} &#8599;
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-            <div className="mt-4">
-              <CiteBlock
-                label="Cite this day"
-                citation={`Duck Countdown Environmental Archive, entry for ${formatted}${state ? `, ${getStateName(state)}` : ''}. 7.6M+ records across 25+ domains, 1950–present. duckcountdown.com/date/${dateStr}${state ? `?state=${state}` : ''}. Retrieved ${retrievedToday()}.`}
-              />
-            </div>
           </section>
+
+          {/* Exhibit cross-reference — the hall points to its rooms (§2c) */}
+          {EXHIBITS.filter(e => dateStr >= e.from && dateStr <= e.to).map(e => (
+            <Link
+              key={e.href}
+              to={e.href}
+              className="group block rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] hover:border-cyan-400/40 transition-colors p-4"
+            >
+              <p className="text-[10px] font-mono uppercase tracking-widest text-cyan-400/60">{e.kicker}</p>
+              <p className="font-display text-base text-white/90 leading-snug mt-1">{e.title}</p>
+              <span className="inline-block text-[11px] font-mono text-cyan-400/70 group-hover:text-cyan-400 transition-colors mt-1.5">
+                {e.cta} &rarr;
+              </span>
+            </Link>
+          ))}
 
           {/* Synthesize — the only LLM call, and only on press */}
           <section>
@@ -379,6 +423,13 @@ export default function DatePage() {
                 </button>
               )}
             </ErrorBoundary>
+            {/* The block's own door deeper — the query surface, pre-loaded with this day */}
+            <Link
+              to={`/ask?q=${encodeURIComponent(`What happened on ${formatted}${state ? ` in ${getStateName(state)}` : ''}?`)}${state ? `&state=${state}` : ''}`}
+              className="mt-3 inline-block text-[11px] font-mono text-white/35 hover:text-cyan-400 transition-colors"
+            >
+              ask the archive more about this day &rarr;
+            </Link>
           </section>
 
           {/* This day in other years */}
@@ -397,6 +448,35 @@ export default function DatePage() {
               </div>
             </section>
           )}
+
+          {/* Cite this day — prominent, the museum's receipt (§Wave 3) */}
+          <section>
+            <CiteBlock
+              label="Cite this day"
+              prominent
+              citation={`Duck Countdown Environmental Archive, entry for ${formatted}${state ? `, ${getStateName(state)}` : ''}. 7.6M+ records across 25+ domains, 1950–present. duckcountdown.com/date/${dateStr}${state ? `?state=${state}` : ''}. Retrieved ${retrievedToday()}.`}
+            />
+          </section>
+
+          {/* The rest of the wing — cross-linked as one museum (§Wave 3) */}
+          <section>
+            <SectionLabel>The rest of the wing</SectionLabel>
+            <div className="space-y-2">
+              {WING_DOORS.map(d => (
+                <Link
+                  key={d.to}
+                  to={d.to}
+                  className="group flex items-baseline justify-between gap-3 rounded-lg border border-white/[0.07] hover:border-cyan-400/30 transition-colors px-4 py-3"
+                >
+                  <span className="min-w-0">
+                    <span className="font-display text-sm text-white/85">{d.label}</span>
+                    <span className="block text-[11px] font-body text-white/40 leading-snug mt-0.5">{d.line}</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-cyan-400/60 group-hover:text-cyan-400 transition-colors shrink-0">&rarr;</span>
+                </Link>
+              ))}
+            </div>
+          </section>
 
           <InnerFooter current="date" />
         </div>

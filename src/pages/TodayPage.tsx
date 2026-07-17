@@ -541,7 +541,9 @@ export default function TodayPage() {
           {/* THE RHYME — only when the archive holds one; never a placeholder */}
           {selected && rhyme && (
             <div className="mx-auto mt-5 max-w-xl">
-              <p className="font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
+              {/* Honest scope: the rhyme is the NATIONAL board's, not your ground's */}
+              <p className="font-mono text-[10px] tracking-[0.2em] text-gray-600">THE NATIONAL BOARD</p>
+              <p className="mt-1 font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
                 {isNewest ? "Today reads" : "This day read"} most like{" "}
                 <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
                 same instruments, deep the same way.

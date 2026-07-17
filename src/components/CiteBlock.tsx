@@ -14,7 +14,7 @@ export function retrievedToday(): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-export default function CiteBlock({ label, citation }: { label: string; citation: string }) {
+export default function CiteBlock({ label, citation, prominent = false }: { label: string; citation: string; prominent?: boolean }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -27,14 +27,14 @@ export default function CiteBlock({ label, citation }: { label: string; citation
   };
 
   return (
-    <div className="border border-white/[0.07] rounded-lg bg-gray-900/40">
+    <div className={`rounded-lg bg-gray-900/40 border ${prominent ? 'border-cyan-400/25' : 'border-white/[0.07]'}`}>
       <button
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
       >
         <Quote size={12} className="text-cyan-400/60 shrink-0" />
-        <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 flex-1">{label}</span>
+        <span className={`text-[10px] font-mono uppercase tracking-widest flex-1 ${prominent ? 'text-cyan-300/80' : 'text-white/40'}`}>{label}</span>
         <ChevronDown size={12} className={`text-white/30 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
