@@ -8,12 +8,17 @@ import { cronResponse, cronErrorResponse } from '../_shared/response.ts';
 const FUNCTION_NAME = "hunt-wildfire-perimeters";
 const CONTENT_TYPE = "wildfire-perimeter";
 
-const API_URL = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0/query";
+// WFIGS *Current* perimeters layer — active incidents only. The old all-history
+// layer ordered by acres returned 2021 mega-fires, and its schema dropped
+// poly_PercentContained (now attr_PercentContained), which made ArcGIS return
+// HTTP 200 + {"error": 400} bodies that parsed as zero features — the lane
+// logged "success, fires: 0" daily from birth (2026-03-29) until 2026-07-17.
+const API_URL = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query";
 
 interface FireProperties {
   poly_IncidentName: string | null;
   poly_Acres_AutoCalc: number | null;
-  poly_PercentContained: number | null;
+  attr_PercentContained: number | null;
   attr_IrwinID: string | null;
   attr_POOState: string | null;
   attr_FireDiscoveryDateTime: number | null;
@@ -43,10 +48,11 @@ serve(async (req) => {
     const supabase = createSupabaseClient();
 
     const params = new URLSearchParams({
-      where: "1=1",
-      outFields: "poly_IncidentName,poly_Acres_AutoCalc,poly_PercentContained,attr_IrwinID,attr_POOState,attr_FireDiscoveryDateTime,attr_ContainmentDateTime,attr_FireCause",
+      where: "attr_IncidentTypeCategory = 'WF'", // wildfires only, not prescribed burns (RX)
+      outFields: "poly_IncidentName,poly_Acres_AutoCalc,attr_PercentContained,attr_IrwinID,attr_POOState,attr_FireDiscoveryDateTime,attr_ContainmentDateTime,attr_FireCause",
       resultRecordCount: "100",
       orderByFields: "poly_Acres_AutoCalc DESC",
+      returnGeometry: "false",
       f: "geojson",
     });
 
@@ -59,6 +65,13 @@ serve(async (req) => {
     }
 
     const geojson = await res.json();
+
+    // ArcGIS soft-errors: HTTP 200 with an error body and no features. This is
+    // exactly how the lane died silently — never treat it as an empty day.
+    if (geojson.error) {
+      throw new Error(`WFIGS query error: ${JSON.stringify(geojson.error)}`);
+    }
+
     const features = geojson.features || [];
 
     console.log(`[${FUNCTION_NAME}] ${features.length} active fires returned`);
@@ -70,8 +83,10 @@ serve(async (req) => {
       const p: FireProperties = feature.properties;
       const name = p.poly_IncidentName || "Unknown";
       const acres = p.poly_Acres_AutoCalc;
-      const pct = p.poly_PercentContained ?? 0;
-      const state = p.attr_POOState || "US";
+      const pct = p.attr_PercentContained ?? 0;
+      // attr_POOState arrives as "US-UT" — normalize to the bare 2-letter code
+      // the 2026-03-29 backfill rows use ("UT").
+      const state = (p.attr_POOState || "US").replace(/^US-/, "");
       const irwinId = p.attr_IrwinID;
       const startDate = formatDate(p.attr_FireDiscoveryDateTime);
       const cause = p.attr_FireCause || "unknown";
@@ -82,10 +97,12 @@ serve(async (req) => {
         continue;
       }
 
+      const today = new Date().toISOString().slice(0, 10);
       const acresStr = acres != null ? `${Math.round(acres)} acres` : "unknown acres";
-      const text = `Wildfire ${name} in ${state}: ${acresStr}, ${pct}% contained, started ${startDate}, cause: ${cause}. ${severity}`;
+      const text = `Wildfire ${name} in ${state}: ${acresStr}, ${pct}% contained as of ${today}, started ${startDate}, cause: ${cause}. ${severity}`;
 
-      const title = irwinId ? `fire-${irwinId}` : `fire-${name}-${state}-${startDate}`;
+      // Date-suffixed: one snapshot row per fire per day (acres/containment move daily).
+      const title = irwinId ? `fire-${irwinId}-${today}` : `fire-${name}-${state}-${today}`;
 
       entries.push({
         text,
@@ -105,6 +122,7 @@ serve(async (req) => {
             fire_cause: cause,
             discovery_date: startDate,
             containment_date: formatDate(p.attr_ContainmentDateTime),
+            snapshot_date: today,
             severity,
           },
         },
