@@ -64,7 +64,7 @@ function tideLineFor(ground: string, groundName: string, resolved: ResolvedInstr
     here.find((r) => r.hasData) ??
     here[0];
   if (!gauge.hasData || gauge.pct === null) {
-    return { hasGauge: true, text: `${gauge.label ?? gauge.inst.label} gauge — no reading on file today` };
+    return { hasGauge: true, text: `${gauge.inst.label} gauge — no reading on file today` };
   }
   const p = Math.round(gauge.pct * 100);
   const dir = gauge.side === "high" ? "higher" : "lower";
