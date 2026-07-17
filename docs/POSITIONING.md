@@ -46,3 +46,26 @@ even building toward the fusion.
   of American ground" ✓). NEVER name the product "___ Almanac" (three claimants: Yankee's
   registered marks + litigated yellow trade dress; Farmers' Almanac LLC relaunching; Semios's
   almanac.ag). Never "Farmer's" anything. No yellow covers.
+
+---
+
+## The generalization (James, 2026-07-17 — the growth doctrine)
+
+> "When I first started... it was to find out when duck season was open and what the best
+> weather conditions were. That's pretty much like an almanac for ducks. Imagine giving an
+> almanac for everything. Based on weather triggers and the history that was recorded and
+> true for as far back as you can physically find — anything that someone thought was good
+> enough to write down and keep a record of — I want to have it, use it, and make an
+> almanac out of it."
+
+**ONE ENGINE, N ALMANACS.** Duck Countdown was the prototype vertical: a season + a countdown
++ conditions + the record. Every vertical is the same machine wearing different receipts:
+ducks, tomatoes, fishing, stargazing, surf, foliage, pollen, harvest — anything with a date,
+a place, and a recorded history couples to the weather archive and becomes almanac pages
+(what is today for THIS thing, here; what it rhymes with; what followed; graded).
+
+The ingestion law, restated: anything anyone thought worth writing down is a candidate lane.
+The almanac FORM is the output shape; the Formation Layer is the live edge; the court keeps
+every page honest. Verticals are chapters, not products.
+
+(Post-timebox growth doctrine — the box's gates still govern what gets built before 08-10.)
