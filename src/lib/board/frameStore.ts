@@ -402,27 +402,12 @@ function clauseFor(r: ResolvedInstrument, seed: number): string {
   }
 }
 
-/** Join 1–3 clauses with a per-day connective so days don't read identically. */
-function joinClauses(parts: string[], seed: number): string {
-  if (parts.length === 0) return "";
-  if (parts.length === 1) return parts[0];
-  if (parts.length === 2)
-    return pickBy(seed, [
-      `${parts[0]}, and ${parts[1]}`,
-      `${parts[0]} while ${parts[1]}`,
-      `${parts[0]} — and ${parts[1]}`,
-    ]);
-  return pickBy(seed, [
-    `${parts[0]}, ${parts[1]}, and ${parts[2]}`,
-    `${parts[0]}; ${parts[1]}; and ${parts[2]}`,
-    `${parts[0]}, ${parts[1]} — and ${parts[2]}`,
-  ]);
-}
-
 export interface PorchLine {
-  lead: string; // the swell, named
+  lead: string; // ONE clause — the single most important fact, named
   coda: string; // what it means, honestly
-  swollen: ResolvedInstrument[]; // the instruments the lead named
+  swollen: ResolvedInstrument[]; // the instrument the lead named (0 or 1)
+  active: string[]; // remaining corroborated extremes, compact strip fragments
+  forming: string[]; // formation watches, compact strip fragments
 }
 
 /** "a Flood Watch" / "an Excessive Heat Warning" — NWS name verbatim. */
@@ -443,6 +428,20 @@ function corroboratedClause(r: ResolvedInstrument, alert: StateAlert, day: strin
   }
   const p = Math.floor((r.pct ?? 0) * 100);
   return `${name} is running ${hot ? "hotter" : "colder"} than ${p}% of its ${month} record, ${under}`;
+}
+
+/**
+ * The same corroborated fact as a compact strip fragment — state name, tail
+ * fact, NWS event name verbatim. "Texas — July record cold · Flood Warning".
+ */
+function corroboratedFragment(r: ResolvedInstrument, alert: StateAlert, day: string): string {
+  const month = MONTHS[Number(day.slice(5, 7)) - 1];
+  const hot = r.side === "high";
+  if ((r.pct ?? 0) >= 1 - 1e-9) {
+    return `${r.inst.label} — ${month} record ${hot ? "heat" : "cold"} · ${alert.eventType}`;
+  }
+  const p = Math.floor((r.pct ?? 0) * 100);
+  return `${r.inst.label} — ${hot ? "hotter" : "colder"} than ${p}% of ${month} record · ${alert.eventType}`;
 }
 
 /** Full state names for the forming clause (watch rows carry postal abbrs). */
@@ -469,44 +468,58 @@ function statesSummary(states: string[]): string {
   return `${stateFullName(states[0])} + ${states.length - 1} more states`;
 }
 
+/** "TX" / "MD, NC" / "TX +3" — postal abbrs for the strip fragments. */
+function statesAbbrSummary(states: string[]): string {
+  if (states.length <= 2) return states.join(", ");
+  return `${states[0]} +${states.length - 1}`;
+}
+
 /**
- * The FORMING clause: what the formation layer says is taking shape, as one
- * compact fact-only clause. Doctrine: live data is the trigger to the past —
- * "forming" names the lead, never an outcome, never "will".
+ * The FORMING leads: what the formation layer says is taking shape. Doctrine:
+ * live data is the trigger to the past — "forming" names the lead, never an
+ * outcome, never "will". Each open lead renders two ways: a full fact-only
+ * clause (sentence-grade, for when it leads the porch) and a compact fragment
+ * for the strip ("flood over TX +3").
  */
-function formingClause(watches: FormationWatch[]): string | null {
+const FORMING_LEADS: { id: string; long: (s: string) => string; short: (s: string) => string }[] = [
+  { id: "flood-forming", long: (s) => `flood is forming over ${s} (live NWS watches)`, short: (s) => `flood over ${s}` },
+  { id: "precip-flood-forming", long: (s) => `flood ground is forming over ${s} (three days of rain)`, short: (s) => `flood ground over ${s}` },
+  { id: "smoke-forming", long: (s) => `smoke-thick air is forming over ${s}`, short: (s) => `smoke over ${s}` },
+  { id: "aqi-ramp-forming", long: (s) => `air is degrading fast over ${s} (two-day climb)`, short: (s) => `air degrading over ${s}` },
+  { id: "drought-fire-forming", long: (s) => `fire ground is forming over ${s} (deepening drought)`, short: (s) => `fire ground over ${s}` },
+];
+
+function formingGroups(watches: FormationWatch[]): { long: string; short: string }[] {
   const byLead = new Map<string, string[]>();
   for (const w of watches) {
     const states = byLead.get(w.lead_id) ?? [];
     for (const st of w.states) if (!states.includes(st)) states.push(st);
     byLead.set(w.lead_id, states);
   }
-  const parts: string[] = [];
-  const flood = byLead.get("flood-forming");
-  if (flood && flood.length > 0) parts.push(`flood is forming over ${statesSummary(flood)} (live NWS watches)`);
-  const precip = byLead.get("precip-flood-forming");
-  if (precip && precip.length > 0) parts.push(`flood ground is forming over ${statesSummary(precip)} (three days of rain)`);
-  const smoke = byLead.get("smoke-forming");
-  if (smoke && smoke.length > 0) parts.push(`smoke-thick air is forming over ${statesSummary(smoke)}`);
-  const ramp = byLead.get("aqi-ramp-forming");
-  if (ramp && ramp.length > 0) parts.push(`air is degrading fast over ${statesSummary(ramp)} (two-day climb)`);
-  const drought = byLead.get("drought-fire-forming");
-  if (drought && drought.length > 0) parts.push(`fire ground is forming over ${statesSummary(drought)} (deepening drought)`);
-  if (parts.length === 0) return null;
-  return parts.join(", and ");
+  const out: { long: string; short: string }[] = [];
+  for (const def of FORMING_LEADS) {
+    const states = byLead.get(def.id);
+    if (!states || states.length === 0) continue;
+    out.push({ long: def.long(statesSummary(states)), short: def.short(statesAbbrSummary(states)) });
+  }
+  return out;
 }
 
+/** Capitalize a clause into a standalone sentence. */
+const asSentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1) + ".";
+
 /**
- * Derive the porch sentence for a day. Deep = tail depth >= 0.85. Selection law:
+ * Derive the porch reading for a day. Deep = tail depth >= 0.85. Selection law:
  * a state whose temp sits at EXTREME depth (byte >= 249) while the state is
  * under an active severe NWS alert is a CORROBORATED EXTREME — it outranks
- * everything and leads the sentence naming both facts plainly. When formation
- * watches are live (the live board only), the FORMING clause comes next —
- * after the corroborated extremes, before the seeded quiet variety. Seeded
- * variety applies only to the uncorroborated follow-ons, which still prefer
- * KIND DIVERSITY (a tide or a buoy beats a fourth hot state). The coda stays
- * honest: with a corroborated extreme or a live watch standing, "nothing
- * forming" never renders — the coda names what is actually standing.
+ * everything. ONE clause leads: the deepest corroborated extreme; failing
+ * that, the first live formation watch; failing that, the deepest reading
+ * (seeded variety). Everything else the sentence used to carry moves to the
+ * strip: `active` holds the remaining corroborated extremes as compact
+ * fragments, `forming` holds the formation watches ("flood over TX +3").
+ * The coda stays honest: with a corroborated extreme or a live watch
+ * standing, "nothing forming" never renders — the coda names what is
+ * actually standing.
  */
 export function porchLine(
   day: string,
@@ -528,25 +541,31 @@ export function porchLine(
   };
   const corroborated = deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && alertFor(r) !== null);
 
-  const formingText = formingClause(watches ?? []);
-  // The forming clause consumes one of the sentence's three clause slots.
-  const slots = formingText ? 2 : 3;
-
-  // Corroborated extremes first (deepest first), then fill preferring
-  // instruments of a kind not yet named.
-  const named: ResolvedInstrument[] = corroborated.slice(0, slots);
-  const rest = deep.filter((r) => !named.includes(r));
-  while (named.length < slots && rest.length > 0) {
-    const kinds = new Set(named.map((r) => r.inst.kind));
-    const i = rest.findIndex((r) => !kinds.has(r.inst.kind));
-    named.push(rest.splice(i === -1 ? 0 : i, 1)[0]);
-  }
+  const formingAll = formingGroups(watches ?? []);
 
   const forming = (frame.strings && Object.keys(frame.strings).length > 0) || (frame.blooms?.length ?? 0) > 0;
   const watchCount = watches?.length ?? 0;
 
   let lead: string;
-  if (named.length === 0 && !formingText) {
+  let named: ResolvedInstrument[] = [];
+  let active: string[] = [];
+  let formingStrip: string[] = [];
+
+  if (corroborated.length > 0) {
+    // The deepest corroborated extreme leads alone; the rest go to the strip.
+    named = [corroborated[0]];
+    lead = asSentence(corroboratedClause(corroborated[0], alertFor(corroborated[0])!, day));
+    active = corroborated.slice(1).map((r) => corroboratedFragment(r, alertFor(r)!, day));
+    formingStrip = formingAll.map((g) => g.short);
+  } else if (formingAll.length > 0) {
+    // No corroborated extreme — the first forming lead speaks in full.
+    lead = asSentence(formingAll[0].long);
+    formingStrip = formingAll.slice(1).map((g) => g.short);
+  } else if (deep.length > 0) {
+    // Quiet variety, one clause only — the deepest reading, kind-aware.
+    named = [deep[0]];
+    lead = asSentence(clauseFor(deep[0], mix(seed, daySeed(deep[0].inst.id))));
+  } else {
     // Nothing deep, nothing forming. Say so plainly, but stay specific about coverage.
     lead =
       withData.length === 0
@@ -556,16 +575,6 @@ export function porchLine(
             "A quiet board — nothing deep.",
             "No instrument sits deep in its history.",
           ]);
-  } else {
-    // Clause order law: corroborated extremes → FORMING → quiet variety.
-    const nCorr = named.filter((r) => corroborated.includes(r)).length;
-    const clauses = named.map((r, i) => {
-      const alert = corroborated.includes(r) ? alertFor(r) : null;
-      return alert ? corroboratedClause(r, alert, day) : clauseFor(r, mix(seed, daySeed(r.inst.id) + i));
-    });
-    if (formingText) clauses.splice(nCorr, 0, formingText);
-    const sentence = joinClauses(clauses.slice(0, 3), mix(seed, 97));
-    lead = sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
   }
 
   const watchBit =
@@ -600,7 +609,7 @@ export function porchLine(
     coda = `${deep.length} readings deep in their tails; nothing forming yet.`;
   }
 
-  return { lead, coda, swollen: named };
+  return { lead, coda, swollen: named, active, forming: formingStrip };
 }
 
 // ── Small helpers for the room ──────────────────────────────────────────────────

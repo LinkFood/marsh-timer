@@ -353,6 +353,10 @@ export default function ConceptA() {
     };
   }, [refit, model]);
 
+  const scrollToBoard = useCallback(() => {
+    stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   const selectDay = useCallback((day: string) => {
     setSelectedDay(day);
     setCard(null);
@@ -395,7 +399,7 @@ export default function ConceptA() {
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       {/* IDENTITY — static, before any row arrives */}
-      <header className="mx-auto w-full max-w-3xl px-5 pt-10 text-center sm:px-8 sm:pt-14">
+      <header className="mx-auto w-full max-w-3xl px-5 pt-8 text-center sm:px-8 sm:pt-12">
         <div className="font-mono text-[11px] tracking-[0.3em] text-cyan-300/90">DUCK COUNTDOWN</div>
         <h1 className="mx-auto mt-4 max-w-2xl font-display text-lg font-normal leading-normal text-gray-300 sm:text-xl">
           The honest memory of American ground — what today is here, what it rhymes with, and what
@@ -408,7 +412,7 @@ export default function ConceptA() {
 
       {/* THE PORCH — the hero sentence over the live board */}
       <section ref={heroRef} className="mx-auto w-full max-w-3xl scroll-mt-6 px-5 sm:px-8">
-        <div className="mt-10 text-center sm:mt-12">
+        <div className="mt-7 text-center sm:mt-10">
           <p className="font-mono text-[11px] tabular-nums text-gray-500">
             {selected ? longDate(selected.frame.day) : " "}
           </p>
@@ -429,10 +433,51 @@ export default function ConceptA() {
 
           {selected && (
             <>
-              <h2 className="mx-auto mt-2 max-w-2xl font-display text-[1.7rem] font-medium leading-[1.28] text-gray-50 sm:text-[2.2rem]">
+              <h2 className="mx-auto mt-2 max-w-2xl font-display text-[1.55rem] font-medium leading-[1.26] text-gray-50 sm:text-[2.1rem]">
                 {selected.porch.lead}
               </h2>
-              <p className="mt-2 font-body text-sm text-gray-500 sm:text-base">{selected.porch.coda}</p>
+
+              {/* THE STRIP — the rest of what's standing, scannable, not prose */}
+              {(selected.porch.active.length > 0 || selected.porch.forming.length > 0) && (
+                <div className="mx-auto mt-3.5 max-w-xl space-y-1">
+                  {selected.porch.active.length > 0 && (
+                    <p className="font-mono text-[11px] leading-relaxed text-gray-400">
+                      <span className="tracking-[0.2em] text-amber-300/80">ACTIVE</span>
+                      <span className="text-gray-600"> — </span>
+                      {selected.porch.active.map((f, i) => (
+                        <span key={f}>
+                          {i > 0 && <span className="text-gray-600"> &middot; </span>}
+                          <button
+                            type="button"
+                            onClick={scrollToBoard}
+                            className="transition-colors hover:text-amber-200"
+                          >
+                            {f}
+                          </button>
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  {selected.porch.forming.length > 0 && (
+                    <p className="font-mono text-[11px] leading-relaxed text-gray-500">
+                      <span className="tracking-[0.2em] text-slate-400/90">FORMING</span>
+                      <span className="text-gray-600"> — </span>
+                      {selected.porch.forming.map((f, i) => (
+                        <span key={f}>
+                          {i > 0 && <span className="text-gray-600"> &middot; </span>}
+                          <Link to="/morning" className="transition-colors hover:text-slate-200">
+                            {f}
+                          </Link>
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p className="mt-3 font-mono text-[11px] leading-relaxed text-gray-500">
+                {selected.porch.coda}
+              </p>
               {!isNewest && (
                 <button
                   type="button"
@@ -447,7 +492,7 @@ export default function ConceptA() {
 
           {/* THE RHYME — only when the archive holds one; never a placeholder */}
           {selected && rhyme && (
-            <div className="mx-auto mt-6 max-w-xl">
+            <div className="mx-auto mt-5 max-w-xl">
               <p className="font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
                 {isNewest ? "Today reads" : "This day read"} most like{" "}
                 <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
@@ -471,7 +516,7 @@ export default function ConceptA() {
         {/* THE GROUND — skeleton until the frame lands, never a bare black screen */}
         <div
           ref={stageRef}
-          className="relative mt-8 w-full overflow-hidden rounded-2xl"
+          className="relative mt-6 w-full overflow-hidden rounded-2xl"
           style={{ background: "#0a0f14", aspectRatio: "975 / 610" }}
         >
           {model ? (
