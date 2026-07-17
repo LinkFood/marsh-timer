@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, Send, Loader2, RotateCcw } from 'lucide-react';
 import { useChat } from '@/hooks/useChat';
-import { useUserLocation, US_STATES, getStateName } from '@/hooks/useUserLocation';
+import { useYourGround, US_STATES } from '@/hooks/useYourGround';
 import BrainResponseCard from '@/components/BrainResponseCard';
 import { InnerHeader, InnerFooter } from '@/components/InnerNav';
 import UserMenu from '@/components/UserMenu';
@@ -24,15 +24,10 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
  * state-profile prompts live here now that /state is gone.
  */
 export default function AskPage() {
-  const [searchParams] = useSearchParams();
-  const { state: locState, setUserState } = useUserLocation();
-  // ?state=XX overrides geolocation (share links stay faithful)
-  const [override, setOverride] = useState<string | null>(() => {
-    const s = new URLSearchParams(window.location.search).get('state')?.toUpperCase();
-    return s && US_STATES.some(st => st.abbr === s) ? s : null;
-  });
-  const state = override ?? locState;
-  const stateName = getStateName(state);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The shared ground choice — ?state=XX overrides and persists (§2e), so the
+  // context state here is the same one TODAY's fitted block and /plant read.
+  const { ground: state, groundName: stateName, setGround } = useYourGround(searchParams.get('state'));
   const [showStates, setShowStates] = useState(false);
   const [question, setQuestion] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -133,7 +128,15 @@ export default function AskPage() {
                 {US_STATES.map(s => (
                   <button
                     key={s.abbr}
-                    onClick={() => { setOverride(null); setUserState(s.abbr); setShowStates(false); }}
+                    onClick={() => {
+                      setGround(s.abbr);
+                      if (searchParams.has('state')) {
+                        const next = new URLSearchParams(searchParams);
+                        next.delete('state');
+                        setSearchParams(next, { replace: true });
+                      }
+                      setShowStates(false);
+                    }}
                     className={`w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-white/[0.06] transition-colors ${
                       s.abbr === state ? 'text-cyan-400 bg-cyan-400/[0.06]' : 'text-white/50'
                     }`}

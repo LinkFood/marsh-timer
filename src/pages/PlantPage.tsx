@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import { stateFullName } from "@/lib/board/frameStore";
+import { useYourGround } from "@/hooks/useYourGround";
 
 /**
  * THE PLANTING TABLE (/plant) — the almanac's most-used table, done our way.
@@ -100,8 +101,12 @@ function measureLabel(m: string): string {
 
 export default function PlantPage() {
   const [params, setParams] = useSearchParams();
-  const stateParam = (params.get("state") || "MD").toUpperCase();
-  const st = STATES.includes(stateParam) ? stateParam : "MD";
+  // The shared ground choice — ?state=XX overrides and persists; with no
+  // param the page opens on your ground (blueprint §2e: the private select
+  // became the shared picker).
+  const { ground, setGround } = useYourGround(params.get("state"));
+  const stateParam = (params.get("state") || "").toUpperCase();
+  const st = STATES.includes(stateParam) ? stateParam : STATES.includes(ground) ? ground : "MD";
   const stateName = stateFullName(st);
 
   const [row, setRow] = useState<ClimatologyRow | null>(null);
@@ -266,7 +271,10 @@ export default function PlantPage() {
         <select
           id="plant-state"
           value={st}
-          onChange={(e) => setParams(e.target.value === "MD" ? {} : { state: e.target.value })}
+          onChange={(e) => {
+            setGround(e.target.value);
+            setParams({ state: e.target.value }, { replace: true });
+          }}
           className="rounded border border-white/10 bg-gray-900 px-2 py-1.5 font-mono text-[12px] text-gray-200 outline-none focus:border-cyan-300/40"
         >
           {[...STATES]

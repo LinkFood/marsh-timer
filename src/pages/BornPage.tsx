@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { TILE_GRID } from "@/components/EventMap";
 import { STATE_NAMES } from "@/data/atlas/stateBBoxes";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
+import { useYourGround } from "@/hooks/useYourGround";
 
 /**
  * THE NIGHT YOU WERE BORN — the entry surface for a birthday (acceptance
@@ -43,6 +44,9 @@ function pad(n: number): string {
 
 export default function BornPage() {
   const navigate = useNavigate();
+  // §2e: the first state a visitor ever picks here becomes their ground —
+  // implicitly, once, never clobbering an existing choice.
+  const { chosen, setGround } = useYourGround();
   const [month, setMonth] = useState<string>(""); // "1".."12"
   const [day, setDay] = useState<string>("");
   const [year, setYear] = useState<string>("");
@@ -74,6 +78,7 @@ export default function BornPage() {
 
   function submit() {
     if (!canSubmit || !iso) return;
+    if (!chosen) setGround(state);
     navigate(`/atlas?date=${iso}&state=${state}`);
   }
 

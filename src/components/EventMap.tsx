@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { getStateName } from '@/hooks/useUserLocation';
+import { getStateName } from '@/hooks/useYourGround';
 import type { EventCategory, StateEvents } from '@/hooks/useTodayEventMap';
 
 /**

@@ -9,7 +9,7 @@ import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
 import { useChat } from '@/hooks/useChat';
 import { useDayArchive, useArchaeologyTimeline, shiftDate, PROBE_COLORS, PROBE_LABELS, type ArchiveEntry } from '@/hooks/useDayArchive';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
-import { US_STATES, getStateName } from '@/hooks/useUserLocation';
+import { US_STATES, getStateName, useYourGround } from '@/hooks/useYourGround';
 import { humanizeEntry, yearLines } from '@/lib/humanize';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -68,6 +68,9 @@ export default function DatePage() {
   const dateStr = isValidDateStr(rawDateStr) ? rawDateStr : today;
   const stateParam = searchParams.get('state')?.toUpperCase() || null;
   const state = stateParam && US_STATES.some(s => s.abbr === stateParam) ? stateParam : null;
+  // The shared ground choice — a chip pick here persists it (§2e); the chosen
+  // ground's chip is pinned under "All states" for one-tap fitting.
+  const { ground, groundName, chosen } = useYourGround(state);
   const [showStates, setShowStates] = useState(false);
 
   const goTo = useCallback((d: string, s: string | null = state) => {
@@ -226,6 +229,17 @@ export default function DatePage() {
                   >
                     All states
                   </button>
+                  {chosen && (
+                    <button
+                      onClick={() => { setShowStates(false); goTo(dateStr, ground); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-white/[0.06] transition-colors ${
+                        ground === state ? 'text-cyan-400 bg-cyan-400/[0.06]' : 'text-white/50'
+                      }`}
+                    >
+                      <span className="font-bold mr-2">{ground}</span>
+                      <span className="text-white/30">{groundName} — your ground</span>
+                    </button>
+                  )}
                   {US_STATES.map(s => (
                     <button
                       key={s.abbr}

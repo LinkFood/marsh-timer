@@ -8,6 +8,7 @@ import { STATE_NAMES } from "@/data/atlas/stateBBoxes";
 import SpotDossier, { type SpotData } from "@/components/atlas/SpotDossier";
 import { toSpotData } from "@/lib/atlas/spotDossierAdapter";
 import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase";
+import { useYourGround } from "@/hooks/useYourGround";
 
 /**
  * ATLAS — the ground you stand on (docs/THE-VISION-AND-ROADMAP.md).
@@ -269,6 +270,11 @@ export default function AtlasPage() {
   // the visitor already fallen into their own ground, not on the national view).
   const stateParamRaw = (searchParams.get("state") ?? "").toUpperCase();
   const stateParam = STATE_GEO[stateParamRaw] ? stateParamRaw : null;
+  // The shared ground choice (§2e): with no ?state, a visitor who has chosen a
+  // ground arrives pre-descended into it — one tap (or Esc) surfaces back to
+  // national. The atlas's own param is a camera target, so it is read here but
+  // never passed into the hook (it must not clobber the choice).
+  const { ground, chosen } = useYourGround();
   const mapCardRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const didAutoDescend = useRef(false);
@@ -299,14 +305,18 @@ export default function AtlasPage() {
     };
   }, []);
 
-  // Auto-descend when arriving with ?state=XX (e.g. the Born flow). Fires once;
-  // the reading fills in when its fetch lands. selectState carries dateParam.
+  // Auto-descend when arriving with ?state=XX (e.g. the Born flow), or — with
+  // no param — into the visitor's chosen ground (§2e: the atlas reads
+  // your-ground on arrival). Fires once; the reading fills in when its fetch
+  // lands. selectState carries dateParam.
   useEffect(() => {
-    if (didAutoDescend.current || !stateParam) return;
+    if (didAutoDescend.current) return;
+    const target = stateParam ?? (chosen && STATE_GEO[ground] ? ground : null);
+    if (!target) return;
     didAutoDescend.current = true;
-    selectState(stateParam);
+    selectState(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stateParam]);
+  }, [stateParam, chosen, ground]);
 
   const tween = useCallback((target: ViewBox, duration: number, onDone?: () => void) => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);

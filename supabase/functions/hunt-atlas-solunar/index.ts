@@ -443,6 +443,10 @@ serve((req) => {
         illum: Math.round(illum * 1000) / 10, // percent, 0.1 precision
         age: Math.round(age * 100) / 100,       // days since new
         days_to_full: Math.round(daysToFull * 100) / 100,
+        // Rise/set instants for the UTC day (additive, 2026-07-17 — the TODAY
+        // fitted block reads them; null when the moon doesn't cross that day).
+        rise: ev.riseMin !== null ? isoFromMinutes(dateUTC, ev.riseMin) : null,
+        set: ev.setMin !== null ? isoFromMinutes(dateUTC, ev.setMin) : null,
       },
       sun: {
         sunrise,

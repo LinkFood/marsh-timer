@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { drawFrame, fitCanvas, hitTest, type BoardModel } from "@/lib/boardPlayer";
 import { BOARD_PROJECTION, CONUS_BORDERS } from "@/data/board/conusBorders";
 import { InnerFooter } from "@/components/InnerNav";
+import TodayFitted from "@/components/TodayFitted";
+import { useYourGround } from "@/hooks/useYourGround";
+import { dayOfYear, fetchGroundSky, loreLine, seasonCounter, type GroundSky } from "@/lib/almanac";
 import {
   compileDayFilm,
   fetchActiveAlerts,
@@ -218,6 +222,10 @@ interface CardState {
 }
 
 export default function TodayPage() {
+  const [searchParams] = useSearchParams();
+  // The one ground choice — ?state=XX overrides and persists (§2e).
+  const { ground, groundName, setGround } = useYourGround(searchParams.get("state"));
+  const [sky, setSky] = useState<GroundSky | null>(null);
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [alerts, setAlerts] = useState<Map<string, StateAlert>>(new Map());
   const [watches, setWatches] = useState<FormationWatch[]>([]);
@@ -234,6 +242,23 @@ export default function TodayPage() {
   useEffect(() => {
     document.title = "Duck Countdown — the honest memory of American ground";
   }, []);
+
+  // The fitted sky for the ground — two pure-compute calls, localized to the
+  // state's civil timezone. A failed fetch renders nothing, never a spinner.
+  useEffect(() => {
+    let cancelled = false;
+    setSky(null);
+    fetchGroundSky(ground)
+      .then((s) => {
+        if (!cancelled) setSky(s);
+      })
+      .catch(() => {
+        /* honest absence — the fitted lines simply don't render */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ground]);
 
   useEffect(() => {
     let cancelled = false;
@@ -414,7 +439,18 @@ export default function TodayPage() {
       <section ref={heroRef} className="mx-auto w-full max-w-3xl scroll-mt-6 px-5 sm:px-8">
         <div className="mt-7 text-center sm:mt-10">
           <p className="font-mono text-[11px] tabular-nums text-gray-500">
-            {selected ? longDate(selected.frame.day) : " "}
+            {selected ? (
+              <>
+                {longDate(selected.frame.day)}
+                {isNewest && (
+                  <span className="text-gray-600">
+                    {" "}
+                    &middot; Day {dayOfYear(selected.frame.day)} of{" "}
+                    {selected.frame.day.slice(0, 4)} &middot; {seasonCounter(selected.frame.day)}
+                  </span>
+                )}
+              </>
+            ) : " "}
           </p>
 
           {load.status === "loading" && (
@@ -488,6 +524,18 @@ export default function TodayPage() {
                 </button>
               )}
             </>
+          )}
+
+          {/* THE FITTED BLOCK — your ground's numbers, pre-corrected (§2a).
+              Speaks only of NOW: it renders on the live board, never a past day. */}
+          {isLiveNow && selected && (
+            <TodayFitted
+              ground={ground}
+              groundName={groundName}
+              setGround={setGround}
+              sky={sky}
+              resolved={selected.resolved}
+            />
           )}
 
           {/* THE RHYME — only when the archive holds one; never a placeholder */}
@@ -629,8 +677,14 @@ export default function TodayPage() {
         </Link>
       </section>
 
-      {/* THE DOORS — the same footer every sibling page shares */}
+      {/* THE DOORS — the same footer every sibling page shares, with the
+          rotating lore line above it (1950 insight 8 — moon-phase only). */}
       <div className="mx-auto w-full max-w-3xl px-5 pb-10 sm:px-8">
+        {sky && loreLine(sky) && (
+          <p className="mt-14 text-center font-display text-sm italic text-gray-500">
+            &ldquo;{loreLine(sky)}&rdquo;
+          </p>
+        )}
         <InnerFooter current="today" />
       </div>
     </div>

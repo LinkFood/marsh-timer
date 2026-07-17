@@ -4,7 +4,7 @@ import { InnerHeader, InnerFooter } from '@/components/InnerNav';
 import CascadeRibbon from '@/components/CascadeRibbon';
 import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from '@/components/EventMap';
-import { getStateName } from '@/hooks/useUserLocation';
+import { getStateName } from '@/hooks/useYourGround';
 import { SEPT2020_DATASET, STATES_AFFECTED, DOMAIN_LABEL } from '@/data/cascade_sept2020';
 
 /**

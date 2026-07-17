@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { SUPABASE_FUNCTIONS_URL, supabase } from "@/lib/supabase";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import { fetchFormingWatches, stateFullName, type FormationWatch } from "@/lib/board/frameStore";
+import { useYourGround } from "@/hooks/useYourGround";
 
 /**
  * THE MORNING LINE — the product's front door and daily heartbeat
@@ -136,6 +137,9 @@ function etDayLabel(iso: string): string {
 
 export default function MorningPage() {
   const { date } = useParams<{ date?: string }>();
+  // The shared ground choice — read-only here: the line goes where the record
+  // ran deepest, but a chosen ground gets its own quiet line when they differ.
+  const { ground, groundName, chosen } = useYourGround();
   const [line, setLine] = useState<MorningLine | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -401,11 +405,31 @@ export default function MorningPage() {
               </div>
             )}
             <Link
-              to="/atlas"
+              to={`/atlas?state=${line.state}`}
               className="mt-11 inline-block font-mono text-sm text-cyan-300 hover:text-cyan-200"
             >
               fall into {line.state_name} &rarr;
             </Link>
+            {/* YOUR GROUND — the §2e your-state line, only when it differs from
+                the line's state and only on today's page (forming speaks of NOW). */}
+            {!date && chosen && line.state !== ground && (
+              <p className="mt-4 max-w-2xl font-mono text-[11px] leading-relaxed text-gray-600">
+                Your ground, {groundName}:{" "}
+                {forming.some((w) => w.states.includes(ground)) ? (
+                  <>
+                    {forming.filter((w) => w.states.includes(ground)).length === 1
+                      ? "a formation watch is standing"
+                      : `${forming.filter((w) => w.states.includes(ground)).length} formation watches are standing`}{" "}
+                    over it &mdash; see FORMING below.
+                  </>
+                ) : (
+                  <>no watch standing &mdash; the line goes where the record ran deepest.</>
+                )}{" "}
+                <Link to={`/atlas?state=${ground}`} className="text-gray-500 hover:text-cyan-300">
+                  read {groundName} &rarr;
+                </Link>
+              </p>
+            )}
           </article>
         )}
       </main>
