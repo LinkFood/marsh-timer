@@ -90,14 +90,15 @@ export default function AskPage() {
 
   const now = new Date();
 
-  // Suggestion chips: proven question shapes + the four canned state-profile
-  // prompts (moved here from the killed /state page), state-substituted.
+  // Suggestion chips: the three deterministic handlers lead (blueprint §3 ASK
+  // v1 — planting / forming / day-read), then the proven question shapes,
+  // state-substituted from your ground.
   const chips = [
-    `What anomalies are happening in ${stateName} right now?`,
-    `What's the drought history for ${stateName}?`,
+    `When do I plant tomatoes in ${stateName}?`,
+    `What's forming right now?`,
+    `What happened on ${MONTHS[now.getMonth()]} ${now.getDate()}, 2012 in ${stateName}?`,
+    `How accurate are you?`,
     `Show me the worst storms in ${stateName} in the last 10 years`,
-    `How does ${stateName} compare to this time last year?`,
-    `What was happening in ${stateName} on ${MONTHS[now.getMonth()]} ${now.getDate()}, 2012?`,
     `When has drought in ${stateName} coincided with unusual bird activity?`,
   ];
 

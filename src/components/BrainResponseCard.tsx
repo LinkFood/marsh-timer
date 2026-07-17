@@ -1,12 +1,14 @@
 import { useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Brain, ThumbsUp, ThumbsDown } from 'lucide-react';
 import InlineStateMap, { extractStates } from './InlineStateMap';
+import type { ChatDoor } from '@/hooks/useChat';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 interface BrainResponseCardProps {
-  message: { content: string; id: string };
+  message: { content: string; id: string; receipts?: string[]; doors?: ChatDoor[] };
   isStreaming: boolean;
   onFollowUp?: (query: string) => void;
 }
@@ -112,6 +114,37 @@ export default function BrainResponseCard({ message, isStreaming, onFollowUp }: 
         const states = extractStates(content);
         return states.length >= 2 ? <InlineStateMap highlightedStates={states} /> : null;
       })()}
+
+      {/* The receipts law: every answer ends in provenance chips + at least one door */}
+      {!isStreaming && ((message.receipts?.length ?? 0) > 0 || (message.doors?.length ?? 0) > 0) && (
+        <div className="mt-4 pt-3 border-t border-white/[0.04]">
+          {(message.receipts?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {message.receipts!.map(r => (
+                <span
+                  key={r}
+                  className="rounded-full bg-gray-900/80 px-2.5 py-1 font-mono text-[10px] text-gray-400 ring-1 ring-white/10"
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
+          )}
+          {(message.doors?.length ?? 0) > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5">
+              {message.doors!.map(d => (
+                <Link
+                  key={d.href}
+                  to={d.href}
+                  className="font-mono text-[11px] text-cyan-400/70 hover:text-cyan-300 transition-colors"
+                >
+                  {d.label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Follow-up questions */}
       {followUps.length > 0 && onFollowUp && (

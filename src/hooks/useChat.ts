@@ -2,11 +2,20 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase, SUPABASE_FUNCTIONS_URL } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
+export interface ChatDoor {
+  label: string;
+  href: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   cards?: ChatCard[];
+  /** Provenance chips — the receipts law: which real tables/lanes the answer came from. */
+  receipts?: string[];
+  /** Typed deep-links — every answer carries at least one door deeper into the site. */
+  doors?: ChatDoor[];
   mapAction?: { type: 'flyTo' | 'highlight'; target: string };
   timestamp: Date;
 }
@@ -133,6 +142,10 @@ export function useChat(options: UseChatOptions) {
                   setMessages(prev => prev.map(m =>
                     m.id === assistantId ? { ...m, cards: data.cards || [] } : m
                   ));
+                } else if (data.type === 'receipts') {
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, receipts: data.receipts || [], doors: data.doors || [] } : m
+                  ));
                 } else if (data.type === 'text') {
                   if (!streamStarted) {
                     streamStarted = true;
@@ -174,6 +187,8 @@ export function useChat(options: UseChatOptions) {
             ...m,
             content: data.response || 'No response',
             cards: data.cards || [],
+            receipts: data.receipts || [],
+            doors: data.doors || [],
             mapAction: data.mapAction,
           } : m
         ));
