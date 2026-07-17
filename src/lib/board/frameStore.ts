@@ -123,6 +123,84 @@ export async function fetchRhymes(from: string, to: string): Promise<Map<string,
   return out;
 }
 
+// ── Active NWS alerts: the ground's own corroboration ─────────────────────────
+
+/** The one alert the board names for a state: highest severity, then the most
+ *  common event type under it. Names are NWS facts, verbatim. */
+export interface StateAlert {
+  state: string; // postal abbr, "TX"
+  eventType: string; // "Flood Watch" — the NWS event name, never invented
+  severity: string; // "Severe" | "Extreme"
+}
+
+let alertsPromise: Promise<Map<string, StateAlert>> | null = null;
+
+/**
+ * Active severe/extreme NWS alerts grouped by state, cached for the session.
+ * hunt_nws_alerts is anon-readable; we pull only (states, event_type, severity)
+ * for unexpired Severe/Extreme rows — a few dozen rows, one round trip. A failed
+ * fetch resolves empty (the board just renders without corroboration) and does
+ * not poison the cache.
+ */
+export function fetchActiveAlerts(): Promise<Map<string, StateAlert>> {
+  if (!alertsPromise) {
+    alertsPromise = loadActiveAlerts().catch(() => {
+      alertsPromise = null;
+      return new Map<string, StateAlert>();
+    });
+  }
+  return alertsPromise;
+}
+
+async function loadActiveAlerts(): Promise<Map<string, StateAlert>> {
+  const out = new Map<string, StateAlert>();
+  if (!supabase) return out;
+  const { data, error } = await supabase
+    .from("hunt_nws_alerts")
+    .select("states,event_type,severity")
+    .in("severity", ["Severe", "Extreme"])
+    .gt("expires", new Date().toISOString())
+    .limit(1000);
+  if (error || !data) return out;
+  // Tally (state → event type → { best severity, count }), then pick per state:
+  // Extreme beats Severe; ties break to the most common event type, then A→Z.
+  const tally = new Map<string, Map<string, { sev: number; n: number }>>();
+  for (const row of data as { states: string[] | null; event_type: string | null; severity: string | null }[]) {
+    if (!row.event_type || !row.severity) continue;
+    const sev = row.severity === "Extreme" ? 2 : 1;
+    for (const st of row.states ?? []) {
+      const byEvent = tally.get(st) ?? new Map<string, { sev: number; n: number }>();
+      const cur = byEvent.get(row.event_type) ?? { sev: 0, n: 0 };
+      byEvent.set(row.event_type, { sev: Math.max(cur.sev, sev), n: cur.n + 1 });
+      tally.set(st, byEvent);
+    }
+  }
+  for (const [st, byEvent] of tally) {
+    let best: { eventType: string; sev: number; n: number } | null = null;
+    for (const [eventType, { sev, n }] of byEvent) {
+      if (
+        !best ||
+        sev > best.sev ||
+        (sev === best.sev && (n > best.n || (n === best.n && eventType < best.eventType)))
+      ) {
+        best = { eventType, sev, n };
+      }
+    }
+    if (best) out.set(st, { state: st, eventType: best.eventType, severity: best.sev === 2 ? "Extreme" : "Severe" });
+  }
+  return out;
+}
+
+/** The state a state-temp instrument reads, as a postal abbr ("ghcn-tx" → "TX"). */
+export function instrumentState(inst: Instrument): string | null {
+  if (inst.kind !== "state-temp") return null;
+  const m = inst.id.match(/-([a-z]{2})$/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+/** Tail depth at which a reading counts as EXTREME (byte ≥ 249 of 254). */
+export const EXTREME_DEPTH = 249 / 254;
+
 // ── Decode ────────────────────────────────────────────────────────────────────
 
 /** Decode a base64 packed-dots string to raw bytes (255 = null slot). */
@@ -163,35 +241,47 @@ export function resolveDay(frame: DayFrame, instruments: Instrument[]): Resolved
  * Build a BoardFilm containing exactly one day, so compileFilm + drawFrame(t=0)
  * render today's embers with the film's own renderer. Instruments with no
  * reading are still placed (they glow to the renderer's dim minimum), so the
- * ground reads as a full board, quiet where the archive is silent.
+ * ground reads as a full board, quiet where the archive is silent. When `alerts`
+ * is passed (the live board only — active alerts corroborate NOW, never a past
+ * day), state dots under an active severe NWS alert carry it into the renderer,
+ * which marks them with the slow amber alert ring.
  */
-export function buildDayFilm(day: string, resolved: ResolvedInstrument[]): BoardFilm {
+export function buildDayFilm(
+  day: string,
+  resolved: ResolvedInstrument[],
+  alerts?: Map<string, StateAlert>,
+): BoardFilm {
   return {
     story: "today",
     title: "Today",
     subtitle: "",
     window: [day, day],
     projection: { ...BOARD_PROJECTION },
-    dots: resolved.map((r) => ({
-      id: r.inst.id,
-      label: r.inst.label,
-      sublabel: r.inst.sublabel ?? undefined,
-      kind: r.inst.kind,
-      side: r.side,
-      x: r.inst.albers_x,
-      y: r.inst.albers_y,
-      series: {
-        [day]: { v: r.pct, pct: r.pct },
-      },
-    })),
+    dots: resolved.map((r) => {
+      const st = alerts ? instrumentState(r.inst) : null;
+      const alert = (st && alerts?.get(st)) || null;
+      return {
+        id: r.inst.id,
+        label: r.inst.label,
+        sublabel: r.inst.sublabel ?? undefined,
+        kind: r.inst.kind,
+        side: r.side,
+        alert: alert ? { eventType: alert.eventType, severity: alert.severity } : null,
+        x: r.inst.albers_x,
+        y: r.inst.albers_y,
+        series: {
+          [day]: { v: r.pct, pct: r.pct },
+        },
+      };
+    }),
     strings: [],
     blooms: [],
     beats: [],
   };
 }
 
-export function compileDayFilm(day: string, resolved: ResolvedInstrument[]) {
-  return compileFilm(buildDayFilm(day, resolved));
+export function compileDayFilm(day: string, resolved: ResolvedInstrument[], alerts?: Map<string, StateAlert>) {
+  return compileFilm(buildDayFilm(day, resolved, alerts));
 }
 
 // ── The porch voice: one true line, computed from what actually swelled ─────────
@@ -277,24 +367,59 @@ export interface PorchLine {
   swollen: ResolvedInstrument[]; // the instruments the lead named
 }
 
+/** "a Flood Watch" / "an Excessive Heat Warning" — NWS name verbatim. */
+const withArticle = (s: string): string => (/^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`);
+
 /**
- * Derive the porch sentence for a day. Deep = tail depth >= 0.85. We name at
- * most three, leading with the deepest but preferring KIND DIVERSITY for the
- * follow-ons (a tide or a buoy beats a fourth hot state), phrase each clause
- * kind-aware with per-day variety, and close with an honest coda: nothing is
- * "forming" unless the frame carries strings or blooms — and today's frames
- * carry neither, so the coda tells the truth ("nothing forming").
+ * A corroborated extreme, named plainly: both facts, no seeded variety, no
+ * invented adjectives. Tail pools are day-of-year windows (±10 days) over the
+ * full record, so "its July" is what the byte actually measured.
  */
-export function porchLine(day: string, resolved: ResolvedInstrument[], frame: DayFrame): PorchLine {
+function corroboratedClause(r: ResolvedInstrument, alert: StateAlert, day: string): string {
+  const name = r.inst.label;
+  const month = MONTHS[Number(day.slice(5, 7)) - 1];
+  const hot = r.side === "high";
+  const under = `under ${withArticle(alert.eventType)}`;
+  if ((r.pct ?? 0) >= 1 - 1e-9) {
+    return `${name} is running as ${hot ? "hot" : "cold"} as its ${month} has ever recorded, ${under}`;
+  }
+  const p = Math.floor((r.pct ?? 0) * 100);
+  return `${name} is running ${hot ? "hotter" : "colder"} than ${p}% of its ${month} record, ${under}`;
+}
+
+/**
+ * Derive the porch sentence for a day. Deep = tail depth >= 0.85. Selection law:
+ * a state whose temp sits at EXTREME depth (byte >= 249) while the state is
+ * under an active severe NWS alert is a CORROBORATED EXTREME — it outranks
+ * everything and leads the sentence naming both facts plainly. Seeded variety
+ * applies only to the uncorroborated follow-ons, which still prefer KIND
+ * DIVERSITY (a tide or a buoy beats a fourth hot state). The coda stays honest:
+ * with a corroborated extreme standing, "nothing forming yet" never renders —
+ * the coda names what is actually standing out instead.
+ */
+export function porchLine(
+  day: string,
+  resolved: ResolvedInstrument[],
+  frame: DayFrame,
+  alerts?: Map<string, StateAlert>,
+): PorchLine {
   const seed = daySeed(day);
   const withData = resolved.filter((r) => r.hasData);
   const deep = withData
     .filter((r) => (r.pct ?? 0) >= 0.85)
     .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
 
-  // Deepest first, then prefer instruments of a kind not yet named.
-  const named: ResolvedInstrument[] = [];
-  const rest = deep.slice();
+  const alertFor = (r: ResolvedInstrument): StateAlert | null => {
+    if (!alerts) return null;
+    const st = instrumentState(r.inst);
+    return (st && alerts.get(st)) || null;
+  };
+  const corroborated = deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && alertFor(r) !== null);
+
+  // Corroborated extremes first (deepest first), then fill to three preferring
+  // instruments of a kind not yet named.
+  const named: ResolvedInstrument[] = corroborated.slice(0, 3);
+  const rest = deep.filter((r) => !named.includes(r));
   while (named.length < 3 && rest.length > 0) {
     const kinds = new Set(named.map((r) => r.inst.kind));
     const i = rest.findIndex((r) => !kinds.has(r.inst.kind));
@@ -316,14 +441,31 @@ export function porchLine(day: string, resolved: ResolvedInstrument[], frame: Da
           ]);
   } else {
     const sentence = joinClauses(
-      named.map((r, i) => clauseFor(r, mix(seed, daySeed(r.inst.id) + i))),
+      named.map((r, i) => {
+        const alert = corroborated.includes(r) ? alertFor(r) : null;
+        return alert ? corroboratedClause(r, alert, day) : clauseFor(r, mix(seed, daySeed(r.inst.id) + i));
+      }),
       mix(seed, 97),
     );
     lead = sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
   }
 
   let coda: string;
-  if (forming) {
+  if (corroborated.length > 0) {
+    // Fact-only: what is standing out, never "nothing forming".
+    const atLimit = corroborated.filter((r) => (r.pct ?? 0) >= 1 - 1e-9).length;
+    const head =
+      corroborated.length === 1
+        ? atLimit === 1
+          ? "One reading at its recorded limit"
+          : "One reading at extreme depth"
+        : `${corroborated.length} readings at extreme depth`;
+    const only = corroborated.length === 1 ? alertFor(corroborated[0]) : null;
+    const underBit = only ? `under an active ${only.eventType}` : "under active NWS alerts";
+    const tailBit = deep.length > corroborated.length ? `; ${deep.length} readings deep in their tails` : "";
+    coda = `${head}, ${underBit}${tailBit}.`;
+    if (forming) coda += " Something is starting to line up.";
+  } else if (forming) {
     coda = "Something is starting to line up.";
   } else if (deep.length === 0) {
     coda = "Nothing forming.";

@@ -32,6 +32,10 @@ export interface BoardDot {
    *  it and keep the classic teal→gold ramp). Temp dots tint by it: amber for
    *  high, ice-blue for low — hue shift only, same luminance discipline. */
   side?: "low" | "high" | null;
+  /** An active severe NWS alert covering this dot's ground (live board only —
+   *  baked story films omit it). Drawn as a slow amber alert ring; the name is
+   *  an NWS fact, never invented. */
+  alert?: { eventType: string; severity: string } | null;
   x: number;
   y: number;
   series: Record<string, BoardDatum>;
@@ -462,6 +466,20 @@ function drawDot(
   ctx.beginPath();
   ctx.arc(track.dot.x, track.dot.y, coreR * (1 + breath * 0.1), 0, Math.PI * 2);
   ctx.fill();
+
+  // active severe NWS alert on this ground: one restrained amber ring, breathing
+  // on its own slow phase (~3.4s). Warning hue, not a firework — it reads as an
+  // ember's edge catching. Extreme severity burns a shade brighter.
+  if (track.dot.alert) {
+    const w = 0.5 + 0.5 * Math.sin(nowMs / (3400 / (2 * Math.PI)) + dotPhase(`${track.dot.id}:alert`));
+    const extreme = track.dot.alert.severity === "Extreme";
+    const ringR = Math.max(coreR + 4, glowR * 0.8) + w * 3;
+    ctx.strokeStyle = `rgba(255,176,96,${(extreme ? 0.3 : 0.2) + w * 0.22})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(track.dot.x, track.dot.y, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   // the needle is the sky, not the ground — a cool ring sets it apart
   if (isNeedle) {

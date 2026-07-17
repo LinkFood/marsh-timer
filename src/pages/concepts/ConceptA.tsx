@@ -5,6 +5,7 @@ import { BOARD_PROJECTION, CONUS_BORDERS } from "@/data/board/conusBorders";
 import { InnerFooter } from "@/components/InnerNav";
 import {
   compileDayFilm,
+  fetchActiveAlerts,
   fetchFrames,
   fetchInstruments,
   fetchRhymes,
@@ -20,6 +21,7 @@ import {
   type ResolvedInstrument,
   type PorchLine,
   type RhymeFollowed,
+  type StateAlert,
 } from "@/lib/board/frameStore";
 
 /**
@@ -214,6 +216,7 @@ interface CardState {
 
 export default function ConceptA() {
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
+  const [alerts, setAlerts] = useState<Map<string, StateAlert>>(new Map());
   const [rhymes, setRhymes] = useState<Map<string, BoardRhyme>>(new Map());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [card, setCard] = useState<CardState | null>(null);
@@ -234,9 +237,10 @@ export default function ConceptA() {
       try {
         const today = todayIso();
         const from = isoDaysBefore(today, DAYS_BACK - 1);
-        const [instruments, frames] = await Promise.all([
+        const [instruments, frames, liveAlerts] = await Promise.all([
           fetchInstruments(),
           fetchFrames(from, today),
+          fetchActiveAlerts(),
         ]);
         if (cancelled) return;
         if (!instruments.length || !frames.length) {
@@ -245,10 +249,14 @@ export default function ConceptA() {
         }
         // frames come newest-first. The first is the room's "today"; even if
         // the real calendar today is missing, the newest frame is the honest now.
-        const days = frames.map((frame) => {
+        // Active alerts corroborate NOW — they apply only to the newest frame,
+        // and only when it is actually current; a past day never wears them.
+        const days = frames.map((frame, i) => {
           const resolved = resolveDay(frame, instruments);
-          return { frame, resolved, porch: porchLine(frame.day, resolved, frame) };
+          const live = i === 0 && frame.day >= isoDaysBefore(today, 1) ? liveAlerts : undefined;
+          return { frame, resolved, porch: porchLine(frame.day, resolved, frame, live) };
         });
+        setAlerts(liveAlerts);
         setLoad({ status: "ready", data: { instruments, days } });
         // The rhymes ride in behind the frames; a missing table or empty rows
         // simply render nothing.
@@ -270,10 +278,13 @@ export default function ConceptA() {
     return data.days.find((d) => d.frame.day === selectedDay) ?? data.days[0];
   }, [data, selectedDay]);
   const isNewest = !!data && !!selected && selected.frame.day === data.days[0].frame.day;
+  // Active alerts mark only the live board — the newest frame, while it's current.
+  const alertsApply =
+    isNewest && !!selected && selected.frame.day >= isoDaysBefore(todayIso(), 1) && alerts.size > 0;
 
   const model: BoardModel | null = useMemo(
-    () => (selected ? compileDayFilm(selected.frame.day, selected.resolved) : null),
-    [selected],
+    () => (selected ? compileDayFilm(selected.frame.day, selected.resolved, alertsApply ? alerts : undefined) : null),
+    [selected, alertsApply, alerts],
   );
 
   const rhyme = selected ? rhymes.get(selected.frame.day) : undefined;
@@ -487,6 +498,12 @@ export default function ConceptA() {
           each light is an instrument deep in its own history —{" "}
           <span className="text-amber-300/80">amber hot</span> &middot;{" "}
           <span className="text-sky-300/80">ice cold</span> &middot; size = depth
+          {alertsApply && (
+            <>
+              {" "}
+              &middot; <span className="text-orange-300/80">ring = active NWS alert</span>
+            </>
+          )}
         </p>
       </section>
 
