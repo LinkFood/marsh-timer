@@ -192,6 +192,9 @@ function runVerify() {
     { instId: "ghcn-tx", field: "avg_high_f", side: "low", day: "2021-02-15", expectByte: 254 },
     { instId: "needle-ao", field: "value", side: "low", day: "2021-02-10", expectByte: 254 },
     { instId: "buoy-42035", field: "pressure_mb", side: "high", day: "2021-02-16", expectByte: 198 },
+    // PNA anchor — deepest winter -PNA on record (-2.683), the crest of the
+    // documented Christmas 1955 West Coast floods. See backfill-frames.ts anchors.
+    { instId: "needle-pna", field: "value", side: "low", day: "1955-12-24", expectByte: 254 },
   ];
   let fails = 0;
   for (const a of anchors) {
@@ -214,7 +217,7 @@ function runVerify() {
   // tailDepth byte for BOTH sides. This proves the representation is byte-exact,
   // not just at the three anchors.
   console.log(`\n  --- broad exactness sweep ---`);
-  const sample = ["ghcn-tx", "ghcn-ca", "ghcn-me", "ghcn-fl", "tide-8574680", "tide-8518750", "buoy-42035", "buoy-44025", "needle-ao", "needle-nao"];
+  const sample = ["ghcn-tx", "ghcn-ca", "ghcn-me", "ghcn-fl", "tide-8574680", "tide-8518750", "buoy-42035", "buoy-44025", "needle-ao", "needle-nao", "needle-pna"];
   let checks = 0, mismatches = 0;
   for (const id of sample) {
     const inst = instById.get(id)!;

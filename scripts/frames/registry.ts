@@ -51,13 +51,17 @@ export const BUOY_ROSTER: { id: string; name: string; state: string; lat: number
   { id: "42035", name: "Galveston", state: "TX", lat: 29.2, lng: -94.4 },
   { id: "42019", name: "Freeport", state: "TX", lat: 29.0, lng: -95.4 },
 ];
-// 4 needles — fixed chrome positions (AO pinned at 487,28 per §1.3). AO reads the
-// daily CPC file; the rest read monthly climate-index.
+// 5 needles — fixed chrome positions (AO pinned at 487,28 per §1.3). AO reads the
+// daily CPC file; NAO/PDO/ENSO read monthly climate-index; PNA reads the archive's
+// daily climate-index-daily rows (the 2026-07-11 AO/NAO/PNA daily pipe). PNA sits
+// one 120px step WEST of AO (367,28) — appending at 967 would clip the needle's
+// glow ring against the 975px canvas edge.
 export const NEEDLE_ROSTER: { index_id: string; label: string; sublabel: string; source_ct: string; x: number; y: number }[] = [
   { index_id: "AO", label: "Arctic Oscillation", sublabel: "the pole's grip", source_ct: "cpc-daily-ao", x: 487, y: 28 },
   { index_id: "NAO", label: "North Atlantic Oscillation", sublabel: "the Atlantic's mood", source_ct: "climate-index", x: 607, y: 28 },
   { index_id: "PDO", label: "Pacific Decadal Oscillation", sublabel: "the Pacific's long tide", source_ct: "climate-index", x: 727, y: 28 },
   { index_id: "ENSO", label: "ENSO Niño 3.4", sublabel: "the equatorial signal", source_ct: "climate-index", x: 847, y: 28 },
+  { index_id: "PNA", label: "Pacific–North American Pattern", sublabel: "the jet stream's arc", source_ct: "climate-index-daily", x: 367, y: 28 },
 ];
 
 export type Instrument = {
@@ -88,8 +92,23 @@ export function buildInstruments(): Instrument[] {
 }
 
 const KIND_ORDER: Record<string, number> = { needle: 0, "state-temp": 1, tide: 2, buoy: 3 };
+
+// THE APPEND-ONLY LAW (§7.2, live-expansion 2026-07-12): instruments added after
+// the v1 seed (layout 2005746365, 142 slots) take slots at the END of the manifest,
+// in this list's order, so every existing offset survives byte-for-byte. NEVER let
+// a new instrument fall into the v1 kind+id sort — needle-pna would otherwise land
+// between needle-nao and needle-pdo and silently shift 138 offsets. Old 142-byte
+// frames keep decoding: readers treat missing bytes as 255 (no reading).
+const APPEND_ORDER: string[] = ["needle-pna"];
+
 export function canonicalOrder(insts: Instrument[]): Instrument[] {
   return [...insts].sort((a, b) => {
+    const ai = APPEND_ORDER.indexOf(a.id), bi = APPEND_ORDER.indexOf(b.id);
+    if (ai !== -1 || bi !== -1) {
+      if (ai === -1) return -1; // v1 block sorts before every appended instrument
+      if (bi === -1) return 1;
+      return ai - bi; // appended instruments keep their append order
+    }
     const k = (KIND_ORDER[a.kind] ?? 99) - (KIND_ORDER[b.kind] ?? 99);
     return k !== 0 ? k : a.id.localeCompare(b.id);
   });

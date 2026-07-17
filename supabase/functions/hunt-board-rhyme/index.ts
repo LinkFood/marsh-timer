@@ -17,7 +17,7 @@ import { logCronRun } from "../_shared/cronLog.ts";
  * THE METRIC is a byte-for-byte port of scripts/frames/rhyme.ts (see its header
  * for the full derivation — the fix for the plain-cosine saturation plateau):
  *   per slot:  pct = byte/254 (255 = null) ; u = 2·pct − 1 ; x = sign(u)·|u|^1.5
- *   over the slots BOTH frames read (≥ MIN_OVERLAP of 142):
+ *   over the slots BOTH frames read (≥ MIN_OVERLAP of the manifest's slots):
  *     cos      = Σxy / √(Σx²·Σy²)          — shape: same instruments, same way
  *     r        = √(Σy² / Σx²)              — candidate energy / target energy
  *     magAgree = min(r, 1/r) ^ BETA        — 1 = as-extreme-as, →0 = milder/wilder
@@ -48,8 +48,8 @@ const FN = "hunt-board-rhyme";
 // ─── metric parameters (scripts/frames/rhyme.ts — copy its math exactly) ────────
 const GAMMA = 1.5; // tail-emphasis: sharpens deep slots over mild ones
 const BETA = 1.0; // magnitude-agreement strength
-const MIN_OVERLAP = 80; // need this many shared readable slots to compare (of 142)
-const NSLOT = 142;
+const MIN_OVERLAP = 80; // need this many shared readable slots to compare
+let NSLOT = 0; // set from the layout's slot_manifest length — never hardcoded (append-only law)
 const EXCL_DAYS = 45; // drop candidates within ±45 calendar days of the target
 const TOP_K = 5;
 const FOLLOW_DAYS = 10; // "what followed" window after the rhyme day
@@ -248,6 +248,7 @@ serve(async (req) => {
       return cronErrorResponse("no board_layout", 412);
     }
     const layoutVersion: number = layoutRows[0].version;
+    NSLOT = (layoutRows[0].slot_manifest as SlotDef[]).length; // 144 as of layout v1711701607
     const slots: (SlotDef | undefined)[] = new Array(NSLOT);
     for (const s of layoutRows[0].slot_manifest as SlotDef[]) slots[s.offset] = s;
 

@@ -63,9 +63,9 @@ const SUPABASE_URL = "https://rvhyotvklfowklzjahdd.supabase.co";
 // ─── metric parameters (justified above) ──────────────────────────────────────
 const GAMMA = 1.5; // tail-emphasis: sharpens deep slots over mild ones
 const BETA = 1.0; // magnitude-agreement strength
-const MIN_OVERLAP = 80; // need this many shared readable slots to compare (of 142)
+const MIN_OVERLAP = 80; // need this many shared readable slots to compare
 const SELF_EXCL_DAYS = 3; // drop candidates within ±3 days of the target
-const NSLOT = 142;
+let NSLOT = 0; // set from the layout's slot_manifest length — never hardcoded (append-only law)
 
 // ─── key + headers ────────────────────────────────────────────────────────────
 function serviceKey(): string {
@@ -111,6 +111,7 @@ async function fetchLayout(): Promise<{ version: number; slots: SlotDef[] }> {
   const rows = await res.json();
   if (!Array.isArray(rows) || rows.length === 0) throw new Error("no board_layout row");
   const manifest = rows[0].slot_manifest as SlotDef[];
+  NSLOT = manifest.length; // 144 as of layout v1711701607
   const slots = new Array(NSLOT);
   for (const s of manifest) slots[s.offset] = s;
   return { version: rows[0].version, slots };
@@ -252,9 +253,9 @@ async function main() {
   const doyWindow = arg("doy-window") ? parseInt(arg("doy-window")!, 10) : null;
   const matrixMode = flag("matrix");
 
-  const [{ version, slots }, inst, { days, mat }] = await Promise.all([
-    fetchLayout(), fetchInstruments(), fetchAllFrames(),
-  ]);
+  // Layout FIRST — fetchLayout sets NSLOT, which fetchAllFrames' transform needs.
+  const [{ version, slots }, inst] = await Promise.all([fetchLayout(), fetchInstruments()]);
+  const { days, mat } = await fetchAllFrames();
   const ti = days.indexOf(day);
   if (ti < 0) { console.error(`no frame for ${day}`); process.exit(1); }
   const x = mat[ti];

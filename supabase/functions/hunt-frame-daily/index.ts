@@ -152,11 +152,13 @@ serve(async (req) => {
       const rows = await restGet(`hunt_knowledge?content_type=eq.${ct}&metadata->>station_id=in.(${idList})&effective_date=gte.${winGte}&effective_date=lte.${todayIso}&${sel}`, `${ct} window`);
       for (const r of rows) { const i = byStation.get(r.sid); if (!i) continue; fields.forEach((f, k) => put(ensure(`${i.id}:${f}`), r.effective_date, parseFloat(r[`f${k}`]), sideOf(i, f))); }
     }
-    // needles — AO daily (archive's climate-index-daily rows); NAO/PDO/ENSO monthly → current month held.
-    const aoInsts = insts.filter((i: any) => i.source_ct === "cpc-daily-ao");
-    if (aoInsts.length) {
-      for (const i of aoInsts) {
-        const rows = await restGet(`hunt_knowledge?content_type=eq.climate-index-daily&metadata->>index_id=eq.${i.source_key.index_id}&effective_date=gte.${winGte}&effective_date=lte.${todayIso}&select=effective_date,val:metadata->>value`, `daily-AO ${i.source_key.index_id}`);
+    // needles — daily lanes first (AO's cpc-daily-ao + appended climate-index-daily
+    // needles like PNA, both reading the archive's climate-index-daily rows);
+    // NAO/PDO/ENSO monthly → current month held.
+    const dailyInsts = insts.filter((i: any) => i.source_ct === "cpc-daily-ao" || i.source_ct === "climate-index-daily");
+    if (dailyInsts.length) {
+      for (const i of dailyInsts) {
+        const rows = await restGet(`hunt_knowledge?content_type=eq.climate-index-daily&metadata->>index_id=eq.${i.source_key.index_id}&effective_date=gte.${winGte}&effective_date=lte.${todayIso}&select=effective_date,val:metadata->>value`, `daily-idx ${i.source_key.index_id}`);
         const m = ensure(`${i.id}:value`);
         for (const r of rows) { const val = parseFloat(r.val); if (Number.isFinite(val) && val > -99) m.set(r.effective_date, val); }
       }

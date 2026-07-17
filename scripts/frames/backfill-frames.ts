@@ -15,7 +15,7 @@
  * tailDepth, the same engine verify-engine.ts proves against Rung 1. A two-sided
  * metric stores TWO one-sided bytes (low, high) per §2.3; the client renders max().
  *
- * Memory: the byte MATRIX is 142 slots × ~27,950 days ≈ 4 MB; only ONE instrument's
+ * Memory: the byte MATRIX is 144 slots × ~27,950 days ≈ 4 MB; only ONE instrument's
  * series + pools live at a time (built, used to fill the matrix, then freed).
  *
  * Checkpoint: { lastYearDone } — kill+resume is idempotent (day PK upsert). Series
@@ -149,6 +149,15 @@ async function loadSeries(inst: Instrument, endYear: number): Promise<Map<string
       const [y, mo, d, v] = p; const val = parseFloat(v);
       if (Number.isFinite(val)) put(vm, `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`, val, "last");
     }
+  } else if (inst.source_ct === "climate-index-daily") {
+    // Daily CPC index rows in the archive (the 2026-07-11 AO/NAO/PNA daily pipe).
+    // Same read hunt-frame-daily's day-0 lane uses; -99 sentinel = missing.
+    const id = inst.source_key.index_id;
+    const vm = series.get("value")!;
+    for (let y = 1950; y <= endYear; y++) {
+      const rows = await fetchAllBounded(`content_type=eq.climate-index-daily&metadata->>index_id=eq.${id}&select=effective_date,val:metadata->>value`, y);
+      for (const r of rows) { const val = parseFloat(r.val); if (Number.isFinite(val) && val > -99) put(vm, r.effective_date, val, "last"); }
+    }
   } else if (inst.source_ct === "climate-index") {
     // Monthly index → month-held daily step (honest but coarse until daily-AO pipe; §4.4).
     const id = inst.source_key.index_id;
@@ -273,6 +282,10 @@ async function runBackfill(dry: boolean) {
         if (res.pct !== null) cov++;
       }
     }
+    if (inst.id === "ghcn-tx") {
+      const fs2 = series.get("avg_high_f");
+      console.log(`  DEBUG ghcn-tx: seriesFields=${[...series.keys()].join(",")} n=${fs2?.size ?? -1} has20220712=${fs2?.has("2022-07-12")} slotFields=${instSlots.map(s=>s.field+"/"+s.side+"/"+s.nDays).join(",")}`);
+    }
     console.log(`  ${inst.id}: ${instSlots.length} slot(s), ${cov} filled byte(s)`);
   }
 
@@ -334,6 +347,15 @@ async function runVerify() {
     // 2026-07-11 when the store's doy±15 became canonical. The film rebake from
     // frames (Rung 2e) reconciles the JSON to this definition.
     { instId: "buoy-42035", field: "pressure_mb", side: "high", day: "2021-02-16", expect: 0.778, eps: 0.005 },
+    // PNA anchor (appended instrument, layout v2 2026-07-12): 1955-12-24 is the
+    // deepest WINTER PNA-negative day in the whole 77-year daily record (-2.683;
+    // the all-time deepest, 1993-09-27's -3.971, is a quiet September with no
+    // story). Christmas Eve 1955 is the crest of the documented December 1955
+    // West Coast floods (~74 dead, CA/OR) — and a deep -PNA (trough pinned over
+    // the West, Pacific storms aimed ashore) IS that event's circulation
+    // signature, so the anchor ties the byte to a named catastrophe the archive
+    // can cross-examine. Fresh math: poolN=2364, years=77, pct=1.000 → byte 254.
+    { instId: "needle-pna", field: "value", side: "low", day: "1955-12-24", expect: 1.000, eps: 0.002 },
   ];
   let fails = 0;
   for (const a of anchors) {
