@@ -60,6 +60,9 @@ const ERA_END = "2021-12-31"; // onset ≥ 2022-01-01 excluded a priori (amendme
 const EPOCH_SPLIT = "2006-01-01"; // honesty split 1990–2005 vs 2006–2021
 const COVERAGE_GAP_TOLERANCE = 2; // mean reporting-count gap > 2 slots → coverage-matched resampling (B(f))
 const SEED_DEFAULT = 42; // seed of record
+// §2 substrate pins (production path only — the injectable core stays fixture-friendly):
+const LAYOUT_VERSION_PINNED = 1711701607; // re-baked substrate ⇒ re-freeze + registration version bump
+const MIN_FRAME_DAYS = 27956; // 27,956 days verified 2026-07-16; the store only grows
 
 // ─── tier rule — COPIED from mine.ts:103-109 (never import mine.ts: top-level main) ─
 export type Tier = "ALL" | "SEVERE" | "MAJOR";
@@ -166,9 +169,6 @@ export interface PooledEpisode {
 const toTs = (s: string) => Date.parse(`${s}T00:00:00Z`);
 const minIso = (a: string, b: string) => (a <= b ? a : b);
 const maxIso = (a: string, b: string) => (a >= b ? a : b);
-function spanGapDays(a: DateSpan, b: DateSpan): number {
-  return Math.max(toTs(b.start) - toTs(a.end), toTs(a.start) - toTs(b.end)) / DAY_MS;
-}
 
 export function mergeCrossFamily(anchors: EffectiveAnchor[]): PooledEpisode[] {
   const sorted = [...anchors].sort(
@@ -176,25 +176,38 @@ export function mergeCrossFamily(anchors: EffectiveAnchor[]): PooledEpisode[] {
       a.family < b.family ? -1 : a.family > b.family ? 1 :
       a.memberIds[0] < b.memberIds[0] ? -1 : 1)
   );
-  // Greedy transitive clustering over the start-sorted list (the same closure
-  // argument as anchors.ts dedupeAnchors, with the family wall removed).
-  const clusters: EffectiveAnchor[][] = [];
-  for (const a of sorted) {
-    let placed = false;
-    for (const c of clusters) {
-      const uSpan: DateSpan = {
-        start: c.reduce((s, x) => minIso(s, x.span.start), c[0].span.start),
-        end: c.reduce((e, x) => maxIso(e, x.span.end), c[0].span.end),
-      };
-      const uStates = new Set(c.flatMap((x) => x.states));
-      if (spanGapDays(uSpan, a.span) <= MERGE_GAP_DAYS && a.states.some((s) => uStates.has(s))) {
-        c.push(a);
-        placed = true;
-        break;
-      }
+  // Union-find over the PAIRWISE anchor relation (§4/§13: spans overlap or within
+  // ±7d AND state sets intersect), transitively closed. First-match greedy
+  // clustering is NOT transitive — a later anchor can relate to two existing
+  // clusters (or turn two earlier state-disjoint anchors into one component) and
+  // greedy joins only the first, splitting one synoptic system into two episodes.
+  const n = sorted.length;
+  const stateSets = sorted.map((a) => new Set(a.states));
+  const parent = new Int32Array(n);
+  for (let i = 0; i < n; i++) parent[i] = i;
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    return i;
+  };
+  for (let i = 0; i < n; i++) {
+    const endI = toTs(sorted[i].span.end);
+    for (let j = i + 1; j < n; j++) {
+      // start-sorted ⇒ for j > i the pairwise span gap is start_j − end_i (≤0 =
+      // overlap); once it exceeds the merge gap, no later j can relate to i.
+      if (toTs(sorted[j].span.start) - endI > MERGE_GAP_DAYS * DAY_MS) break;
+      if (!sorted[j].states.some((s) => stateSets[i].has(s))) continue;
+      const ri = find(i), rj = find(j);
+      if (ri !== rj) parent[ri] = rj;
     }
-    if (!placed) clusters.push([a]);
   }
+  const byRoot = new Map<number, EffectiveAnchor[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    const c = byRoot.get(r);
+    if (c) c.push(sorted[i]);
+    else byRoot.set(r, [sorted[i]]);
+  }
+  const clusters = [...byRoot.values()];
   const eps: PooledEpisode[] = clusters.map((c) => {
     const start = c.reduce((s, x) => minIso(s, x.span.start), c[0].span.start);
     const end = c.reduce((e, x) => maxIso(e, x.span.end), c[0].span.end);
@@ -378,7 +391,10 @@ export function buildEnv(inputs: FusionInputs, seed: number): Env {
   const cal = makeCal(inputs.store.days);
   const dd = computeDayData(inputs.store, cal);
   const major = inputs.effective.filter(TIER_RULE.MAJOR);
-  const inEra = major.filter((a) => a.d0 <= ERA_END); // §2: onset ≥ 2022-01-01 excluded a priori
+  // §2/§13 anchor era: onset ≥ 2022-01-01 excluded a priori; the ≥1990 lower bound
+  // is loadAnchors' hard assert on the production path, re-enforced here so the
+  // injectable core cannot pool a pre-era anchor.
+  const inEra = major.filter((a) => a.d0 >= ERA_START && a.d0 <= ERA_END);
   const episodes = mergeCrossFamily(inEra);
 
   const T = cal.total;
@@ -399,11 +415,10 @@ export function buildEnv(inputs: FusionInputs, seed: number): Env {
       coverSingle[d] = coverCnt[d] === 1 ? e : -1;
     }
     if (en >= 0 && s < T) majorNear30.fill(1, clamp(s - CONTROL_EP_RADIUS), clamp(en + CONTROL_EP_RADIUS) + 1);
-    // outcome flag: onset o follows day d iff o ∈ [d+1, d+14] ⟺ d ∈ [o−14, o−1]
+    // outcome flag: onset o follows day d iff o ∈ [d+1, d+14] ⟺ d ∈ [o−14, o−1];
+    // an onset at index < OUTCOME_LO has an EMPTY flag range — no clamp-to-0 fill
     const o = epOnsetIdx[e];
-    const flo = clamp(o - OUTCOME_HI);
-    const fhi = clamp(o - OUTCOME_LO);
-    if (fhi >= flo) followed.fill(1, flo, fhi + 1);
+    if (o - OUTCOME_LO >= 0) followed.fill(1, clamp(o - OUTCOME_HI), o - OUTCOME_LO + 1);
   }
   const inMajorSpan = new Uint8Array(T);
   for (let d = 0; d < T; d++) inMajorSpan[d] = coverCnt[d] > 0 ? 1 : 0;
@@ -561,6 +576,11 @@ export function selectControls(
     // rng consumed in fixed (year-asc, offset-asc) construction order → deterministic
     const rng = seededRng(fnv(`${env.seed}|fusion-controls|${ep.onset}|${ep.memberIds[0]}`));
     const keyed = cands.map((c) => ({ ...c, r: rng() }));
+    // DELIBERATE key order (B(f)): once coverage-matched resampling has triggered,
+    // the coverage penalty outranks year gap — gap-first would re-pick the same
+    // nearest-year candidates and could not close the reporting-count gap the
+    // resample exists to close. Year gap remains the ordering inside each penalty
+    // class; any achieved |year-gap| stretch is exposed by the §7 honesty line.
     keyed.sort((a, b) => a.pen - b.pen || a.gap - b.gap || a.r - b.r);
     chosen = keyed.slice(0, MAX_CONTROLS).map((c) => c.idx);
   }
@@ -1267,7 +1287,7 @@ function renderFusionReport(p: FusionResult["payload"]): string {
   L.push(`- control windows ${p.test1.controlWindows}; episodes with zero controls ${p.test1.zeroControlEpisodes}`);
   L.push(`- max rotation ΔW = ${f6(p.test1.maxRotationDW)} over 67 replicates (offsets ${SHIFT_MIN}..${SHIFT_MAX})`);
   const t1drops = p.test1.rotations.map((r) => r.epDropped);
-  L.push(`- per-replicate dropped-episode counts: min ${Math.min(...t1drops)}, max ${Math.max(...t1drops)}`);
+  L.push(`- per-replicate dropped-episode counts (offsets ${SHIFT_MIN}..${SHIFT_MAX}): ${t1drops.join(" ")} (min ${Math.min(...t1drops)}, max ${Math.max(...t1drops)})`);
   L.push(``);
   L.push(`**TEST 1: ${p.test1.pass ? "PASS — ΔW strictly exceeds all 67 rotations" : "FAIL"}**`);
   L.push(``);
@@ -1275,6 +1295,8 @@ function renderFusionReport(p: FusionResult["payload"]): string {
   L.push(`## 6. TEST 2 — DOSE-RESPONSE (month-stratified deciles)`);
   L.push(``);
   L.push(`- eligible scan days ${p.test2.eligibleScanDays} (dropped windows ${p.test2.droppedWindows}; in-span excluded ${p.test2.inSpanExcluded})`);
+  const t2drops = p.test2.rotations.map((r) => r.dropped);
+  L.push(`- per-replicate dropped-window counts (offsets ${SHIFT_MIN}..${SHIFT_MAX}): ${t2drops.join(" ")}`);
   L.push(`- b (post-masking) = ${f6(p.test2.b)}; bar = 2b = ${f6(p.test2.topDecileBar)}`);
   L.push(``);
   L.push(`| decile | days | followed | rate |`);
@@ -1364,6 +1386,10 @@ async function main() {
   const t0 = Date.now();
   const [anchorSet, store] = await Promise.all([loadAnchors(), loadFrameStore()]);
   if (store.slots.length < NSLOT_V1) throw new Error(`layout has ${store.slots.length} slots — need the ${NSLOT_V1} v1 offsets`);
+  if (store.version !== LAYOUT_VERSION_PINNED)
+    throw new Error(`layout version ${store.version} ≠ pinned ${LAYOUT_VERSION_PINNED} — substrate re-baked; §2 requires a re-freeze + registration version bump`);
+  if (store.days.length < MIN_FRAME_DAYS)
+    throw new Error(`frame store has ${store.days.length} days < ${MIN_FRAME_DAYS} — §2 substrate receipt violated`);
   console.error(`[fusion] loaded ${anchorSet.raw.length} raw anchors, ${store.days.length} frames — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   const res = runFusion(
     { store, rawCount: anchorSet.raw.length, effective: anchorSet.effective },

@@ -182,6 +182,23 @@ console.log("(h) cross-family merge");
     "state-disjoint anchor stays separate",
     JSON.stringify(eps[1].families)
   );
+
+  // transitivity regressions (§4: transitive closure, not first-match greedy)
+  // (i) a bridge anchor relates two overlapping-but-state-disjoint anchors
+  const A2 = anchor("1991-01-01", "flood", { states: ["TX"], spanDays: 3 });
+  const B2 = anchor("1991-01-02", "wind", { states: ["OK"], spanDays: 3 });
+  const C2 = anchor("1991-01-03", "winter", { states: ["TX", "OK"], spanDays: 3 });
+  const bridged = mergeCrossFamily([A2, B2, C2]);
+  assert(bridged.length === 1, "bridge anchor closes two state-disjoint anchors into ONE episode", `got ${bridged.length}`);
+  assert(bridged[0].onset === "1991-01-01", "bridged onset = earliest member start", bridged[0].onset);
+  assert(bridged[0].memberIds.length === 3, "bridged episode holds all 3 members", `${bridged[0].memberIds.length}`);
+  // (ii) a later anchor within ±7d of TWO existing clusters unions them
+  const P = anchor("1992-02-01", "flood", { states: ["TX"], spanDays: 2 });
+  const Q = anchor("1992-02-04", "wind", { states: ["LA"], spanDays: 2 });
+  const R = anchor("1992-02-08", "tornado", { states: ["TX", "LA"], spanDays: 2 });
+  const unioned = mergeCrossFamily([P, Q, R]);
+  assert(unioned.length === 1, "late anchor matching two clusters unions them", `got ${unioned.length}`);
+  assert(unioned[0].onset === "1992-02-01", "unioned onset = earliest member start", unioned[0].onset);
 }
 
 // ─── (c) episode masking (§5) ───────────────────────────────────────────────────
