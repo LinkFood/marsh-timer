@@ -37,10 +37,40 @@ interface RouteMeta {
 
 const STATIC_META: Record<string, RouteMeta> = {
   '/': {
-    title: 'Duck Countdown | Environmental Intelligence Platform',
+    title: 'Duck Countdown | The Living Almanac of American Ground',
     description:
-      'Pick a day you remember. See what the Earth remembers. 7.6M readings across 25+ environmental domains and 50 states — weather, water, migration, and more.',
+      'The living almanac of American ground — what today is here, what it rhymes with, and what followed. Every sentence traceable to a row. Never a forecast.',
     image: '/api/og',
+  },
+  '/ask': {
+    title: 'Ask the Archive — Duck Countdown',
+    description:
+      'Ask the record a question. Answers drawn from 7.6M recorded readings across 50 states — receipts attached, never a forecast.',
+    image: '/api/og?v=ask',
+  },
+  '/plant': {
+    title: 'The Planting Page — Duck Countdown',
+    description:
+      'When to plant, from the record itself: 76 years of recorded frost for your state, read as odds with the denominator always shown. Never a guess.',
+    image: '/api/og?v=plant',
+  },
+  '/atlas': {
+    title: 'The Atlas — Duck Countdown',
+    description:
+      'Descend into your ground. What this place is doing today, what its own record rhymes with, and what followed — every line from a stored reading.',
+    image: '/api/og?v=atlas',
+  },
+  '/morning': {
+    title: 'The Morning Line — Duck Countdown',
+    description:
+      'The daily page: what is forming on American ground this morning, read against the record and graded in public. Recorded fact only — never a forecast.',
+    image: '/api/og?v=morning',
+  },
+  '/born': {
+    title: 'The Day You Were Born — Duck Countdown',
+    description:
+      'What the ground was doing the day you were born — weather, water, the moon — read straight from the recorded archive.',
+    image: '/api/og?v=born',
   },
   '/court': {
     title: 'The Court — Duck Countdown',

@@ -10,6 +10,7 @@ export const config = { runtime: 'edge' };
 //   /api/og?v=cascade&slug=july-2026-heat       → July 2026 heat cascade
 //   /api/og?v=cascade&slug=sept-2020-whiplash   → Sept 2020 whiplash cascade
 //   /api/og?v=date&d=YYYY-MM-DD                 → Archive day view
+//   /api/og?v=ask|plant|atlas|morning|born      → The doors + wings
 // Unknown params fall back to the site-wide card. No free-text params —
 // every string rendered on a card is defined in this file.
 // ---------------------------------------------------------------------------
@@ -30,10 +31,35 @@ interface CardCopy {
 
 const CARDS: Record<string, CardCopy> = {
   home: {
-    kicker: 'THE ARCHIVE',
-    headlineMuted: 'Pick a day you remember.',
-    headline: 'See what the Earth remembers.',
-    sub: '7.6M readings · 25+ environmental domains · 50 states',
+    kicker: 'DUCK COUNTDOWN',
+    headlineMuted: 'What today is, here.',
+    headline: 'The living almanac of American ground.',
+    sub: 'What it rhymes with · what followed · every sentence traceable to a row',
+  },
+  ask: {
+    kicker: 'ASK THE ARCHIVE',
+    headline: 'Ask the record a question.',
+    sub: '7.6M recorded readings · 50 states · receipts attached, never a forecast',
+  },
+  plant: {
+    kicker: 'THE PLANTING PAGE',
+    headline: 'When to plant, from the record.',
+    sub: "76 years of recorded frost · your state's own odds · never a guess",
+  },
+  atlas: {
+    kicker: 'THE ATLAS',
+    headline: 'Descend into your ground.',
+    sub: 'What this place is doing today, and what its own record rhymes with',
+  },
+  morning: {
+    kicker: 'THE MORNING LINE',
+    headline: 'The daily page.',
+    sub: "What's forming this morning, read against the record — graded in public",
+  },
+  born: {
+    kicker: 'THE DAY YOU WERE BORN',
+    headline: 'What the ground was doing.',
+    sub: 'Weather, water, and the moon — straight from the recorded archive',
   },
   court: {
     kicker: 'THE COURT · PUBLIC DOCKET',
@@ -89,6 +115,7 @@ function pickCard(params: URLSearchParams): CardCopy {
       };
     }
   }
+  if (v && CARDS[v]) return CARDS[v]; // ask / plant / atlas / morning / born
   return CARDS.home;
 }
 

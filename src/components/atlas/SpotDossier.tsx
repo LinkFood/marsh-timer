@@ -233,6 +233,10 @@ export interface ThatDayWeather {
   min_f?: number | null;
   /** the archive's own prose for the day; the card composes its own lede */
   narrative?: string | null;
+  /** GHCN QA 2026-07-17 — set when the rollup carries a confirmed instrument
+   * artifact; extremes arrive nulled, qa_note is the receipt to show. */
+  qa_flag?: string | null;
+  qa_note?: string | null;
 }
 
 export interface ThatDayEvent {
@@ -583,6 +587,16 @@ function ThatDayBlock({ report }: { report: ThatDayReport }) {
       {lede && (
         <p className="font-display text-[19px] font-semibold leading-snug text-white">
           {lede}
+        </p>
+      )}
+
+      {/* QA receipt — the day's rollup carries a confirmed instrument artifact
+          (GHCN QA 2026-07-17). Extremes were withheld upstream; say why. */}
+      {report.weather?.qa_flag && (
+        <p className="text-[11px] leading-snug text-amber-200/70">
+          This day&apos;s state rollup carries a flagged instrument artifact
+          {report.weather.qa_note ? ` — ${report.weather.qa_note}` : ""}. The
+          recorded extremes are withheld; station averages remain usable.
         </p>
       )}
 

@@ -36,6 +36,9 @@ interface ThatDayResp2 {
   weather?: {
     avg_high_f?: number; avg_low_f?: number; precip_in?: number;
     stations?: number; max_f?: number; min_f?: number; narrative?: string;
+    /** GHCN QA 2026-07-17 — set when the day's rollup carries a confirmed
+     * instrument artifact; extremes arrive nulled, qa_note is the receipt. */
+    qa_flag?: string | null; qa_note?: string | null;
   } | null;
   events?: {
     title?: string; narrative?: string; deaths?: number; injuries?: number;

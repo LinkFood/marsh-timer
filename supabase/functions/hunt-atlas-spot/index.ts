@@ -414,18 +414,29 @@ Deno.serve(async (req: Request) => {
             .limit(6),
         ]);
 
-        // weather
+        // weather — QA read-guard (GHCN QA 2026-07-17, docs/GHCN-QA-2026-07-17.md):
+        // rows carrying metadata.qa_flag hold a confirmed instrument artifact in
+        // their min/max extremes (stuck sensors, sentinel values). The avg_*
+        // fields are ~100-station means and stay usable; the extremes and the
+        // row's narrative sentence ("The coldest reading was 7°F…") are
+        // fabricated — withhold them and surface the QA receipt instead.
         let weather: Record<string, unknown> | null = null;
         if (wRes.data && wRes.data.length > 0) {
           const md = (wRes.data[0].metadata ?? {}) as Record<string, unknown>;
+          const qaFlag = typeof md.qa_flag === 'string' ? md.qa_flag : null;
+          const qaNote = typeof md.qa_note === 'string' ? md.qa_note : null;
           weather = {
             avg_high_f: mnum(md.avg_high_f),
             avg_low_f: mnum(md.avg_low_f),
             precip_in: mnum(md.avg_precip_in),
             stations: mnum(md.station_count),
-            max_f: mnum(md.max_temp_f),
-            min_f: mnum(md.min_temp_f),
-            narrative: (wRes.data[0].content as string) ?? null,
+            max_f: qaFlag ? null : mnum(md.max_temp_f),
+            min_f: qaFlag ? null : mnum(md.min_temp_f),
+            narrative: qaFlag
+              ? `This day's state rollup carries a flagged instrument artifact (${qaNote ?? qaFlag}) — the recorded extremes are withheld; station averages remain usable. GHCN QA 2026-07-17.`
+              : ((wRes.data[0].content as string) ?? null),
+            qa_flag: qaFlag,
+            qa_note: qaNote,
           };
         }
 
@@ -1468,6 +1479,9 @@ Deno.serve(async (req: Request) => {
         const bestByDate = new Map<string, { sim: number; content: string }>();
         for (const hit of (resp.data ?? []) as Array<Record<string, unknown>>) {
           if ((hit?.metadata as Record<string, unknown> | null)?.superseded === true) continue;
+          // GHCN QA 2026-07-17: flagged rows' embedded narratives carry fabricated
+          // extremes ("coldest reading was 7°F") — never surface them as a rhyme.
+          if ((hit?.metadata as Record<string, unknown> | null)?.qa_flag != null) continue;
           const iso = String(hit.effective_date ?? '').slice(0, 10);
           if (!iso) continue;
           const dayDist = Math.abs(Date.parse(iso + 'T00:00:00Z') - defMs) / 86400000;
