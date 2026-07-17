@@ -11,6 +11,9 @@ import { getOpenArc, addOutcomeSignal, fireNarrator } from '../_shared/arcReacto
 // Split into batches to keep URLs under length limits
 const EVENT_BATCHES = [
   ['Winter Storm Warning', 'Winter Storm Watch', 'Winter Weather Advisory', 'Cold Weather Advisory', 'Wind Chill Warning', 'Wind Chill Advisory'],
+  // Frost family (Frost Advisory / Freeze Watch / Freeze Warning / Hard Freeze
+  // Warning) feeds /plant's climatology surface and a future late-frost
+  // formation lead: NWS frost paper against the 76-year state distribution.
   ['Freeze Warning', 'Freeze Watch', 'Frost Advisory', 'Hard Freeze Warning', 'Wind Advisory', 'High Wind Warning', 'High Wind Watch'],
   ['Dense Fog Advisory', 'Blizzard Warning', 'Blizzard Watch', 'Ice Storm Warning', 'Flood Warning', 'Flood Watch', 'Flash Flood Warning'],
   ['Lake Effect Snow Warning', 'Lake Effect Snow Watch'],

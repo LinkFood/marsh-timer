@@ -20,6 +20,7 @@ const AtlasPage = lazy(() => import("./pages/AtlasPage"));
 const MorningPage = lazy(() => import("./pages/MorningPage"));
 const BornPage = lazy(() => import("./pages/BornPage"));
 const BoardPage = lazy(() => import("./pages/BoardPage"));
+const PlantPage = lazy(() => import("./pages/PlantPage"));
 const ConceptsIndex = lazy(() => import("./pages/concepts/ConceptsIndex"));
 import ConceptA from "./pages/concepts/ConceptA";
 const ConceptB = lazy(() => import("./pages/concepts/ConceptB"));
@@ -45,6 +46,7 @@ const App = () => (
           <Route path="/morning/:date" element={<MorningPage />} />
           <Route path="/born" element={<BornPage />} />
           <Route path="/board/:story" element={<BoardPage />} />
+          <Route path="/plant" element={<PlantPage />} />
           <Route path="/concepts" element={<ConceptsIndex />} />
           <Route path="/concepts/a" element={<ConceptA />} />
           <Route path="/concepts/b" element={<ConceptB />} />

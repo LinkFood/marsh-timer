@@ -14,7 +14,7 @@ import { Link } from "react-router-dom";
  * character. Only the header ribbon and the doors footer are shared.
  */
 
-export type DoorKey = "atlas" | "morning" | "born" | "board" | "court";
+export type DoorKey = "atlas" | "morning" | "born" | "board" | "court" | "plant";
 
 interface Door {
   key: DoorKey;
@@ -27,6 +27,7 @@ const DOORS: Door[] = [
   { key: "atlas", to: "/atlas", label: "The Atlas" },
   { key: "morning", to: "/morning", label: "The Morning Line" },
   { key: "born", to: "/born", label: "The night you were born" },
+  { key: "plant", to: "/plant", label: "When to plant" },
   { key: "board", to: "/board/uri", label: "The Board — watch a storm form" },
   { key: "court", to: "/court", label: "The Court" },
 ];
@@ -67,8 +68,8 @@ export function InnerHeader({
 
 /**
  * The doors footer: every OTHER surface, offered as a quiet row of links (the
- * current page omitted; the front door passes no `current` and offers all
- * five). Centered flex-wrap so at 375px it degrades to two rows instead of
+ * current page omitted; the front door passes no `current` and offers every
+ * door). Centered flex-wrap so at 375px it degrades to two rows instead of
  * overflowing — never an ugly wrap.
  */
 export function InnerFooter({ current }: { current?: DoorKey }) {
