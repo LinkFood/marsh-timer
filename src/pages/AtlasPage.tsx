@@ -9,6 +9,7 @@ import SpotDossier, { type SpotData } from "@/components/atlas/SpotDossier";
 import { toSpotData } from "@/lib/atlas/spotDossierAdapter";
 import { SUPABASE_FUNCTIONS_URL } from "@/lib/supabase";
 import { useYourGround } from "@/hooks/useYourGround";
+import { consumeBornDoor, trackDateLookup } from "@/lib/analytics";
 
 /**
  * ATLAS — the ground you stand on (docs/THE-VISION-AND-ROADMAP.md).
@@ -391,6 +392,12 @@ export default function AtlasPage() {
         c ? getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-solunar?lat=${c[1]}&lng=${c[0]}`) : Promise.resolve({}),
       ]);
       setDossier(toSpotData(spot, sol, abbr));
+      // Gate-3 §0: a dated visit (?date=) whose dossier actually landed is a
+      // completed date lookup. The Born flow renders here — its handoff
+      // marker attributes the completion to door:'born', else 'atlas'.
+      if (dateParam) {
+        trackDateLookup(consumeBornDoor() ? "born" : "atlas");
+      }
     } catch {
       setDossier(null);
     } finally {

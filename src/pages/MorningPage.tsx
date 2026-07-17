@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SUPABASE_FUNCTIONS_URL, supabase } from "@/lib/supabase";
+import { trackDateLookup } from "@/lib/analytics";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import { fetchFormingWatches, stateFullName, type FormationWatch } from "@/lib/board/frameStore";
 import { useYourGround } from "@/hooks/useYourGround";
@@ -180,6 +181,16 @@ export default function MorningPage() {
       ? `The Morning Line — ${line.date_label}`
       : "The Morning Line — Duck Countdown";
   }, [line]);
+
+  // Gate-3 §0: completed lookup = the line actually rendered (headline came
+  // back from the archive), not the route mounting. Once per day per load.
+  const lookupFiredRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (loading || error || !line?.headline || !line.date) return;
+    if (lookupFiredRef.current.has(line.date)) return;
+    lookupFiredRef.current.add(line.date);
+    trackDateLookup("morning");
+  }, [loading, error, line]);
 
   // The world lane — what the record holds for this calendar day, anywhere on
   // earth (Wikipedia on-this-day rows, keyed by month-day). A quiet companion to

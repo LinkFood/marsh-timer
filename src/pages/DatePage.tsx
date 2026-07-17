@@ -11,6 +11,7 @@ import { useDayArchive, useArchaeologyTimeline, shiftDate, PROBE_COLORS, PROBE_L
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { US_STATES, getStateName, useYourGround } from '@/hooks/useYourGround';
 import { humanizeEntry, yearLines } from '@/lib/humanize';
+import { trackDateLookup } from '@/lib/analytics';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -102,6 +103,17 @@ export default function DatePage() {
   const { groups, total, loading: archiveLoading } = useDayArchive(dateStr, state);
   const { days: timelineDays } = useArchaeologyTimeline(dateStr, state);
   const { years: historyYears } = useThisDayInHistory(dateStr, state);
+
+  // Gate-3 §0: a completed lookup = the archive ANSWERED (data rendered),
+  // never the route mounting. Once per date+state per page load.
+  const lookupFiredRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (archiveLoading || (groups.length === 0 && total == null)) return;
+    const key = `${dateStr}:${state ?? ''}`;
+    if (lookupFiredRef.current.has(key)) return;
+    lookupFiredRef.current.add(key);
+    trackDateLookup('date');
+  }, [archiveLoading, groups.length, total, dateStr, state]);
 
   // --- Synthesis: LLM fires ONLY on button press ---
   const { messages, loading, streaming, sendMessage } = useChat({

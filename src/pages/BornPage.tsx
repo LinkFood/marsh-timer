@@ -4,6 +4,7 @@ import { TILE_GRID } from "@/components/EventMap";
 import { STATE_NAMES } from "@/data/atlas/stateBBoxes";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
 import { useYourGround } from "@/hooks/useYourGround";
+import { markBornDoor } from "@/lib/analytics";
 
 /**
  * THE NIGHT YOU WERE BORN — the entry surface for a birthday (acceptance
@@ -79,6 +80,9 @@ export default function BornPage() {
   function submit() {
     if (!canSubmit || !iso) return;
     if (!chosen) setGround(state);
+    // Gate-3 §0: the Born lookup completes when the atlas dossier renders —
+    // mark the handoff so that completion is attributed door:'born'.
+    markBornDoor();
     navigate(`/atlas?date=${iso}&state=${state}`);
   }
 
