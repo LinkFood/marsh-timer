@@ -92,7 +92,8 @@ const LANE_SENTENCES: Record<string, (title: string, content: string) => string 
     const m = c.match(/current\s+([\d.,]+)\s*m³\/s/i);
     if (!m) return null;
     const desc = c.match(/\)\.?\s*([a-z][a-z\s-]+?)\s*$/i);
-    return `Rivers ran at ${m[1]} m³/s${desc ? ` — ${desc[1].trim()}` : ''}`;
+    const label = desc && !/^(unknown|n\/a|none)$/i.test(desc[1].trim()) ? ` — ${desc[1].trim()}` : '';
+    return `Rivers ran at ${m[1]} m³/s${label}`;
   },
   'ocean-buoy': (_t, c) => {
     const m = c.match(/Ocean buoy\s+(\S+)\s+\(([^)]+)\)/i);
@@ -119,6 +120,19 @@ const LANE_SENTENCES: Record<string, (title: string, content: string) => string 
     return Number(st[2]) === 0
       ? `Snowpack bare — 0 of ${st[1]} stations holding snow`
       : `Snowpack ${swe[1]}" water equivalent — ${st[2]} of ${st[1]} stations holding snow`;
+  },
+  'snow-cover-monthly': (_t, c) => {
+    const lvl = c.match(/cover_level:([\w-]+)/i);
+    const st = c.match(/stations:(\d+)\s*\|\s*with_snow:(\d+)/i);
+    if (!lvl || !st) return null;
+    const avg = c.match(/avg_depth:([\d.]+)in/i);
+    return `Snow cover ${lvl[1]} — ${st[2]} of ${st[1]} stations${avg && Number(avg[1]) > 0 ? `, avg ${avg[1]}"` : ''}`;
+  },
+  'nasa-daily': (_t, c) => {
+    const solar = c.match(/solar:([\d.]+)kWh/i);
+    const cloud = c.match(/cloud:([\d.]+)%/i);
+    const bits = [solar && `solar ${solar[1]} kWh/m²`, cloud && `cloud ${cloud[1]}%`].filter(Boolean).join(', ');
+    return bits ? `Satellite read — ${bits}` : 'Satellite weather record';
   },
   'drought-weekly': (_t, c) => {
     const cls = c.match(/class:([\w-]+)/i);
@@ -227,8 +241,8 @@ export function humanizeEntry(title: string | null | undefined, contentType: str
     return TYPE_LABELS[contentType] ?? readableType(contentType);
   }
 
-  // Strip trailing machine suffixes: "… AL 1950-07-02", "… 1950-07-02"
-  t = t.replace(/[\s—–:-]*(?:\b[A-Z]{2}\s+)?\d{4}-\d{2}-\d{2}\s*$/, '').trim();
+  // Strip trailing machine suffixes: "… AL 1950-07-02", "… 1950-07-02", "… AK 202102"
+  t = t.replace(/[\s—–:-]*(?:\b[A-Z]{2}\s+)?\d{4}(?:-\d{2}-\d{2}|\d{2})\s*$/, '').trim();
   t = t.replace(/[\s—–:-]+$/, '').trim();
 
   if (!t) return TYPE_LABELS[contentType] ?? readableType(contentType);
@@ -262,11 +276,14 @@ export function humanizeEntry(title: string | null | undefined, contentType: str
   if (tail && !tail[1].trim().split(/\s+/).some(w => ACRONYMS.has(w))) {
     const place = tail[1].trim().split(/\s+/).map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
     const head = (t.slice(0, tail.index).trim())
-      .replace(/\b[A-Z][a-z]+\b/g, (w, i: number) => (i === 0 ? w : w.toLowerCase()));
+      .replace(/\b[A-Z][a-z]+\b/g, (w, i: number) => (i === 0 ? w : w.toLowerCase()))
+      .replace(/[\s—–:-]+$/, ''); // a title already ending in a dash never doubles it
     t = `${head} — ${place}`;
   }
   // Any remaining shouted words mid-title get title-cased in place
   t = t.replace(/\b[A-Z]{3,}\b/g, w => (ACRONYMS.has(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()));
+  // Acronyms the de-shout lowercased get their caps back ("Nasa Power" → "NASA Power")
+  t = t.replace(/\b[A-Za-z]{2,6}\b/g, w => (ACRONYMS.has(w.toUpperCase()) ? w.toUpperCase() : w));
 
   if (t.length > 90) t = t.slice(0, 87).trimEnd() + '…';
   return t.charAt(0).toUpperCase() + t.slice(1);
