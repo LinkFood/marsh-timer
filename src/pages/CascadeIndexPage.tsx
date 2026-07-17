@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
-import AppHeader from '@/components/AppHeader';
-import UserMenu from '@/components/UserMenu';
+import { InnerHeader, InnerFooter } from '@/components/InnerNav';
 
 /**
  * /cascade — "Strangest Days" index.
@@ -29,14 +28,13 @@ const CASCADES: { to: string; kicker: string; title: string; line: string }[] = 
 export default function CascadeIndexPage() {
   return (
     <div className="min-h-[100dvh] bg-gray-950 flex flex-col">
-      <AppHeader>
-        <UserMenu />
-      </AppHeader>
-
       <main className="flex-1">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-16 space-y-8">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 pb-16 space-y-8">
+          <InnerHeader
+            title="THE MUSEUM · STRANGEST DAYS"
+            subtitle="replays of days the layers moved together"
+          />
           <header className="space-y-4">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-cyan-400/70">Strangest days</p>
             <h1 className="font-display text-3xl sm:text-4xl text-white/95 leading-tight">
               Days the layers moved together
             </h1>
@@ -62,6 +60,8 @@ export default function CascadeIndexPage() {
               </Link>
             ))}
           </section>
+          <InnerFooter current="cascade" />
+
         </div>
       </main>
 

@@ -28,7 +28,7 @@ import {
 } from "@/lib/board/frameStore";
 
 /**
- * THE FRONT DOOR (`/`). One room, one true sentence per screen.
+ * TODAY — THE FRONT DOOR (`/`). One room, one true sentence per screen.
  *
  * Identity first — brand, thesis, and a dim US skeleton render statically
  * before a single row arrives; the page never opens on a bare black screen.
@@ -217,7 +217,7 @@ interface CardState {
   bottom?: number;
 }
 
-export default function ConceptA() {
+export default function TodayPage() {
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [alerts, setAlerts] = useState<Map<string, StateAlert>>(new Map());
   const [watches, setWatches] = useState<FormationWatch[]>([]);
@@ -631,7 +631,7 @@ export default function ConceptA() {
 
       {/* THE DOORS — the same footer every sibling page shares */}
       <div className="mx-auto w-full max-w-3xl px-5 pb-10 sm:px-8">
-        <InnerFooter />
+        <InnerFooter current="today" />
       </div>
     </div>
   );

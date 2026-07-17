@@ -94,9 +94,14 @@ Each state gets a daily score from 0-135 across these weighted domains:
 ### Frontend — Chat-First Explorer
 - React 18 + TypeScript + Vite + Tailwind
 - Mapbox GL JS with 3D globe, state extrusion, 27+ layers, 4 presets
-- **ExplorerLanding (`/`, `/:stateAbbr`)** — chat-first landing: ask-anything input over the brain (streamed answers via BrainResponseCard with markdown, inline state maps, follow-up questions, thumbs feedback embedded back into the brain), daily discovery card, brain pulse feed, state activity map, this-day-in-history, chat history sidebar
-- **Explorer pages** — `/date/:dateStr` (DatePage), `/now` (NowPage), `/state/:stateAbbr` (StatePage), `/report/:dateStr` (ReportPage)
-- **Legacy routes** — `/dashboard` (panel workbench, was the old `/`), `/map`, `/intelligence` (deep-dive command center with FusionWeb SVG, rankings, brain recognition, outcome windows, live feed, METAR, chat overlay)
+- **Route inventory (2026-07-17, per docs/SITE-BLUEPRINT-2026-07-17.md — five doors, one nav):**
+  - Doors: `/` (TodayPage — the front door: porch sentence, live board, rhyme, ledger), `/plant` (PlantPage — first almanac chapter), `/date/:dateStr` (DatePage — the museum's main hall), `/court` (CourtPage — the docket), `/ask` (AskPage — the chat pipeline over the archive, 9 intents)
+  - Today's wing: `/atlas` (AtlasPage, auto-descends on `?state=XX`), `/morning`, `/morning/:date` (MorningPage)
+  - Museum wings: `/born` (BornPage), `/board/:story` (BoardPage — uri, sandy), `/cascade` + `/cascade/july-2026-heat` + `/cascade/sept-2020-whiplash`
+  - Unlisted: `/ops`, `/auth`
+  - Redirects (edge middleware 301 + router Navigate): `/welcome` → `/`, `/explore` → `/ask` (query preserved), `/state/:s` → `/atlas?state=XX`, `/concepts*` → `/`; `/XX` → `/?state=XX`
+  - Dead and gone (no routes, no files): `/dashboard`, `/map`, `/intelligence`, `/now`, `/report`
+  - One nav idiom everywhere: `InnerHeader` + `InnerFooter` (src/components/InnerNav.tsx) — no other header/tab chrome exists
 - **StateIntelView** — replaces panel dock when state selected, shows AI assessment + convergence + pattern links + alerts
 - 25 lazy-loaded panels in 4 categories (workbench mode)
 - Chat synthesis: answer-first, collapsible evidence, CrossDomainPatternCard
@@ -117,7 +122,7 @@ Each state gets a daily score from 0-135 across these weighted domains:
 | Styling | Tailwind CSS |
 | Map | Mapbox GL JS (satellite-streets-v12, globe projection, 3D terrain, fog/atmosphere) |
 | Panel Layout | CSS Grid 12-col |
-| Routing | React Router 6 — `/` is the chat-first ExplorerLanding (`/:stateAbbr` variant), plus `/date/:dateStr`, `/now`, `/state/:stateAbbr`, `/report/:dateStr`, `/ops`, `/auth`; legacy: `/dashboard`, `/map`, `/intelligence` |
+| Routing | React Router 6 — five doors: `/` (Today), `/plant`, `/date/:dateStr`, `/court`, `/ask`; wings: `/atlas`, `/morning(/:date)`, `/born`, `/board/:story`, `/cascade(/…)`; unlisted: `/ops`, `/auth`; redirects: `/welcome`→`/`, `/explore`→`/ask`, `/state/:s`→`/atlas?state=XX`, `/concepts*`→`/` |
 | Icons | Lucide React |
 | Fonts | Playfair Display (headings), Lora (body) |
 | Auth | Supabase Auth (Google OAuth) |

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Scale } from 'lucide-react';
-import AppHeader from '@/components/AppHeader';
-import UserMenu from '@/components/UserMenu';
+import { InnerHeader, InnerFooter } from '@/components/InnerNav';
 import CascadeRibbon from '@/components/CascadeRibbon';
 import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
 import { TILE_GRID, CELL, PITCH, VIEW_W, VIEW_H } from '@/components/EventMap';
@@ -111,12 +110,12 @@ const STEPS: { n: string; color: string; title: string; body: string; to: string
 export default function CascadeSept2020Page() {
   return (
     <div className="min-h-[100dvh] bg-gray-950 flex flex-col">
-      <AppHeader>
-        <UserMenu />
-      </AppHeader>
-
       <main className="flex-1">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-16 space-y-10">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 pb-16 space-y-10">
+          <InnerHeader
+            title="THE MUSEUM · STRANGEST DAYS"
+            subtitle="a verified replay — every point a real reading"
+          />
 
           {/* Title */}
           <header className="space-y-4">
@@ -217,6 +216,8 @@ export default function CascadeSept2020Page() {
               <ArrowRight size={15} className="text-cyan-400/50 group-hover:text-cyan-400 transition-colors shrink-0" />
             </Link>
           </section>
+          <InnerFooter current="cascade" />
+
         </div>
       </main>
 

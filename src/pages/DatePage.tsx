@@ -2,8 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
 import BrainResponseCard from '@/components/BrainResponseCard';
-import AppHeader from '@/components/AppHeader';
-import UserMenu from '@/components/UserMenu';
+import { InnerHeader, InnerFooter } from '@/components/InnerNav';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import PrecedentCard from '@/components/PrecedentCard';
 import CiteBlock, { retrievedToday } from '@/components/CiteBlock';
@@ -11,7 +10,7 @@ import { useChat } from '@/hooks/useChat';
 import { useDayArchive, useArchaeologyTimeline, shiftDate, PROBE_COLORS, PROBE_LABELS, type ArchiveEntry } from '@/hooks/useDayArchive';
 import { useThisDayInHistory } from '@/hooks/useThisDayInHistory';
 import { US_STATES, getStateName } from '@/hooks/useUserLocation';
-import { yearLines } from '@/lib/humanize';
+import { humanizeEntry, yearLines } from '@/lib/humanize';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -40,9 +39,13 @@ function SectionLabel({ children }: { children: string }) {
   );
 }
 
-/** One entry as a one-liner: title + state tag. */
+/**
+ * One entry as a one-liner: human headline + state tag. Titles route through
+ * humanizeEntry — machine row keys (the fire lane's "fire-{UUID}-…" identity
+ * strings) are rebuilt as sentences from the content column, never shown raw.
+ */
 function EntryLine({ entry }: { entry: ArchiveEntry }) {
-  const text = entry.title || entry.content?.slice(0, 120) || entry.content_type;
+  const text = humanizeEntry(entry.title || entry.content?.slice(0, 120), entry.content_type, entry.content);
   return (
     <li className="flex items-start justify-between gap-2 py-1">
       <span className="text-xs font-body text-white/60 leading-snug line-clamp-2">{text}</span>
@@ -168,12 +171,12 @@ export default function DatePage() {
 
   return (
     <div className="min-h-[100dvh] bg-gray-950 flex flex-col">
-      <AppHeader>
-        <UserMenu />
-      </AppHeader>
-
       <main className="flex-1">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-10 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-10">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-10 pb-10">
+          <InnerHeader
+            title="THE MUSEUM"
+            subtitle="any day since 1950, receipts on the table"
+          />
 
           {/* Date navigation — URL is the source of truth */}
           <section>
@@ -380,6 +383,8 @@ export default function DatePage() {
               </div>
             </section>
           )}
+
+          <InnerFooter current="date" />
         </div>
       </main>
 

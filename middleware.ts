@@ -142,6 +142,19 @@ export default function middleware(request: Request) {
     if (shim) return shim;
   }
 
+  // Killed rooms → their heirs (the 2026-07-17 blueprint's ONE NAV kill list)
+  // /welcome → /  (the old second front door)
+  if (url.pathname === '/welcome') return redirect('/');
+  // /explore → /ask (the chat reborn as the query door; deep links survive)
+  if (url.pathname === '/explore') return redirect(`/ask${url.search}`);
+  // /state/XX → /atlas?state=XX (the descent IS the state page)
+  if (segments.length === 2 && segments[0] === 'state') {
+    const abbr = segments[1].toUpperCase();
+    return redirect(STATE_ABBRS.has(abbr) ? `/atlas?state=${abbr}` : '/atlas');
+  }
+  // /concepts* → / (the scaffolding is gone; A was promoted to the front door)
+  if (segments[0] === 'concepts') return redirect('/');
+
   // /XX → /?state=XX
   if (segments.length === 1 && segments[0].length === 2) {
     const abbr = segments[0].toUpperCase();
