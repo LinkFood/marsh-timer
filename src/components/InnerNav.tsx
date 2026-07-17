@@ -131,7 +131,7 @@ export function InnerFooter({ current }: { current?: DoorKey }) {
       <nav className="flex flex-col items-center gap-y-2.5 text-center font-mono text-[11px]">
         {groups.map((g) => (
           <div key={g.name} className="flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1.5">
-            {g.doors.length > 1 && (
+            {(g.doors.length > 1 || g.name === "The Almanac") && (
               <span className="text-[10px] tracking-[0.2em] text-gray-600">{g.name.toUpperCase()}</span>
             )}
             {g.doors.map((d) => (

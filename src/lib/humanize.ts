@@ -47,7 +47,7 @@ function readableType(contentType: string): string {
 }
 
 /** Caps words that are legitimate acronyms — never title-cased. */
-const ACRONYMS = new Set(['NWS', 'NOAA', 'USGS', 'USA', 'KP']);
+const ACRONYMS = new Set(['NWS', 'NOAA', 'USGS', 'USA', 'KP', 'NASA', 'SNOTEL', 'SWE']);
 
 /** Content types whose entries are routine daily weather bookkeeping. */
 export function isRoutineWeather(contentType: string, title?: string | null): boolean {
