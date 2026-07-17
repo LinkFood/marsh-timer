@@ -176,15 +176,15 @@ async function fetchAcisYear(
 
 interface DaySummary {
   date: string;
-  avgHigh: number;
-  avgLow: number;
+  avgHigh: number | null;
+  avgLow: number | null;
   avgPrecip: number;
   maxPrecip: number;
   maxPrecipStation: string;
   stationCount: number;
-  maxTemp: number;
+  maxTemp: number | null;
   maxTempStation: string;
-  minTemp: number;
+  minTemp: number | null;
   minTempStation: string;
   snowfall: number | null;
   snowDepth: number | null;
@@ -205,11 +205,186 @@ function generateDates(year: number): string[] {
   return dates;
 }
 
-function aggregateStations(acisData: AcisStation[], year: number): Map<string, DaySummary> {
+// ---------- Plausibility screen (THE TOMATO QUESTION fix, 2026-07-17) ----------
+// MD's rollups carried min_temp_f = 7.0 stuck for weeks of summer 2002-2004
+// (a broken station rode ingest unscreened and fabricated a "June 30, 2004
+// freeze"); HI carried a 0C=32F sentinel pinned for 237 straight days; AK/CO
+// carried -40C=-40F sentinels in August. The screen below rejects individual
+// STATION readings before aggregation, so the state extreme recomputes from
+// the surviving instruments. Rules mirror scripts/ghcn-qa-scan.ts (the
+// archive-wide flag pass) so faucet and archive agree on what "broken" means:
+//   STUCK RUN  — a station reporting the identical mint (or maxt) on >= 5
+//                consecutive days is confirmed broken when the run sits far
+//                from the state average (median spread > 30F), pins 10+ days
+//                at > 15F from average, or contains a seasonal impossibility.
+//                A value once confirmed broken rejects that station's other
+//                runs of the same value that year (stuck sensors stay stuck).
+//   SEASONAL   — mint <= 15F in May-Sep outside AK with the state average
+//                more than 38F warmer (the verified broken-instrument
+//                ceiling; real cold sinks top out ~35F below average), or
+//                maxt >= 115F in Dec-Feb (US winter record high is ~100F).
+//   INVERSION  — mint > maxt on the same station-day rejects both readings.
+
+export interface ScreenCounts {
+  stuckMin: number;
+  stuckMax: number;
+  seasonalMin: number;
+  seasonalMax: number;
+  inversion: number;
+}
+
+interface Reading {
+  dayIdx: number;
+  maxt: number | null;
+  mint: number | null;
+  pcpn: number | null;
+  snow: number | null;
+  snwd: number | null;
+}
+
+function medianOf(xs: number[]): number | null {
+  if (xs.length === 0) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+function screenStation(
+  readings: Reading[],
+  field: "mint" | "maxt",
+  state: string,
+  dates: string[],
+  prelimAvg: (dayIdx: number) => number | null, // avg low for mint, avg high for maxt
+  counts: ScreenCounts,
+): Set<number> {
+  const monthOf = (i: number) => Number(dates[i].slice(5, 7));
+  const seasonallyImpossible = (v: number, dayIdx: number, spread: number | null) =>
+    field === "mint"
+      ? state !== "AK" && v <= 15 && monthOf(dayIdx) >= 5 && monthOf(dayIdx) <= 9 &&
+        spread !== null && spread > 38
+      : v >= 115 && [12, 1, 2].includes(monthOf(dayIdx));
+  const spreadOf = (v: number, dayIdx: number): number | null => {
+    const a = prelimAvg(dayIdx);
+    if (a === null) return null;
+    return field === "mint" ? a - v : v - a;
+  };
+
+  const rejected = new Set<number>(); // dayIdx set
+
+  // Collect runs of identical values on consecutive dayIdx.
+  const runs: { value: number; days: number[] }[] = [];
+  let cur: number[] = [];
+  let prevVal: number | null = null;
+  let prevIdx = NaN;
+  const flush = () => {
+    if (cur.length >= 5 && prevVal !== null) runs.push({ value: prevVal, days: cur });
+    cur = [];
+  };
+  for (const r of readings) {
+    const v = r[field];
+    if (v !== null && v === prevVal && r.dayIdx === prevIdx + 1) {
+      cur.push(r.dayIdx);
+    } else {
+      flush();
+      cur = v !== null ? [r.dayIdx] : [];
+      prevVal = v;
+    }
+    prevIdx = r.dayIdx;
+  }
+  flush();
+
+  // Confirm runs (same evidence rules as the archive scan), then propagate
+  // known-bad values to this station's other runs.
+  const knownBad = new Set<number>();
+  for (const run of runs) {
+    const spreads = run.days
+      .map((d) => spreadOf(run.value, d))
+      .filter((s): s is number => s !== null);
+    const med = medianOf(spreads);
+    const seasonal = run.days.some((d) => seasonallyImpossible(run.value, d, spreadOf(run.value, d) ?? Infinity));
+    if ((med !== null && med > 30) || (run.days.length >= 10 && med !== null && med > 15) || seasonal) {
+      knownBad.add(run.value);
+    }
+  }
+  for (const run of runs) {
+    if (!knownBad.has(run.value)) continue;
+    for (const d of run.days) rejected.add(d);
+    if (field === "mint") counts.stuckMin += run.days.length;
+    else counts.stuckMax += run.days.length;
+  }
+
+  // Per-reading seasonal impossibility outside rejected runs.
+  for (const r of readings) {
+    const v = r[field];
+    if (v === null || rejected.has(r.dayIdx)) continue;
+    if (seasonallyImpossible(v, r.dayIdx, spreadOf(v, r.dayIdx))) {
+      rejected.add(r.dayIdx);
+      if (field === "mint") counts.seasonalMin++;
+      else counts.seasonalMax++;
+    }
+  }
+
+  return rejected;
+}
+
+function aggregateStations(
+  acisData: AcisStation[],
+  year: number,
+  state: string,
+): { summaries: Map<string, DaySummary>; screenCounts: ScreenCounts } {
   // ACIS MultiStnData does NOT include dates in data rows —
   // rows are positional from sdate. Compute dates from year.
   const dates = generateDates(year);
 
+  // Pass 1 — parse every station's readings and compute preliminary per-day
+  // state averages (the spread baseline; one broken station among many barely
+  // moves it).
+  const stations: { name: string; readings: Reading[] }[] = [];
+  const lowSums = new Array<number>(dates.length).fill(0);
+  const lowNs = new Array<number>(dates.length).fill(0);
+  const highSums = new Array<number>(dates.length).fill(0);
+  const highNs = new Array<number>(dates.length).fill(0);
+
+  for (const station of acisData) {
+    if (!station.data) continue;
+    const readings: Reading[] = [];
+    for (let i = 0; i < station.data.length && i < dates.length; i++) {
+      const row = station.data[i];
+      // ACIS rows are [maxt, mint, pcpn, snow, snwd] — NO date column
+      const maxt = parseAcisValue(row[0] as string);
+      const mint = parseAcisValue(row[1] as string);
+      const pcpn = parseAcisValue(row[2] as string);
+      const snow = parseAcisValue(row[3] as string);
+      const snwd = parseAcisValue(row[4] as string);
+      if (maxt === null && mint === null && pcpn === null && snow === null && snwd === null) continue;
+      readings.push({ dayIdx: i, maxt, mint, pcpn, snow, snwd });
+      if (mint !== null) { lowSums[i] += mint; lowNs[i]++; }
+      if (maxt !== null) { highSums[i] += maxt; highNs[i]++; }
+    }
+    if (readings.length > 0) stations.push({ name: station.meta?.name || "Unknown", readings });
+  }
+
+  const prelimAvgLow = (i: number) => (lowNs[i] > 0 ? lowSums[i] / lowNs[i] : null);
+  const prelimAvgHigh = (i: number) => (highNs[i] > 0 ? highSums[i] / highNs[i] : null);
+
+  // Pass 2 — screen each station's mint/maxt readings.
+  const counts: ScreenCounts = { stuckMin: 0, stuckMax: 0, seasonalMin: 0, seasonalMax: 0, inversion: 0 };
+  for (const station of stations) {
+    const badMin = screenStation(station.readings, "mint", state, dates, prelimAvgLow, counts);
+    const badMax = screenStation(station.readings, "maxt", state, dates, prelimAvgHigh, counts);
+    for (const r of station.readings) {
+      if (badMin.has(r.dayIdx)) r.mint = null;
+      if (badMax.has(r.dayIdx)) r.maxt = null;
+      // Inversion — a station whose min exceeds its own max that day is not
+      // reporting weather; drop both readings.
+      if (r.mint !== null && r.maxt !== null && r.mint > r.maxt) {
+        r.mint = null;
+        r.maxt = null;
+        counts.inversion++;
+      }
+    }
+  }
+
+  // Pass 3 — aggregate the surviving readings.
   const dayMap = new Map<
     string,
     {
@@ -228,20 +403,10 @@ function aggregateStations(acisData: AcisStation[], year: number): Map<string, D
     }
   >();
 
-  for (const station of acisData) {
-    const stationName = station.meta?.name || "Unknown";
-    if (!station.data) continue;
-
-    for (let i = 0; i < station.data.length && i < dates.length; i++) {
-      const row = station.data[i];
-      const date = dates[i];
-
-      // ACIS rows are [maxt, mint, pcpn, snow, snwd] — NO date column
-      const maxt = parseAcisValue(row[0] as string);
-      const mint = parseAcisValue(row[1] as string);
-      const pcpn = parseAcisValue(row[2] as string);
-      const snow = parseAcisValue(row[3] as string);
-      const snwd = parseAcisValue(row[4] as string);
+  for (const station of stations) {
+    for (const r of station.readings) {
+      const { maxt, mint, pcpn, snow, snwd } = r;
+      const date = dates[r.dayIdx];
 
       // Need at least one temp reading to count as a reporting station
       if (maxt === null && mint === null) continue;
@@ -270,21 +435,21 @@ function aggregateStations(acisData: AcisStation[], year: number): Map<string, D
         day.highs.push(maxt);
         if (maxt > day.maxTemp) {
           day.maxTemp = maxt;
-          day.maxTempStation = stationName;
+          day.maxTempStation = station.name;
         }
       }
       if (mint !== null) {
         day.lows.push(mint);
         if (mint < day.minTemp) {
           day.minTemp = mint;
-          day.minTempStation = stationName;
+          day.minTempStation = station.name;
         }
       }
       if (pcpn !== null) {
         day.precips.push(pcpn);
         if (pcpn > day.maxPrecip) {
           day.maxPrecip = pcpn;
-          day.maxPrecipStation = stationName;
+          day.maxPrecipStation = station.name;
         }
       }
       if (snow !== null) day.snowfalls.push(snow);
@@ -308,22 +473,26 @@ function aggregateStations(acisData: AcisStation[], year: number): Map<string, D
 
     result.set(date, {
       date,
-      avgHigh: Math.round(avg(day.highs) * 10) / 10,
-      avgLow: Math.round(avg(day.lows) * 10) / 10,
+      // null (NOT 0) when no station reported that side — same sentinel
+      // family as min/max: avg(empty) used to fabricate "low of 0°F".
+      avgHigh: day.highs.length > 0 ? Math.round(avg(day.highs) * 10) / 10 : null,
+      avgLow: day.lows.length > 0 ? Math.round(avg(day.lows) * 10) / 10 : null,
       avgPrecip: Math.round(avg(day.precips) * 100) / 100,
       maxPrecip: Math.round(day.maxPrecip * 100) / 100,
       maxPrecipStation: day.maxPrecipStation,
       stationCount: day.stationCount,
-      maxTemp: day.maxTemp === -Infinity ? 0 : Math.round(day.maxTemp * 10) / 10,
+      // null (NOT 0) when no station reported that side — the old 0-sentinel
+      // fabricated "0°F" readings and min>max inversions.
+      maxTemp: day.maxTemp === -Infinity ? null : Math.round(day.maxTemp * 10) / 10,
       maxTempStation: day.maxTempStation,
-      minTemp: day.minTemp === Infinity ? 0 : Math.round(day.minTemp * 10) / 10,
+      minTemp: day.minTemp === Infinity ? null : Math.round(day.minTemp * 10) / 10,
       minTempStation: day.minTempStation,
       snowfall: avgSnowfall !== null ? Math.round(avgSnowfall * 10) / 10 : null,
       snowDepth: maxSnowDepth,
     });
   }
 
-  return result;
+  return { summaries: result, screenCounts: counts };
 }
 
 // ---------- Narrative Builder ----------
@@ -332,7 +501,14 @@ function buildNarrative(state: string, summary: DaySummary): string {
   const stateName = STATE_NAMES[state];
   const dateStr = formatDate(summary.date);
 
-  let text = `On ${dateStr}, ${stateName} recorded an average high of ${summary.avgHigh}\u00B0F and low of ${summary.avgLow}\u00B0F across ${summary.stationCount} reporting stations.`;
+  let text: string;
+  if (summary.avgHigh !== null && summary.avgLow !== null) {
+    text = `On ${dateStr}, ${stateName} recorded an average high of ${summary.avgHigh}\u00B0F and low of ${summary.avgLow}\u00B0F across ${summary.stationCount} reporting stations.`;
+  } else if (summary.avgHigh !== null) {
+    text = `On ${dateStr}, ${stateName} recorded an average high of ${summary.avgHigh}\u00B0F across ${summary.stationCount} reporting stations.`;
+  } else {
+    text = `On ${dateStr}, ${stateName} recorded an average low of ${summary.avgLow}\u00B0F across ${summary.stationCount} reporting stations.`;
+  }
 
   if (summary.avgPrecip > 0) {
     text += ` The state received an average of ${summary.avgPrecip} inches of precipitation`;
@@ -344,7 +520,15 @@ function buildNarrative(state: string, summary: DaySummary): string {
     text += " No measurable precipitation was recorded.";
   }
 
-  text += ` The coldest reading was ${summary.minTemp}\u00B0F and the warmest was ${summary.maxTemp}\u00B0F.`;
+  // Only narrate extremes that exist \u2014 the old 0-sentinel wrote "coldest
+  // reading was 0\u00B0F" on days where no station reported a low.
+  if (summary.minTemp !== null && summary.maxTemp !== null) {
+    text += ` The coldest reading was ${summary.minTemp}\u00B0F and the warmest was ${summary.maxTemp}\u00B0F.`;
+  } else if (summary.minTemp !== null) {
+    text += ` The coldest reading was ${summary.minTemp}\u00B0F.`;
+  } else if (summary.maxTemp !== null) {
+    text += ` The warmest reading was ${summary.maxTemp}\u00B0F.`;
+  }
 
   if (summary.snowfall !== null && summary.snowfall > 0) {
     text += ` The state averaged ${summary.snowfall} inches of new snowfall`;
@@ -642,8 +826,19 @@ async function main() {
         continue;
       }
 
-      // Aggregate stations into daily summaries
-      const summaries = aggregateStations(acisData.data, year);
+      // Aggregate stations into daily summaries (plausibility-screened)
+      const { summaries, screenCounts } = aggregateStations(acisData.data, year, state);
+      const screenTotal =
+        screenCounts.stuckMin + screenCounts.stuckMax +
+        screenCounts.seasonalMin + screenCounts.seasonalMax + screenCounts.inversion;
+      if (screenTotal > 0) {
+        console.log(
+          `  ${year}: plausibility screen rejected ${screenTotal} station readings ` +
+          `(stuck min ${screenCounts.stuckMin}, stuck max ${screenCounts.stuckMax}, ` +
+          `seasonal min ${screenCounts.seasonalMin}, seasonal max ${screenCounts.seasonalMax}, ` +
+          `inversions ${screenCounts.inversion})`,
+        );
+      }
 
       if (summaries.size === 0) {
         console.log(`  ${year}: no valid daily data`);
