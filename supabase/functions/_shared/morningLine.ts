@@ -1,17 +1,15 @@
 // Shared morning_lines row builder — used by hunt-morning-line (persisting the
 // published current-day line) and hunt-morning-grader (backfilling past days
-// through the dated recompute path). ONE parser so the grader never
-// string-parses a headline: the claim is structured at write time.
+// through the dated recompute path).
 //
-// The Morning Line's falsifiable content is its lineup precedent: "the last
-// time the moon, the tide, and the temperature lined up like this here:
-// <date> — it cooled 12°F within 5 days." That aftermath string comes from
-// hunt-atlas-spot's aftermathFor() in exactly four shapes:
-//   "cooled X°F within N days"  |  "warmed X°F within N days"
-//   "held steady through the week (within X°F)"
-//   "only N recorded days follow on file"
-// Never-lined-up lines (n_matches = 0) make no falsifiable claim at all —
-// the grader grades the anomaly's own persistence instead, and says so.
+// THE LINEUP CLAIM LANE IS RETIRED (gate 1, retrodiction 2026-07-17 —
+// scripts/mine/out/LINEUP-RETRO-REPORT.md: Δ_obs = −0.19pp over 1,349,945
+// paired days vs 64 calendar rotations, no lift). Rows persisted from
+// 2026-07-17 forward carry lineup_claim NULL: the line publishes no
+// falsifiable precedent claim, and the grader's NO_CLAIM path rules on such
+// rows. HISTORICAL rows keep their structured LineupClaim JSON untouched —
+// the grader's precedent path still grades those already-published claims
+// (never strand old rows); it just never sees a new one.
 
 export interface LineupClaim {
   // 'precedent'      — a real outcome claim (verb/magnitude/window filled)
@@ -51,25 +49,9 @@ export interface MorningLineRow {
   quoted_temp_f: number | null;
   anomaly_sigma: number | null;
   day0_source: string;
-  lineup_claim: LineupClaim;
+  /** NULL for every row written 2026-07-17+ — the lineup claim lane is retired. */
+  lineup_claim: LineupClaim | null;
   basis: 'published' | 'recomputed';
-}
-
-/** Parse hunt-atlas-spot's aftermath outcome string into a structured claim. */
-export function parseOutcomeString(outcome: string | null): {
-  verb: LineupClaim['verb']; magnitude_f: number | null; window_days: number | null; thin: boolean;
-} {
-  const s = String(outcome ?? '').trim();
-  let m = s.match(/^cooled (\d+(?:\.\d+)?)°F within (\d+) days?$/);
-  if (m) return { verb: 'cooled', magnitude_f: Number(m[1]), window_days: Number(m[2]), thin: false };
-  m = s.match(/^warmed (\d+(?:\.\d+)?)°F within (\d+) days?$/);
-  if (m) return { verb: 'warmed', magnitude_f: Number(m[1]), window_days: Number(m[2]), thin: false };
-  m = s.match(/^held steady through the week \(within (\d+(?:\.\d+)?)°F\)$/);
-  if (m) return { verb: 'held', magnitude_f: Number(m[1]), window_days: 7, thin: false };
-  if (/^only \d+ recorded days? follow on file$/.test(s)) {
-    return { verb: null, magnitude_f: null, window_days: null, thin: true };
-  }
-  return { verb: null, magnitude_f: null, window_days: null, thin: false };
 }
 
 /**
@@ -90,41 +72,9 @@ export function buildMorningLineRow(
 
   const parts = (payload.parts ?? {}) as Record<string, unknown>;
   const anomaly = (parts.anomaly ?? null) as Record<string, unknown> | null;
-  const lineup = (parts.lineup ?? null) as Record<string, unknown> | null;
-  const control = (parts.control ?? null) as Record<string, unknown> | null;
 
   const num = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? v : null;
-  const z = num(anomaly?.z);
-
-  let claim: LineupClaim;
-  const base = {
-    mode: typeof lineup?.mode === 'string' ? (lineup.mode as string) : null,
-    last_date: typeof lineup?.last_date === 'string' ? (lineup.last_date as string) : null,
-    last_outcome: typeof lineup?.last_outcome === 'string' ? (lineup.last_outcome as string) : null,
-    n_matches: num(lineup?.n_matches),
-    n_years: num(lineup?.n_years),
-    n_days_searched: num(lineup?.n_days_searched),
-    anomaly_direction: z === null ? null : (z >= 0 ? 'warm' as const : 'cold' as const),
-    baseline_mean_f: num(anomaly?.baseline_mean),
-    control: control ? {
-      all_n: num(control.all_n),
-      all_outcome_n: num(control.all_outcome_n),
-      matched_n: num(control.matched_n),
-      matched_outcome_n: num(control.matched_outcome_n),
-    } : null,
-  };
-
-  if (!lineup) {
-    claim = { kind: 'none', verb: null, magnitude_f: null, window_days: null, ...base };
-  } else if ((base.n_matches ?? 0) === 0) {
-    claim = { kind: 'never_lined_up', verb: null, magnitude_f: null, window_days: null, ...base };
-  } else {
-    const parsed = parseOutcomeString(base.last_outcome);
-    claim = parsed.verb
-      ? { kind: 'precedent', verb: parsed.verb, magnitude_f: parsed.magnitude_f, window_days: parsed.window_days, ...base }
-      : { kind: 'thin', verb: null, magnitude_f: null, window_days: null, ...base };
-  }
 
   return {
     day,
@@ -133,9 +83,11 @@ export function buildMorningLineRow(
     lede,
     control_line: typeof payload.control_line === 'string' ? payload.control_line : null,
     quoted_temp_f: num(anomaly?.value),
-    anomaly_sigma: z,
+    anomaly_sigma: num(anomaly?.z),
     day0_source: typeof anomaly?.day0_source === 'string' ? (anomaly.day0_source as string) : 'archive',
-    lineup_claim: claim,
+    // Retired 2026-07-17: the line makes no lineup precedent claim, so no
+    // claim is persisted. The grader's NO_CLAIM path rules on null.
+    lineup_claim: null,
     basis,
   };
 }

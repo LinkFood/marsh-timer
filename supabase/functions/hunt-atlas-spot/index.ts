@@ -325,8 +325,9 @@ Deno.serve(async (req: Request) => {
     const dateParam = url.searchParams.get('date');
     const latParam = url.searchParams.get('lat');
     const lngParam = url.searchParams.get('lng');
-    // slim=1 → compute only the blocks hunt-morning-line consumes (lineup +
-    // control, plus the cheap pure-compute anomaly/weather/front/rhyme). Skips
+    // slim=1 → compute only the blocks hunt-morning-line consumes (control +
+    // the demoted lineup counts, plus the cheap pure-compute
+    // anomaly/weather/front/rhyme). Skips
     // the expensive optional reads (semantic vector search, tide-now, nws/live
     // alert reads, on-file provenance, that-day) so the internal spot call the
     // morning line makes is ~2s instead of ~8s. Default (no param) is unchanged:
@@ -1143,13 +1144,17 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ---- LINEUP ("last time the moon, the tide, and the cold lined up") -----
-    // The dossier's lead sentence. Joint match over the SAME ±window pool:
-    // computed moon age (pure math, zero gaps) × GHCN temp anomaly (state) ×
-    // observed tide residual (this state's own gauge, if it has one). Inland
-    // states fall back to moon×temp and SAY so. Zero matches is a valid,
-    // honest output — "never in N recorded years" is emitted as fact, not
-    // padded into a fake match.
+    // ---- LINEUP — RETIRED to control-numbers-only (gate 1, 2026-07-17) ------
+    // The precedent lane died by its own registration: the retrodiction test
+    // (scripts/mine/REGISTRATION-LINEUP-RETRO.md, report in
+    // scripts/mine/out/LINEUP-RETRO-REPORT.md) measured Δ_obs = −0.19pp over
+    // 1,349,945 paired days vs 64 calendar rotations — the "last time the
+    // moon, the tide and the temperature lined up" claim carried no
+    // information. The joint match still runs (its counts feed the control
+    // line's matched-day numbers, honest base-rate copy the registration
+    // spares), but the emitted block is DEMOTED: no last_date precedent quote,
+    // no per-match aftermath claims — honest counts + a retired flag only,
+    // shape kept so frontends don't break.
     let lineup: Record<string, unknown> | null = null;
     let lineupMatchesAll: Array<Record<string, unknown>> = []; // unsliced — feeds the control line
     if (defendant) {
@@ -1229,11 +1234,15 @@ Deno.serve(async (req: Request) => {
         lineup = {
           mode: useTide ? 'moon_tide_temp' : 'moon_temp',
           components: useTide ? ['moon', 'tide', 'temperature'] : ['moon', 'temperature'],
-          last_date: matches.length > 0 ? matches[0].date : null,
+          last_date: null,   // RETIRED — no precedent quote, ever
           n_matches: matches.length,
           n_years: nYears,
           n_days_searched: searched,
-          matches: matches.slice(0, 10),
+          matches: [],       // RETIRED — no per-match aftermath claims
+          retired: {
+            date: '2026-07-17',
+            reason: 'retrodiction 2026-07-17: no lift, Δ −0.19pp over 1.35M paired days — precedent copy retired to control-numbers-only; see /court',
+          },
           day0_source: lineupDay0Source,
           today: {
             moon_date: target.iso,
@@ -1253,7 +1262,8 @@ Deno.serve(async (req: Request) => {
           },
           resolution: useTide ? 'state (temp) + station (tide)' : 'state',
           honest_note:
-            `Match = ${[moonPhrase, tempPhrase, tidePhrase].filter(Boolean).join('; ')}. `
+            `Counts only — the lineup precedent claim was retired 2026-07-17 after its registered retrodiction found no lift (Δ −0.19pp over 1.35M paired days); the record of the trial is in the court. `
+            + `Match = ${[moonPhrase, tempPhrase, tidePhrase].filter(Boolean).join('; ')}. `
             + `Searched ${searched} recorded days across ${nYears} years (±${WINDOW_DAYS} days of ${target.mm}-${target.dd}, ${FIRST_YEAR} → present).`
             + (useTide ? '' : (tidePool.size > 0
                 ? ` ${centroid.name}'s gauge has too few joint tide days in this window — lineup is moon × temperature only.`

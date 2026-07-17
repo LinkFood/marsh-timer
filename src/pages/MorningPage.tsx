@@ -38,7 +38,6 @@ interface MorningLine {
   state_name: string;
   headline: string;
   lede: string;
-  lineup_sentence: string | null;
   control_line: string | null;
   parts: {
     anomaly: {
@@ -50,7 +49,6 @@ interface MorningLine {
       source: string;
     } | null;
     alerts_on_file: Array<{ type: string; title: string; count: number }>;
-    lineup: { mode: string; tide_station: string | null } | null;
   } | null;
   line?: null;
   reason?: string;
@@ -277,7 +275,6 @@ export default function MorningPage() {
   }, []);
 
   const anomaly = line?.parts?.anomaly ?? null;
-  const tideStation = line?.parts?.lineup?.tide_station ?? null;
 
   const grade = record?.grade ?? null;
   // An ungraded line in the publish era gets its court date named — the +7-day
@@ -294,8 +291,6 @@ export default function MorningPage() {
     chips.push(`${anomaly.n_years} yrs of ${line!.month_day_label}s`);
     if (anomaly.as_of_year) chips.push(`as of ${anomaly.as_of_year}`);
   }
-  if (tideStation) chips.push(`tide: ${tideStation}`);
-  if (line?.lineup_sentence) chips.push("moon: computed");
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
@@ -339,11 +334,21 @@ export default function MorningPage() {
             <h1 className="max-w-4xl font-display text-[1.7rem] font-medium leading-[1.25] text-gray-50 sm:text-[2.6rem] sm:leading-[1.2] lg:text-5xl lg:leading-[1.18]">
               {line.lede}
             </h1>
-            {line.lineup_sentence && (
-              <p className="mt-7 max-w-3xl font-display text-lg leading-relaxed text-gray-300 sm:text-2xl sm:leading-normal">
-                {line.lineup_sentence}
-              </p>
-            )}
+            {/* THE RETIREMENT LINE — where the lineup sentence used to sit.
+                This line IS the product: the almanac that kills its own magic
+                in public, and says so. One quiet line, the trial linked. */}
+            <p className="mt-7 max-w-2xl font-mono text-[11px] leading-relaxed text-gray-500">
+              The moon-and-tide lineup was retired July 17, 2026 &mdash; tested against
+              1.35 million recorded days, it carried no information. The record of the
+              trial is in{" "}
+              <Link
+                to="/court"
+                className="text-gray-400 underline decoration-white/20 underline-offset-2 hover:text-gray-200"
+              >
+                the court
+              </Link>
+              .
+            </p>
             {line.control_line && (
               <p className="mt-9 max-w-2xl font-mono text-[11px] leading-relaxed text-gray-500">
                 {line.control_line}

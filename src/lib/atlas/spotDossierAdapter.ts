@@ -31,21 +31,6 @@ interface OnFileResp {
   scope?: string;
 }
 
-interface ThatDayResp {
-  high?: number | null;
-  anomaly_f?: number | null;
-  tide_residual_ft?: number | null;
-  tide_station?: string | null;
-  moon_phase?: string | null;
-}
-
-interface LineupMatchResp {
-  date?: string;
-  that_day?: ThatDayResp | null;
-  outcome?: string | null;
-  on_file?: OnFileResp[] | null;
-}
-
 interface ThatDayResp2 {
   date?: string;
   weather?: {
@@ -77,16 +62,10 @@ interface SpotResp {
   target_date?: string | null;
   /** WHAT THIS DAY WAS — recorded truth of the target date (may be absent). */
   that_day?: ThatDayResp2 | null;
-  lineup?: {
-    mode?: string;
-    components?: string[];
-    last_date?: string | null;
-    n_matches?: number;
-    n_years?: number;
-    matches?: LineupMatchResp[] | null;
-    today?: { tide_station?: string | null } | null;
-    honest_note?: string | null;
-  } | null;
+  // NOTE: the backend still sends a demoted `lineup` block (honest counts +
+  // retired flag, no precedent quote — retired 2026-07-17, no lift). The
+  // card no longer renders a lineup hero, so the adapter ignores it; the
+  // counts survive in `control` below.
   control?: {
     outcome?: string | null;
     matched_n?: number | null;
@@ -177,8 +156,6 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
   const an = past.anomaly ?? null;
   const rh = Array.isArray(past.rhyme) ? past.rhyme : [];
 
-  const lu = spot.lineup ?? null;
-
   const m = solunar.moon ?? null;
   const s = solunar.sun ?? null;
   const sl = solunar.solunar ?? null;
@@ -243,34 +220,8 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
         }
       : null,
 
-    // The LEAD — the dated lineup sentence. Only rendered when the archive
-    // actually searched something (n_years > 0); "never in N years" is a
-    // valid lead, so zero matches still flows through.
-    lineup:
-      lu && Array.isArray(lu.components) && lu.components.length > 0 && (lu.n_years ?? 0) > 0
-        ? (() => {
-            // matches[] is sorted newest-first — matches[0] IS the named last_date.
-            const last = (lu.matches ?? []).find((m) => m.date === lu.last_date) ?? null;
-            return {
-              last_date: lu.last_date ?? null,
-              n_matches: lu.n_matches ?? 0,
-              n_years: lu.n_years ?? null,
-              components: lu.components!,
-              tide_station: lu.today?.tide_station ?? null,
-              note: lu.honest_note ?? null,
-              that_day: last?.that_day
-                ? {
-                    high: last.that_day.high ?? null,
-                    anomaly_f: last.that_day.anomaly_f ?? null,
-                    tide_residual_ft: last.that_day.tide_residual_ft ?? null,
-                    moon_phase: last.that_day.moon_phase ?? null,
-                  }
-                : null,
-              followed: last?.outcome ?? null,
-              on_file: last ? toChips(last.on_file) : [],
-            };
-          })()
-        : null,
+    // The lineup lead is RETIRED (2026-07-17 retrodiction: no lift) — the
+    // demoted backend block is not mapped; its honest counts ride in control.
 
     weather: w
       ? {

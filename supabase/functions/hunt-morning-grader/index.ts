@@ -18,6 +18,12 @@
 //   - Never-lined-up lines make NO falsifiable claim — verdict NO_CLAIM, and
 //     the anomaly's own direction is graded instead (persisted / broke against
 //     the quoted baseline), stated plainly.
+//   - THE LINEUP CLAIM LANE IS RETIRED (retrodiction 2026-07-17, no lift —
+//     scripts/mine/out/LINEUP-RETRO-REPORT.md). Rows written 2026-07-17+
+//     carry lineup_claim NULL and grade NO_CLAIM, stated as the retirement.
+//     The precedent path below stays — it grades HISTORICAL lineup claims
+//     already persisted (old rows are never stranded); it just never sees a
+//     new one.
 //   - Missing actuals that SHOULD be recorded (holes ≤ yesterday) make a line
 //     UNGRADEABLE — the grade names the missing days. Days not yet written
 //     (weather_history lands at 06:00 UTC for yesterday) DEFER the line to a
@@ -99,6 +105,9 @@ function gradeLine(
   temps: Map<string, number>,  // hunt_weather_history highs, day .. day+7
   yesterdayET: string,
 ): GradeResult {
+  // NULL lineup_claim = a retired-era row (2026-07-17+): the line published
+  // no precedent claim by design, not by failure. Grades as NO_CLAIM below.
+  const retired = row.lineup_claim == null;
   const claim: LineupClaim = row.lineup_claim ?? {
     kind: 'none', verb: null, magnitude_f: null, window_days: null,
     mode: null, last_date: null, last_outcome: null, n_matches: null,
@@ -177,7 +186,9 @@ function gradeLine(
       ? `never lined up in ${claim.n_years ?? '—'} recorded years`
       : claim.kind === 'thin'
         ? 'the precedent’s aftermath was too thin to state an outcome'
-        : 'no lineup was computable for this line';
+        : retired
+          ? 'the lineup claim lane retired 2026-07-17 (retrodiction: no lift over 1.35M paired days) — the line publishes its plain reading and control line only'
+          : 'no lineup was computable for this line';
     // Grade the anomaly direction instead: did the quoted σ persist or break
     // against the baseline it was measured on?
     const baseline = claim.baseline_mean_f;
@@ -435,7 +446,7 @@ serve(async (req: Request) => {
               line_day: row.day,
               line_basis: row.basis,
               day0_source: row.day0_source,
-              claim_kind: row.lineup_claim?.kind ?? 'none',
+              claim_kind: row.lineup_claim?.kind ?? 'retired', // null claim = retired-era row (2026-07-17+)
               summary: result.summary,
             },
           });

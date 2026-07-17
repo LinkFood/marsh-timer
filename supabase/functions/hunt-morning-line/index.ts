@@ -5,10 +5,22 @@
 // READ-mostly. For a given date (default: today in US Eastern), finds the most
 // notable state — the largest |z|
 // weather anomaly with a scoreable baseline — via the already-deployed
-// hunt-atlas-anomaly, then pulls that state's lineup/rhyme/control via the
+// hunt-atlas-anomaly, then pulls that state's control numbers via the
 // already-deployed hunt-atlas-spot. The line is TEMPLATED from those numbers:
 // no LLM, no prose generation, no forecast. Deterministic given the same day;
 // the archive is append-only, so past dates recompute to the same line.
+//
+// THE LINEUP SENTENCE IS RETIRED (gate 1, retrodiction 2026-07-17). The
+// registered test (scripts/mine/REGISTRATION-LINEUP-RETRO.md, report
+// scripts/mine/out/LINEUP-RETRO-REPORT.md): Δ_obs = −0.19pp over 1,349,945
+// paired days vs 64 calendar rotations — the precedent claim carried no
+// information. This function never emits a lineup precedent claim again:
+// lineup_sentence is null always, the lede (anomaly + alerts) is the whole
+// headline, persisted morning_lines rows carry lineup_claim null (the
+// grader's NO_CLAIM path handles them; historical rows and their grades
+// stand untouched), and the response carries parts.lineup_retired so the
+// surface can say why the sentence left. The CONTROL LINE stays — it is
+// honest base-rate copy, explicitly spared by the registration.
 //
 // Honest by construction (Vision honesty laws):
 //   - Almanac framing: the as-of year is IN the sentence. GHCN's archive edge
@@ -32,12 +44,12 @@ import { buildMorningLineRow } from '../_shared/morningLine.ts';
 
 const FLOOR_DATE = '1950-01-01';    // GHCN archive floor — no lines before it
 const MIN_HEADLINE_YEARS = 10;      // thin baselines can't fake a headline
-// The lineup sentence is the line's HERO clause — it only earns that spot when
-// the day is actually unusual. Below this |z| the day reads ordinary and the
-// lede stands alone (the honest plain reading); a "last time the moon, the
-// tide, and the temperature lined up" sentence over a 0.3σ day is mad-lib
-// residue, not a finding. 1.5σ matches the dossier's own anomaly-badge tier.
-const LINEUP_HERO_Z_FLOOR = 1.5;
+// Why the lineup sentence left — quoted in every response so the surface can
+// say it plainly. The trial record lives at /court.
+const LINEUP_RETIRED = {
+  date: '2026-07-17',
+  reason: 'retrodiction 2026-07-17: no lift, Δ −0.19pp over 1.35M paired days — see /court',
+};
 const LIVE_TYPES = ['nws-alert', 'weather-event', 'compound-risk-alert'];
 const LIVE_PRIORITY: Record<string, number> = {
   'nws-alert': 0, 'compound-risk-alert': 1, 'weather-event': 2,
@@ -164,9 +176,9 @@ Deno.serve(async (req: Request) => {
 
     const spotPromise = (async (): Promise<Record<string, unknown> | null> => {
       try {
-        // slim=1: the morning line only reads spot.lineup + spot.control, so the
-        // dossier skips its expensive optional blocks (semantic search, tide-now,
-        // alert reads, on-file, that-day) — internal call is ~2s instead of ~8s.
+        // slim=1: the morning line only reads spot.control (the lineup lane is
+        // retired), so the dossier skips its expensive optional blocks (semantic
+        // search, tide-now, alert reads, on-file, that-day) — ~2s instead of ~8s.
         const spotRes = await fetch(
           `${base}/functions/v1/hunt-atlas-spot?state=${pick.state}&date=${dateIso}&slim=1`,
           { headers: fnHeaders });
@@ -244,46 +256,11 @@ Deno.serve(async (req: Request) => {
         `${pick.n_years} years${alertClause}.`;
     }
 
-    // The lineup sentence — "last time the moon, the tide, and the temperature
-    // lined up like this" — straight from hunt-atlas-spot, outcome attached.
-    // HERO FLOOR: it only rides when the anomaly clears LINEUP_HERO_Z_FLOOR.
-    // On an ordinary day (|z| below the floor) the sentence is withheld, the
-    // headline is the plain lede, and no lineup claim is published or graded.
-    const heroCleared = Math.abs(pick.z as number) >= LINEUP_HERO_Z_FLOOR;
-    const lineup = heroCleared
-      ? (spot?.lineup ?? null) as Record<string, unknown> | null
-      : null;
-    const lineupQuiet = !heroCleared && spot?.lineup ? {
-      suppressed: true,
-      reason: `|z| ${zAbs} is below the ${LINEUP_HERO_Z_FLOOR}σ hero floor — the day reads ordinary here, so the lineup sentence is withheld and no lineup claim is published.`,
-      mode: (spot.lineup as Record<string, unknown>).mode ?? null,
-      last_date: (spot.lineup as Record<string, unknown>).last_date ?? null,
-      n_matches: (spot.lineup as Record<string, unknown>).n_matches ?? 0,
-      n_years: (spot.lineup as Record<string, unknown>).n_years ?? null,
-      n_days_searched: (spot.lineup as Record<string, unknown>).n_days_searched ?? null,
-    } : null;
-    let lineupSentence: string | null = null;
-    let lastOutcome: string | null = null;
-    if (lineup && typeof lineup.mode === 'string') {
-      const trio = lineup.mode === 'moon_tide_temp'
-        ? 'the moon, the tide, and the temperature'
-        : 'the moon and the temperature';
-      const nMatches = Number(lineup.n_matches ?? 0);
-      if (nMatches > 0 && typeof lineup.last_date === 'string') {
-        const matches = (lineup.matches ?? []) as Array<Record<string, unknown>>;
-        lastOutcome = typeof matches[0]?.outcome === 'string' ? (matches[0].outcome as string) : null;
-        lineupSentence =
-          `The last time ${trio} lined up like this here: ${fullDateLabel(lineup.last_date as string)}` +
-          (lastOutcome ? ` — it ${lastOutcome}` : '') + '.';
-      } else {
-        lineupSentence =
-          `The moon${lineup.mode === 'moon_tide_temp' ? ', the tide,' : ''} and the temperature ` +
-          `have never lined up like this here in ${lineup.n_years ?? '—'} recorded years ` +
-          `(${lineup.n_days_searched ?? '—'} days searched).`;
-      }
-    }
+    // The lineup sentence is RETIRED (see header): the lede — the plain honest
+    // reading, anomaly + alerts — is the whole headline, every day. No lineup
+    // precedent claim is composed, published, or graded ever again.
 
-    // The control line — mandatory; without it the lineup is a horoscope.
+    // The control line — honest base-rate copy, spared by the registration.
     const control = (spot?.control ?? null) as Record<string, unknown> | null;
     let controlLine: string | null = null;
     if (control && typeof control.all_n === 'number') {
@@ -296,7 +273,7 @@ Deno.serve(async (req: Request) => {
         `Recorded fact only — never a forecast.`;
     }
 
-    const headline = lineupSentence ? `${lede} ${lineupSentence}` : lede;
+    const headline = lede;
 
     const payload = {
       date: dateIso,
@@ -306,7 +283,7 @@ Deno.serve(async (req: Request) => {
       state_name: pick.name,
       headline,
       lede,
-      lineup_sentence: lineupSentence,
+      lineup_sentence: null, // retired — see parts.lineup_retired
       control_line: controlLine,
       parts: {
         anomaly: {
@@ -324,18 +301,9 @@ Deno.serve(async (req: Request) => {
           picked_by: `largest |z| across ${anom.count_with_data} states with data (n_years ≥ ${MIN_HEADLINE_YEARS} preferred)`,
         },
         alerts_on_file: alertsOnFile,
-        lineup: lineup ? {
-          mode: lineup.mode,
-          last_date: lineup.last_date ?? null,
-          last_outcome: lastOutcome,
-          n_matches: lineup.n_matches ?? 0,
-          n_years: lineup.n_years ?? null,
-          n_days_searched: lineup.n_days_searched ?? null,
-          tide_station: (lineup.today as Record<string, unknown> | undefined)?.tide_station ?? null,
-        } : null,
-        // Receipts for a withheld hero (additive): the lineup existed but the
-        // day's |z| sat below LINEUP_HERO_Z_FLOOR, so it was never published.
-        lineup_quiet: lineupQuiet,
+        lineup: null, // retired — never a precedent claim again
+        // Why the magic sentence left — the receipt the surface quotes.
+        lineup_retired: LINEUP_RETIRED,
         control: control ? {
           matched_n: control.matched_n ?? null,
           matched_outcome_n: control.matched_outcome_n ?? null,

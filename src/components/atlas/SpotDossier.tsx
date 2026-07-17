@@ -195,41 +195,18 @@ export interface SemanticRhyme {
   method?: string | null;
 }
 
-/**
- * The LINEUP — the card's lead. "Last time the moon, the tide, and the cold
- * lined up like this here: October 22, 1961." A dated sentence, not a stat.
- * last_date === null with n_years > 0 is the honest "never in N recorded
- * years" state — a hero line too, never faked into a match.
+/*
+ * THE LINEUP HERO IS RETIRED (gate 1, retrodiction 2026-07-17 — no lift,
+ * Δ −0.19pp over 1.35M paired days; the trial record is at /court). The
+ * fused "last time the moon, the tide, and the cold lined up" lead no longer
+ * renders anywhere; the dossier leads with the recorded blocks below. The
+ * control line stays — honest base-rate copy, spared by the registration.
  */
-export interface LineupLead {
-  /** "YYYY-MM-DD" of the last joint match, or null (never) */
-  last_date: string | null;
-  n_matches: number;
-  /** DENOMINATOR — distinct recorded years actually searched */
-  n_years: number | null;
-  /** which components lined up, e.g. ["moon","tide","temperature"] */
-  components: string[];
-  /** gauge name when tide is one of the components */
-  tide_station?: string | null;
-  /** the backend's full honest note (thresholds, as-of dates, resolution) */
-  note?: string | null;
-  /** the named date's own recorded numbers — the date stops being a stranger */
-  that_day?: {
-    high?: number | null;
-    anomaly_f?: number | null;
-    tide_residual_ft?: number | null;
-    moon_phase?: string | null;
-  } | null;
-  /** what the recorded days after the named date did, e.g. "cooled 9°F within 4 days" */
-  followed?: string | null;
-  /** provenance chips for the named date */
-  on_file?: OnFileChip[] | null;
-}
 
 /**
- * THE CONTROL LINE — the all-years base rate for the lineup's outcome claim.
- * "12 of 17 lineup days cooled within a week — vs 31 of 74 ordinary years."
- * Mandatory whenever a lineup renders; without it the sentence is a horoscope.
+ * THE CONTROL LINE — the all-years base rate for the counted outcome.
+ * "Cooling ≥5° within a week happened 31 of 74 times — the 17 lineup-matched
+ * days ran 12 of 17." Honest counts, never a forecast.
  */
 export interface ControlLine {
   /** the recorded outcome being counted, e.g. "avg high cooled ≥5°F within the next 7 recorded days" */
@@ -326,7 +303,6 @@ export interface SpotData {
   coords?: { lat: number; lng: number } | null;
   /** WHAT THIS DAY WAS — the recorded truth of the target date (renders first). */
   thatDay?: ThatDayReport | null;
-  lineup?: LineupLead | null;
   weather?: WeatherNow | null;
   front?: FrontSignal | null;
   /** Recorded alerts on file for the ACTUAL today (never a forecast). */
@@ -749,86 +725,6 @@ function ThatDayBlock({ report }: { report: ThatDayReport }) {
   );
 }
 
-/**
- * The LEAD — the product's thesis as a dated serif sentence above the NOW
- * grid. Fact-only, denominator directly beneath it, never a forecast. The
- * zero-match state ("Never in N recorded years…") renders with the same
- * weight: an honest "never" is as much of a shiver as a named date.
- */
-function LineupLeadBlock({ lineup }: { lineup: LineupLead }) {
-  const phrase = lineupPhrase(lineup.components);
-  const compLabel = lineup.components.join(" + ");
-  const resLabel = lineup.tide_station
-    ? `state-level · tide at ${lineup.tide_station}`
-    : "state-level";
-  return (
-    <div
-      className="px-4 py-4"
-      title={lineup.note ?? undefined}
-    >
-      {lineup.last_date ? (
-        <p className="font-display text-[19px] font-semibold leading-snug text-white">
-          Last time {phrase} lined up like this here:{" "}
-          <span className="whitespace-nowrap text-teal-300">
-            {formatLineupDate(lineup.last_date)}
-          </span>
-          .
-        </p>
-      ) : (
-        <p className="font-display text-[19px] font-semibold leading-snug text-white">
-          Never in {lineup.n_years ?? "the"} recorded years have {phrase} lined
-          up like today.
-        </p>
-      )}
-      <div className="mt-1.5 text-[11px] tabular-nums text-gray-500">
-        {lineup.last_date
-          ? `${countPhrase(lineup.n_matches)} in ${lineup.n_years} years`
-          : `0 matches in ${lineup.n_years} years`}
-        {" · "}
-        {compLabel}
-        {" · "}
-        {resLabel}
-      </div>
-
-      {/* The named date's own story — its numbers, then what followed. */}
-      {lineup.last_date && lineup.that_day && (
-        <p className="mt-2 font-body text-[12.5px] leading-relaxed text-gray-400">
-          That day: {thatDaySentence(lineup.that_day)}.
-          {lineup.followed && (
-            <>
-              {" "}What followed:{" "}
-              <span className="text-gray-300">{lineup.followed}</span>.
-            </>
-          )}
-        </p>
-      )}
-      {lineup.last_date && !!lineup.on_file?.length && (
-        <OnFileChips items={lineup.on_file} className="mt-1.5" />
-      )}
-    </div>
-  );
-}
-
-/** "89° (+3° for here) · tide 0.6 ft over predicted · waning gibbous" */
-function thatDaySentence(td: NonNullable<LineupLead["that_day"]>): string {
-  const parts: string[] = [];
-  if (td.high != null) {
-    const anom =
-      td.anomaly_f != null ? ` (${signed(td.anomaly_f, 0)}° for here)` : "";
-    parts.push(`${Math.round(td.high)}°${anom}`);
-  }
-  if (td.tide_residual_ft != null) {
-    const r = td.tide_residual_ft;
-    parts.push(
-      Math.abs(r) < 0.05
-        ? "tide at predicted"
-        : `tide ${Math.abs(r).toFixed(1)} ft ${r > 0 ? "over" : "under"} predicted`,
-    );
-  }
-  if (td.moon_phase) parts.push(td.moon_phase.toLowerCase());
-  return parts.join(" · ");
-}
-
 /** Small provenance chips: "on file: Thunderstorm Wind — Accomack". */
 function OnFileChips({
   items,
@@ -945,7 +841,7 @@ export default function SpotDossier({
   datedVisit = false,
   className,
 }: SpotDossierProps) {
-  const { lineup, weather, front, moon, sun, tide, solunar, anomaly, rhyme, semantic } = data;
+  const { weather, front, moon, sun, tide, solunar, anomaly, rhyme, semantic } = data;
   const asOf = asOfLabel(data.as_of);
   const live = data.live ?? [];
   // The today's-conditions cluster (live alerts + front chip) describes the
@@ -969,10 +865,10 @@ export default function SpotDossier({
 
   // ── Section elements ─────────────────────────────────────────────
   // Each renders its own hairline via the divide-y wrapper below, so ORDER is
-  // free. On the live dossier the FUSED LINEUP leads — the moon × tide × cold
-  // assembly nobody else makes is the edge; retrieval (what this day was, now)
-  // becomes the receipts beneath it. On a DATED visit the that-day block leads —
-  // a birthday visitor came for their own day, not today's fusion.
+  // free. The FUSED LINEUP HERO IS RETIRED (retrodiction 2026-07-17 — no
+  // lift; see /court): the live dossier now leads with the semantic rhyme,
+  // then the recorded blocks. On a DATED visit the that-day block leads — a
+  // birthday visitor came for their own day.
 
   const headerEl = (
     <div className="px-4 pb-3.5 pt-4">
@@ -1017,14 +913,11 @@ export default function SpotDossier({
 
   const thatDayEl = data.thatDay ? <ThatDayBlock report={data.thatDay} /> : null;
 
-  const lineupEl = lineup ? <LineupLeadBlock lineup={lineup} /> : null;
-
   const nowEl = hasNow ? (
     <div className="space-y-3 px-4 py-4">
       <Eyebrow>Now</Eyebrow>
 
-      {/* Weather hero: the temp is the headline number — but a tier below the
-          fused serif lead, so the assembly stays the one true hero. */}
+      {/* Weather hero: the temp is the headline number. */}
       {weather && (
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
@@ -1156,8 +1049,8 @@ export default function SpotDossier({
   ) : null;
 
   // ── The receipts / almanac layer: "days like today" (one-number rhyme) +
-  //    the control line. Retrieval that backs the fused lead — quiet, never the
-  //    hero. Denominator + honesty footer stay attached (honesty law #1).
+  //    the control line. Quiet retrieval, never the hero. Denominator +
+  //    honesty footer stay attached (honesty law #1).
   const rhymeEl =
     rhyme && rhyme.matches.length > 0 ? (
       <div className="space-y-2.5 px-4 py-4">
@@ -1183,7 +1076,7 @@ export default function SpotDossier({
           </ul>
 
           {/* THE CONTROL LINE — the all-years base rate, always present.
-              Without it the lineup claim is a horoscope. */}
+              Honest counts; the retired lineup lane survives only here. */}
           {data.control && (
             <p className="pt-0.5 text-[10px] leading-relaxed tabular-nums text-gray-500">
               {controlSentence(data.control)}
@@ -1251,21 +1144,20 @@ export default function SpotDossier({
     >
       {/* One divider system for the whole stack: every section renders its own
           top hairline via divide-y, so the mode-dependent order below never
-          doubles or drops a rule. THE FUSED LINEUP LEADS the live dossier;
-          WHAT THIS DAY WAS leads a dated visit. */}
+          doubles or drops a rule. The lineup hero is retired (2026-07-17);
+          SEMANTIC RHYME leads the live dossier, WHAT THIS DAY WAS leads a
+          dated visit. */}
       <div className="divide-y divide-white/[0.06]">
         {headerEl}
         {datedVisit ? (
           <>
             {thatDayEl}
-            {lineupEl}
             {semanticEl}
             {nowEl}
             {rhymeEl}
           </>
         ) : (
           <>
-            {lineupEl}
             {semanticEl}
             {thatDayEl}
             {nowEl}
@@ -1394,16 +1286,6 @@ function ratingWord(r: number): string {
   return "Poor";
 }
 
-/** ["moon","tide","temperature"] → "the moon, the tide, and the cold" */
-function lineupPhrase(components: string[]): string {
-  const words = components.map((c) =>
-    c === "moon" ? "the moon" : c === "tide" ? "the tide" : "the cold",
-  );
-  if (words.length <= 1) return words[0] ?? "these";
-  if (words.length === 2) return `${words[0]} and ${words[1]}`;
-  return `${words.slice(0, -1).join(", ")}, and ${words[words.length - 1]}`;
-}
-
 /**
  * The control caption. Recorded counts only — no forecast words, ever.
  * "Across all 74 recorded years here, cooling ≥5° within a week happened 31
@@ -1416,22 +1298,6 @@ function controlSentence(c: ControlLine): string {
     return `${base} — the ${c.matched_n} lineup-matched day${c.matched_n === 1 ? "" : "s"} ran ${c.matched_outcome_n} of ${c.matched_n}.`;
   }
   return `${base}. No lineup-matched days carried a recorded week after them to compare.`;
-}
-
-function countPhrase(n: number): string {
-  if (n === 1) return "Once";
-  if (n === 2) return "Twice";
-  return `${n} times`;
-}
-
-function formatLineupDate(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function formatRhymeDate(iso: string): string {
