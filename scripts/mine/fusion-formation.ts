@@ -1,23 +1,44 @@
 /**
- * fusion-formation.ts — THE FUSION FORMATION TEST (mine v2.0, board altitude).
+ * fusion-formation.ts — THE FUSION FORMATION TEST (mine v2.1, board altitude).
  *
- * Implements scripts/mine/REGISTRATION-FUSION-V2.md (frozen 2026-07-16, commit
- * 0e61db9). The registration is THE LAW; where this file and the registration
+ * Implements scripts/mine/REGISTRATION-FUSION-V2.md INCLUDING the v2.1
+ * amendment (the ONE permitted G0 metric repair, frozen 2026-07-16, commit
+ * 0a0251e). The registration is THE LAW; where this file and the registration
  * disagree, the registration wins and this file is wrong.
+ *
+ * v2.1 repair (everything not named in the amendment stays frozen):
+ *   1. tested anchors = raw MAJOR MEMBER ROWS from fetchRawAnchors() — the
+ *      per-row severity bar (deaths ≥ 10 OR damage ≥ $250M on the row's OWN
+ *      fields; missing per-row severity FAILS LOUDLY), era 1990–2021;
+ *   2. same-system dedup: union-find over rows whose spans OVERLAP (no ±7d
+ *      reach — the season-chain fuse is what displaced the famous storms and
+ *      G0-failed v2.0) AND whose state sets intersect; keep max severity
+ *      (deaths×100 + damageUsd/$1M), then earliest d0, then lexicographic id;
+ *   3. windows unchanged, at the tested row's OWN d0; masking excludes days
+ *      inside ANY MAJOR row's span (any family) other than the tested row's own;
+ *   4. controls unchanged except clause iii = inside no MAJOR row span and no
+ *      effective-anchor span of any tier;
+ *   5. Test 2 outcome = deduped tested-anchor onset in +1..+14; scan-day
+ *      in-span exclusion = any MAJOR row span; b recomputed post-masking;
+ *   6. G0 = same 5 events, same bar, matched to their own MAJOR rows
+ *      (span-intersect, winter-family preferred);
+ *   7. floors, exhaustive 67 rotations, pass bars, G2, G3, §11 diagnostics,
+ *      §12 verdict semantics: UNCHANGED (byte-frozen).
  *
  * Run-of-record order inside one invocation (§10, §12):
  *   substrate receipts (frame count, coverage-cliff table, anchor fingerprint,
- *   merged-episode receipt, post-masking base rate b BEFORE any W-vs-outcome
- *   contrast) → G0 → G2 → G3 → Test 1 → Test 2 → honesty diagnostics (§11)
- *   → verdict (§12). Outputs: out/fusion-v2.json + out/FUSION-REPORT.md.
+ *   tested-anchor dedup receipt, post-masking base rate b BEFORE any
+ *   W-vs-outcome contrast) → G0 → G2 → G3 → Test 1 → Test 2 → honesty
+ *   diagnostics (§11) → verdict (§12). Outputs: out/fusion-v2.json +
+ *   out/FUSION-REPORT.md.
  *
  * DEVELOPMENT FIREWALL (§10): built and debugged against SYNTHETIC fixtures
  * only (fusion-formation.test.ts). The pipeline core takes a FrameStore-shaped
- * object + an anchor list so fixtures can inject synthetic boards; the first
+ * object + a raw-row list so fixtures can inject synthetic boards; the first
  * production invocation is the run of record, fired by the main session.
  *
  * mine.ts is NEVER imported (it auto-runs main() at module top level). The
- * tier rule, calendar machinery, fnv, the v1.3 rotation remap, and the
+ * MAJOR bar, calendar machinery, fnv, the v1.3 rotation remap, and the
  * epoch-matched control machinery are COPIED and adapted to the registration.
  *
  * Determinism (G3): no timestamps anywhere; Math.random banned; all RNG is
@@ -33,7 +54,7 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { loadAnchors, EffectiveAnchor, DateSpan } from "./anchors";
+import { fetchRawAnchors, dedupeAnchors, Anchor, DateSpan } from "./anchors";
 import { loadFrameStore, SlotDef, Lut, doyOfIso } from "./frames";
 import { seededRng } from "./stats";
 
@@ -49,8 +70,7 @@ const WIN_HI = 1;
 const FAR_LO = 14, FAR_HI = 4; // W_far = D-14..D-4 (declared secondary)
 const NEAR_LO = 3, NEAR_HI = 1; // W_near = D-3..D-1 (declared secondary)
 const OUTCOME_LO = 1, OUTCOME_HI = 14; // Test 2 outcome window +1..+14
-const MERGE_GAP_DAYS = 7; // cross-family merge: overlap or ±7d AND states intersect, transitive
-const CONTROL_EP_RADIUS = 30; // §7 rule ii: no pooled MAJOR episode span within ±30d of a control day
+const CONTROL_EP_RADIUS = 30; // §7 rule ii: no MAJOR row span within ±30d of a control day (v2.1)
 const MAX_CONTROLS = 8;
 const CONTROL_DOY_HALF = 15; // control candidates at the same doy ± 15
 const SHIFT_MIN = 5, SHIFT_MAX = 71; // exhaustive 67 rotations — no sampling, no K (§8)
@@ -64,17 +84,15 @@ const SEED_DEFAULT = 42; // seed of record
 const LAYOUT_VERSION_PINNED = 1711701607; // re-baked substrate ⇒ re-freeze + registration version bump
 const MIN_FRAME_DAYS = 27956; // 27,956 days verified 2026-07-16; the store only grows
 
-// ─── tier rule — COPIED from mine.ts:103-109 (never import mine.ts: top-level main) ─
-export type Tier = "ALL" | "SEVERE" | "MAJOR";
-const TIER_RULE: Record<Tier, (e: EffectiveAnchor) => boolean> = {
-  ALL: () => true,
-  SEVERE: (e) => e.deaths >= 1 || e.damageUsd >= 50e6,
-  MAJOR: (e) => e.deaths >= 10 || e.damageUsd >= 250e6,
-};
-function tierOf(e: EffectiveAnchor): Tier {
-  return TIER_RULE.MAJOR(e) ? "MAJOR" : TIER_RULE.SEVERE(e) ? "SEVERE" : "ALL";
+// ─── MAJOR bar — COPIED from mine.ts tier rule (never import mine.ts: top-level
+//     main). v2.1 clause 1: applied to the row's OWN severity fields.
+export function isMajorRow(a: { deaths: number; damageUsd: number }): boolean {
+  return a.deaths >= 10 || a.damageUsd >= 250e6;
 }
-const TIER_ORD: Record<Tier, number> = { ALL: 0, SEVERE: 1, MAJOR: 2 };
+
+/** v2.1 clause 2 severity key for dedup keep: deaths×100 + damageUsd/$1M. */
+export const severityScore = (a: { deaths: number; damageUsd: number }): number =>
+  a.deaths * 100 + a.damageUsd / 1e6;
 
 // ─── G0 roll call (amendment A3) ────────────────────────────────────────────────
 export interface RollCallEvent { name: string; lo: string; hi: string; }
@@ -153,34 +171,25 @@ export function makeCal(days: string[]): Cal {
   };
 }
 
-// ─── cross-family merge (§4) — adapted from anchors.dedupeAnchors, family-blind ─
-export interface PooledEpisode {
-  onset: string; // = earliest member span start
-  span: DateSpan; // union of member spans
-  families: string[]; // sorted union
-  states: string[]; // sorted union
-  memberIds: string[];
-  tier: Tier; // max member tier
-  nEffMembers: number;
-  deaths: number;
-  damageUsd: number;
-}
+// ─── same-system dedup (v2.1 clause 2) ─────────────────────────────────────────
+// Union-find over the PAIRWISE row relation: spans OVERLAP (no ±7d reach — the
+// v2.0 season-chain fuse displaced tested onsets weeks before the famous storms)
+// AND state sets intersect, transitively closed. One tested anchor per group —
+// the member row with max severity, then earliest d0, then lexicographic id.
+// The kept row keeps its OWN span and d0; nothing is merged or pooled.
 
 const toTs = (s: string) => Date.parse(`${s}T00:00:00Z`);
-const minIso = (a: string, b: string) => (a <= b ? a : b);
-const maxIso = (a: string, b: string) => (a >= b ? a : b);
 
-export function mergeCrossFamily(anchors: EffectiveAnchor[]): PooledEpisode[] {
-  const sorted = [...anchors].sort(
+export interface DedupGroup {
+  keeper: Anchor; // the tested anchor — a raw MAJOR member row, untouched
+  group: Anchor[]; // every raw MAJOR row in its same-system component
+}
+
+export function dedupeSameSystem(rows: Anchor[]): DedupGroup[] {
+  const sorted = [...rows].sort(
     (a, b) => (a.span.start < b.span.start ? -1 : a.span.start > b.span.start ? 1 :
-      a.family < b.family ? -1 : a.family > b.family ? 1 :
-      a.memberIds[0] < b.memberIds[0] ? -1 : 1)
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   );
-  // Union-find over the PAIRWISE anchor relation (§4/§13: spans overlap or within
-  // ±7d AND state sets intersect), transitively closed. First-match greedy
-  // clustering is NOT transitive — a later anchor can relate to two existing
-  // clusters (or turn two earlier state-disjoint anchors into one component) and
-  // greedy joins only the first, splitting one synoptic system into two episodes.
   const n = sorted.length;
   const stateSets = sorted.map((a) => new Set(a.states));
   const parent = new Int32Array(n);
@@ -192,41 +201,50 @@ export function mergeCrossFamily(anchors: EffectiveAnchor[]): PooledEpisode[] {
   for (let i = 0; i < n; i++) {
     const endI = toTs(sorted[i].span.end);
     for (let j = i + 1; j < n; j++) {
-      // start-sorted ⇒ for j > i the pairwise span gap is start_j − end_i (≤0 =
-      // overlap); once it exceeds the merge gap, no later j can relate to i.
-      if (toTs(sorted[j].span.start) - endI > MERGE_GAP_DAYS * DAY_MS) break;
+      // start-sorted ⇒ for j > i the spans overlap iff start_j ≤ end_i; once
+      // start_j passes end_i, no later j can overlap i.
+      if (toTs(sorted[j].span.start) > endI) break;
       if (!sorted[j].states.some((s) => stateSets[i].has(s))) continue;
       const ri = find(i), rj = find(j);
       if (ri !== rj) parent[ri] = rj;
     }
   }
-  const byRoot = new Map<number, EffectiveAnchor[]>();
+  const byRoot = new Map<number, Anchor[]>();
   for (let i = 0; i < n; i++) {
     const r = find(i);
     const c = byRoot.get(r);
     if (c) c.push(sorted[i]);
     else byRoot.set(r, [sorted[i]]);
   }
-  const clusters = [...byRoot.values()];
-  const eps: PooledEpisode[] = clusters.map((c) => {
-    const start = c.reduce((s, x) => minIso(s, x.span.start), c[0].span.start);
-    const end = c.reduce((e, x) => maxIso(e, x.span.end), c[0].span.end);
-    let tier: Tier = "ALL";
-    for (const x of c) if (TIER_ORD[tierOf(x)] > TIER_ORD[tier]) tier = tierOf(x);
-    return {
-      onset: start,
-      span: { start, end },
-      families: [...new Set(c.map((x) => x.family))].sort(),
-      states: [...new Set(c.flatMap((x) => x.states))].sort(),
-      memberIds: c.flatMap((x) => x.memberIds).sort(),
-      tier,
-      nEffMembers: c.length,
-      deaths: c.reduce((n, x) => n + x.deaths, 0),
-      damageUsd: c.reduce((n, x) => n + x.damageUsd, 0),
-    };
+  const out: DedupGroup[] = [...byRoot.values()].map((group) => {
+    const keeper = [...group].sort(
+      (a, b) =>
+        severityScore(b) - severityScore(a) ||
+        (a.d0 < b.d0 ? -1 : a.d0 > b.d0 ? 1 : 0) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    )[0];
+    return { keeper, group };
   });
-  eps.sort((a, b) => (a.onset < b.onset ? -1 : a.onset > b.onset ? 1 : a.memberIds[0] < b.memberIds[0] ? -1 : 1));
-  return eps;
+  out.sort((a, b) =>
+    a.keeper.d0 < b.keeper.d0 ? -1 : a.keeper.d0 > b.keeper.d0 ? 1 :
+    a.keeper.id < b.keeper.id ? -1 : 1
+  );
+  return out;
+}
+
+/** One deduped tested anchor (v2.1 clause 1/2): a raw MAJOR member row.
+ *  Windows are computed at its OWN d0; only its OWN span is exempt from masking. */
+export interface TestedAnchor {
+  id: string; // hunt_knowledge row id of the kept row
+  family: string;
+  span: DateSpan; // the row's own span
+  d0: string; // = span.start
+  states: string[];
+  deaths: number;
+  damageUsd: number;
+  groupSize: number; // raw MAJOR rows in its same-system dedup group (1 = unique)
+  groupIds: string[]; // sorted row ids of the group
+  rowIdx: number; // index into the all-MAJOR-rows masking array (Env.coverSingle values)
 }
 
 // ─── the injectable substrate (FrameStore-shaped; §10 firewall) ─────────────────
@@ -240,8 +258,11 @@ export interface FusionStore {
 
 export interface FusionInputs {
   store: FusionStore;
-  rawCount: number; // stitched rows (4233 in production — loader asserts)
-  effective: EffectiveAnchor[]; // the FULL effective set, all tiers (§7 rule iii needs any-tier spans)
+  // v2.1 clause 1: the raw stitched member rows as loaded by fetchRawAnchors()
+  // (4,233 in production — the loader hard-asserts). The MAJOR filter, era
+  // filter, same-system dedup, AND the §7 rule-iii effective-anchor spans (via
+  // anchors.dedupeAnchors) are all derived from this one list so they cannot drift.
+  raw: Anchor[];
 }
 
 export interface FusionOpts {
@@ -360,80 +381,118 @@ export function composeRemap(outer: Int32Array, inner: Int32Array): Int32Array {
   return out;
 }
 
-// ─── the environment: everything at TRUE dates (masks, episodes, floors-on-windows) ─
+// ─── the environment: everything at TRUE dates (masks, rows, floors-on-windows) ─
 export interface Env {
   cal: Cal;
   dd: DayData;
-  episodes: PooledEpisode[]; // pooled MAJOR, era-filtered, onset-sorted
-  epOnsetIdx: Int32Array;
-  coverCnt: Uint8Array; // pooled MAJOR episode spans covering each day
-  coverSingle: Int32Array; // episode index when coverCnt == 1, else −1
-  inMajorSpan: Uint8Array; // coverCnt > 0
-  majorNear30: Uint8Array; // §7 rule ii: within ±30d of any pooled MAJOR span
-  anyTierSpan: Uint8Array; // §7 rule iii: inside ANY effective anchor's span, any family, any tier
-  followed: Uint8Array; // pooled MAJOR onset in d+1..d+14
+  tested: TestedAnchor[]; // deduped tested anchors (raw MAJOR member rows), d0-sorted
+  onsetIdx: Int32Array; // tested-anchor d0 indexes
+  coverCnt: Uint8Array; // MAJOR row spans covering each day (v2.1 clause 3: ANY MAJOR row, any family)
+  coverSingle: Int32Array; // MAJOR-row index when coverCnt == 1, else −1
+  inMajorSpan: Uint8Array; // coverCnt > 0 (any MAJOR row span)
+  majorNear30: Uint8Array; // §7 rule ii: within ±30d of any MAJOR row span
+  anyTierSpan: Uint8Array; // §7 rule iii (v2.1): inside a MAJOR row span OR an effective-anchor span, any family, any tier
+  followed: Uint8Array; // deduped tested-anchor onset in d+1..d+14 (v2.1 clause 5)
   eraStartIdx: number;
   eraEndIdx: number;
   eraY0: number;
   eraY1: number;
   seed: number;
   receipts: {
-    majorEffective: number;
+    rawCount: number;
+    majorRows: number; // raw rows individually meeting the MAJOR bar
     excludedPost2021: number;
     inEra: number;
-    episodes: number;
-    fingerprint: string; // fnv hex of sorted member ids
-    rawCount: number;
+    tested: number; // deduped tested anchors
+    fingerprint: string; // fnv hex of sorted in-era MAJOR row ids
   };
 }
 
 export function buildEnv(inputs: FusionInputs, seed: number): Env {
+  // v2.1 clause 1: the MAJOR bar reads the row's OWN severity fields as
+  // anchors.ts loads them (metadata->total_deaths / ->total_damage_usd). If a
+  // raw row carries no per-row severity, the repair FAILS LOUDLY and stops.
+  for (const a of inputs.raw) {
+    if (
+      typeof a.deaths !== "number" || !Number.isFinite(a.deaths) ||
+      typeof a.damageUsd !== "number" || !Number.isFinite(a.damageUsd)
+    ) {
+      throw new Error(
+        `PER-ROW SEVERITY MISSING on raw row ${a.id} (deaths=${a.deaths}, damageUsd=${a.damageUsd}) — ` +
+          `amendment v2.1 clause 1: the repair fails loudly; no improvisation.`
+      );
+    }
+  }
   const cal = makeCal(inputs.store.days);
   const dd = computeDayData(inputs.store, cal);
-  const major = inputs.effective.filter(TIER_RULE.MAJOR);
-  // §2/§13 anchor era: onset ≥ 2022-01-01 excluded a priori; the ≥1990 lower bound
-  // is loadAnchors' hard assert on the production path, re-enforced here so the
-  // injectable core cannot pool a pre-era anchor.
-  const inEra = major.filter((a) => a.d0 >= ERA_START && a.d0 <= ERA_END);
-  const episodes = mergeCrossFamily(inEra);
+  // §7 rule iii needs any-tier effective-anchor spans — derived from the same
+  // raw rows with anchors.ts's own dedupe so the two sets cannot drift.
+  const effective = dedupeAnchors(inputs.raw);
+  // v2.1 clause 3/5 masking substrate: ANY MAJOR row's span, any family, no era
+  // filter (the era filter is an ANCHOR exclusion, not a masking one).
+  const majorAll = inputs.raw.filter(isMajorRow);
+  // v2.1 clause 1 era: onset 1990-01-01..2021-12-31. The ≥1990 lower bound is
+  // the loader's hard assert on the production path, re-enforced here so the
+  // injectable core cannot test a pre-era row.
+  const inEra = majorAll.filter((a) => a.d0 >= ERA_START && a.d0 <= ERA_END);
+  const groups = dedupeSameSystem(inEra);
+  const rowIdxById = new Map(majorAll.map((a, i) => [a.id, i] as const));
+  const tested: TestedAnchor[] = groups.map(({ keeper, group }) => ({
+    id: keeper.id,
+    family: keeper.family,
+    span: keeper.span,
+    d0: keeper.d0,
+    states: keeper.states,
+    deaths: keeper.deaths,
+    damageUsd: keeper.damageUsd,
+    groupSize: group.length,
+    groupIds: group.map((g) => g.id).sort(),
+    rowIdx: rowIdxById.get(keeper.id)!,
+  }));
 
   const T = cal.total;
   const coverCnt = new Uint8Array(T);
   const coverSingle = new Int32Array(T).fill(-1);
   const majorNear30 = new Uint8Array(T);
-  const epOnsetIdx = new Int32Array(episodes.length);
-  const followed = new Uint8Array(T);
   const clamp = (x: number) => Math.max(0, Math.min(T - 1, x));
-  for (let e = 0; e < episodes.length; e++) {
-    const ep = episodes[e];
-    const s = cal.idx(ep.span.start);
-    const en = cal.idx(ep.span.end);
-    epOnsetIdx[e] = cal.idx(ep.onset);
+  for (let r = 0; r < majorAll.length; r++) {
+    const row = majorAll[r];
+    const s = cal.idx(row.span.start);
+    const en = cal.idx(row.span.end);
     for (let d = clamp(s); d <= clamp(en); d++) {
       if (d < s || d > en) continue;
       if (coverCnt[d] < 255) coverCnt[d]++;
-      coverSingle[d] = coverCnt[d] === 1 ? e : -1;
+      coverSingle[d] = coverCnt[d] === 1 ? r : -1;
     }
     if (en >= 0 && s < T) majorNear30.fill(1, clamp(s - CONTROL_EP_RADIUS), clamp(en + CONTROL_EP_RADIUS) + 1);
-    // outcome flag: onset o follows day d iff o ∈ [d+1, d+14] ⟺ d ∈ [o−14, o−1];
-    // an onset at index < OUTCOME_LO has an EMPTY flag range — no clamp-to-0 fill
-    const o = epOnsetIdx[e];
-    if (o - OUTCOME_LO >= 0) followed.fill(1, clamp(o - OUTCOME_HI), o - OUTCOME_LO + 1);
   }
   const inMajorSpan = new Uint8Array(T);
   for (let d = 0; d < T; d++) inMajorSpan[d] = coverCnt[d] > 0 ? 1 : 0;
 
-  const anyTierSpan = new Uint8Array(T);
-  for (const a of inputs.effective) {
-    const s = cal.idx(a.span.start);
-    const en = cal.idx(a.span.end);
-    if (en < 0 || s >= T) continue;
-    anyTierSpan.fill(1, clamp(s), clamp(en) + 1);
+  const onsetIdx = new Int32Array(tested.length);
+  const followed = new Uint8Array(T);
+  for (let e = 0; e < tested.length; e++) {
+    onsetIdx[e] = cal.idx(tested[e].d0);
+    // outcome flag: onset o follows day d iff o ∈ [d+1, d+14] ⟺ d ∈ [o−14, o−1];
+    // an onset at index < OUTCOME_LO has an EMPTY flag range — no clamp-to-0 fill
+    const o = onsetIdx[e];
+    if (o - OUTCOME_LO >= 0) followed.fill(1, clamp(o - OUTCOME_HI), Math.min(T, o - OUTCOME_LO + 1));
   }
 
-  const allIds = inEra.flatMap((a) => a.memberIds).sort();
+  const anyTierSpan = new Uint8Array(T);
+  const markSpan = (sp: DateSpan) => {
+    const s = cal.idx(sp.start);
+    const en = cal.idx(sp.end);
+    if (en < 0 || s >= T) return;
+    anyTierSpan.fill(1, clamp(s), clamp(en) + 1);
+  };
+  for (const a of effective) markSpan(a.span);
+  // every MAJOR row's span sits inside its family episode's union span, but
+  // clause iii names MAJOR row spans explicitly — marked for fidelity.
+  for (const r of majorAll) markSpan(r.span);
+
   return {
-    cal, dd, episodes, epOnsetIdx, coverCnt, coverSingle, inMajorSpan, majorNear30,
+    cal, dd, tested, onsetIdx, coverCnt, coverSingle, inMajorSpan, majorNear30,
     anyTierSpan, followed,
     eraStartIdx: Math.max(0, cal.idx(ERA_START)),
     eraEndIdx: Math.min(T - 1, cal.idx(ERA_END)),
@@ -441,12 +500,12 @@ export function buildEnv(inputs: FusionInputs, seed: number): Env {
     eraY1: Math.min(cal.year0 + cal.yearSpan - 1, 2021),
     seed,
     receipts: {
-      majorEffective: major.length,
-      excludedPost2021: major.length - inEra.length,
+      rawCount: inputs.raw.length,
+      majorRows: majorAll.length,
+      excludedPost2021: majorAll.filter((a) => a.d0 > ERA_END).length,
       inEra: inEra.length,
-      episodes: episodes.length,
-      fingerprint: fnv(allIds.join("|")).toString(16),
-      rawCount: inputs.rawCount,
+      tested: tested.length,
+      fingerprint: fnv(inEra.map((a) => a.id).sort().join("|")).toString(16),
     },
   };
 }
@@ -456,7 +515,7 @@ export interface Rep {
   srcOf: Int32Array; // day → source day in DayData (−1 = off-store)
   usable: Uint8Array; // source frame present + day floor + elig > 0 (floors travel with frames)
   // mask-all trailing D-14..D-1 sliding sums (control windows / Test 2 trailing W —
-  // "any pooled MAJOR episode span" masks; identical to windowStats(selfEp = −1))
+  // "any MAJOR row span" masks (v2.1 clause 3); identical to windowStats(selfRow = −1))
   trailCnt: Int16Array;
   trailF: Float64Array;
   trailRep: Float64Array;
@@ -489,23 +548,26 @@ export function makeRep(env: Env, remap: Int32Array | null): Rep {
   return { srcOf, usable, trailCnt, trailF, trailRep };
 }
 
-/** §5 masking: day usable for a window iff covered by no episode span other than self. */
-function coverOk(env: Env, d: number, selfEp: number): boolean {
+/** v2.1 clause 3 masking: day usable for a window iff covered by no MAJOR row
+ *  span other than the tested row's own (selfRow = index into the MAJOR-row
+ *  masking array; −1 = mask all). A day shared by the own span AND another
+ *  MAJOR row's span is masked — chain-mates' storm days never count. */
+function coverOk(env: Env, d: number, selfRow: number): boolean {
   const c = env.coverCnt[d];
-  return c === 0 || (c === 1 && selfEp >= 0 && env.coverSingle[d] === selfEp);
+  return c === 0 || (c === 1 && selfRow >= 0 && env.coverSingle[d] === selfRow);
 }
 
 export interface WinStats { total: number; n: number; mean: number | null; repMean: number | null; }
 
-/** Masked window mean of F over centerIdx−lo .. centerIdx−hi (selfEp = −1 → mask all). */
-export function windowStats(env: Env, rep: Rep, centerIdx: number, lo: number, hi: number, selfEp: number): WinStats {
+/** Masked window mean of F over centerIdx−lo .. centerIdx−hi (selfRow = −1 → mask all). */
+export function windowStats(env: Env, rep: Rep, centerIdx: number, lo: number, hi: number, selfRow: number): WinStats {
   let n = 0, total = 0, s = 0, sr = 0;
   for (let k = lo; k >= hi; k--) {
     const d = centerIdx - k;
     total++;
     if (d < 0 || d >= env.cal.total) continue;
     if (!rep.usable[d]) continue;
-    if (!coverOk(env, d, selfEp)) continue;
+    if (!coverOk(env, d, selfRow)) continue;
     n++;
     s += env.dd.f249[rep.srcOf[d]];
     sr += env.dd.rep[rep.srcOf[d]];
@@ -517,10 +579,10 @@ export function windowStats(env: Env, rep: Rep, centerIdx: number, lo: number, h
  *  masked per §5 incl. the full D-28 reach-back (D6); ≥10-eligible floor applied
  *  to the outer window AND each inner window (contributing days need a valid
  *  inner mean; M needs ≥10 contributing days else dropped + counted). */
-export function motionM(env: Env, rep: Rep, centerIdx: number, selfEp: number): { M: number | null; used: number } {
+export function motionM(env: Env, rep: Rep, centerIdx: number, selfRow: number): { M: number | null; used: number } {
   let used = 0, sum = 0;
   const T = env.cal.total;
-  const okDay = (d: number) => d >= 0 && d < T && rep.usable[d] === 1 && coverOk(env, d, selfEp);
+  const okDay = (d: number) => d >= 0 && d < T && rep.usable[d] === 1 && coverOk(env, d, selfRow);
   for (let k = WIN_LO; k >= WIN_HI; k--) {
     const d = centerIdx - k;
     if (!okDay(d)) continue;
@@ -546,11 +608,11 @@ export interface ControlSelection {
 }
 
 export function selectControls(
-  env: Env, rep: Rep, epIdx: number, coverageMatched: boolean, epWinRepMean: number | null
+  env: Env, rep: Rep, tIdx: number, coverageMatched: boolean, epWinRepMean: number | null
 ): ControlSelection {
-  const ep = env.episodes[epIdx];
-  const [, mS, dS] = ep.onset.split("-").map(Number);
-  const anchorYear = Number(ep.onset.slice(0, 4));
+  const t = env.tested[tIdx];
+  const [, mS, dS] = t.d0.split("-").map(Number);
+  const anchorYear = Number(t.d0.slice(0, 4));
   const rejected = { rule1: 0, rule2: 0, rule3: 0 };
   const cands: { idx: number; gap: number; pen: number }[] = [];
   for (let y = env.eraY0; y <= env.eraY1; y++) {
@@ -559,8 +621,8 @@ export function selectControls(
     for (let off = -CONTROL_DOY_HALF; off <= CONTROL_DOY_HALF; off++) {
       const ci = base + off;
       if (ci < env.eraStartIdx || ci > env.eraEndIdx) continue;
-      if (env.anyTierSpan[ci]) { rejected.rule3++; continue; } // iii: inside no span, any family, any tier
-      if (env.majorNear30[ci]) { rejected.rule2++; continue; } // ii: no pooled MAJOR span within ±30d
+      if (env.anyTierSpan[ci]) { rejected.rule3++; continue; } // iii (v2.1): inside no MAJOR row span and no effective-anchor span, any tier
+      if (env.majorNear30[ci]) { rejected.rule2++; continue; } // ii: no MAJOR row span within ±30d
       if (rep.trailCnt[ci] < WINDOW_FLOOR) { rejected.rule1++; continue; } // i: masked window ≥10 eligible
       let pen = 0;
       if (coverageMatched && epWinRepMean !== null) {
@@ -574,7 +636,7 @@ export function selectControls(
     chosen = cands.map((c) => c.idx);
   } else {
     // rng consumed in fixed (year-asc, offset-asc) construction order → deterministic
-    const rng = seededRng(fnv(`${env.seed}|fusion-controls|${ep.onset}|${ep.memberIds[0]}`));
+    const rng = seededRng(fnv(`${env.seed}|fusion-controls|${t.d0}|${t.id}`));
     const keyed = cands.map((c) => ({ ...c, r: rng() }));
     // DELIBERATE key order (B(f)): once coverage-matched resampling has triggered,
     // the coverage penalty outranks year gap — gap-first would re-pick the same
@@ -588,10 +650,10 @@ export function selectControls(
   return { chosen, rejected, eligible: cands.length };
 }
 
-// ─── Test 1 (§9) ────────────────────────────────────────────────────────────────
+// ─── Test 1 (§9; tested anchors = deduped MAJOR member rows, v2.1) ──────────────
 interface EpDetail {
-  onset: string;
-  families: string[];
+  onset: string; // the tested row's own d0
+  family: string;
   Wa: number | null; // null = window dropped (<10 eligible)
   winN: number;
   winRepMean: number | null;
@@ -622,20 +684,20 @@ function test1Stat(env: Env, rep: Rep, coverageMatched: boolean, detail: boolean
   let gapSum = 0, gapN = 0;
   let epRepSum = 0, epRepN = 0, ctlRepSum = 0, ctlRepN = 0;
   const perEp: EpDetail[] | null = detail ? [] : null;
-  for (let e = 0; e < env.episodes.length; e++) {
-    const ep = env.episodes[e];
-    const o = env.epOnsetIdx[e];
-    const w = windowStats(env, rep, o, WIN_LO, WIN_HI, e);
+  for (let e = 0; e < env.tested.length; e++) {
+    const t = env.tested[e];
+    const o = env.onsetIdx[e];
+    const w = windowStats(env, rep, o, WIN_LO, WIN_HI, t.rowIdx);
     if (w.n < WINDOW_FLOOR) {
       epDropped++;
-      droppedOnsets.push(ep.onset);
-      if (perEp) perEp.push({ onset: ep.onset, families: ep.families, Wa: null, winN: w.n, winRepMean: w.repMean, ctlIdxs: [], ctlWs: [] });
+      droppedOnsets.push(t.d0);
+      if (perEp) perEp.push({ onset: t.d0, family: t.family, Wa: null, winN: w.n, winRepMean: w.repMean, ctlIdxs: [], ctlWs: [] });
       continue;
     }
     const Wa = w.mean!;
     epSum += Wa; epN++;
     epRepSum += w.repMean!; epRepN++;
-    const anchorYear = Number(ep.onset.slice(0, 4));
+    const anchorYear = Number(t.d0.slice(0, 4));
     const sel = selectControls(env, rep, e, coverageMatched, w.repMean);
     if (sel.chosen.length === 0) zeroCtl++;
     const ctlWs: number[] = [];
@@ -646,7 +708,7 @@ function test1Stat(env: Env, rep: Rep, coverageMatched: boolean, detail: boolean
       gapSum += Math.abs(env.cal.year[c] - anchorYear); gapN++;
       ctlRepSum += rep.trailRep[c] / rep.trailCnt[c]; ctlRepN++;
     }
-    if (perEp) perEp.push({ onset: ep.onset, families: ep.families, Wa, winN: w.n, winRepMean: w.repMean, ctlIdxs: sel.chosen, ctlWs });
+    if (perEp) perEp.push({ onset: t.d0, family: t.family, Wa, winN: w.n, winRepMean: w.repMean, ctlIdxs: sel.chosen, ctlWs });
   }
   const meanWep = epN > 0 ? epSum / epN : null;
   const meanWctl = ctlN > 0 ? ctlSum / ctlN : null;
@@ -670,7 +732,7 @@ interface Test2Stat {
   lift: number; // topRate / b (b=0 → 0 or MAX_VALUE; a degenerate replicate, never Infinity in JSON)
   eligibleScanDays: number;
   droppedWindows: number; // trailing W < 10 eligible
-  inSpanExcluded: number; // scan day inside a pooled MAJOR span
+  inSpanExcluded: number; // scan day inside any MAJOR row span (v2.1 clause 5)
   deciles: { decile: number; n: number; followed: number; rate: number | null }[] | null;
   spearmanRho: number | null; // DESCRIPTIVE only — struck from PASS semantics (D5)
 }
@@ -762,18 +824,22 @@ interface G0Row {
 }
 
 function gateG0(env: Env, rollCall: RollCallEvent[], t1: Test1Stat): { pass: boolean; rows: G0Row[]; exclusion: string } {
+  // v2.1 clause 6: same 5 events, same quantitative bar, matched to their OWN
+  // MAJOR rows — tested-anchor span intersects the roll-call window, winter
+  // family preferred, then max severity.
   const rows: G0Row[] = rollCall.map((rc) => {
     const cand: number[] = [];
-    for (let e = 0; e < env.episodes.length; e++) {
-      const ep = env.episodes[e];
-      if (ep.span.start <= rc.hi && ep.span.end >= rc.lo) cand.push(e);
+    for (let e = 0; e < env.tested.length; e++) {
+      const t = env.tested[e];
+      if (t.span.start <= rc.hi && t.span.end >= rc.lo) cand.push(e);
     }
-    const winter = cand.filter((e) => env.episodes[e].families.includes("winter"));
+    const winter = cand.filter((e) => env.tested[e].family === "winter");
     const pool = winter.length > 0 ? winter : cand;
     pool.sort((a, b) =>
-      env.episodes[b].deaths - env.episodes[a].deaths ||
-      env.episodes[b].damageUsd - env.episodes[a].damageUsd ||
-      (env.episodes[a].onset < env.episodes[b].onset ? -1 : 1)
+      env.tested[b].deaths - env.tested[a].deaths ||
+      env.tested[b].damageUsd - env.tested[a].damageUsd ||
+      (env.tested[a].d0 < env.tested[b].d0 ? -1 : env.tested[a].d0 > env.tested[b].d0 ? 1 :
+        env.tested[a].id < env.tested[b].id ? -1 : 1)
     );
     if (pool.length === 0) {
       return { name: rc.name, found: false, onset: null, Wa: null, ctlMedian: null, ctlP75: null, nControls: 0, preWindowRepMean: null, beatsMedian: false, beatsP75: false };
@@ -863,14 +929,14 @@ function runBattery(env: Env, outer: Int32Array | null, rollCall: RollCallEvent[
 // ─── §11 honesty diagnostics (observed run only; never gate, never promoted) ────
 interface RichWin { n: number; mean: number; lane: (number | null)[]; laneN: number[]; fstar: number | null; f241: number; f253: number; }
 
-function richWindow(env: Env, rep: Rep, centerIdx: number, lo: number, hi: number, selfEp: number): RichWin | null {
+function richWindow(env: Env, rep: Rep, centerIdx: number, lo: number, hi: number, selfRow: number): RichWin | null {
   let n = 0, s249 = 0, s241 = 0, s253 = 0, sStar = 0, nStar = 0;
   const ls = [0, 0, 0, 0], ln = [0, 0, 0, 0];
   for (let k = lo; k >= hi; k--) {
     const d = centerIdx - k;
     if (d < 0 || d >= env.cal.total) continue;
     if (!rep.usable[d]) continue;
-    if (!coverOk(env, d, selfEp)) continue;
+    if (!coverOk(env, d, selfRow)) continue;
     const sd = rep.srcOf[d];
     n++;
     s249 += env.dd.f249[sd];
@@ -928,17 +994,18 @@ function computeDiagnostics(env: Env, rep: Rep, t1: Test1Stat): Diagnostics {
   for (let e = 0; e < perEp.length; e++) {
     const pe = perEp[e];
     if (pe.Wa === null) continue; // dropped windows carry nothing
-    const o = env.epOnsetIdx[e];
-    const rw = richWindow(env, rep, o, WIN_LO, WIN_HI, e);
+    const o = env.onsetIdx[e];
+    const selfRow = env.tested[e].rowIdx;
+    const rw = richWindow(env, rep, o, WIN_LO, WIN_HI, selfRow);
     if (rw) {
       for (let L = 0; L < 4; L++) add(epLane[L], rw.lane[L]);
       add(epStar, rw.fstar);
       add(ep241, rw.f241);
       add(ep253, rw.f253);
     }
-    add(epFar, windowStats(env, rep, o, FAR_LO, FAR_HI, e).mean);
-    add(epNear, windowStats(env, rep, o, NEAR_LO, NEAR_HI, e).mean);
-    const m = motionM(env, rep, o, e);
+    add(epFar, windowStats(env, rep, o, FAR_LO, FAR_HI, selfRow).mean);
+    add(epNear, windowStats(env, rep, o, NEAR_LO, NEAR_HI, selfRow).mean);
+    const m = motionM(env, rep, o, selfRow);
     if (m.M === null) epMDropped++; else add(epM, m.M);
     for (const c of pe.ctlIdxs) {
       const cw = richWindow(env, rep, c, WIN_LO, WIN_HI, -1);
@@ -962,13 +1029,13 @@ function computeDiagnostics(env: Env, rep: Rep, t1: Test1Stat): Diagnostics {
   const carrying = lanes.filter((l) => l.delta !== null && l.delta > 0).sort((a, b) => (b.delta! - a.delta!)).map((l) => l.lane);
   const positive = lanes.filter((l) => l.delta !== null && l.delta > 0).length;
 
-  // leave-one-family-out: episodes containing the family removed; masks/controls unchanged
-  const families = [...new Set(env.episodes.flatMap((e) => e.families))].sort();
+  // leave-one-family-out: tested anchors of the family removed; masks/controls unchanged
+  const families = [...new Set(env.tested.map((t) => t.family))].sort();
   const lofo = families.map((f) => {
     let eS = 0, eN = 0, cS = 0, cN = 0;
     for (let e = 0; e < perEp.length; e++) {
       const pe = perEp[e];
-      if (pe.Wa === null || pe.families.includes(f)) continue;
+      if (pe.Wa === null || pe.family === f) continue;
       eS += pe.Wa; eN++;
       for (const cw of pe.ctlWs) { cS += cw; cN++; }
     }
@@ -978,8 +1045,8 @@ function computeDiagnostics(env: Env, rep: Rep, t1: Test1Stat): Diagnostics {
   // epoch split 1990–2005 vs 2006–2021
   const splitIdx = env.cal.idx(EPOCH_SPLIT);
   const epochs = [
-    { label: "1990-2005", test: (e: number) => env.epOnsetIdx[e] < splitIdx },
-    { label: "2006-2021", test: (e: number) => env.epOnsetIdx[e] >= splitIdx },
+    { label: "1990-2005", test: (e: number) => env.onsetIdx[e] < splitIdx },
+    { label: "2006-2021", test: (e: number) => env.onsetIdx[e] >= splitIdx },
   ].map(({ label, test }) => {
     let eS = 0, eN = 0, cS = 0, cN = 0;
     for (let e = 0; e < perEp.length; e++) {
@@ -1058,7 +1125,7 @@ export function runFusionOnce(inputs: FusionInputs, opts: FusionOpts) {
 
   return {
     params: {
-      registration: "REGISTRATION-FUSION-V2.md (frozen 2026-07-16)",
+      registration: "REGISTRATION-FUSION-V2.md + amendment v2.1 (frozen 2026-07-16)",
       seed: opts.seed,
       tauPrimaryByte: TAU_PRIMARY_BYTE,
       tauDiagBytes: TAU_DIAG_BYTES,
@@ -1069,8 +1136,9 @@ export function runFusionOnce(inputs: FusionInputs, opts: FusionOpts) {
       preWindow: "D-14..D-1",
       farNearWindows: "D-14..D-4 / D-3..D-1",
       outcomeWindow: "+1..+14",
-      mergeRule: "span overlap or ±7d AND states intersect, transitive",
-      controlMask: "±30d episode / span membership any tier",
+      anchorPath: "raw MAJOR member rows, per-row severity bar (amendment v2.1)",
+      dedupRule: "same-system: spans overlap AND states intersect, union-find; keep max severity (deaths×100 + damageUsd/$1M), then earliest d0, then lexicographic id",
+      controlMask: "±30d of any MAJOR row span / span membership any tier",
       controlsPerEpisode: MAX_CONTROLS,
       rotations: `exhaustive ${SHIFT_MIN}..${SHIFT_MAX} (${N_ROTATIONS} replicates, p = 1/${N_ROTATIONS + 1})`,
       anchorEra: `${ERA_START}..${ERA_END}`,
@@ -1085,11 +1153,12 @@ export function runFusionOnce(inputs: FusionInputs, opts: FusionOpts) {
       coverageCliff: cliff,
       eraDayFloorFails,
       anchorFingerprint: { rawCount: env.receipts.rawCount, memberIdHash: env.receipts.fingerprint },
-      mergedEpisodes: {
-        majorEffective: env.receipts.majorEffective,
+      // v2.1 clause 2 receipt: raw MAJOR rows → deduped tested anchors
+      testedAnchors: {
+        majorRows: env.receipts.majorRows,
         excludedPost2021: env.receipts.excludedPost2021,
         inEra: env.receipts.inEra,
-        pooledEpisodes: env.receipts.episodes,
+        dedupedTested: env.receipts.tested,
       },
       // §9: b computed and printed BEFORE any W-vs-outcome contrast — this is the
       // number the 2b bar is set from.
@@ -1146,13 +1215,13 @@ export function runFusionOnce(inputs: FusionInputs, opts: FusionOpts) {
       repGap: real.t1.repGap,
     },
     diagnostics,
-    episodes: env.episodes.map((ep, e) => ({
-      onset: ep.onset,
-      spanEnd: ep.span.end,
-      families: ep.families,
-      tier: ep.tier,
-      members: ep.nEffMembers,
-      deaths: ep.deaths,
+    anchors: env.tested.map((t, e) => ({
+      onset: t.d0,
+      spanEnd: t.span.end,
+      family: t.family,
+      deaths: t.deaths,
+      damageUsd: t.damageUsd,
+      groupSize: t.groupSize,
       Wa: real.t1.perEp![e].Wa,
       nControls: real.t1.perEp![e].ctlIdxs.length,
     })),
@@ -1228,7 +1297,7 @@ const f6 = (x: number | null) => (x === null || !Number.isFinite(x) ? "—" : x.
 
 function renderFusionReport(p: FusionResult["payload"]): string {
   const L: string[] = [];
-  L.push(`# FUSION FORMATION TEST — mine v2.0 (board altitude)`);
+  L.push(`# FUSION FORMATION TEST — mine v2.1 (board altitude)`);
   L.push(``);
   L.push(`Registration: ${p.params.registration} · seed ${p.params.seed} · pass bar: strictly beat all ${SHIFT_MAX - SHIFT_MIN + 1} rotations (p = 1/68 each; tests share substrate and anchors — dependence acknowledged, the joint pass is NOT 0.0147²).`);
   L.push(``);
@@ -1239,8 +1308,8 @@ function renderFusionReport(p: FusionResult["payload"]): string {
   L.push(`- slot set: ${p.params.slotSet}; τ primary byte ≥ ${p.params.tauPrimaryByte}; day floor ${p.params.dayFloor}; window floor ${p.params.windowFloor}`);
   L.push(`- era day-floor failures (${p.params.scanEra}): ${p.receipts.eraDayFloorFails} days excluded from all windows, controls, and scans`);
   L.push(`- anchor fingerprint: raw ${p.receipts.anchorFingerprint.rawCount}, member-id hash ${p.receipts.anchorFingerprint.memberIdHash}`);
-  const m = p.receipts.mergedEpisodes;
-  L.push(`- merged-episode receipt: ${m.majorEffective} MAJOR effective → ${m.excludedPost2021} excluded (onset ≥ 2022-01-01, amendment A5) → ${m.inEra} in era → ${m.pooledEpisodes} pooled episodes (cross-family merge §4)`);
+  const m = p.receipts.testedAnchors;
+  L.push(`- tested-anchor receipt (amendment v2.1): ${p.receipts.anchorFingerprint.rawCount} raw stitched rows → ${m.majorRows} MAJOR member rows (per-row severity bar) → ${m.excludedPost2021} excluded (onset ≥ 2022-01-01, amendment A5) → ${m.inEra} in era → ${m.dedupedTested} deduped tested anchors (same-system union-find: spans overlap AND states intersect; keep max severity, then earliest d0, then lexicographic id)`);
   L.push(`- **post-masking base rate b = ${f6(p.receipts.postMaskingBaseRate)}** (computed BEFORE any W-vs-outcome contrast; Test 2 top-decile bar = 2b = ${f6(p.receipts.topDecileBar)})`);
   L.push(``);
   L.push(`coverage-cliff receipt (median reporting slots of ${NSLOT_V1} per year; day floor ${DAY_FLOOR}):`);
@@ -1254,7 +1323,9 @@ function renderFusionReport(p: FusionResult["payload"]): string {
 
   L.push(`## 2. G0 — POSITIVE-CONTROL ROLL CALL`);
   L.push(``);
-  L.push(`| event | episode onset | W(a) | ctl median | ctl p75 | n ctl | pre-window rep | > median | > p75 |`);
+  L.push(`Matched to their own MAJOR rows: span-intersect, winter-family preferred (amendment v2.1 clause 6).`);
+  L.push(``);
+  L.push(`| event | row onset | W(a) | ctl median | ctl p75 | n ctl | pre-window rep | > median | > p75 |`);
   L.push(`|---|---|---|---|---|---|---|---|---|`);
   for (const r of p.g0.rows) {
     L.push(`| ${r.name} | ${r.onset ?? "NOT FOUND"} | ${f4(r.Wa)} | ${f4(r.ctlMedian)} | ${f4(r.ctlP75)} | ${r.nControls} | ${r.preWindowRepMean === null ? "—" : r.preWindowRepMean.toFixed(1)} | ${r.beatsMedian ? "YES" : "no"} | ${r.beatsP75 ? "YES" : "no"} |`);
@@ -1282,12 +1353,12 @@ function renderFusionReport(p: FusionResult["payload"]): string {
 
   L.push(`## 5. TEST 1 — PRIMARY CONTRAST (ΔW vs exhaustive 67 rotations)`);
   L.push(``);
-  L.push(`- ΔW = mean W(episodes) − mean W(controls) = ${f6(p.test1.meanWEpisodes)} − ${f6(p.test1.meanWControls)} = **${f6(p.test1.dW)}**`);
-  L.push(`- episodes used ${p.test1.episodesUsed}, dropped ${p.test1.episodesDropped} (<${WINDOW_FLOOR}/14 eligible)${p.test1.droppedOnsets.length ? `: ${p.test1.droppedOnsets.join(", ")}` : ""}`);
-  L.push(`- control windows ${p.test1.controlWindows}; episodes with zero controls ${p.test1.zeroControlEpisodes}`);
+  L.push(`- ΔW = mean W(tested anchors) − mean W(controls) = ${f6(p.test1.meanWEpisodes)} − ${f6(p.test1.meanWControls)} = **${f6(p.test1.dW)}**`);
+  L.push(`- tested anchors used ${p.test1.episodesUsed}, dropped ${p.test1.episodesDropped} (<${WINDOW_FLOOR}/14 eligible)${p.test1.droppedOnsets.length ? `: ${p.test1.droppedOnsets.join(", ")}` : ""}`);
+  L.push(`- control windows ${p.test1.controlWindows}; tested anchors with zero controls ${p.test1.zeroControlEpisodes}`);
   L.push(`- max rotation ΔW = ${f6(p.test1.maxRotationDW)} over 67 replicates (offsets ${SHIFT_MIN}..${SHIFT_MAX})`);
   const t1drops = p.test1.rotations.map((r) => r.epDropped);
-  L.push(`- per-replicate dropped-episode counts (offsets ${SHIFT_MIN}..${SHIFT_MAX}): ${t1drops.join(" ")} (min ${Math.min(...t1drops)}, max ${Math.max(...t1drops)})`);
+  L.push(`- per-replicate dropped-anchor counts (offsets ${SHIFT_MIN}..${SHIFT_MAX}): ${t1drops.join(" ")} (min ${Math.min(...t1drops)}, max ${Math.max(...t1drops)})`);
   L.push(``);
   L.push(`**TEST 1: ${p.test1.pass ? "PASS — ΔW strictly exceeds all 67 rotations" : "FAIL"}**`);
   L.push(``);
@@ -1384,17 +1455,16 @@ function parseArgs(): { seed: number; jsonOnly: boolean } {
 async function main() {
   const { seed, jsonOnly } = parseArgs();
   const t0 = Date.now();
-  const [anchorSet, store] = await Promise.all([loadAnchors(), loadFrameStore()]);
+  // v2.1 clause 1: the 4,233 raw stitched anchors as loaded by fetchRawAnchors()
+  // (hard-asserts EXPECTED_RAW and zero pre-1990 anchors).
+  const [raw, store] = await Promise.all([fetchRawAnchors(), loadFrameStore()]);
   if (store.slots.length < NSLOT_V1) throw new Error(`layout has ${store.slots.length} slots — need the ${NSLOT_V1} v1 offsets`);
   if (store.version !== LAYOUT_VERSION_PINNED)
     throw new Error(`layout version ${store.version} ≠ pinned ${LAYOUT_VERSION_PINNED} — substrate re-baked; §2 requires a re-freeze + registration version bump`);
   if (store.days.length < MIN_FRAME_DAYS)
     throw new Error(`frame store has ${store.days.length} days < ${MIN_FRAME_DAYS} — §2 substrate receipt violated`);
-  console.error(`[fusion] loaded ${anchorSet.raw.length} raw anchors, ${store.days.length} frames — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  const res = runFusion(
-    { store, rawCount: anchorSet.raw.length, effective: anchorSet.effective },
-    { seed }
-  );
+  console.error(`[fusion] loaded ${raw.length} raw anchors, ${store.days.length} frames — ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  const res = runFusion({ store, raw }, { seed });
   const outDir = join(dirname(fileURLToPath(import.meta.url)), "out");
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, "fusion-v2.json"), res.json);
