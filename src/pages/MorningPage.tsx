@@ -50,6 +50,8 @@ interface MorningLine {
 interface WorldEvent {
   year: number;
   text: string;
+  /** the row's own receipt (metadata.url — a Wikipedia page); null = no receipt on file */
+  url: string | null;
 }
 
 /**
@@ -74,14 +76,28 @@ const VERDICT_STYLE: Record<string, string> = {
   UNGRADEABLE: "bg-white/[0.04] text-white/40 border-white/10",
 };
 
-/** "1962: Pope John XXIII excommunicates Fidel Castro." → { year, text } */
-function parseWorldEvent(title: string, effectiveDate: string): WorldEvent | null {
-  const clean = (title || "").trim();
+/**
+ * One onthisday row → { year, text, url }. The ingest hard-cut the title
+ * column at ~86 chars (mid-word); the FULL sentence lives in content as
+ * "<full text> | pages: <wiki page list>" — prefer it, fall back to the title.
+ * The receipt is metadata.url (these rows never got a provenance_url key).
+ */
+function parseWorldEvent(
+  title: string,
+  effectiveDate: string,
+  content?: string | null,
+  metadata?: { url?: string; provenance_url?: string } | null,
+): WorldEvent | null {
+  const full = (content || "").split(/\s*\|\s*pages:/)[0].trim();
+  const clean = full || (title || "").trim();
   if (!clean) return null;
+  const url = metadata?.provenance_url ?? metadata?.url ?? null;
   const m = /^(\d{1,4}):\s*(.+)$/.exec(clean);
-  if (m) return { year: Number(m[1]), text: m[2].trim() };
+  if (m) return { year: Number(m[1]), text: m[2].trim(), url };
+  const tm = /^(\d{1,4}):/.exec((title || "").trim());
+  if (tm) return { year: Number(tm[1]), text: clean, url };
   const yr = Number(effectiveDate.slice(0, 4));
-  return Number.isFinite(yr) ? { year: yr, text: clean } : null;
+  return Number.isFinite(yr) ? { year: yr, text: clean, url } : null;
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
@@ -165,15 +181,20 @@ export default function MorningPage() {
     let cancelled = false;
     supabase
       .from("hunt_knowledge")
-      .select("title,effective_date")
+      .select("title,effective_date,content,metadata")
       .eq("content_type", "onthisday-event")
       .eq("metadata->>mmdd", mmdd)
       .order("effective_date", { ascending: false })
       .limit(7)
       .then(({ data, error: qErr }) => {
         if (cancelled || qErr || !data) return;
-        const events = (data as { title: string; effective_date: string }[])
-          .map((r) => parseWorldEvent(r.title, r.effective_date))
+        const events = (data as {
+          title: string;
+          effective_date: string;
+          content: string | null;
+          metadata: { url?: string; provenance_url?: string } | null;
+        }[])
+          .map((r) => parseWorldEvent(r.title, r.effective_date, r.content, r.metadata))
           .filter((e): e is WorldEvent => e !== null);
         setWorld(events);
       });
@@ -374,7 +395,21 @@ export default function MorningPage() {
                   {ev.year}
                 </span>
                 <span className="font-body text-sm leading-relaxed text-gray-300">
-                  {ev.text}
+                  {ev.text}{" "}
+                  {ev.url ? (
+                    <a
+                      href={ev.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="whitespace-nowrap font-mono text-[10px] text-gray-600 underline decoration-white/20 underline-offset-2 hover:text-gray-400"
+                    >
+                      source
+                    </a>
+                  ) : (
+                    <span className="whitespace-nowrap font-mono text-[10px] text-gray-600">
+                      no receipt on file
+                    </span>
+                  )}
                 </span>
               </li>
             ))}

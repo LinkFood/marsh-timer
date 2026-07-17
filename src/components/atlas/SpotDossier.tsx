@@ -93,10 +93,13 @@ export interface FrontSignal {
   /** human phrase, e.g. "Pressure falling 6 mb / 6h — cold front" */
   detail?: string | null;
   /**
-   * "YYYY-MM-DD" the front read is BASED ON (the GHCN archive edge, ~a year
-   * behind the wall clock). Shown small so "No front" never reads as today.
+   * "YYYY-MM-DD" the front read is BASED ON. Shown small so the basis is
+   * always visible: current dates read from the live station feed (today or
+   * yesterday); dated visits read from the GHCN archive (~a year behind).
    */
   as_of?: string | null;
+  /** basis of the run-up: "live" | "live-yesterday" (station feed) | "archive" (GHCN) */
+  day0_source?: string | null;
 }
 
 /**
@@ -298,6 +301,8 @@ export interface ThatDayQuake {
 export interface ThatDayWorld {
   title: string;
   content?: string | null;
+  /** the row's own receipt (a Wikipedia page); null = no receipt on file */
+  provenance_url?: string | null;
 }
 
 export interface ThatDayReport {
@@ -709,7 +714,21 @@ function ThatDayBlock({ report }: { report: ThatDayReport }) {
             >
               <span className="text-gray-600">In the world: </span>
               <span className="text-gray-400">{wd.title}</span>
-              {wd.content && <span> — {wd.content}</span>}
+              {wd.content && <span> — {wd.content}</span>}{" "}
+              {wd.provenance_url ? (
+                <a
+                  href={wd.provenance_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="whitespace-nowrap text-[10px] text-gray-600 underline decoration-white/20 underline-offset-2 hover:text-gray-400"
+                >
+                  source
+                </a>
+              ) : (
+                <span className="whitespace-nowrap text-[10px] text-gray-600">
+                  no receipt on file
+                </span>
+              )}
             </p>
           ))}
         </div>
@@ -985,7 +1004,9 @@ export default function SpotDossier({
             )}
             {showFrontChip && front?.as_of && (
               <span className="text-[9px] tabular-nums text-gray-600">
-                front read from archive, as of {front.as_of}
+                {front.day0_source === "live" || front.day0_source === "live-yesterday"
+                  ? `front read from live station feed, through ${front.as_of}`
+                  : `front read from archive, as of ${front.as_of}`}
               </span>
             )}
           </div>

@@ -398,7 +398,7 @@ Deno.serve(async (req: Request) => {
             .limit(50),
           // world — onthisday-event rows on this EXACT date (year matters; null state_abbr)
           supabase.from('hunt_knowledge')
-            .select('title, content')
+            .select('title, content, metadata')
             .eq('content_type', 'onthisday-event')
             .eq('effective_date', target.iso)
             .limit(10),
@@ -495,11 +495,26 @@ Deno.serve(async (req: Request) => {
           };
         });
 
-        // world — onthisday-event, exact date, cap 3
-        const world = (oRes.data ?? []).slice(0, 3).map((r) => ({
-          title: (r.title as string) ?? null,
-          content: (r.content as string) ?? null,
-        }));
+        // world — onthisday-event, exact date, cap 3. The ingest hard-cut the
+        // title column at ~86 chars (mid-word); the FULL sentence lives in
+        // content ("<full text> | pages: <wiki page list>"). Surface the full
+        // sentence, never the cut, and carry the row's own receipt (metadata.url
+        // — these rows never got a provenance_url key).
+        const world = (oRes.data ?? []).slice(0, 3).map((r) => {
+          const md = (r.metadata ?? {}) as Record<string, unknown>;
+          const rawTitle = String(r.title ?? '').trim();
+          const fullText = String(r.content ?? '').split(/\s*\|\s*pages:/)[0].trim();
+          const yearMatch = rawTitle.match(/^(\d{1,4}):/);
+          const year = yearMatch ? yearMatch[1] : (md.year != null ? String(md.year) : null);
+          const title = fullText
+            ? (year ? `${year}: ${fullText}` : fullText)
+            : (rawTitle || null);
+          return {
+            title,
+            content: null, // the full event is already in the title — never render the cut twice
+            provenance_url: (md.provenance_url as string) ?? (md.url as string) ?? null,
+          };
+        });
 
         // era note — honest about the ledger's own limits before 1996 / 1950
         const ledgerLimited = events.length === 0
@@ -758,17 +773,21 @@ Deno.serve(async (req: Request) => {
         .sort((a, b) => (LIVE_PRIORITY[a.type] ?? 9) - (LIVE_PRIORITY[b.type] ?? 9));
     })();
 
-    // DAY-0 live feed — today's + yesterday's hunt_weather_history for this state,
-    // in one bounded read. Past the GHCN edge, day-0 prefers today's live row,
-    // then yesterday's (labeled), then falls through to the GHCN defendant.
+    // DAY-0 live feed — the target date's trailing −WINDOW_DAYS..0 run from
+    // hunt_weather_history (cron-fed daily, current through yesterday) in one
+    // bounded read. Past the GHCN edge it powers BOTH the day-0 weather/anomaly
+    // basis (today's row → yesterday's, labeled) AND the front signal's run-up,
+    // so the NOW block can never describe a current date with last year's temps.
     const whPromise = (async (): Promise<{ rows: Array<Record<string, unknown>>; yesterdayIso: string }> => {
       const yesterdayIso = isoPlusDays(target.iso, -1);
       const { data, error } = await supabase
         .from('hunt_weather_history')
         .select('date, temp_high_f, temp_low_f, precipitation_total_mm')
         .eq('state_abbr', stateParam)
-        .in('date', [target.iso, yesterdayIso])
-        .limit(2);
+        .gte('date', isoPlusDays(target.iso, -WINDOW_DAYS))
+        .lte('date', target.iso)
+        .order('date', { ascending: true })
+        .limit(WINDOW_DAYS + 1);
       if (error) console.error('weather_history query failed:', error.message);
       return { rows: (data ?? []) as Array<Record<string, unknown>>, yesterdayIso };
     })();
@@ -914,8 +933,21 @@ Deno.serve(async (req: Request) => {
     // live row (clearly labeled) → the GHCN defendant (handled below via isLive).
     // Uses the parallel weather_history read (today + yesterday) fired above.
     let liveDay0: { high: number | null; low: number | null; precip_in: number | null; date: string; source: 'live' | 'live-yesterday' } | null = null;
+    // The live run-up (−WINDOW_DAYS..0 rows with a usable high) — feeds the
+    // live front signal below whenever the target sits past the GHCN edge.
+    let liveRun: Array<{ date: string; high: number; low: number | null; precip: number | null }> = [];
     if (defendant && targetYear > defendant.year) {
       const { rows: whRows, yesterdayIso } = await whPromise;
+      liveRun = whRows
+        .map((r) => {
+          const high = typeof r.temp_high_f === 'number' && Number.isFinite(r.temp_high_f) ? r.temp_high_f : null;
+          if (high === null) return null;
+          const low = typeof r.temp_low_f === 'number' && Number.isFinite(r.temp_low_f) ? r.temp_low_f : null;
+          const mm = typeof r.precipitation_total_mm === 'number' && Number.isFinite(r.precipitation_total_mm) ? r.precipitation_total_mm : null;
+          return { date: String(r.date).slice(0, 10), high, low, precip: mm !== null ? mm / 25.4 : null };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null)
+        .sort((a, b) => (a.date < b.date ? -1 : 1));
       const byWhDate = new Map<string, Record<string, unknown>>();
       for (const r of whRows) byWhDate.set(String(r.date).slice(0, 10), r);
       const todayRow = byWhDate.get(target.iso);
@@ -1002,16 +1034,48 @@ Deno.serve(async (req: Request) => {
       note: `Most recent recorded ${target.mm}-${target.dd} for ${centroid.name} (archive edge ~2025-12).`,
     } : null);
 
-    // ---- FRONT signal (the defendant year's 3-day run-up) --------------------
-    // `as_of` is the DATE THE FRONT READ IS BASED ON (the GHCN archive edge, ~a
-    // year behind the wall clock) — surfaced so "no front" can never read as a
-    // statement about the actual today. Today's recorded alerts live in `live`.
+    // ---- FRONT signal (the target date's 3-day run-up) -----------------------
+    // `as_of` is the DATE THE FRONT READ IS BASED ON. For current dates past the
+    // GHCN edge the run-up comes from the live station feed (hunt_weather_history,
+    // current through yesterday) — never last year's temps. Historical/dated
+    // requests keep the defendant year's GHCN run, byte-identical. `day0_source`
+    // (additive) names the basis so a stale read can never pass as today.
     let front: Record<string, unknown> = {
       signal: 'unknown', temp_change_f: null, precip_recent_in: null,
-      window: [], resolution: 'state', as_of: null,
+      window: [], resolution: 'state', as_of: null, day0_source: 'archive',
       note: 'Not enough recent recorded days to read a front.',
     };
-    if (defendant) {
+    const liveFront = defendant !== null && targetYear > defendant.year && liveRun.length >= 2;
+    if (liveFront) {
+      const first = liveRun[0].high;
+      const last = liveRun[liveRun.length - 1].high;
+      const maxHigh = Math.max(...liveRun.map((r) => r.high));
+      const change = last - first;                 // negative = cooling
+      const dropFromPeak = maxHigh - last;         // positive = cooled off the peak
+      const precipRecent = liveRun[liveRun.length - 1].precip ?? 0;
+      const asOf = liveRun[liveRun.length - 1].date;
+      let signal: string;
+      if (dropFromPeak >= FRONT_DROP_F) signal = 'front_passing';
+      else if (change <= -3) signal = 'cooling';
+      else if (change >= 3) signal = 'warming';
+      else signal = 'steady';
+      const basisNote = ` Live station feed (hunt_weather_history), read through ${asOf}.`;
+      front = {
+        signal,
+        temp_change_f: round(change),
+        drop_from_peak_f: round(dropFromPeak),
+        precip_recent_in: round(precipRecent),
+        window: liveRun.map((r) => ({ date: r.date, high: round(r.high), low: round(r.low), precip: round(r.precip) })),
+        resolution: 'state',
+        as_of: asOf,
+        day0_source: asOf === target.iso ? 'live' : 'live-yesterday',
+        note: (signal === 'front_passing'
+          ? `Avg-high fell ${round(dropFromPeak)}°F off its recent peak${precipRecent > 0.05 ? ` with ${round(precipRecent)}" rain` : ''} — reads as a front moving through.`
+          : signal === 'cooling' ? `Cooling trend (${round(change)}°F over ${liveRun.length} days).`
+          : signal === 'warming' ? `Warming trend (+${round(change)}°F over ${liveRun.length} days).`
+          : 'Temperatures steady — no front signal.') + basisNote,
+      };
+    } else if (defendant) {
       front.as_of = defendant.date; // even the "can't read a front" state carries its basis date
       const run = obs
         .filter((o) => o.year === defendant!.year && o.offset <= 0 && o.high !== null)
@@ -1037,6 +1101,7 @@ Deno.serve(async (req: Request) => {
           window: run.map((o) => ({ date: o.date, high: round(o.high), low: round(o.low), precip: round(o.precip) })),
           resolution: 'state',
           as_of: defendant.date,
+          day0_source: 'archive',
           note: signal === 'front_passing'
             ? `Avg-high fell ${round(dropFromPeak)}°F off its recent peak${precipRecent > 0.05 ? ` with ${round(precipRecent)}" rain` : ''} — reads as a front moving through.`
             : signal === 'cooling' ? `Cooling trend (${round(change)}°F over ${run.length} days).`

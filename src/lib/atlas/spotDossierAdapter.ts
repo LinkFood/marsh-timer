@@ -67,7 +67,7 @@ interface ThatDayResp2 {
     magnitude?: number; place?: string; event_time_utc?: string;
     depth_km?: number; felt?: number; provenance_url?: string;
   }[] | null;
-  world?: { title?: string; content?: string }[] | null;
+  world?: { title?: string; content?: string; provenance_url?: string | null }[] | null;
   era_note?: string | null;
   honest_note?: string | null;
 }
@@ -98,7 +98,7 @@ interface SpotResp {
   } | null;
   now?: {
     weather?: { avg_high_f?: number; avg_low_f?: number; precip_in?: number; label?: string } | null;
-    front?: { signal?: string; temp_change_f?: number; drop_from_peak_f?: number; as_of?: string | null; note?: string } | null;
+    front?: { signal?: string; temp_change_f?: number; drop_from_peak_f?: number; as_of?: string | null; day0_source?: string | null; note?: string } | null;
     tide?: { station_name?: string; state?: string; daily_mean_ft?: number; residual_ft?: number; is_local?: boolean; note?: string } | null;
     /** Recorded alerts on file for the ACTUAL today — never a forecast. */
     live?: { type?: string; title?: string; count?: number }[] | null;
@@ -233,7 +233,11 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
           })),
           world: (Array.isArray(spot.that_day.world) ? spot.that_day.world : [])
             .filter((w) => w && w.title)
-            .map((w) => ({ title: w.title as string, content: w.content ?? null })),
+            .map((w) => ({
+              title: w.title as string,
+              content: w.content ?? null,
+              provenance_url: w.provenance_url ?? null,
+            })),
           era_note: spot.that_day.era_note ?? null,
           honest_note: spot.that_day.honest_note ?? null,
         }
@@ -282,9 +286,10 @@ export function toSpotData(spot: SpotResp, solunar: SolunarResp, placeLabel?: st
           moving: (fr.signal ?? "steady") !== "steady" && (fr.signal ?? "") !== "unknown",
           kind: (fr.temp_change_f ?? 0) < -3 ? "cold" : (fr.temp_change_f ?? 0) > 3 ? "warm" : "stationary",
           detail: fr.note ?? null,
-          // The GHCN basis date (~a year behind the wall clock) — shown small so
-          // "No front" can never read as a statement about the actual today.
+          // The basis date — shown small so the read always names its ground:
+          // live station feed for current dates, GHCN archive for dated visits.
           as_of: fr.as_of ?? null,
+          day0_source: fr.day0_source ?? null,
         }
       : null,
 

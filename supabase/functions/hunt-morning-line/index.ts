@@ -32,6 +32,12 @@ import { buildMorningLineRow } from '../_shared/morningLine.ts';
 
 const FLOOR_DATE = '1950-01-01';    // GHCN archive floor — no lines before it
 const MIN_HEADLINE_YEARS = 10;      // thin baselines can't fake a headline
+// The lineup sentence is the line's HERO clause — it only earns that spot when
+// the day is actually unusual. Below this |z| the day reads ordinary and the
+// lede stands alone (the honest plain reading); a "last time the moon, the
+// tide, and the temperature lined up" sentence over a 0.3σ day is mad-lib
+// residue, not a finding. 1.5σ matches the dossier's own anomaly-badge tier.
+const LINEUP_HERO_Z_FLOOR = 1.5;
 const LIVE_TYPES = ['nws-alert', 'weather-event', 'compound-risk-alert'];
 const LIVE_PRIORITY: Record<string, number> = {
   'nws-alert': 0, 'compound-risk-alert': 1, 'weather-event': 2,
@@ -240,7 +246,22 @@ Deno.serve(async (req: Request) => {
 
     // The lineup sentence — "last time the moon, the tide, and the temperature
     // lined up like this" — straight from hunt-atlas-spot, outcome attached.
-    const lineup = (spot?.lineup ?? null) as Record<string, unknown> | null;
+    // HERO FLOOR: it only rides when the anomaly clears LINEUP_HERO_Z_FLOOR.
+    // On an ordinary day (|z| below the floor) the sentence is withheld, the
+    // headline is the plain lede, and no lineup claim is published or graded.
+    const heroCleared = Math.abs(pick.z as number) >= LINEUP_HERO_Z_FLOOR;
+    const lineup = heroCleared
+      ? (spot?.lineup ?? null) as Record<string, unknown> | null
+      : null;
+    const lineupQuiet = !heroCleared && spot?.lineup ? {
+      suppressed: true,
+      reason: `|z| ${zAbs} is below the ${LINEUP_HERO_Z_FLOOR}σ hero floor — the day reads ordinary here, so the lineup sentence is withheld and no lineup claim is published.`,
+      mode: (spot.lineup as Record<string, unknown>).mode ?? null,
+      last_date: (spot.lineup as Record<string, unknown>).last_date ?? null,
+      n_matches: (spot.lineup as Record<string, unknown>).n_matches ?? 0,
+      n_years: (spot.lineup as Record<string, unknown>).n_years ?? null,
+      n_days_searched: (spot.lineup as Record<string, unknown>).n_days_searched ?? null,
+    } : null;
     let lineupSentence: string | null = null;
     let lastOutcome: string | null = null;
     if (lineup && typeof lineup.mode === 'string') {
@@ -312,6 +333,9 @@ Deno.serve(async (req: Request) => {
           n_days_searched: lineup.n_days_searched ?? null,
           tide_station: (lineup.today as Record<string, unknown> | undefined)?.tide_station ?? null,
         } : null,
+        // Receipts for a withheld hero (additive): the lineup existed but the
+        // day's |z| sat below LINEUP_HERO_Z_FLOOR, so it was never published.
+        lineup_quiet: lineupQuiet,
         control: control ? {
           matched_n: control.matched_n ?? null,
           matched_outcome_n: control.matched_outcome_n ?? null,
