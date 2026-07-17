@@ -23,12 +23,6 @@ interface HourlyData {
   sulphur_dioxide?: (number | null)[];
   ozone?: (number | null)[];
   us_aqi?: (number | null)[];
-  alder_pollen?: (number | null)[];
-  birch_pollen?: (number | null)[];
-  grass_pollen?: (number | null)[];
-  mugwort_pollen?: (number | null)[];
-  olive_pollen?: (number | null)[];
-  ragweed_pollen?: (number | null)[];
 }
 
 function avg(arr: (number | null)[] | undefined): number {
@@ -54,32 +48,6 @@ function aqiSeverity(aqi: number): string {
   return "Good air quality.";
 }
 
-function pollenSeasonNote(
-  birch: number, grass: number, ragweed: number,
-  alder: number, mugwort: number, olive: number,
-): string {
-  const notes: string[] = [];
-  const total = birch + grass + ragweed + alder + mugwort + olive;
-
-  if (total === 0) return "No significant pollen detected.";
-
-  // Peak detection
-  if (ragweed > 50) notes.push("ragweed peak");
-  if (grass > 30) notes.push("grass peak");
-  if (birch > 50) notes.push("birch peak");
-  if (alder > 30) notes.push("alder peak");
-  if (mugwort > 20) notes.push("mugwort peak");
-  if (olive > 30) notes.push("olive peak");
-
-  // First detection (low but nonzero)
-  if (ragweed > 0 && ragweed <= 10) notes.push("ragweed season starting");
-  if (grass > 0 && grass <= 5) notes.push("grass season starting");
-  if (birch > 0 && birch <= 10) notes.push("birch season starting");
-
-  if (notes.length === 0) return "Moderate pollen levels.";
-  return notes.join(", ") + ".";
-}
-
 serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -91,32 +59,38 @@ serve(async (req) => {
     const abbrs = Object.keys(STATE_CENTROIDS).sort();
     const today = new Date().toISOString().slice(0, 10);
 
-    // Dedup: skip if today's data already exists
-    const { data: existing } = await supabase
+    // Idempotency on the natural key (state, day): the old whole-run "any row
+    // exists today" check let racing invocations write every state twice (the
+    // backfill era left exactly-2x dupes on ~45% of state-days) and made
+    // partial-run reruns skip the missing states. Now each state is checked
+    // individually and re-checked per batch right before insert.
+    const { data: existingRows, error: existingErr } = await supabase
       .from("hunt_knowledge")
-      .select("id")
+      .select("state_abbr")
       .eq("content_type", "air-quality")
       .eq("effective_date", today)
-      .limit(1);
+      .limit(200);
+    if (existingErr) throw new Error(`existing-state check failed: ${existingErr.message}`);
+    const alreadyDone = new Set((existingRows ?? []).map((r: { state_abbr: string | null }) => r.state_abbr).filter(Boolean));
 
-    if (existing && existing.length > 0) {
+    if (abbrs.every((a) => alreadyDone.has(a))) {
       const durationMs = Date.now() - startTime;
       await logCronRun({
         functionName: FUNCTION_NAME,
         status: "success",
-        summary: { already_exists: true, effective_date: today },
+        summary: { already_exists: true, effective_date: today, states_present: alreadyDone.size },
         durationMs,
       });
       return cronResponse({ already_exists: true, effective_date: today, durationMs });
     }
 
     let totalAirQuality = 0;
-    let totalPollen = 0;
     let errors = 0;
 
     // Process states in batches of 10 — AQ only (no pollen, saves 50% of embeds)
     for (let s = 0; s < abbrs.length; s += 10) {
-      const batch = abbrs.slice(s, s + 10);
+      const batch = abbrs.slice(s, s + 10).filter((a) => !alreadyDone.has(a));
+      if (batch.length === 0) continue;
       const aqTexts: string[] = [];
       const aqEntries: { abbr: string; stateName: string; maxAqi: number; avgPm25: number; avgOzone: number; avgCo: number; avgNo2: number; avgSo2: number; severity: string }[] = [];
 
@@ -184,15 +158,34 @@ serve(async (req) => {
         embedding: embeddings[i],
       }));
 
+      // Last-second natural-key re-check: a racing invocation may have landed
+      // these state-days after the run-level check — that race was the dupe
+      // source. hunt_knowledge has no unique constraint to lean on, so the
+      // key (content_type, state_abbr, effective_date) is enforced here.
+      const { data: raced, error: racedErr } = await supabase
+        .from("hunt_knowledge")
+        .select("state_abbr")
+        .eq("content_type", "air-quality")
+        .eq("effective_date", today)
+        .in("state_abbr", aqEntries.map((e) => e.abbr));
+      if (racedErr) {
+        console.error(`Race re-check failed batch ${batch[0]}: ${racedErr.message}`);
+        errors++;
+        continue;
+      }
+      const racedSet = new Set((raced ?? []).map((r: { state_abbr: string | null }) => r.state_abbr));
+      const rowsToInsert = rows.filter((r) => !racedSet.has(r.state_abbr));
+      if (rowsToInsert.length === 0) continue;
+
       const { data: inserted, error: insertErr } = await supabase
         .from("hunt_knowledge")
-        .insert(rows)
+        .insert(rowsToInsert)
         .select('id');
       if (insertErr) {
         console.error(`Insert error batch ${batch[0]}: ${insertErr.message}`);
         errors++;
       } else {
-        totalAirQuality += rows.length;
+        totalAirQuality += rowsToInsert.length;
         // Pattern linking done by hunt-pattern-link-worker cron
       }
     }
@@ -223,45 +216,3 @@ serve(async (req) => {
     return cronErrorResponse(String(err), 500);
   }
 });
-
-function processState(
-  abbr: string,
-  stateName: string,
-  hourly: HourlyData,
-  aqTexts: string[],
-  pollenTexts: string[],
-  aqEntries: typeof aqTexts extends string[] ? { abbr: string; stateName: string; maxAqi: number; avgPm25: number; avgOzone: number; avgCo: number; avgNo2: number; avgSo2: number; severity: string }[] : never,
-  pollenEntries: { abbr: string; stateName: string; birch: number; grass: number; ragweed: number; alder: number; mugwort: number; olive: number; seasonNote: string }[],
-  today: string,
-): void {
-  // Aggregate hourly → daily
-  const maxAqi = max(hourly.us_aqi);
-  const avgPm25 = avg(hourly.pm2_5);
-  const avgOzone = avg(hourly.ozone);
-  const avgCo = avg(hourly.carbon_monoxide);
-  const avgNo2 = avg(hourly.nitrogen_dioxide);
-  const avgSo2 = avg(hourly.sulphur_dioxide);
-  const severity = aqiSeverity(maxAqi);
-
-  const maxBirch = max(hourly.birch_pollen);
-  const maxGrass = max(hourly.grass_pollen);
-  const maxRagweed = max(hourly.ragweed_pollen);
-  const maxAlder = max(hourly.alder_pollen);
-  const maxMugwort = max(hourly.mugwort_pollen);
-  const maxOlive = max(hourly.olive_pollen);
-  const seasonNote = pollenSeasonNote(maxBirch, maxGrass, maxRagweed, maxAlder, maxMugwort, maxOlive);
-
-  // Air quality embedding text
-  aqTexts.push(
-    `Air quality for ${stateName} (${abbr}) on ${today}: AQI ${maxAqi} (PM2.5: ${avgPm25}\u03BCg/m\u00B3, ozone: ${avgOzone}ppb, CO: ${avgCo}, NO2: ${avgNo2}, SO2: ${avgSo2}). ${severity}`
-  );
-
-  aqEntries.push({ abbr, stateName, maxAqi, avgPm25, avgOzone, avgCo, avgNo2, avgSo2, severity });
-
-  // Pollen embedding text
-  pollenTexts.push(
-    `Pollen for ${stateName} (${abbr}) on ${today}: birch ${maxBirch}, grass ${maxGrass}, ragweed ${maxRagweed}, alder ${maxAlder}, mugwort ${maxMugwort}, olive ${maxOlive} grains/m\u00B3. ${seasonNote}`
-  );
-
-  pollenEntries.push({ abbr, stateName, birch: maxBirch, grass: maxGrass, ragweed: maxRagweed, alder: maxAlder, mugwort: maxMugwort, olive: maxOlive, seasonNote });
-}

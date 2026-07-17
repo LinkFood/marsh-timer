@@ -7,32 +7,54 @@ import { batchEmbed } from '../_shared/embedding.ts';
 import { STATE_NAMES } from '../_shared/states.ts';
 
 // ---------------------------------------------------------------------------
-// hunt-formation-watch — THE FORMATION LAYER v1 (docs/THE-WEEK.md 2026-07-17
-// pre-dawn doctrine). Cron every 6h + on-demand GET.
+// hunt-formation-watch — THE FORMATION LAYER v2 (docs/THE-WEEK.md 2026-07-17
+// doctrine + docs/VALIDATED-LEADS-2026-07-17.md registry). Cron every 6h +
+// on-demand GET. Every number in the copy is either read live from a lane or
+// repeated EXACTLY from the registry's backtests — never invented.
 //
-// Two KNOWN-PHYSICS LEADS, fired by LIVE data, receipts from the archive:
+// FIVE KNOWN-PHYSICS LEADS, fired by LIVE data, receipts attached:
 //
-//   flood-forming — a state has >=1 unexpired NWS Flood Watch on the live
-//     alert table. Lead time is 1-3 DAYS (the court's own retrodiction:
-//     watch->warning <=3d, 82% vs 28% control in the claim's 13 scoped
-//     states). Precedent = the live nws-alert lane since 2026-03-08: of the
-//     days a Flood Watch stood on this ground, how many saw a Flood Warning
-//     within 3 days. In the claim's scope the fire links to the court's own
-//     hunt_claim_fires row where one exists — this function NEVER inserts
-//     into the court's tables.
+//   flood-forming (v1, unchanged) — a state has >=1 unexpired NWS Flood Watch
+//     on the live alert table. Lead time 1-3 DAYS (the court's watch->warning
+//     retrodiction: 82% vs 28% control in the claim's 13 scoped states).
+//     Links to the court's own hunt_claim_fires row where one exists — this
+//     function NEVER inserts into the court's tables.
 //
-//   smoke-forming — the state's modeled AQI (air-quality lane, dedup by day,
-//     max_aqi) rose across >=2 consecutive days inside the last-4-day window
-//     with the latest reading >=100, OR the latest reading is >=150 (step
-//     jumps like NY 2023-06-06, 73->154 overnight). Lead time is DAYS, never
-//     weeks. Fire-perimeter upwind context only when a wildfire-perimeter row
-//     landed within 48h — the lane is currently dead, so v1's default copy
-//     carries no fire clause.
+//   smoke-forming (v1 descriptive, MD ONLY) — v1's loose AQI trend survives
+//     only for MD, whose chronic->=150 feed outlier (9.2% of days vs <1%
+//     elsewhere) excludes it from B1 until audited. Descriptive copy only,
+//     never the 7x claim.
+//
+//   aqi-ramp-forming (B1, registry lift 7.0, n=353) — strict ramp: max_aqi
+//     rise >= +15/day on two CONSECUTIVE days AND day-D max in [100,150).
+//     The strict band is load-bearing: "forming" never renders on
+//     already-arrived smoke (119/472 loose-spec fires were persistence
+//     contamination). All states EXCEPT MD. Lead time 1-2 days.
+//     Court claim: b1-aqi-ramp-150.
+//
+//   drought-fire-forming (C1, registry lift 1.63, n=161, weeks-scale) —
+//     weekly USDM lane: (D2+D3+D4)% >= 20 AND deepening week-over-week.
+//     Graded tier MT/WA/ID/OR; watch tier NM (shown, not graded).
+//     AZ/NV (lift 0.73/0.00) and TX/CO/CA (outcome-saturated) are NEVER
+//     evaluated. Court claim: c1-drought-expansion-wildfire (grades
+//     pending-settlement — NCEI lags ~a quarter).
+//
+//   precip-flood-forming (A2, registry lift 1.93, n=29,070) — 3-day rolling
+//     precipitation sum on hunt_weather_history.precipitation_total_mm >=
+//     the state-month p90 threshold (recomputed on THIS field — the A3
+//     lesson: archive thresholds don't transfer; constant table below with
+//     derivation receipts), OR any single day >= 2.0in. Lead time 1-2 days.
+//     Court claim: a2-antecedent-precip-flood.
 //
 // Watch lifecycle in formation_watches (idempotent):
 //   fired + no open watch  -> open (opened_at = today) + EMBED (embedding law)
 //   fired + open watch     -> refresh evidence/copy/last_seen, keep opened_at
 //   open watch + not fired -> status='faded', faded_at = today
+//
+// The court fires the three registered v2 claims off the embedded
+// formation-watch rows (content_type 'formation-watch', needle
+// '(<lead-id>)') — deterministic functions of the raw lanes, evidence
+// attached; this function still never writes to the court's tables.
 //
 // Copy law: fact-only, lead-time honest, "forming" + the historical record,
 // NEVER "will". The history book recognizes, it never predicts.
@@ -44,10 +66,107 @@ const NWS_HISTORY_START = '2026-03-08'; // earliest persistent nws-alert row on 
 const AQI_TREND_DAYS = 4;               // 72h trend window + today
 const MIN_FLOOD_PRECEDENT_DAYS = 3;     // below this, precedents = null (honest)
 
+// v2 lead ids — parenthesized in the embedded content, which is what the
+// court claims' text_any needles match on.
+const B1_LEAD = 'aqi-ramp-forming';
+const C1_LEAD = 'drought-fire-forming';
+const A2_LEAD = 'precip-flood-forming';
+const B1_EXCLUDED = new Set(['MD']);        // chronic->=150 outlier — descriptive only
+const C1_GRADED_STATES = ['MT', 'WA', 'ID', 'OR'];
+const C1_WATCH_STATES = ['NM'];             // watch tier: shown, not graded
+// Registry backtest records — the receipts every fire carries. Numbers are
+// the registry's, verbatim (docs/VALIDATED-LEADS-2026-07-17.md).
+const B1_BACKTEST = {
+  kind: 'backtest-record',
+  n_fires: 353, hit_rate: 0.062, base_rate: 0.009, lift: 7.0,
+  outcome: 'max_aqi >= 150 same state within 1-2 days',
+  confound_on_record: 'fire-season month-matched base to harden at first court review',
+  source: 'docs/VALIDATED-LEADS-2026-07-17.md (B1, backtested 2026-07-17)',
+};
+const C1_BACKTEST = {
+  kind: 'backtest-record',
+  n_fires: 161, hit_rate: 0.478, base_rate: 0.293, lift: 1.63, month_matched_lift: 1.39,
+  outcome: 'wildfire event same state within 30 days',
+  grading: 'pending-settlement — NCEI storm-event publishes with ~a quarter of lag',
+  source: 'docs/VALIDATED-LEADS-2026-07-17.md (C1, backtested 2026-07-17)',
+};
+const A2_BACKTEST = {
+  kind: 'backtest-record',
+  n_fires: 29070, hit_rate: 0.247, base_rate: 0.128, lift: 1.93,
+  scope: 'pooled all-states; 18/18 backtested states >= 1.5',
+  outcome: 'flood signal same state within 1-2 days',
+  confound_on_record: 'part of the lift is storm-system persistence — harden with next-day-precip-conditioned controls at first review',
+  source: 'docs/VALIDATED-LEADS-2026-07-17.md (A2, backtested 2026-07-17)',
+};
+
+// A2 thresholds: per state-month p90 of the 3-day rolling sum of
+// hunt_weather_history.precipitation_total_mm, in INCHES, floor 0.25.
+// Derived 2026-07-17 from 51020 rows, 2020-09-01..2026-07-15,
+// by scripts/compute-a2-thresholds.ts (deterministic: nearest-rank p90;
+// rolling sum needs 3 consecutive calendar days present; mm/25.4).
+// COVERAGE GAP ON RECORD: the table holds 5 hunting seasons (Sep-Feb,
+// n~150/state-month) + the live era 2026-03+ only. Per-state-month n:
+// m1:155-155 m2:141-141 m3:1-9 m4:15-27 m5:17-31 m6:20-30 m7:15-15 m8:0-0 m9:140-140 m10:155-155 m11:150-150 m12:155-155.
+// Months with any state under 60 samples (3,4,5,6,7,8) fall back to the
+// state's ALL-months p90 (same formula), then the 0.25in floor.
+// Index 0 = January ... 11 = December.
+const A2_P90_3DAY_IN: Record<string, number[]> = {
+  AK: [0.25, 0.32, 0.43, 0.43, 0.43, 0.43, 0.43, 0.43, 0.56, 0.40, 0.25, 0.36],
+  AL: [1.49, 1.44, 1.37, 1.37, 1.37, 1.37, 1.37, 1.37, 0.91, 1.23, 1.24, 1.40],
+  AR: [1.41, 1.30, 1.20, 1.20, 1.20, 1.20, 1.20, 1.20, 0.74, 1.53, 0.86, 1.22],
+  AZ: [0.67, 0.80, 0.48, 0.48, 0.48, 0.48, 0.48, 0.48, 0.42, 0.59, 0.25, 0.61],
+  CA: [1.73, 1.60, 0.79, 0.79, 0.79, 0.79, 0.79, 0.79, 0.25, 0.25, 0.67, 1.60],
+  CO: [0.25, 0.25, 0.27, 0.27, 0.27, 0.27, 0.27, 0.27, 0.39, 0.26, 0.33, 0.27],
+  CT: [1.11, 0.80, 1.24, 1.24, 1.24, 1.24, 1.24, 1.24, 1.53, 1.50, 0.83, 1.78],
+  DE: [0.89, 0.93, 0.98, 0.98, 0.98, 0.98, 0.98, 0.98, 1.15, 1.19, 0.70, 1.43],
+  FL: [0.73, 0.72, 1.17, 1.17, 1.17, 1.17, 1.17, 1.17, 1.76, 1.03, 0.92, 0.49],
+  GA: [1.30, 1.72, 1.08, 1.08, 1.08, 1.08, 1.08, 1.08, 1.22, 0.46, 0.84, 0.79],
+  HI: [0.82, 1.16, 0.88, 0.88, 0.88, 0.88, 0.88, 0.88, 0.83, 1.22, 0.55, 1.23],
+  IA: [0.55, 0.31, 0.61, 0.61, 0.61, 0.61, 0.61, 0.61, 0.52, 1.21, 0.63, 0.57],
+  ID: [0.63, 0.57, 0.59, 0.59, 0.59, 0.59, 0.59, 0.59, 0.33, 0.73, 0.73, 0.78],
+  IL: [0.79, 0.61, 0.76, 0.76, 0.76, 0.76, 0.76, 0.76, 0.54, 0.94, 0.61, 0.63],
+  IN: [0.87, 0.87, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.95, 0.84, 0.69, 0.60],
+  KS: [0.38, 0.25, 0.43, 0.43, 0.43, 0.43, 0.43, 0.43, 0.97, 0.25, 0.89, 0.27],
+  KY: [1.22, 1.97, 1.19, 1.19, 1.19, 1.19, 1.19, 1.19, 1.38, 0.63, 0.90, 1.06],
+  LA: [1.46, 1.31, 1.61, 1.61, 1.61, 1.61, 1.61, 1.61, 2.38, 0.89, 1.34, 1.91],
+  MA: [1.18, 0.86, 1.17, 1.17, 1.17, 1.17, 1.17, 1.17, 1.24, 1.63, 1.03, 1.80],
+  MD: [0.97, 0.97, 1.11, 1.11, 1.11, 1.11, 1.11, 1.11, 1.73, 1.18, 0.69, 1.76],
+  ME: [1.03, 0.85, 1.11, 1.11, 1.11, 1.11, 1.11, 1.11, 1.17, 1.53, 1.13, 1.88],
+  MI: [0.45, 0.50, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.82, 0.93, 0.56, 0.61],
+  MN: [0.25, 0.36, 0.51, 0.51, 0.51, 0.51, 0.51, 0.51, 0.72, 0.71, 0.53, 0.71],
+  MO: [0.74, 0.63, 0.87, 0.87, 0.87, 0.87, 0.87, 0.87, 0.57, 0.94, 1.00, 0.59],
+  MS: [1.20, 1.69, 1.22, 1.22, 1.22, 1.22, 1.22, 1.22, 1.02, 0.72, 1.28, 1.33],
+  MT: [0.37, 0.44, 0.40, 0.40, 0.40, 0.40, 0.40, 0.40, 0.71, 0.54, 0.26, 0.33],
+  NC: [0.92, 0.97, 0.98, 0.98, 0.98, 0.98, 0.98, 0.98, 1.69, 0.77, 0.65, 1.48],
+  ND: [0.25, 0.25, 0.27, 0.27, 0.27, 0.27, 0.27, 0.27, 0.31, 0.36, 0.25, 0.36],
+  NE: [0.36, 0.29, 0.48, 0.48, 0.48, 0.48, 0.48, 0.48, 0.38, 0.57, 0.63, 0.45],
+  NH: [1.15, 0.71, 1.07, 1.07, 1.07, 1.07, 1.07, 1.07, 1.24, 1.02, 0.90, 1.64],
+  NJ: [0.85, 0.92, 1.02, 1.02, 1.02, 1.02, 1.02, 1.02, 1.09, 1.16, 0.78, 1.41],
+  NM: [0.27, 0.30, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.39, 0.30, 0.25],
+  NV: [0.50, 0.54, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.30],
+  NY: [0.81, 0.81, 0.90, 0.90, 0.90, 0.90, 0.90, 0.90, 1.27, 1.02, 0.83, 1.07],
+  OH: [0.91, 0.93, 0.91, 0.91, 0.91, 0.91, 0.91, 0.91, 0.98, 0.81, 0.81, 0.73],
+  OK: [0.64, 0.83, 0.78, 0.78, 0.78, 0.78, 0.78, 0.78, 0.54, 1.27, 0.80, 0.76],
+  OR: [0.52, 0.38, 0.52, 0.52, 0.52, 0.52, 0.52, 0.52, 0.25, 0.26, 0.61, 0.58],
+  PA: [0.83, 0.87, 0.90, 0.90, 0.90, 0.90, 0.90, 0.90, 0.96, 1.07, 0.66, 0.96],
+  RI: [1.42, 0.93, 1.27, 1.27, 1.27, 1.27, 1.27, 1.27, 1.65, 1.47, 0.95, 2.05],
+  SC: [1.26, 1.15, 0.98, 0.98, 0.98, 0.98, 0.98, 0.98, 1.00, 0.70, 0.59, 1.27],
+  SD: [0.25, 0.25, 0.32, 0.32, 0.32, 0.32, 0.32, 0.32, 0.25, 0.49, 0.26, 0.34],
+  TN: [1.30, 1.58, 1.35, 1.35, 1.35, 1.35, 1.35, 1.35, 0.97, 0.94, 0.67, 1.41],
+  TX: [0.47, 0.36, 0.56, 0.56, 0.56, 0.56, 0.56, 0.56, 0.96, 0.61, 0.41, 0.25],
+  UT: [0.47, 0.33, 0.31, 0.31, 0.31, 0.31, 0.31, 0.31, 0.25, 0.33, 0.25, 0.46],
+  VA: [1.02, 1.12, 1.12, 1.12, 1.12, 1.12, 1.12, 1.12, 1.32, 0.95, 0.52, 1.52],
+  VT: [0.72, 0.69, 0.89, 0.89, 0.89, 0.89, 0.89, 0.89, 0.90, 1.01, 0.86, 1.15],
+  WA: [1.84, 1.17, 1.36, 1.36, 1.36, 1.36, 1.36, 1.36, 0.56, 1.11, 1.56, 1.93],
+  WI: [0.40, 0.38, 0.59, 0.59, 0.59, 0.59, 0.59, 0.59, 0.76, 0.56, 0.68, 0.43],
+  WV: [1.09, 1.37, 1.08, 1.08, 1.08, 1.08, 1.08, 1.08, 1.27, 0.84, 0.87, 1.05],
+  WY: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.47, 0.25, 0.25],
+};
+
 type Supa = ReturnType<typeof createSupabaseClient>;
 
 interface FiredLead {
-  lead_id: 'flood-forming' | 'smoke-forming';
+  lead_id: string; // flood-forming | smoke-forming | aqi-ramp-forming | drought-fire-forming | precip-flood-forming
   state: string;
   evidence: Record<string, unknown>;
   precedents: Record<string, unknown> | null;
@@ -226,9 +345,12 @@ interface AqiTrend {
   arm: 'trend' | 'step';
 }
 
-/** Per-state AQI trend over the last AQI_TREND_DAYS days. One bounded query
- *  for all states; backfill-era duplicate rows collapse via max-per-day. */
-async function aqiTrends(supabase: Supa, today: string): Promise<Map<string, AqiTrend>> {
+/** Per-state max_aqi per day over the last AQI_TREND_DAYS days — THE dedup
+ *  point for the live air-quality read (backfill-era rows are duplicated
+ *  exactly 2x per state-day: collapse to max per effective_date; the
+ *  hunt-air-quality ingest is now idempotent so new dupes stop accruing).
+ *  Every AQI consumer below works off this map. */
+async function aqiDayMax(supabase: Supa, today: string): Promise<Map<string, Map<string, number>>> {
   const from = addDaysStr(today, -(AQI_TREND_DAYS - 1));
   const { data, error } = await supabase
     .from('hunt_knowledge')
@@ -247,9 +369,16 @@ async function aqiTrends(supabase: Supa, today: string): Promise<Map<string, Aqi
     days.set(day, Math.max(days.get(day) ?? -Infinity, aqi));
     byState.set(r.state_abbr, days);
   }
+  return byState;
+}
 
+/** v1's loose smoke trend — SURVIVES FOR MD ONLY (descriptive, never the 7x
+ *  claim). Elsewhere the strict B1 ramp replaced it: 119/472 loose-spec
+ *  backtest fires were persistence contamination. */
+function mdSmokeTrends(byState: Map<string, Map<string, number>>, today: string): Map<string, AqiTrend> {
   const out = new Map<string, AqiTrend>();
   for (const [state, dayMap] of byState) {
+    if (state !== 'MD') continue;
     const days = [...dayMap.keys()].sort();
     if (days.length < 3) continue;
     // Freshness: the newest reading must be today or yesterday, or the lead is stale.
@@ -274,6 +403,195 @@ async function aqiTrends(supabase: Supa, today: string): Promise<Map<string, Aqi
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// B1 — AQI-RAMP-FORMING (strict; registry lift 7.0, n=353)
+// ---------------------------------------------------------------------------
+
+interface B1Ramp {
+  state: string;
+  days: [string, string, string];   // day D-2, D-1, D (consecutive calendar days)
+  values: [number, number, number]; // deduped max_aqi
+  rises: [number, number];
+  latest: number;
+}
+
+/** Strict ramp: max_aqi rise >= +15/day on two consecutive days AND day-D max
+ *  in [100,150). Requires 3 CONSECUTIVE calendar days on file (a gap breaks
+ *  the per-day rate) with day-D no older than yesterday. MD never fires. */
+function b1Ramps(byState: Map<string, Map<string, number>>, today: string): Map<string, B1Ramp> {
+  const out = new Map<string, B1Ramp>();
+  for (const [state, dayMap] of byState) {
+    if (B1_EXCLUDED.has(state)) continue;
+    const days = [...dayMap.keys()].sort();
+    if (days.length < 3) continue;
+    const dD = days[days.length - 1];
+    if (dD < addDaysStr(today, -1)) continue; // stale lane
+    const d1 = addDaysStr(dD, -1);
+    const d2 = addDaysStr(dD, -2);
+    if (!dayMap.has(d1) || !dayMap.has(d2)) continue;
+    const values: [number, number, number] = [dayMap.get(d2)!, dayMap.get(d1)!, dayMap.get(dD)!];
+    const rises: [number, number] = [values[1] - values[0], values[2] - values[1]];
+    if (rises[0] < 15 || rises[1] < 15) continue;
+    if (values[2] < 100 || values[2] >= 150) continue; // the band is load-bearing
+    out.set(state, { state, days: [d2, d1, dD], values, rises, latest: values[2] });
+  }
+  return out;
+}
+
+/** Registry copy template: multiplier-led, absolute odds stated, lead time
+ *  exactly as registered (1-2 days). */
+function b1Copy(r: B1Ramp): string {
+  const name = stateName(r.state);
+  const series = r.values.map((v) => Math.round(v)).join('→');
+  return `Modeled air over ${name} has climbed ${series} in two days — ${Math.round(r.latest)} is ${epaTier(r.latest)} on the EPA scale, still inside the 100–150 band. In the backtest, climbs shaped like this saw 150+ air within 1–2 days 6.2% of the time — about 7× the everyday odds (0.9%); absolute odds stay low. The record recognizes; it never predicts.`;
+}
+
+// ---------------------------------------------------------------------------
+// C1 — DROUGHT-FIRE-FORMING (weekly USDM lane; registry lift 1.63, n=161)
+// ---------------------------------------------------------------------------
+
+interface DroughtFire {
+  state: string;
+  mapDate: string;
+  severePct: number;   // d2+d3+d4
+  weekChange: number;  // week-over-week change of d2+d3+d4
+  d2: number; d3: number; d4: number;
+  tier: 'graded' | 'watch';
+}
+
+/** Weekly evaluation off the drought-weekly lane: (D2+D3+D4)% >= 20 AND
+ *  deepening (week_change d2+d3+d4 > 0). Only the registry's scope is even
+ *  queried: MT/WA/ID/OR graded, NM watch-tier; AZ/NV/TX/CO/CA never. */
+async function droughtFireLeads(supabase: Supa, today: string): Promise<Map<string, DroughtFire>> {
+  const scope = [...C1_GRADED_STATES, ...C1_WATCH_STATES];
+  const { data, error } = await supabase
+    .from('hunt_knowledge')
+    .select('state_abbr, effective_date, metadata')
+    .eq('content_type', 'drought-weekly')
+    .in('state_abbr', scope)
+    .gte('effective_date', addDaysStr(today, -14))
+    .limit(60);
+  if (error) throw new Error(`drought-weekly query failed: ${error.message}`);
+
+  // Latest map per state (weekly lane — the newest effective_date wins).
+  const latest = new Map<string, { day: string; meta: Record<string, unknown> }>();
+  for (const r of (data ?? []) as { state_abbr: string | null; effective_date: string | null; metadata: Record<string, unknown> | null }[]) {
+    if (!r.state_abbr || !r.effective_date || !r.metadata) continue;
+    const day = String(r.effective_date).slice(0, 10);
+    const cur = latest.get(r.state_abbr);
+    if (!cur || day > cur.day) latest.set(r.state_abbr, { day, meta: r.metadata });
+  }
+
+  const out = new Map<string, DroughtFire>();
+  for (const [state, { day, meta }] of latest) {
+    const d2 = Number(meta.d2_pct), d3 = Number(meta.d3_pct), d4 = Number(meta.d4_pct);
+    if (![d2, d3, d4].every(Number.isFinite)) continue;
+    const severePct = d2 + d3 + d4;
+    const wc = meta.week_change as { d2?: number; d3?: number; d4?: number } | null;
+    if (!wc) continue; // first-week rows can't establish deepening — honest skip
+    const weekChange = Number(wc.d2 ?? 0) + Number(wc.d3 ?? 0) + Number(wc.d4 ?? 0);
+    if (severePct < 20 || weekChange <= 0) continue;
+    out.set(state, {
+      state, mapDate: day,
+      severePct: Math.round(severePct * 10) / 10,
+      weekChange: Math.round(weekChange * 10) / 10,
+      d2, d3, d4,
+      tier: C1_GRADED_STATES.includes(state) ? 'graded' : 'watch',
+    });
+  }
+  return out;
+}
+
+/** Registry copy: seasonality line carried verbatim; lead time weeks, never
+ *  days. Watch tier (NM) states its facts but claims no multiplier. */
+function c1Copy(f: DroughtFire): string {
+  const name = stateName(f.state);
+  const head = `Severe-or-worse drought (D2–D4) covers ${f.severePct}% of ${name} and deepened this week (+${f.weekChange} points, USDM map ${medDate(f.mapDate)})`;
+  if (f.tier === 'watch') {
+    return `${head}. Watch tier for this ground — the graded record is thinner here, so the footprint is shown, not graded. Lead time is weeks, not days.`;
+  }
+  return `${head}. In the backtest, a wildfire event followed within 30 days after 47.8% of expansions like this, against a 29.3% everyday rate — about 1.6×. About a third of the lift is fire-season timing; month-matched lift 1.39. Lead time is weeks, not days.`;
+}
+
+// ---------------------------------------------------------------------------
+// A2 — PRECIP-FLOOD-FORMING (live daily precip lane; registry lift 1.93)
+// ---------------------------------------------------------------------------
+
+interface PrecipFire {
+  state: string;
+  days: [string, string, string];
+  inches: [number, number, number];
+  sumIn: number;
+  thresholdIn: number;
+  monthIdx: number; // 0-based
+  arm: 'p90' | 'point' | 'both';
+}
+
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** 3-day rolling precip sum (mm -> in) off hunt_weather_history against the
+ *  A2_P90_3DAY_IN state-month threshold, plus the any-day >= 2.0in point
+ *  condition (either arm fires). The lane lags ~1-2 days; the latest complete
+ *  3-consecutive-day window must end no earlier than today-3 or the lead is
+ *  honestly stale and does not fire. */
+async function precipFloodLeads(supabase: Supa, today: string): Promise<Map<string, PrecipFire>> {
+  const { data, error } = await supabase
+    .from('hunt_weather_history')
+    .select('state_abbr, date, precipitation_total_mm')
+    .gte('date', addDaysStr(today, -6))
+    .limit(500);
+  if (error) throw new Error(`hunt_weather_history query failed: ${error.message}`);
+
+  const byState = new Map<string, Map<string, number>>();
+  for (const r of (data ?? []) as { state_abbr: string | null; date: string | null; precipitation_total_mm: number | null }[]) {
+    const mm = Number(r.precipitation_total_mm);
+    if (!r.state_abbr || !r.date || !Number.isFinite(mm)) continue;
+    const days = byState.get(r.state_abbr) ?? new Map<string, number>();
+    days.set(String(r.date).slice(0, 10), mm);
+    byState.set(r.state_abbr, days);
+  }
+
+  const out = new Map<string, PrecipFire>();
+  for (const [state, days] of byState) {
+    const thresholds = A2_P90_3DAY_IN[state];
+    if (!thresholds) continue;
+    const sorted = [...days.keys()].sort();
+    const dD = sorted[sorted.length - 1];
+    if (dD < addDaysStr(today, -3)) continue; // stale lane — no fire
+    const d1 = addDaysStr(dD, -1);
+    const d2 = addDaysStr(dD, -2);
+    if (!days.has(d1) || !days.has(d2)) continue; // incomplete window
+    const inches: [number, number, number] = [
+      r2(days.get(d2)! / 25.4), r2(days.get(d1)! / 25.4), r2(days.get(dD)! / 25.4),
+    ];
+    const sumIn = r2(inches[0] + inches[1] + inches[2]);
+    const monthIdx = Number(dD.slice(5, 7)) - 1;
+    const thresholdIn = thresholds[monthIdx];
+    const p90Arm = sumIn >= thresholdIn;
+    const pointArm = inches.some((v) => v >= 2.0);
+    if (!p90Arm && !pointArm) continue;
+    out.set(state, {
+      state, days: [d2, d1, dD], inches, sumIn, thresholdIn, monthIdx,
+      arm: p90Arm && pointArm ? 'both' : p90Arm ? 'p90' : 'point',
+    });
+  }
+  return out;
+}
+
+/** Registry copy: pooled numbers (24.7% vs 12.8%) — the backtest gave no
+ *  per-state splits to the registry, so per-state numbers are never claimed. */
+function a2Copy(f: PrecipFire): string {
+  const name = stateName(f.state);
+  const seq = f.inches.map((v) => v.toFixed(2)).join('→');
+  const record = `In the pooled backtest, a flood signal followed within 1–2 days after 24.7% of days like this, against 12.8% of other days — about 1.9×. Saturated soil and full channels are the mechanism; the record recognizes, it never predicts.`;
+  if (f.arm === 'point') {
+    const peak = Math.max(...f.inches).toFixed(2);
+    return `A ${peak}in day of rain landed on ${name} (${seq}in through ${medDate(f.days[2])}) — past the registry's 2.0in single-day flag, though the three-day total (${f.sumIn}in) sits under this month's 90th percentile (${f.thresholdIn}in). ${record}`;
+  }
+  const pointBit = f.arm === 'both' ? ` A single day in the window also cleared the 2.0in flag.` : '';
+  return `Three days put ${f.sumIn}in of rain on ${name} (${seq}in through ${medDate(f.days[2])}) — past this ground's 90th-percentile three-day soak for ${MONTHS[f.monthIdx]} (${f.thresholdIn}in).${pointBit} ${record}`;
 }
 
 /** Is any wildfire-perimeter row fresh (created within 48h)? The lane is
@@ -446,8 +764,9 @@ serve(async (req) => {
       }
     }
 
-    // ---------------- SMOKE-FORMING ----------------
-    const trends = await aqiTrends(supabase, today);
+    // ---------------- SMOKE-FORMING (v1 descriptive — MD ONLY) ----------------
+    const aqiByState = await aqiDayMax(supabase, today);
+    const trends = mdSmokeTrends(aqiByState, today);
     const firesFresh = await freshFirePerimeters(supabase);
     for (const [state, trend] of trends) {
       try {
@@ -464,6 +783,7 @@ serve(async (req) => {
             arm: trend.arm,
             epa_tier: epaTier(trend.latest),
             fire_perimeters_fresh: firesFresh,
+            scope_note: 'MD only — chronic >=150 feed outlier keeps MD descriptive, out of the B1 ramp claim',
             lead_time: 'days',
             as_of: new Date().toISOString(),
           },
@@ -475,6 +795,84 @@ serve(async (req) => {
         console.error(`[${FN}] smoke lead error (${state}):`, err);
         errors++;
       }
+    }
+
+    // ---------------- B1: AQI-RAMP-FORMING (all states except MD) ----------------
+    const ramps = b1Ramps(aqiByState, today);
+    for (const [state, ramp] of ramps) {
+      fired.push({
+        lead_id: B1_LEAD,
+        state,
+        evidence: {
+          source: 'hunt_knowledge air-quality lane (open-meteo CAMS, state centroid), deduped max per day',
+          days: ramp.days,
+          max_aqi: ramp.values,
+          rises_per_day: ramp.rises,
+          latest: ramp.latest,
+          epa_tier: epaTier(ramp.latest),
+          band: '[100,150)',
+          lead_time: '1-2 days',
+          as_of: new Date().toISOString(),
+        },
+        precedents: B1_BACKTEST,
+        copy: b1Copy(ramp),
+        claim_fire_id: null,
+      });
+    }
+
+    // ---------------- C1: DROUGHT-FIRE-FORMING (MT/WA/ID/OR + NM watch) ----------
+    try {
+      const droughtFires = await droughtFireLeads(supabase, today);
+      for (const [state, f] of droughtFires) {
+        fired.push({
+          lead_id: C1_LEAD,
+          state,
+          evidence: {
+            source: 'hunt_knowledge drought-weekly lane (USDM state statistics)',
+            usdm_map_date: f.mapDate,
+            severe_pct_d2_d4: f.severePct,
+            week_change_d2_d4: f.weekChange,
+            d2_pct: f.d2, d3_pct: f.d3, d4_pct: f.d4,
+            tier: f.tier,
+            lead_time: 'weeks',
+            as_of: new Date().toISOString(),
+          },
+          precedents: f.tier === 'graded' ? C1_BACKTEST : { ...C1_BACKTEST, tier_note: 'NM watch tier — shown, not graded; no multiplier claimed in copy' },
+          copy: c1Copy(f),
+          claim_fire_id: null,
+        });
+      }
+    } catch (err) {
+      console.error(`[${FN}] drought lead error:`, err);
+      errors++;
+    }
+
+    // ---------------- A2: PRECIP-FLOOD-FORMING (all states) ----------------------
+    try {
+      const precipFires = await precipFloodLeads(supabase, today);
+      for (const [state, f] of precipFires) {
+        fired.push({
+          lead_id: A2_LEAD,
+          state,
+          evidence: {
+            source: 'hunt_weather_history.precipitation_total_mm (live daily lane, 2020-09+)',
+            days: f.days,
+            inches_per_day: f.inches,
+            rolling_3d_in: f.sumIn,
+            threshold_in: f.thresholdIn,
+            threshold_month: MONTHS[f.monthIdx],
+            arm: f.arm,
+            lead_time: '1-2 days',
+            as_of: new Date().toISOString(),
+          },
+          precedents: A2_BACKTEST,
+          copy: a2Copy(f),
+          claim_fire_id: null,
+        });
+      }
+    } catch (err) {
+      console.error(`[${FN}] precip lead error:`, err);
+      errors++;
     }
 
     // ---------------- WATCH LIFECYCLE (idempotent) ----------------
@@ -579,6 +977,9 @@ serve(async (req) => {
     const summary = {
       flood_states: [...floodLive.keys()],
       smoke_states: [...trends.keys()],
+      aqi_ramp_states: fired.filter((f) => f.lead_id === B1_LEAD).map((f) => f.state),
+      drought_fire_states: fired.filter((f) => f.lead_id === C1_LEAD).map((f) => f.state),
+      precip_flood_states: fired.filter((f) => f.lead_id === A2_LEAD).map((f) => f.state),
       opened, updated, faded, embedded, errors,
       fire_perimeters_fresh: firesFresh,
       run_at: new Date().toISOString(),

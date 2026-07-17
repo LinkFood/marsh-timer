@@ -20,6 +20,16 @@ import { fetchFormingWatches, stateFullName, type FormationWatch } from "@/lib/b
 
 const APIKEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 
+/** Provenance + registered lead time per formation lead — lead times exactly
+ *  as registered (docs/VALIDATED-LEADS-2026-07-17.md), never restated. */
+const LEAD_PROVENANCE: Record<string, string> = {
+  "flood-forming": "live NWS watch, lead time 1–3 days",
+  "smoke-forming": "open-meteo CAMS model, lead time days",
+  "aqi-ramp-forming": "open-meteo CAMS model, lead time 1–2 days",
+  "drought-fire-forming": "USDM weekly drought lane, lead time weeks",
+  "precip-flood-forming": "station precipitation lane, lead time 1–2 days",
+};
+
 interface MorningLine {
   date: string;
   date_label: string;
@@ -413,9 +423,7 @@ export default function MorningPage() {
                 <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-gray-600">
                   {w.lead_id} &middot; {w.states.map(stateFullName).join(", ")} &middot; opened{" "}
                   {shortLabel(w.opened_at)} &middot;{" "}
-                  {w.lead_id === "flood-forming"
-                    ? "live NWS watch, lead time 1–3 days"
-                    : "open-meteo CAMS model, lead time days"}
+                  {LEAD_PROVENANCE[w.lead_id] ?? "live lane, lead time as registered"}
                   {w.claim_fire_id && (
                     <>
                       {" "}

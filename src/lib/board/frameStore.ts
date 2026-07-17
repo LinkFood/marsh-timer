@@ -484,8 +484,14 @@ function formingClause(watches: FormationWatch[]): string | null {
   const parts: string[] = [];
   const flood = byLead.get("flood-forming");
   if (flood && flood.length > 0) parts.push(`flood is forming over ${statesSummary(flood)} (live NWS watches)`);
+  const precip = byLead.get("precip-flood-forming");
+  if (precip && precip.length > 0) parts.push(`flood ground is forming over ${statesSummary(precip)} (three days of rain)`);
   const smoke = byLead.get("smoke-forming");
   if (smoke && smoke.length > 0) parts.push(`smoke-thick air is forming over ${statesSummary(smoke)}`);
+  const ramp = byLead.get("aqi-ramp-forming");
+  if (ramp && ramp.length > 0) parts.push(`air is degrading fast over ${statesSummary(ramp)} (two-day climb)`);
+  const drought = byLead.get("drought-fire-forming");
+  if (drought && drought.length > 0) parts.push(`fire ground is forming over ${statesSummary(drought)} (deepening drought)`);
   if (parts.length === 0) return null;
   return parts.join(", and ");
 }
