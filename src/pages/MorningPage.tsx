@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { SUPABASE_FUNCTIONS_URL, supabase } from "@/lib/supabase";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
+import { fetchFormingWatches, stateFullName, type FormationWatch } from "@/lib/board/frameStore";
 
 /**
  * THE MORNING LINE — the product's front door and daily heartbeat
@@ -131,6 +132,7 @@ export default function MorningPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [world, setWorld] = useState<WorldEvent[]>([]);
+  const [forming, setForming] = useState<FormationWatch[]>([]);
   const [record, setRecord] = useState<LineRecord | null>(null);
   const [recent, setRecent] = useState<{ confirmed: number; missed: number; total: number } | null>(null);
 
@@ -202,6 +204,23 @@ export default function MorningPage() {
       cancelled = true;
     };
   }, [line?.date]);
+
+  // The FORMING lane — open formation watches speak of NOW, so they render
+  // only on today's page; a dated past page never wears them. Empty result =
+  // no panel, never a placeholder.
+  useEffect(() => {
+    if (date) {
+      setForming([]);
+      return;
+    }
+    let cancelled = false;
+    fetchFormingWatches().then((rows) => {
+      if (!cancelled) setForming(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
 
   // The grade lane — this day's published record + its verdict (anon read of
   // morning_lines), and the last 30 graded lines for the quiet track-record
@@ -375,6 +394,44 @@ export default function MorningPage() {
           </article>
         )}
       </main>
+
+      {/* THE FORMING LANE — the formation layer's daily face here: what live
+          instruments say is taking shape, each watch with its receipts and
+          provenance. Fact-only, lead-time honest, never "will". Renders only
+          on today's page and only when watches actually stand. */}
+      {!date && forming.length > 0 && (
+        <section className="mx-auto mt-4 w-full max-w-3xl border-t border-white/10 py-8">
+          <div className="font-mono text-[11px] tracking-[0.28em] text-slate-300/90">FORMING</div>
+          <div className="mt-1.5 font-mono text-[11px] text-gray-500">
+            fired by live data &middot; the archive supplies the record &middot; the history book
+            recognizes, it never predicts
+          </div>
+          <ul className="mt-5 space-y-5">
+            {forming.map((w) => (
+              <li key={w.id} className="border-l-2 border-slate-400/20 pl-3">
+                <p className="font-body text-[15px] leading-relaxed text-gray-200">{w.copy}</p>
+                <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-gray-600">
+                  {w.lead_id} &middot; {w.states.map(stateFullName).join(", ")} &middot; opened{" "}
+                  {shortLabel(w.opened_at)} &middot;{" "}
+                  {w.lead_id === "flood-forming"
+                    ? "live NWS watch, lead time 1–3 days"
+                    : "open-meteo CAMS model, lead time days"}
+                  {w.claim_fire_id && (
+                    <>
+                      {" "}
+                      &middot; <span className="text-emerald-400/80">court fire on the docket</span>
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-5 font-mono text-[10px] leading-relaxed text-gray-600">
+            formation watches &middot; every newly opened watch is embedded and on the record
+            &middot; never a forecast
+          </p>
+        </section>
+      )}
 
       {/* THE WORLD LANE — a quiet panel below the fold. The lede owns the first
           viewport; this sits beneath it, small: what the record holds for this

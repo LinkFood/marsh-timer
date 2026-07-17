@@ -36,6 +36,10 @@ export interface BoardDot {
    *  baked story films omit it). Drawn as a slow amber alert ring; the name is
    *  an NWS fact, never invented. */
   alert?: { eventType: string; severity: string } | null;
+  /** Formation leads forming over this dot's ground (live board only — the
+   *  formation layer's ghost grammar). Drawn as a dashed pale ring, visually
+   *  distinct from the solid amber alert ring: what is FORMING, not active. */
+  forming?: string[] | null;
   x: number;
   y: number;
   series: Record<string, BoardDatum>;
@@ -479,6 +483,21 @@ function drawDot(
     ctx.beginPath();
     ctx.arc(track.dot.x, track.dot.y, ringR, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  // formation lead forming over this ground: a dashed GHOST ring — pale,
+  // restrained, on a slower breath (~5.2s) than the amber alert ring so the
+  // two never read as one. Forming is a whisper, active is an ember's edge.
+  if (track.dot.forming && track.dot.forming.length > 0) {
+    const w = 0.5 + 0.5 * Math.sin(nowMs / (5200 / (2 * Math.PI)) + dotPhase(`${track.dot.id}:forming`));
+    const ringR = Math.max(coreR + 7, glowR * 0.95) + w * 2;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = `rgba(203,216,229,${0.22 + w * 0.16})`;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.arc(track.dot.x, track.dot.y, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // the needle is the sky, not the ground — a cool ring sets it apart

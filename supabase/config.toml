@@ -653,3 +653,6 @@ verify_jwt = false
 
 [functions.hunt-board-rhyme]
 verify_jwt = false
+
+[functions.hunt-formation-watch]
+verify_jwt = false

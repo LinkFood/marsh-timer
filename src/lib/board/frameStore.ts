@@ -191,6 +191,56 @@ async function loadActiveAlerts(): Promise<Map<string, StateAlert>> {
   return out;
 }
 
+// ── Formation watches: what is FORMING, per the formation-layer doctrine ──────
+
+/** One open formation watch (formation_watches, anon read): a known-physics
+ *  lead fired by live data, its receipts, and the prebuilt fact-only copy. */
+export interface FormationWatch {
+  id: string;
+  lead_id: string; // 'flood-forming' | 'smoke-forming'
+  states: string[];
+  status: string;
+  opened_at: string;
+  copy: string;
+  evidence: Record<string, unknown> | null;
+  precedents: Record<string, unknown> | null;
+  claim_fire_id: string | null;
+}
+
+/**
+ * Open formation watches, newest first. A failed fetch or an absent table
+ * resolves empty — the surfaces simply render nothing for "forming", never
+ * a placeholder.
+ */
+export async function fetchFormingWatches(): Promise<FormationWatch[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from("formation_watches")
+      .select("id,lead_id,states,status,opened_at,copy,evidence,precedents,claim_fire_id")
+      .eq("status", "forming")
+      .order("opened_at", { ascending: false })
+      .limit(60);
+    if (error || !data) return [];
+    return data as FormationWatch[];
+  } catch {
+    return [];
+  }
+}
+
+/** state → lead_ids forming over it, for the board's ghost rings. */
+export function formingByState(watches: FormationWatch[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const w of watches) {
+    for (const st of w.states) {
+      const leads = out.get(st) ?? [];
+      if (!leads.includes(w.lead_id)) leads.push(w.lead_id);
+      out.set(st, leads);
+    }
+  }
+  return out;
+}
+
 /** The state a state-temp instrument reads, as a postal abbr ("ghcn-tx" → "TX"). */
 export function instrumentState(inst: Instrument): string | null {
   if (inst.kind !== "state-temp") return null;
@@ -250,6 +300,7 @@ export function buildDayFilm(
   day: string,
   resolved: ResolvedInstrument[],
   alerts?: Map<string, StateAlert>,
+  forming?: Map<string, string[]>,
 ): BoardFilm {
   return {
     story: "today",
@@ -258,8 +309,9 @@ export function buildDayFilm(
     window: [day, day],
     projection: { ...BOARD_PROJECTION },
     dots: resolved.map((r) => {
-      const st = alerts ? instrumentState(r.inst) : null;
+      const st = alerts || forming ? instrumentState(r.inst) : null;
       const alert = (st && alerts?.get(st)) || null;
+      const leads = (st && forming?.get(st)) || null;
       return {
         id: r.inst.id,
         label: r.inst.label,
@@ -267,6 +319,7 @@ export function buildDayFilm(
         kind: r.inst.kind,
         side: r.side,
         alert: alert ? { eventType: alert.eventType, severity: alert.severity } : null,
+        forming: leads && leads.length > 0 ? leads : null,
         x: r.inst.albers_x,
         y: r.inst.albers_y,
         series: {
@@ -280,8 +333,13 @@ export function buildDayFilm(
   };
 }
 
-export function compileDayFilm(day: string, resolved: ResolvedInstrument[], alerts?: Map<string, StateAlert>) {
-  return compileFilm(buildDayFilm(day, resolved, alerts));
+export function compileDayFilm(
+  day: string,
+  resolved: ResolvedInstrument[],
+  alerts?: Map<string, StateAlert>,
+  forming?: Map<string, string[]>,
+) {
+  return compileFilm(buildDayFilm(day, resolved, alerts, forming));
 }
 
 // ── The porch voice: one true line, computed from what actually swelled ─────────
@@ -387,21 +445,69 @@ function corroboratedClause(r: ResolvedInstrument, alert: StateAlert, day: strin
   return `${name} is running ${hot ? "hotter" : "colder"} than ${p}% of its ${month} record, ${under}`;
 }
 
+/** Full state names for the forming clause (watch rows carry postal abbrs). */
+const STATE_FULL: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi",
+  MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire",
+  NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina",
+  ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "Washington DC",
+};
+export const stateFullName = (abbr: string): string => STATE_FULL[abbr] ?? abbr;
+
+/** "Texas" / "Texas and Utah" / "Texas + 3 more states" — compact, named. */
+function statesSummary(states: string[]): string {
+  if (states.length === 0) return "";
+  if (states.length === 1) return stateFullName(states[0]);
+  if (states.length === 2) return `${stateFullName(states[0])} and ${stateFullName(states[1])}`;
+  return `${stateFullName(states[0])} + ${states.length - 1} more states`;
+}
+
+/**
+ * The FORMING clause: what the formation layer says is taking shape, as one
+ * compact fact-only clause. Doctrine: live data is the trigger to the past —
+ * "forming" names the lead, never an outcome, never "will".
+ */
+function formingClause(watches: FormationWatch[]): string | null {
+  const byLead = new Map<string, string[]>();
+  for (const w of watches) {
+    const states = byLead.get(w.lead_id) ?? [];
+    for (const st of w.states) if (!states.includes(st)) states.push(st);
+    byLead.set(w.lead_id, states);
+  }
+  const parts: string[] = [];
+  const flood = byLead.get("flood-forming");
+  if (flood && flood.length > 0) parts.push(`flood is forming over ${statesSummary(flood)} (live NWS watches)`);
+  const smoke = byLead.get("smoke-forming");
+  if (smoke && smoke.length > 0) parts.push(`smoke-thick air is forming over ${statesSummary(smoke)}`);
+  if (parts.length === 0) return null;
+  return parts.join(", and ");
+}
+
 /**
  * Derive the porch sentence for a day. Deep = tail depth >= 0.85. Selection law:
  * a state whose temp sits at EXTREME depth (byte >= 249) while the state is
  * under an active severe NWS alert is a CORROBORATED EXTREME — it outranks
- * everything and leads the sentence naming both facts plainly. Seeded variety
- * applies only to the uncorroborated follow-ons, which still prefer KIND
- * DIVERSITY (a tide or a buoy beats a fourth hot state). The coda stays honest:
- * with a corroborated extreme standing, "nothing forming yet" never renders —
- * the coda names what is actually standing out instead.
+ * everything and leads the sentence naming both facts plainly. When formation
+ * watches are live (the live board only), the FORMING clause comes next —
+ * after the corroborated extremes, before the seeded quiet variety. Seeded
+ * variety applies only to the uncorroborated follow-ons, which still prefer
+ * KIND DIVERSITY (a tide or a buoy beats a fourth hot state). The coda stays
+ * honest: with a corroborated extreme or a live watch standing, "nothing
+ * forming" never renders — the coda names what is actually standing.
  */
 export function porchLine(
   day: string,
   resolved: ResolvedInstrument[],
   frame: DayFrame,
   alerts?: Map<string, StateAlert>,
+  watches?: FormationWatch[],
 ): PorchLine {
   const seed = daySeed(day);
   const withData = resolved.filter((r) => r.hasData);
@@ -416,21 +522,26 @@ export function porchLine(
   };
   const corroborated = deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && alertFor(r) !== null);
 
-  // Corroborated extremes first (deepest first), then fill to three preferring
+  const formingText = formingClause(watches ?? []);
+  // The forming clause consumes one of the sentence's three clause slots.
+  const slots = formingText ? 2 : 3;
+
+  // Corroborated extremes first (deepest first), then fill preferring
   // instruments of a kind not yet named.
-  const named: ResolvedInstrument[] = corroborated.slice(0, 3);
+  const named: ResolvedInstrument[] = corroborated.slice(0, slots);
   const rest = deep.filter((r) => !named.includes(r));
-  while (named.length < 3 && rest.length > 0) {
+  while (named.length < slots && rest.length > 0) {
     const kinds = new Set(named.map((r) => r.inst.kind));
     const i = rest.findIndex((r) => !kinds.has(r.inst.kind));
     named.push(rest.splice(i === -1 ? 0 : i, 1)[0]);
   }
 
   const forming = (frame.strings && Object.keys(frame.strings).length > 0) || (frame.blooms?.length ?? 0) > 0;
+  const watchCount = watches?.length ?? 0;
 
   let lead: string;
-  if (named.length === 0) {
-    // Nothing deep. Say so plainly, but stay specific about coverage.
+  if (named.length === 0 && !formingText) {
+    // Nothing deep, nothing forming. Say so plainly, but stay specific about coverage.
     lead =
       withData.length === 0
         ? "The board is dark — no instrument has reported."
@@ -440,15 +551,21 @@ export function porchLine(
             "No instrument sits deep in its history.",
           ]);
   } else {
-    const sentence = joinClauses(
-      named.map((r, i) => {
-        const alert = corroborated.includes(r) ? alertFor(r) : null;
-        return alert ? corroboratedClause(r, alert, day) : clauseFor(r, mix(seed, daySeed(r.inst.id) + i));
-      }),
-      mix(seed, 97),
-    );
+    // Clause order law: corroborated extremes → FORMING → quiet variety.
+    const nCorr = named.filter((r) => corroborated.includes(r)).length;
+    const clauses = named.map((r, i) => {
+      const alert = corroborated.includes(r) ? alertFor(r) : null;
+      return alert ? corroboratedClause(r, alert, day) : clauseFor(r, mix(seed, daySeed(r.inst.id) + i));
+    });
+    if (formingText) clauses.splice(nCorr, 0, formingText);
+    const sentence = joinClauses(clauses.slice(0, 3), mix(seed, 97));
     lead = sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
   }
+
+  const watchBit =
+    watchCount > 0
+      ? ` ${watchCount} formation ${watchCount === 1 ? "watch" : "watches"} standing.`
+      : "";
 
   let coda: string;
   if (corroborated.length > 0) {
@@ -463,8 +580,10 @@ export function porchLine(
     const only = corroborated.length === 1 ? alertFor(corroborated[0]) : null;
     const underBit = only ? `under an active ${only.eventType}` : "under active NWS alerts";
     const tailBit = deep.length > corroborated.length ? `; ${deep.length} readings deep in their tails` : "";
-    coda = `${head}, ${underBit}${tailBit}.`;
-    if (forming) coda += " Something is starting to line up.";
+    coda = `${head}, ${underBit}${tailBit}.${watchBit}`;
+    if (forming && watchCount === 0) coda += " Something is starting to line up.";
+  } else if (watchCount > 0) {
+    coda = watchBit.trim();
   } else if (forming) {
     coda = "Something is starting to line up.";
   } else if (deep.length === 0) {
