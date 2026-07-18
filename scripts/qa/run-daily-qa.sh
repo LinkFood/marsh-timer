@@ -43,9 +43,17 @@ export SUPABASE_SERVICE_ROLE_KEY
 rm -f /tmp/dcd-qa-report.md /tmp/dcd-qa-verdict.txt
 
 # The QA agent: analytical only — it writes /tmp outputs, never touches git.
-claude -p "$(cat "$REPO/scripts/qa/DAILY-QA-PROMPT.md")" \
-  --allowedTools "Bash,Read,Write,Glob,Grep" \
-  || true
+# Retry loop (added 2026-07-18): the 8:30 slot died 3 mornings running on
+# transient API connection errors while later-day reruns always succeeded —
+# retry up to 3 attempts with a growing pause before declaring no-verdict.
+for attempt in 1 2 3; do
+  claude -p "$(cat "$REPO/scripts/qa/DAILY-QA-PROMPT.md")" \
+    --allowedTools "Bash,Read,Write,Glob,Grep" \
+    || true
+  [[ -f /tmp/dcd-qa-verdict.txt ]] && break
+  echo "attempt $attempt produced no verdict; retrying in $((attempt * 120))s"
+  sleep $((attempt * 120))
+done
 
 VERDICT=$(cat /tmp/dcd-qa-verdict.txt 2>/dev/null || echo "❌ DCD QA $TODAY: agent produced no verdict — check /tmp/dcd-daily-qa.log")
 
