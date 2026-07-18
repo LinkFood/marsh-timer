@@ -341,7 +341,12 @@ Deno.serve(async (req: Request) => {
     // ignoreDuplicates keeps the first write as THE record — a later recompute
     // of the same day (engine changes, data landing) never rewrites history.
     // Non-fatal: the line still serves if the write fails.
-    if (!dateParam && payload.headline) {
+    // Archive-basis guard (QA 2026-07-18 publish-path drift): an invocation
+    // before the live day-0 lanes post (e.g. an overnight curl) computes from
+    // last year's archive — first-write-wins must never freeze that framing
+    // as the day's record. Only live-family lines publish.
+    const liveFamily = pick.day0_source === 'live' || pick.day0_source === 'live-yesterday';
+    if (!dateParam && payload.headline && liveFamily) {
       try {
         const row = buildMorningLineRow(payload as Record<string, unknown>, 'published');
         if (row) {
