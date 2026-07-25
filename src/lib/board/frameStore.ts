@@ -131,6 +131,32 @@ export interface StateAlert {
   state: string; // postal abbr, "TX"
   eventType: string; // "Flood Watch" — the NWS event name, never invented
   severity: string; // "Severe" | "Extreme"
+  allEventTypes: string[]; // every live event name for the state, severity-ordered
+}
+
+/**
+ * Which way a live NWS product points on the temperature axis, if it points at
+ * all. Only used to decide whether an alert can CORROBORATE a temperature
+ * reading — never to invent one.
+ *
+ * This exists because the board shipped "Nebraska — colder than 99% of July
+ * record · Extreme Heat Watch": the corroboration test accepted any alert, so a
+ * cold reading was paired with a heat product and rendered as one sentence.
+ *
+ * Most NWS products (flood, wind, tornado, fog) are direction-NEUTRAL. Neutral
+ * is not a contradiction, but it is not corroboration either — it says nothing
+ * about whether a state is running hot or cold, so it cannot vouch for a tail.
+ */
+export function alertTempDirection(eventType: string): "high" | "low" | null {
+  const e = eventType.toLowerCase();
+  if (e.includes("heat")) return "high"; // Extreme Heat Warning/Watch, Heat Advisory
+  if (e.includes("red flag") || e.includes("fire weather")) return "high"; // hot + dry, by definition
+  if (
+    e.includes("freeze") || e.includes("frost") || e.includes("cold") ||
+    e.includes("chill") || e.includes("winter") || e.includes("blizzard") ||
+    e.includes("ice storm") || e.includes("snow")
+  ) return "low";
+  return null;
 }
 
 let alertsPromise: Promise<Map<string, StateAlert>> | null = null;
@@ -186,7 +212,16 @@ async function loadActiveAlerts(): Promise<Map<string, StateAlert>> {
         best = { eventType, sev, n };
       }
     }
-    if (best) out.set(st, { state: st, eventType: best.eventType, severity: best.sev === 2 ? "Extreme" : "Severe" });
+    if (best) {
+      // Keep every event name, severity-ordered. The single `eventType` above is
+      // chosen before the reading's direction is known, which is how California's
+      // Extreme Heat Warning lost to two Fire Weather Watches on a count tiebreak.
+      // Corroboration re-picks from this list with the tail in hand.
+      const allEventTypes = [...byEvent.entries()]
+        .sort((a, b) => b[1].sev - a[1].sev || b[1].n - a[1].n || a[0].localeCompare(b[0]))
+        .map(([eventType]) => eventType);
+      out.set(st, { state: st, eventType: best.eventType, severity: best.sev === 2 ? "Extreme" : "Severe", allEventTypes });
+    }
   }
   return out;
 }
@@ -539,7 +574,22 @@ export function porchLine(
     const st = instrumentState(r.inst);
     return (st && alerts.get(st)) || null;
   };
-  const corroborated = deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && alertFor(r) !== null);
+  /**
+   * The alert that actually vouches for this reading's tail, or null.
+   *
+   * An alert corroborates only when it points the SAME way the reading does. A
+   * Flood Watch is real but says nothing about whether a state is running hot or
+   * cold; an Extreme Heat Watch beside a cold tail is a contradiction, and the
+   * board used to print exactly that.
+   */
+  const corroboratingAlert = (r: ResolvedInstrument): StateAlert | null => {
+    const a = alertFor(r);
+    if (!a || !r.side) return null;
+    const match = a.allEventTypes.find((e) => alertTempDirection(e) === r.side);
+    return match ? { ...a, eventType: match } : null;
+  };
+
+  const corroborated = deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && corroboratingAlert(r) !== null);
 
   const formingAll = formingGroups(watches ?? []);
 
@@ -554,8 +604,8 @@ export function porchLine(
   if (corroborated.length > 0) {
     // The deepest corroborated extreme leads alone; the rest go to the strip.
     named = [corroborated[0]];
-    lead = asSentence(corroboratedClause(corroborated[0], alertFor(corroborated[0])!, day));
-    active = corroborated.slice(1).map((r) => corroboratedFragment(r, alertFor(r)!, day));
+    lead = asSentence(corroboratedClause(corroborated[0], corroboratingAlert(corroborated[0])!, day));
+    active = corroborated.slice(1).map((r) => corroboratedFragment(r, corroboratingAlert(r)!, day));
     formingStrip = formingAll.map((g) => g.short);
   } else if (formingAll.length > 0) {
     // No corroborated extreme — the first forming lead speaks in full.
