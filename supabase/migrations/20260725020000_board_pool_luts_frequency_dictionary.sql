@@ -107,6 +107,12 @@ COMMENT ON COLUMN board_pool_luts.episode_gap_days IS
 -- The load-bearing invariant: days[] is 1:1 with the pool behind `below`/`n`. If this
 -- ever breaks, a band slice silently returns the wrong days and the card lies quietly.
 -- Rows from the superseded layout (days IS NULL) are exempt.
-ALTER TABLE board_pool_luts
-  ADD CONSTRAINT board_pool_luts_days_aligned
-  CHECK (days IS NULL OR coalesce(array_length(days, 1), 0) = n);
+DO $body$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'board_pool_luts_days_aligned') THEN
+    ALTER TABLE board_pool_luts
+      ADD CONSTRAINT board_pool_luts_days_aligned
+      CHECK (days IS NULL OR coalesce(array_length(days, 1), 0) = n);
+  END IF;
+END
+$body$;
