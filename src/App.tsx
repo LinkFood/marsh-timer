@@ -20,6 +20,7 @@ const MorningPage = lazy(() => import("./pages/MorningPage"));
 const BornPage = lazy(() => import("./pages/BornPage"));
 const BoardPage = lazy(() => import("./pages/BoardPage"));
 const PlantPage = lazy(() => import("./pages/PlantPage"));
+const SeasonPage = lazy(() => import("./pages/SeasonPage"));
 
 /** /state/:stateAbbr → /atlas?state=XX — the descent IS the state page. */
 function StateRedirect() {
@@ -48,6 +49,7 @@ const App = () => (
           <Route path="/ask" element={<AskPage />} />
 
           {/* Today's wing */}
+          <Route path="/season" element={<SeasonPage />} />
           <Route path="/atlas" element={<AtlasPage />} />
           <Route path="/morning" element={<MorningPage />} />
           <Route path="/morning/:date" element={<MorningPage />} />

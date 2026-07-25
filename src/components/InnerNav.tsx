@@ -20,6 +20,7 @@ import { Link } from "react-router-dom";
 
 export type DoorKey =
   | "today"
+  | "season"
   | "atlas"
   | "morning"
   | "plant"
@@ -52,6 +53,7 @@ const GROUPS: DoorGroup[] = [
     name: "Today",
     doors: [
       { key: "today", to: "/", label: "Today" },
+      { key: "season", to: "/season", label: "The Season" },
       { key: "atlas", to: "/atlas", label: "The Atlas" },
       { key: "morning", to: "/morning", label: "The Morning Line" },
     ],
