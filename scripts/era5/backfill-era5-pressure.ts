@@ -835,7 +835,18 @@ async function run() {
     // 100ms and 720ms respectively, so the HOURLY ceiling binds — pace on it,
     // with headroom for the ~222/day the live crons already spend.
     // A paid key lifts both, so only the free path pays this.
-    if (!OM_KEY) await sleep(Math.ceil(cost * 800));
+    //
+    // MEASURED 2026-07-25: the ledger showed 7,920 weighted calls across ~73
+    // minutes, which reads as ~6,100/hr and looks like this pacer failing. It is
+    // not. The first 20 units predate this line — they ran under the old flat
+    // 300ms delay and spent 2,616 calls in about 45 seconds before the 429 that
+    // exposed it. The 41 units that ran paced averaged ~4,480/hr, which is under
+    // the ceiling but only by 10% on a run measured in weeks.
+    //
+    // 950 gives ~3,800/hr and about a quarter of headroom. The job is 39 days of
+    // background trickle; buying margin costs a few days of wall clock and an
+    // IP-level rate ban costs the whole backfill.
+    if (!OM_KEY) await sleep(Math.ceil(cost * 950));
   }
 
   console.log(`\n=== ${wrote.toLocaleString()} rows this session; ${cp.rowsWritten.toLocaleString()} total ===`);
