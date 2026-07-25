@@ -5,17 +5,26 @@
  * fetching, no clock reads except the one `today` string the caller passes in.
  * That keeps the honesty branches testable and keeps the page thin.
  *
- * Two house laws are enforced here rather than in the markup, because markup
+ * Three house laws are enforced here rather than in the markup, because markup
  * is where honesty rules go to get edited away:
  *
  *  1. A countdown is only ever built from rows stamped with the CURRENT season
- *     year (`currentSeasonYear`). `hunt_seasons` today holds 482 rows all
- *     stamped 2025-2026; every one of those dates is last season. A countdown
- *     off them would be confidently wrong three seconds after a hunter checked
- *     it against his regs booklet, so `buildSeasonModel` returns no lines at
- *     all and the page renders the absence.
+ *     year (`currentSeasonYear`). Before the 2026-27 load, `hunt_seasons` held
+ *     482 rows all stamped 2025-2026; every one of those dates is last season.
+ *     A countdown off them would be confidently wrong three seconds after a
+ *     hunter checked it against his regs booklet, so `buildSeasonModel` returns
+ *     no openers at all and the page renders the absence.
  *
- *  2. `hunt_weather_events` is a DETECTION lane sitting on top of a forecast,
+ *  2. ONE DATE PER STATE PER SPECIES (Amendment 1.5 ruling 2). We publish the
+ *     opener and link out for zones, splits, closing dates and bag limits —
+ *     being wrong on a bag limit is a citation for the hunter, and the state
+ *     publishes all of it at a URL we already hold. So there is no "days left"
+ *     here and no bag limit: a season that has opened reports the date it
+ *     opened and says the closing date is the state's to publish.
+ *     A row whose `status` is not `ok` NEVER becomes a countdown. It becomes an
+ *     absence carrying the state's own reason.
+ *
+ *  3. `hunt_weather_events` is a DETECTION lane sitting on top of a forecast,
  *     and it carries a known artifact: past the forecast horizon the upstream
  *     row reports `new_pressure: 0`, which the detector reads as a ~1015 mb
  *     pressure fall and stamps `severity: high`. 993 of 4,847 pressure_drop
@@ -101,17 +110,24 @@ export function seasonYearLabel(sy: string): string {
 
 /* ───────────────────────────── seasons ───────────────────────────── */
 
+/**
+ * A window as `hunt_seasons.dates` carries it. Under the openers-only scope the
+ * 2026-27 rows carry exactly one window with an `open` and NO `close` — the
+ * closing date is the state's to publish. `close` stays optional rather than
+ * being deleted because the superseded 2025-26 rows still carry it.
+ */
 export interface SeasonWindow {
   open: string;
-  close: string;
+  close?: string | null;
 }
 
 /**
- * A `hunt_seasons` row. `provisional` and `fetched_at` are optional because the
- * columns do not exist yet — Ruling 10.1 makes provisional a DISPLAYED field,
- * and the 2026-27 transcription is what lands it. The page selects `*`, so the
- * day the column appears the label renders with no code change. Until then the
- * value is `undefined`, which the UI reads as "unknown", never as "final".
+ * A `hunt_seasons` row. The page selects `*`; the fields the 2026-27 load adds
+ * are optional here so the model is total over rows from either era.
+ *
+ * `status` is the load-bearing one: only `ok` may produce a countdown. A row
+ * with no `status` at all is a pre-load row, and it is read as `ok` — those
+ * rows are all stamped with a past season year and are refused a line anyway.
  */
 export interface SeasonRow {
   id: string;
@@ -120,43 +136,71 @@ export interface SeasonRow {
   season_type: string | null;
   zone: string | null;
   dates: SeasonWindow[] | null;
-  bag_limit: number | null;
   notes: string | null;
-  verified: boolean | null;
   source_url: string | null;
   season_year: string;
+  status?: string | null;
   provisional?: boolean | null;
+  provisional_note?: string | null;
   fetched_at?: string | null;
+  confidence?: string | null;
+  recheck_after?: string | null;
+  source_records?: number | null;
 }
 
-export type SeasonStatus = "open" | "upcoming" | "closed";
+/** Upcoming, or already opened. There is no "closed": we hold no close date. */
+export type OpenerStatus = "upcoming" | "opened";
 
-export interface SeasonLine {
+/** One state-species opener — the countdown itself. */
+export interface OpenerLine {
   key: string;
-  /** "Duck season — Eastern Zone" */
-  label: string;
-  /** Raw `species_id` — the hero tie-breaks toward duck. It is Duck Countdown. */
   species: string;
-  status: SeasonStatus;
-  /** The window that matters: the one we're inside, else the next one. */
-  opens: string | null;
-  closes: string | null;
+  /** "Duck" */
+  speciesLabel: string;
+  /** The zone or special-season label THIS date belongs to. Never inferred. */
+  zone: string | null;
+  opensOn: string;
+  status: OpenerStatus;
   /** Days until it opens (upcoming only). */
   daysOut: number | null;
-  /** Days until it closes, today inclusive (open only). */
-  daysLeft: number | null;
+  /** Days since it opened (opened only). */
+  daysSince: number | null;
   /** The state's own finality label. null = we hold no label. */
   provisional: boolean | null;
-  /** False means nobody has checked this row against the state's publication. */
-  verified: boolean | null;
+  /** The state's own wording for that label. */
+  provisionalNote: string | null;
+  /** The capture's own read of the transcription: high / medium / low. */
+  confidence: string | null;
+  /** When the state's page was read. */
+  fetchedAt: string | null;
   sourceUrl: string | null;
+  /** How many published season rows this one date was collapsed from. */
+  sourceRecords: number | null;
+}
+
+/** One state-species pair with no date, and the state's reason for it. */
+export interface AbsenceLine {
+  key: string;
+  species: string;
+  speciesLabel: string;
+  /** not_published | no_season | closed | conflicted */
+  status: string;
+  /** The state's own reason, as captured. Trimmed to leading sentences. */
+  reason: string | null;
+  /** True when `reason` is a trim of a longer note. */
+  reasonTrimmed: boolean;
+  recheckAfter: string | null;
+  sourceUrl: string | null;
+  fetchedAt: string | null;
 }
 
 export interface SeasonModel {
-  /** Rows for the CURRENT season year only. Empty means no countdown, ever. */
-  lines: SeasonLine[];
-  /** The one number the domain name promises: soonest opener, else what's open. */
-  hero: SeasonLine | null;
+  /** One line per species, current season year only. Empty = no countdown. */
+  openers: OpenerLine[];
+  /** The one number the domain name promises. */
+  hero: OpenerLine | null;
+  /** Species we hold no date for, each carrying the state's own reason. */
+  absences: AbsenceLine[];
   /** What we DO hold when we hold nothing current — named, not hidden. */
   heldYear: string | null;
   heldCount: number;
@@ -169,97 +213,146 @@ const SPECIES_LABEL: Record<string, string> = {
   goose: "Goose",
 };
 
+/** Duck first. It is Duck Countdown. */
+const SPECIES_ORDER: Record<string, number> = { duck: 0, goose: 1 };
+
+export function speciesLabel(id: string): string {
+  return SPECIES_LABEL[id] ?? humanize(id);
+}
+
 function humanize(s: string): string {
   const t = s.replace(/[-_]+/g, " ").trim();
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-function lineLabel(row: SeasonRow): string {
-  let label = `${SPECIES_LABEL[row.species_id] ?? humanize(row.species_id)} season`;
-  const qual: string[] = [];
-  if (row.season_type && row.season_type !== "regular") qual.push(humanize(row.season_type));
-  if (row.zone && !/^statewide$/i.test(row.zone)) qual.push(row.zone);
-  if (qual.length) label += ` — ${qual.join(", ")}`;
-  return label;
+/** The earliest well-formed `open` on a row, or null. */
+function earliestOpen(row: SeasonRow): string | null {
+  if (!Array.isArray(row.dates)) return null;
+  const opens = row.dates
+    .map((w) => w?.open)
+    .filter((o): o is string => typeof o === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o))
+    .sort();
+  return opens[0] ?? null;
 }
 
-function windowsOf(row: SeasonRow): SeasonWindow[] {
-  if (!Array.isArray(row.dates)) return [];
-  return row.dates
-    .filter((w): w is SeasonWindow => !!w && typeof w.open === "string" && typeof w.close === "string")
-    .sort((a, b) => a.open.localeCompare(b.open));
-}
+/**
+ * The state's reasons run 700–3,900 characters — they are audit notes, not card
+ * copy. Take whole leading sentences up to `max` so the card never renders half
+ * a clause and never paraphrases the state. The trim is flagged, not hidden.
+ */
+export function leadSentences(text: string | null | undefined, max = 320): {
+  text: string | null;
+  trimmed: boolean;
+} {
+  if (!text) return { text: null, trimmed: false };
+  const clean = text.trim();
+  if (clean.length <= max) return { text: clean, trimmed: false };
 
-const STATUS_RANK: Record<SeasonStatus, number> = { open: 0, upcoming: 1, closed: 2 };
+  let out = "";
+  for (const p of clean.split(/(?<=[.!?])\s+/)) {
+    const next = out ? `${out} ${p}` : p;
+    if (next.length > max) break;
+    out = next;
+  }
+  // A first sentence longer than `max`: cut at the last space rather than
+  // mid-word.
+  if (!out) {
+    const cut = clean.lastIndexOf(" ", max);
+    out = clean.slice(0, cut > 0 ? cut : max);
+  }
+  return { text: out, trimmed: out.length < clean.length };
+}
 
 /**
  * Build the season block. Rows whose `season_year` is not `seasonYear` never
  * become a line — they are counted so the absence can name itself.
+ *
+ * One line per species: if a state ever holds more than one current row for a
+ * species (the openers load writes exactly one, but a future full load would
+ * not), the EARLIEST dated row wins, which is the same rule the loader applies.
  */
 export function buildSeasonModel(rows: SeasonRow[], today: string, seasonYear: string): SeasonModel {
   const current = rows.filter((r) => r.season_year === seasonYear);
   const other = rows.filter((r) => r.season_year !== seasonYear);
 
-  const lines: SeasonLine[] = [];
-  for (const row of current) {
-    const windows = windowsOf(row);
-    if (!windows.length) continue;
+  const bySpecies = new Map<string, SeasonRow[]>();
+  for (const r of current) {
+    const held = bySpecies.get(r.species_id);
+    if (held) held.push(r);
+    else bySpecies.set(r.species_id, [r]);
+  }
 
-    const openNow = windows.find((w) => w.open <= today && today <= w.close);
-    const next = windows.find((w) => w.open > today);
+  const openers: OpenerLine[] = [];
+  const absences: AbsenceLine[] = [];
 
-    let status: SeasonStatus;
-    let opens: string | null;
-    let closes: string | null;
-    if (openNow) {
-      status = "open";
-      opens = openNow.open;
-      closes = openNow.close;
-    } else if (next) {
-      status = "upcoming";
-      opens = next.open;
-      closes = next.close;
-    } else {
-      status = "closed";
-      const last = windows[windows.length - 1];
-      opens = last.open;
-      closes = last.close;
+  const species = [...bySpecies.keys()].sort(
+    (a, b) => (SPECIES_ORDER[a] ?? 9) - (SPECIES_ORDER[b] ?? 9) || a.localeCompare(b),
+  );
+
+  for (const sp of species) {
+    const group = bySpecies.get(sp)!;
+    const dated = group
+      .map((row) => ({ row, open: earliestOpen(row) }))
+      .filter((d): d is { row: SeasonRow; open: string } => {
+        const status = d.row.status ?? "ok";
+        return status === "ok" && d.open !== null;
+      })
+      .sort((a, b) => a.open.localeCompare(b.open));
+
+    if (dated.length) {
+      const { row, open } = dated[0];
+      const opened = open <= today;
+      openers.push({
+        key: row.id,
+        species: sp,
+        speciesLabel: speciesLabel(sp),
+        zone: row.zone && !/^(statewide|opener)$/i.test(row.zone) ? row.zone : null,
+        opensOn: open,
+        status: opened ? "opened" : "upcoming",
+        daysOut: opened ? null : daysBetween(today, open),
+        daysSince: opened ? daysBetween(open, today) : null,
+        provisional: row.provisional ?? null,
+        provisionalNote: row.provisional_note ?? null,
+        confidence: row.confidence ?? null,
+        fetchedAt: row.fetched_at ?? null,
+        sourceUrl: row.source_url,
+        sourceRecords: row.source_records ?? null,
+      });
+      continue;
     }
 
-    lines.push({
-      key: row.id,
-      label: lineLabel(row),
-      species: row.species_id,
-      status,
-      opens,
-      closes,
-      daysOut: status === "upcoming" && opens ? daysBetween(today, opens) : null,
-      daysLeft: status === "open" && closes ? daysBetween(today, closes) + 1 : null,
-      provisional: row.provisional ?? null,
-      verified: row.verified,
-      sourceUrl: row.source_url,
+    // No date for this species. Say why, in the state's own words. Prefer the
+    // row that actually carries a reason; a row with no reason at all is still
+    // an absence, just a quieter one.
+    const carrier = group.find((r) => r.notes) ?? group[0];
+    if (!carrier) continue;
+    const lead = leadSentences(carrier.notes);
+    absences.push({
+      key: carrier.id,
+      species: sp,
+      speciesLabel: speciesLabel(sp),
+      status: carrier.status ?? "not_published",
+      reason: lead.text,
+      reasonTrimmed: lead.trimmed,
+      recheckAfter: carrier.recheck_after ?? null,
+      sourceUrl: carrier.source_url,
+      fetchedAt: carrier.fetched_at ?? null,
     });
   }
 
-  lines.sort(
-    (a, b) =>
-      STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
-      (a.opens ?? "").localeCompare(b.opens ?? "") ||
-      a.label.localeCompare(b.label),
-  );
-
-  // Hero: what is open today outranks what opens later — a hunter standing in
-  // October needs "your season is open, 4 days left" ahead of a goose opener
-  // three weeks out. Within a status, duck wins the tie; it is Duck Countdown.
-  const duckFirst = (a: SeasonLine, b: SeasonLine) =>
-    (a.species === "duck" ? 0 : 1) - (b.species === "duck" ? 0 : 1);
-  const open = lines
-    .filter((l) => l.status === "open")
-    .sort((a, b) => duckFirst(a, b) || (a.closes ?? "").localeCompare(b.closes ?? ""));
-  const upcoming = lines
-    .filter((l) => l.status === "upcoming")
-    .sort((a, b) => (a.opens ?? "").localeCompare(b.opens ?? "") || duckFirst(a, b));
-  const hero = open[0] ?? upcoming[0] ?? null;
+  // Hero: the next opener still ahead, soonest first, duck breaking the tie —
+  // the countdown is the product. When everything has already opened the hero
+  // is the most recent opener, so the page still says something true rather
+  // than nothing. There is no "days left" branch: we hold no closing date.
+  const duckFirst = (a: OpenerLine, b: OpenerLine) =>
+    (SPECIES_ORDER[a.species] ?? 9) - (SPECIES_ORDER[b.species] ?? 9);
+  const upcoming = openers
+    .filter((o) => o.status === "upcoming")
+    .sort((a, b) => a.opensOn.localeCompare(b.opensOn) || duckFirst(a, b));
+  const opened = openers
+    .filter((o) => o.status === "opened")
+    .sort((a, b) => b.opensOn.localeCompare(a.opensOn) || duckFirst(a, b));
+  const hero = upcoming[0] ?? opened[0] ?? null;
 
   // Newest season year we actually hold — the honest "here's what we've got".
   const heldYear = other.length
@@ -267,13 +360,16 @@ export function buildSeasonModel(rows: SeasonRow[], today: string, seasonYear: s
     : null;
 
   return {
-    lines,
+    openers,
     hero,
+    absences,
     heldYear,
     heldCount: heldYear ? other.filter((r) => r.season_year === heldYear).length : 0,
-    sourceUrl: current.find((r) => r.source_url)?.source_url ?? other.find((r) => r.source_url)?.source_url ?? null,
+    sourceUrl:
+      current.find((r) => r.source_url)?.source_url ?? other.find((r) => r.source_url)?.source_url ?? null,
   };
 }
+
 
 /* ────────────────────────── weather events ────────────────────────── */
 

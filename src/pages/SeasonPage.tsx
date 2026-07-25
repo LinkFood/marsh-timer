@@ -82,9 +82,11 @@ export default function SeasonPage() {
     document.title = `The season — ${stateName} — Duck Countdown`;
   }, [stateName]);
 
-  // ── READ 1 — the season table. `select("*")` on purpose: Ruling 10.1's
-  // `provisional` column does not exist yet, and when the 2026-27 transcription
-  // lands it, the label renders with no code change here.
+  // ── READ 1 — the season table. `select("*")` on purpose: the 2026-27 openers
+  // load carries the displayed fields Ruling 10.1 requires (`status`,
+  // `provisional`, `provisional_note`, `fetched_at`, `confidence`,
+  // `source_records`), and a star select means the model reads whichever era of
+  // row the table happens to hold without this page needing to know.
   useEffect(() => {
     if (!supabase) {
       setSeasons({ s: "error" });
