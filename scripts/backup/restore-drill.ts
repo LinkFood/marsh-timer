@@ -88,6 +88,20 @@ function parseColumns(ddl: string): Col[] {
   const body = ddl
     .slice(ddl.indexOf("(") + 1, ddl.lastIndexOf(")"))
     .replace(/--[^\n]*/g, "");
+
+  const cols: Col[] = [];
+  for (const raw of splitTopLevel(body)) {
+    const line = raw.trim().replace(/\s+/g, " ");
+    if (!line) continue;
+    if (/^(PRIMARY|UNIQUE|FOREIGN|CHECK|CONSTRAINT|EXCLUDE)\b/i.test(line)) continue;
+    const c = parseColDef(line);
+    if (c) cols.push(c);
+  }
+  return cols;
+}
+
+/** Split on commas at paren-depth 0 — `numeric(10,2)` must not become two columns. */
+function splitTopLevel(body: string): string[] {
   const parts: string[] = [];
   let depth = 0, cur = "";
   for (const ch of body) {
@@ -96,23 +110,60 @@ function parseColumns(ddl: string): Col[] {
     if (ch === "," && depth === 0) { parts.push(cur); cur = ""; } else cur += ch;
   }
   parts.push(cur);
+  return parts;
+}
 
-  const cols: Col[] = [];
-  for (const raw of parts) {
-    const line = raw.trim().replace(/\s+/g, " ");
-    if (!line) continue;
-    if (/^(PRIMARY|UNIQUE|FOREIGN|CHECK|CONSTRAINT|EXCLUDE)\b/i.test(line)) continue;
-    const m = /^"?([a-z_][a-z0-9_]*)"?\s+(.+)$/i.exec(line);
-    if (!m) continue;
-    // type = tokens up to the first constraint keyword
-    const rest = m[2];
-    const stop = /\s+(NOT\s+NULL|NULL|DEFAULT|PRIMARY|UNIQUE|REFERENCES|CHECK|GENERATED|COLLATE)\b/i.exec(rest);
-    let type = (stop ? rest.slice(0, stop.index) : rest).trim();
-    type = type.replace(/\s+/g, " ");
-    if (!type) continue;
-    cols.push({ name: m[1], type });
+/** `name type [constraints…]` → {name, type}. Type is tokens up to the first constraint keyword. */
+function parseColDef(line: string): Col | null {
+  const m = /^"?([a-z_][a-z0-9_]*)"?\s+(.+)$/i.exec(line);
+  if (!m) return null;
+  const rest = m[2];
+  const stop = /\s+(NOT\s+NULL|NULL|DEFAULT|PRIMARY|UNIQUE|REFERENCES|CHECK|GENERATED|COLLATE)\b/i.exec(rest);
+  const type = (stop ? rest.slice(0, stop.index) : rest).trim().replace(/\s+/g, " ");
+  return type ? { name: m[1], type } : null;
+}
+
+/**
+ * Columns a LATER migration added with `ALTER TABLE … ADD COLUMN`.
+ *
+ * WITHOUT THIS THE DRILL LIES. `findCreateTable` returns at the first match and
+ * never looks further, so a table widened after its birth migration is rebuilt
+ * here at its ORIGINAL width — and because the INSERT's column list is derived
+ * from the same parse, the dumped values for the newer columns are silently
+ * dropped. Row counts match. Contiguity matches. The data is gone.
+ *
+ * That is exactly the failure the 2026-07-25 drill caught in board_frames: both
+ * of Ruling 5's named checks passed on 100% corrupt data. `era5_state_pressure`
+ * gaining temperature columns (20260726030000) is the first table in the set to
+ * hit this path, and it would have hit it quietly.
+ *
+ * Only ADD COLUMN is handled. A later DROP COLUMN or ALTER TYPE would still be
+ * invisible here — flagged rather than pretended away; neither has ever been
+ * used on a backed-up table, and the digest comparison in §"verify" is the check
+ * that would catch it.
+ */
+function findAddedColumns(table: string, existing: Set<string>): Col[] {
+  const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  const stmtRe = new RegExp(`ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:public\\.)?${table}\\b([^;]*);`, "gi");
+  const seen = new Set(existing);
+  const out: Col[] = [];
+  for (const f of files) {
+    const sql = readFileSync(join(MIGRATIONS, f), "utf-8").replace(/--[^\n]*/g, "");
+    stmtRe.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = stmtRe.exec(sql)) !== null) {
+      for (const raw of splitTopLevel(m[1])) {
+        const line = raw.trim().replace(/\s+/g, " ");
+        const add = /^ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+)$/i.exec(line);
+        if (!add) continue;
+        const c = parseColDef(add[1]);
+        if (!c || seen.has(c.name)) continue;
+        seen.add(c.name);
+        out.push(c);
+      }
+    }
   }
-  return cols;
+  return out;
 }
 
 // ─── value → the text Postgres wants, per declared type ─────────────────────────
@@ -216,14 +267,25 @@ async function main() {
   // ── phase 1: schema, from the repo's own migrations ──────────────────────────
   const tSchema = Date.now();
   const schemas = new Map<string, Col[]>();
+  const added = new Map<string, Col[]>();
   for (const t of LOAD_ORDER) {
     const ddl = findCreateTable(t);
     if (!ddl) { console.error(`  ✗ no CREATE TABLE for ${t} in supabase/migrations/`); process.exit(1); }
-    schemas.set(t, parseColumns(ddl));
+    const base = parseColumns(ddl);
+    const later = findAddedColumns(t, new Set(base.map((c) => c.name)));
+    added.set(t, later);
+    schemas.set(t, [...base, ...later]);
     await sql.unsafe(`DROP TABLE IF EXISTS ${t} CASCADE`);
   }
-  for (const t of LOAD_ORDER) await sql.unsafe(findCreateTable(t)!);
+  for (const t of LOAD_ORDER) {
+    await sql.unsafe(findCreateTable(t)!);
+    for (const c of added.get(t)!) await sql.unsafe(`ALTER TABLE ${t} ADD COLUMN "${c.name}" ${c.type}`);
+  }
+  const widened = LOAD_ORDER.filter((t) => added.get(t)!.length);
   console.log(`  ✓ schema  ${LOAD_ORDER.length} tables from supabase/migrations/  ${((Date.now() - tSchema) / 1000).toFixed(1)}s`);
+  for (const t of widened) {
+    console.log(`    + ${t}: ${added.get(t)!.length} column(s) from later ALTER TABLE — ${added.get(t)!.map((c) => c.name).join(", ")}`);
+  }
 
   // ── phase 2: load ────────────────────────────────────────────────────────────
   const tLoad = Date.now();

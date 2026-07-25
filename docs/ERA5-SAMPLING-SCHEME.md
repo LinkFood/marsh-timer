@@ -1,5 +1,7 @@
 # ERA5 SAMPLING SCHEME — v1, FROZEN
-### The point-selection rule behind `era5_state_pressure` · written 2026-07-25 · **sampling_version = 1** · **scheme_hash = 587429395**
+### The point-selection rule behind `era5_state_pressure` · written 2026-07-25 · **sampling_version = 1** · **scheme_hash = 587429395** · **vars_version = 2**
+
+> **Widened 2026-07-24 to carry 2 m temperature** (`VARS_VERSION` 1 → 2) so the rarity map can rank a live reading against a pool built the same way. **The sampling scheme itself did not change** — same 250 coordinates, same `scheme_hash 587429395`, same call budget. See §3a for the re-argument the old §3 demanded, §5a for the variable list, and §8a for why the table keeps its name.
 
 > **Amendment 1.3, Ruling 3a / PLAN §10.3, verbatim:**
 > *"Freeze and version the scheme. Document the point-selection rule, store the actual coordinates used per state, add a `sampling_version` column. If those points ever move, every historical number moves with them and the archive silently stops being comparable to itself — invisible for a year, then unfixable."*
@@ -72,6 +74,44 @@ Two things must be said plainly rather than papered over.
 
 **Water is not disqualifying here, and the containment test is not a land mask.** The variable is *mean-sea-level pressure*, a smooth synoptic field ERA5 defines everywhere on the globe, ocean included, at 0.25° (~28 km). A sample 5 km offshore of Ocean City reports the same weather system as one 5 km inland — MSL pressure has no coastline discontinuity the way 2 m temperature does. The containment test exists for a different reason: so that a point called "Maryland" is *inside Maryland*. It is a provenance constraint, not a physics one. Consequently the simplified TIGER polygons are **not** cut for inland water either — the Great Salt Lake, Lake Okeechobee, Michigan's share of the Great Lakes and Chesapeake Bay are all inside their state polygons and a point may land on them. For this variable that is immaterial. **For any future variable that is not MSL pressure — temperature, humidity, soil, snow — this scheme is not automatically fit for purpose and must be re-argued.**
 
+### 3a. Re-arguing the scheme for 2 m temperature (added 2026-07-24)
+
+The sentence above wrote this section's own homework, and the archive was widened to carry `temperature_2m_max / _min / _mean` on 2026-07-24, so here is the argument rather than a wave at it.
+
+**Everything the paragraph above warns about is true of temperature.** 2 m temperature has a real coastline discontinuity, a strong elevation dependence, and genuine sub-state structure. Measured, from `--dry-run`:
+
+| state | year | daily-high spread across the 5 points, °F | | |
+|---|---|---|---|---|
+| | | median | p90 | max |
+| MD | 1979 | 4.5 | 9.2 | 15.0 |
+| AK | 2025 | **31.9** | **51.9** | **83.7** |
+
+Alaska's five points span 11° of latitude, and the SW point snaps to a cell at **906 m** on Unimak Island. On 2025-01-03 the five daily highs were 5.8 / 8.7 / **−40.7** / 28.1 / 35.9 °F. Calling their mean "Alaska's high" is averaging over four climates. That is not hidden — it is stored, every day, in `temp_spread_f`.
+
+**And it does not matter for what this series is for, because the series exists to be RANKED, not published.** The defect it fixes is that the rarity map on `/` ranked a live **one-point centroid** reading against a pool of **multi-station statewide means** — GHCN `avg_high_f`, 362 stations in AK, 146 in NY, 424 in TX. A point has far more variance than an areal mean, so it saturates the pool's tails by construction: on 2026-07-23 the AK centroid read 48.4 °F against a 72-year pool spanning 55.2–77.1, i.e. off the bottom of the record on an ordinary July day, and 26 of the last 30 days had at least one state pinned at depth exactly 1.0000. The map was detecting that a centroid is not a state.
+
+A rank is only meaningful when the live value and the pool are the same *kind* of measurement. Whatever bias five fixed points impose — the Unimak cell included — they impose it identically on 1979 and on today, because the scheme is frozen. The bias cancels in the rank. It does **not** cancel in the absolute value.
+
+Measured proof, AK on July 18, the pool built exactly as the backfill builds it (47 requests, ~17 weighted calls, no writes):
+
+| | |
+|---|---|
+| ERA5 5-point AK July-18 pool, 1979–2025 | **54.54 … 64.68 °F**, median 59.08 |
+| coldest years | 2008 : 54.54 · 2012 : 55.22 · 2024 : 55.38 · 1999 : 55.40 · 2011 : 55.48 |
+| 2026-07-18, same construction | **55.36 °F** |
+| rank in its own pool | 2 / 47 years colder → **4.3rd percentile**, *inside the record* |
+| the same day under the live map's mixed construction | centroid **48.4 °F** vs a GHCN pool floored at 55.2 → **below the minimum, depth 1.0000** |
+
+Same day, same state. One reading is "cold — about the fifth-coldest July 18 in the ERA5 record," which is a claim the data supports. The other is "colder than Alaska has ever been in July," which is an artefact of comparing a point to an average.
+
+**So the rules that bind this variable:**
+
+1. **`temp_2m_max_f` may be ranked** against a pool built by this same scheme, and displayed in physical units alongside that rank (Ruling 1: match in percentile space, display in physical units). This is what it is for.
+2. **It may not be published as a bare statewide fact.** "Alaska's average high on July 18 was 55.4 °F" is not supportable against a climate-division or station-network number and must not be written. The value is a five-cell mean under a named scheme, and it is only ever as good as the comparison it sits inside.
+3. **`temp_spread_f` is not decoration.** It is the width of what "statewide" is smoothing, and for temperature it is often larger than the whole range of the pool. It travels with the number.
+4. **It must never be blended with GHCN.** They are two different constructions of the same word. PLAN §10's map/card rule already forbids blending live-resolution and archive-resolution data; this is the same law one level down.
+5. **Inland water and the 906 m cell stay.** Moving a point to dodge them would break the frozen scheme, which would cost the comparability the whole argument rests on — a far worse trade than an odd cell. If the sampling is ever revisited, it goes in a `sampling_version = 2` beside v1, never over it.
+
 **The polygon is simplified and the grid is coarse, in that order of magnitude.** The boundary is accurate to ~1.1 km; an ERA5 cell is ~28 km across. A point the simplified polygon accepts but the true border rejects is at worst ~4% of a grid cell from where it should be, and in nearly every case resolves to the same cell either way. The scheme does not pretend to sub-cell precision and no number derived from it should be read as if it did.
 
 **The cell actually sampled is a second fact, and it is checked.** Open-Meteo answers from the nearest ERA5 grid-cell centre, up to ~0.125° from the requested point. `--verify-points` re-runs the containment test on the *snapped* coordinate. Measured on AK/HI/MD/TX (20 points): max snap shift **0.117°**, under one half-cell, and **0/20 snapped cells fell outside their own state**. Run it over the full roster (~18 weighted calls) before the real backfill and record the result here.
@@ -143,7 +183,7 @@ Open-Meteo counts a call as **locations × (days / 14) × max(1, variables / 10)
 
 > *"Requests for data covering more than 10 weather variables or extending over a period of more than 2 weeks for a single location are considered multiple API calls. To calculate the number of API calls accurately, fractional counts are used. For example, a request for 2 weeks of data with 15 weather variables will be calculated as 1.5 API calls, while 4 weeks of data equals 3.0 API calls."*
 
-For the v1 scope (250 locations × 17,367 days × 3 variables):
+For the v1 scope (250 locations × 17,367 days × **6** variables — see §5a):
 
 | | |
 |---|---|
@@ -155,7 +195,33 @@ For the v1 scope (250 locations × 17,367 days × 3 variables):
 | days at `DAILY_CALL_BUDGET=8000` | **39** |
 | fraction of a **month's entire** free allowance | **1.03×** |
 
-**The backfill does not fit in the free tier's monthly cap. Not slowly, not cleverly — the total is location-days and location-days are fixed by the scope.** Chunking changes nothing. Three variables cost nothing (the surcharge starts past ten), so `pressure_msl_min` and `_max` are free and are pulled.
+**The backfill does not fit in the free tier's monthly cap. Not slowly, not cleverly — the total is location-days and location-days are fixed by the scope.** Chunking changes nothing. Six variables cost nothing (the surcharge starts past ten), so `pressure_msl_min` / `_max` and all three temperature fields are free and are pulled.
+
+### 5a. The variable list — six, and why the sixth is not deferred
+
+`DAILY_VARS` in `scripts/era5/backfill-era5-pressure.ts`, checkpointed as `VARS_VERSION = 2`:
+
+| # | variable | unit stored | why |
+|---|---|---|---|
+| 1 | `pressure_msl_mean` | hPa | the state number; `pressure_delta_24h` is derived from it |
+| 2 | `pressure_msl_min` | hPa | a *fall* is the v1 product metric, so the daily minimum matters |
+| 3 | `pressure_msl_max` | hPa | free, and the daily range is the front's signature |
+| 4 | `temperature_2m_max` | **°F** | **the load-bearing one** — the same quantity as the live `temp_high_f` and as GHCN `avg_high_f`. This is the pool half of the rarity map's rank. |
+| 5 | `temperature_2m_min` | °F | the daily low, free, and the other half of any diurnal statement |
+| 6 | `temperature_2m_mean` | °F | see below |
+
+Weighting factor: `max(1, 6/10) = 1.0`. **The budget did not move by one call.** The surcharge starts past *ten* variables; three and six weigh identically. Four more could be added before it triggers.
+
+**`temperature_2m_mean` is pulled rather than derived, deliberately.** It is not `(max+min)/2` — ERA5's daily mean is the integral of the 24 hourly values, and the midpoint approximation misses it by a structured amount, not a random one:
+
+| |(max+min)/2 − mean|, °F | median | p90 | max |
+|---|---|---|---|
+| MD 1979 | 0.79 | 1.99 | 3.85 |
+| AK 2025 | 0.53 | 1.10 | 1.97 |
+
+The asymmetry decides it: taking it now costs **zero** calls, and taking it later costs **~310,000** — the entire backfill re-run, five weeks of free-tier trickle or a paid month. A column that can only ever be acquired by redoing everything is not a column to defer.
+
+**Temperature is requested in Fahrenheit** (`temperature_unit=fahrenheit`), verified live to change only the temperature fields — `daily_units` still reports `pressure_msl_*` in hPa, and `--dry-run` prints that block as the receipt. Every other temperature in this archive is already °F (`temp_high_f`, `avg_high_f`), and the whole point of the widening is to remove a mismatch from a comparison; putting a unit conversion back into one side of it would be the same defect in a new coat. No range CHECK can catch a °C value in a °F column — 20 is plausible in both — so that failure mode is guarded by the column name, by the unit being explicit in the `source_url` every row carries, and by the dry-run receipt. Not by a constraint, and it would be dishonest to imply otherwise.
 
 Three ways out, none of which this script picks for you:
 
@@ -195,7 +261,10 @@ Read from committed migrations and function source on 2026-07-25. **Ruling 10.5 
 `--emit-cache` writes `scripts/frames/.frame-cache/series-era5-XX.json` in the envelope `backfill-frames.ts` writes and reads:
 
 ```json
-{ "endYear": 2026, "fields": { "pressure_msl_mean": { "1979-01-01": 1021.72, … }, "pressure_msl_min": {…}, "pressure_msl_max": {…}, "pressure_delta_24h": {…} } }
+{ "endYear": 2026, "fields": {
+  "pressure_msl_mean": { "1979-01-01": 1021.72, … }, "pressure_msl_min": {…}, "pressure_msl_max": {…}, "pressure_delta_24h": {…},
+  "temp_2m_max_f": { "1979-01-01": 57.84, … },       "temp_2m_min_f": {…},    "temp_2m_mean_f": {…},   "temp_delta_24h_f": {…}
+} }
 ```
 
 **The cache alone is inert.** For the board to carry these instruments, `scripts/frames/registry.ts` must gain 50 `era5-XX` instruments, and the APPEND-ONLY LAW (`registry.ts:96-102`) requires every one of them in `APPEND_ORDER`, after `needle-pna`, so no existing offset moves:
@@ -234,7 +303,17 @@ const APPEND_ORDER: string[] = ["needle-pna", ...Object.keys(STATE_CENTROIDS).ma
 | `source_event_id` | `era5-pressure:v{sampling_version}:{STATE}:{YYYY-MM-DD}` — unique-indexed |
 | `sampling_version` | `1` (part of the primary key) |
 | `scheme_hash` | `587429395` |
-| `n_points` | how many of the five reported |
+| `n_points` | how many of the five reported a daily **pressure** mean |
 | `spread_hpa` | max−min across the five points' daily means — the receipt for the word *statewide* |
+| `n_points_temp` | how many of the five reported a daily **high**. `NULL` = the row predates the temperature widening; `0` = the widened pipe ran and got nothing. Those are different facts and the column keeps them apart. |
+| `temp_spread_f` | max−min across the five points' daily highs — the same receipt, for a variable that needs it far more (§3a) |
 
-Measured on Maryland 1979: spread runs **median 1.1 hPa, p90 2.3, max 5.2**, with all five points reporting on 365/365 days. Five cells describing one weather system — which is the condition under which "statewide" is a fair word rather than an average of two different storms.
+Measured on Maryland 1979: pressure spread runs **median 1.1 hPa, p90 2.3, max 5.2**, with all five points reporting on 365/365 days. Five cells describing one weather system — which is the condition under which "statewide" is a fair word rather than an average of two different storms.
+
+Temperature spread on the same slice runs **median 4.5 °F, p90 9.2, max 15.0**; on AK 2025 it runs **median 31.9, p90 51.9, max 83.7**. That is expected, is not a defect, and is exactly why the column exists — see §3a for the argument and for the five rules that bind the temperature columns.
+
+### 8a. The table's name
+
+`era5_state_pressure` now carries temperature too, and the name is a misnomer. It was **not** renamed, deliberately. A rename would have to move through `scripts/backup/dump-tables.ts`, `scripts/backup/restore-drill.ts` (both its `LOAD_ORDER` and its DDL extractor, which scans migrations for `CREATE TABLE <name>` and cannot see an `ALTER … RENAME`), `docs/DISASTER-RECOVERY.md` in three places, both `scripts/era5/*` files, and **every dump already on disk under `~/dcd-backups`**, which is keyed by table name and would silently stop matching. The restore drill has exactly one successful run behind it. Trading a working restore path for a better name, while a write pipe is about to restart against the table, is not a good trade.
+
+The table `COMMENT` carries the honest description instead. If the name is wanted later, the cheap moment is a `sampling_version` bump — or a one-line `CREATE VIEW era5_state_daily AS SELECT * FROM era5_state_pressure`, which costs nothing and breaks nothing.
