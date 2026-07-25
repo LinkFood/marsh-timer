@@ -30,6 +30,7 @@
 import { DOY_HALF_WINDOW, doyOffset } from "./tailDepth.ts";
 import {
   DEFAULT_EPISODE_GAP_DAYS,
+  MAX_EDGE_TIE_FRACTION,
   MIN_DISTINCT_YEARS,
   MIN_MATCHES,
   decadeDistribution,
@@ -39,12 +40,13 @@ import {
   refusalReason,
   type DecadeBar,
   type DecadeDistribution,
+  type EdgeTies,
 } from "./episodes.ts";
 
 // Re-exported so a consumer needs ONE import for the whole engine and can never
 // reach for a second definition of the window, the gap, or the floors.
-export { DOY_HALF_WINDOW, DEFAULT_EPISODE_GAP_DAYS, MIN_MATCHES, MIN_DISTINCT_YEARS };
-export type { DecadeBar, DecadeDistribution };
+export { DOY_HALF_WINDOW, DEFAULT_EPISODE_GAP_DAYS, MIN_MATCHES, MIN_DISTINCT_YEARS, MAX_EDGE_TIE_FRACTION };
+export type { DecadeBar, DecadeDistribution, EdgeTies };
 
 /* ─────────────────────────── the column encoding ─────────────────────────── */
 
@@ -268,6 +270,10 @@ export interface BandCensus {
   lastOccurrence: string | null;
   /** The band's edge in physical units — "this deep", made concrete. */
   threshold: number | null;
+  /** How many days in the window share that edge value, and how many got in.
+   *  `ties === tiesInBand` is a clean cut; a mass that straddles it is the tie
+   *  floor's trigger and the reason a Louisiana snowfall card refuses itself. */
+  edge: EdgeTies;
   dist: DecadeDistribution;
   /** Non-null means we do not state a frequency. Floors are refusals, not targets. */
   refusal: string | null;
@@ -299,6 +305,19 @@ export function bandCensus(
   const starts = eps.map((e) => e.startDay);
   const years = [...new Set(starts.map((d) => +isoOfEpochDay(d).slice(0, 4)))].sort((a, b) => a - b);
 
+  // The band's edge: the warmest member of a cold tail, the coolest of a hot one.
+  const threshold = slice.length ? (side === "low" ? slice[slice.length - 1].v : slice[0].v) : null;
+  // …and how many days in the WHOLE window carry that same value. On a zero-inflated
+  // series (precipitation, snow) this is most of the window, and it is the only thing
+  // that tells the difference between a real 5% tail and a rank drawn through a pile
+  // of identical zeros.
+  let ties = 0, tiesInBand = 0;
+  if (threshold !== null) {
+    for (const m of pool) if (m.v === threshold) ties++;
+    for (const m of slice) if (m.v === threshold) tiesInBand++;
+  }
+  const edge: EdgeTies = { ties, tiesInBand, take: slice.length };
+
   return {
     side,
     band,
@@ -309,10 +328,10 @@ export function bandCensus(
     count: eps.length,
     years,
     lastOccurrence: eps.length ? isoOfEpochDay(starts[starts.length - 1]) : null,
-    // The band's edge: the warmest member of a cold tail, the coolest of a hot one.
-    threshold: slice.length ? (side === "low" ? slice[slice.length - 1].v : slice[0].v) : null,
+    threshold,
+    edge,
     dist: decadeDistribution(starts, poolYears),
-    refusal: refusalReason(eps.length, years.length),
+    refusal: refusalReason(eps.length, years.length, edge),
   };
 }
 
@@ -354,26 +373,250 @@ export function windowPhrase(targetMmdd: string, halfWindow: number = DOY_HALF_W
   };
 }
 
-/** "a daytime high of 58 °F or colder" — the band's edge in the reader's units. */
-export function thresholdPhrase(metric: string, side: TailSide, threshold: number | null): string {
-  if (threshold === null) return side === "low" ? "a reading this low" : "a reading this high";
-  const dir = side === "low" ? "or colder" : "or warmer";
+/* ─────────────────────── the metrics this card can count ─────────────────── */
+
+/**
+ * ONE DICTIONARY FOR ONE METRIC. The bake reads it to know which fields to warm
+ * and store, and the card reads it to know what to call them. Anything that
+ * differs per metric — the tail, the units, the superlative, the sentence — lives
+ * here and only here, because "78.9 °F or colder" does not translate to rain and a
+ * card that reached for a generic phrase would say something false in a voice that
+ * sounds careful.
+ *
+ * `side` IS A DECISION, not a default. A hunter asks the cold question of
+ * temperature and the wet question of rain; the interesting tail is not the same
+ * tail, and assuming one direction is how a "driest 1%" band gets shipped over a
+ * pile of identical zeros. Each entry says which tail it counts and why.
+ */
+export interface CardMetric {
+  metric: string;
+  /** The chip's label — what a hunter would call it. */
+  label: string;
+  /** One line under the chip: what the number physically is. */
+  note: string;
+  /** THE TAIL THIS CARD COUNTS. */
+  side: TailSide;
+  /** Why that tail, in the reader's terms. Rendered in the receipts. */
+  sideWhy: string;
+  unit: string;
+  decimals: number;
+  /**
+   * PHYSICALLY POSSIBLE RANGE, inclusive. Anything outside it is a sentinel, not a
+   * reading, and is dropped at bake time as "no reading" rather than stored.
+   *
+   * This is not a smoothing rule and it is not an outlier filter — the bounds are
+   * set outside the American record on purpose, so they can only ever catch a
+   * marker. Measured across all 50 states, 1950–2025, 9.7M readings, exactly 19
+   * values fall outside: CO's `min_temp_f` carries −474 °F on nine days (below
+   * absolute zero), CA's `max_precip_in` carries 88.12 in twice (the US 24-hour
+   * record is 43 in), MT carries −14.6 in of snowfall once and 9999/1000 in of
+   * snow depth six times, NE once.
+   *
+   * Nineteen values in 9.7M sounds ignorable. It is not, and this is the reason
+   * the filter is here rather than in a comment: the card counts the TAIL, and a
+   * sentinel is by construction the most extreme member of it. Unfiltered, every
+   * Colorado cold card within ten days of April 2 would have opened with "a
+   * reading of −474 °F or colder somewhere in Colorado."
+   */
+  plausible: [number, number];
+  /**
+   * True where most days in the record hold the series' floor value (0.00 in).
+   * The opposite tail of a zero-inflated series is not a tail at all — it is the
+   * mass — so the card never offers it, and the tie floor refuses it anyway if
+   * anyone ever wires it. Measured per metric, not assumed: see
+   * `scripts/frames/measure-zero-fraction.ts`.
+   */
+  zeroInflated: boolean;
+  superlative: { low: { sup: string; noun: string }; high: { sup: string; noun: string } };
+}
+
+/**
+ * The seven GHCN state-day fields the archive already carries, in card order.
+ * Six of these were sitting in `hunt_knowledge` unused while the card counted only
+ * the first — no new ingest, no new content type, no board layout change.
+ */
+export const CARD_METRICS: CardMetric[] = [
+  {
+    metric: "avg_high_f",
+    label: "daytime high",
+    note: "the state's stations, averaged, at the day's warmest",
+    side: "low", sideWhy: "the cold end — a hunter watches for the cold, not the heat",
+    unit: "°F", decimals: 1, plausible: [-100, 150], zeroInflated: false,
+    superlative: { low: { sup: "coldest", noun: "days" }, high: { sup: "warmest", noun: "days" } },
+  },
+  {
+    metric: "avg_low_f",
+    label: "overnight low",
+    note: "the state's stations, averaged, at the night's coldest",
+    side: "low", sideWhy: "the cold end — this is the freeze question",
+    unit: "°F", decimals: 1, plausible: [-100, 150], zeroInflated: false,
+    superlative: { low: { sup: "coldest", noun: "nights" }, high: { sup: "mildest", noun: "nights" } },
+  },
+  {
+    metric: "min_temp_f",
+    label: "coldest in the state",
+    note: "the single coldest station reading anywhere in the state that day",
+    side: "low", sideWhy: "the cold end — where the freeze arrives first",
+    unit: "°F", decimals: 0, plausible: [-100, 150], zeroInflated: false,
+    superlative: { low: { sup: "coldest", noun: "nights" }, high: { sup: "warmest", noun: "nights" } },
+  },
+  {
+    metric: "avg_precip_in",
+    label: "rain, statewide",
+    note: "the state's stations, averaged — a soaking everywhere beats a cell somewhere",
+    side: "high", sideWhy: "the wet end — the question is how often it has rained THIS much, not how often it was dry",
+    unit: "in", decimals: 2, plausible: [0, 30], zeroInflated: true,
+    superlative: { low: { sup: "driest", noun: "days" }, high: { sup: "wettest", noun: "days" } },
+  },
+  {
+    metric: "max_precip_in",
+    label: "rain, wettest station",
+    note: "the single wettest station anywhere in the state that day",
+    side: "high", sideWhy: "the wet end — this is the downpour, not the drizzle",
+    unit: "in", decimals: 2, plausible: [0, 45], zeroInflated: true,
+    superlative: { low: { sup: "driest", noun: "days" }, high: { sup: "wettest", noun: "days" } },
+  },
+  {
+    metric: "snowfall_in",
+    label: "snowfall",
+    note: "the state's stations, averaged — new snow that fell that day",
+    side: "high", sideWhy: "the snowy end — a dry day is the default here, not an event",
+    unit: "in", decimals: 1, plausible: [0, 80], zeroInflated: true,
+    superlative: { low: { sup: "least snowy", noun: "days" }, high: { sup: "snowiest", noun: "days" } },
+  },
+];
+
+/**
+ * `snow_depth_in` IS DELIBERATELY NOT HERE. It is the seventh `ghcn-daily` field
+ * and it was measured, wired far enough to render, and then cut. Four independent
+ * reasons, any one of which would have been enough:
+ *
+ *  1. IT CANNOT BE STORED EXACTLY. After the sentinels are dropped it still runs
+ *     to 455 in at two decimals. `pickScale` needs ×100 for that precision, and
+ *     455 × 100 = 45,500 overflows int16. The encoder throws rather than round, by
+ *     design, so the bake would fail — and rounding it would be quietly changing a
+ *     number to make a chart possible.
+ *  2. IT IS THE MOST SENTINEL-INFECTED FIELD. Montana carries 9999 in and six
+ *     days of 1000 in; Nebraska one more.
+ *  3. IT IS THE MOST ZERO-INFLATED after snowfall — 61.8% nationally, 99.8% in
+ *     Hawaii, 95%+ across the whole South.
+ *  4. AND EVEN WHERE IT IS REAL IT REFUSES. Lying snow is not an event, it is a
+ *     condition: it persists for weeks, so Ruling 2's episode merge collapses the
+ *     deepest 5% of North Dakota's mid-January days into 8 occasions across 6
+ *     years, which is under the 10-year floor at every band we offer.
+ *
+ * The fourth reason is the interesting one and it is not about data quality. A
+ * frequency card asks "how often has this happened," and a persistent state does
+ * not happen — it obtains. The card's grammar does not fit the variable.
+ */
+
+export const CARD_METRICS_ID = CARD_METRICS.map((m) => m.metric);
+
+export const CARD_METRIC_BY_ID: Record<string, CardMetric> = Object.fromEntries(
+  CARD_METRICS.map((m) => [m.metric, m]),
+);
+
+/**
+ * Drop the sentinels, and SAY HOW MANY. A dropped day becomes no-reading, exactly
+ * like a calendar gap — never zero, never interpolated, never carried forward.
+ *
+ * Returns the count so the bake can print it, because a filter that runs silently
+ * is a filter nobody can audit. If this number ever grows, the archive's faucet
+ * has a new defect and the bake log is where it surfaces.
+ */
+export function sanitizeSeries(
+  metric: string,
+  series: Map<string, number>,
+): { clean: Map<string, number>; dropped: { iso: string; v: number }[] } {
+  const cm = CARD_METRIC_BY_ID[metric];
+  if (!cm) return { clean: series, dropped: [] };
+  const [lo, hi] = cm.plausible;
+  const clean = new Map<string, number>();
+  const dropped: { iso: string; v: number }[] = [];
+  for (const [iso, v] of series) {
+    if (!Number.isFinite(v) || v < lo || v > hi) dropped.push({ iso, v });
+    else clean.set(iso, v);
+  }
+  return { clean, dropped };
+}
+
+/* ────────────────────────── phrasing (honesty-critical) ──────────────────── */
+
+/**
+ * THE SENTENCE'S SUBJECT, whole — "a daytime high of 58.2 °F or colder over
+ * Maryland", "2.20 in of rain or more somewhere in Maryland".
+ *
+ * The place belongs INSIDE this function, not glued on after it, because where the
+ * reading was taken is part of what the number means and it differs per metric.
+ * `avg_*` is an average ACROSS the state; `min_temp_f` and `max_precip_in` are the
+ * single most extreme station SOMEWHERE in it. Appending a fixed "over Maryland"
+ * to every metric produced "3.36 in of rain or more somewhere in the state over
+ * Maryland" — two prepositional phrases fighting, and the wrong one load-bearing.
+ *
+ * Every case is written out rather than assembled from parts. A rain sentence and a
+ * temperature sentence are different English, and a template that could produce
+ * "a daytime rain of 0.43 in or colder" is exactly what this table exists to stop.
+ */
+export function subjectPhrase(
+  metric: string,
+  side: TailSide,
+  threshold: number | null,
+  place: string,
+): string {
+  if (threshold === null) {
+    return side === "low" ? `a reading this low over ${place}` : `a reading this high over ${place}`;
+  }
+  const cm = CARD_METRIC_BY_ID[metric];
+  if (cm) {
+    const v = `${threshold.toFixed(cm.decimals)} ${cm.unit}`;
+    switch (metric) {
+      case "avg_high_f":
+        return `a daytime high of ${v} ${side === "low" ? "or colder" : "or warmer"} over ${place}`;
+      case "avg_low_f":
+        return `an overnight low of ${v} ${side === "low" ? "or colder" : "or warmer"} over ${place}`;
+      case "min_temp_f":
+        return side === "low"
+          ? `a reading of ${v} or colder somewhere in ${place}`
+          : `nothing in ${place} colder than ${v}`;
+      case "avg_precip_in":
+        return side === "high"
+          ? `${v} of rain or more, averaged across ${place}`
+          : `${v} of rain or less, averaged across ${place}`;
+      case "max_precip_in":
+        return side === "high"
+          ? `${v} of rain or more somewhere in ${place}`
+          : `nothing in ${place} above ${v} of rain`;
+      case "snowfall_in":
+        return side === "high"
+          ? `${v} of new snow or more, averaged across ${place}`
+          : `${v} of new snow or less, averaged across ${place}`;
+      case "snow_depth_in":
+        return side === "high"
+          ? `${v} of snow on the ground or more, averaged across ${place}`
+          : `${v} of snow on the ground or less, averaged across ${place}`;
+    }
+  }
   switch (metric) {
-    case "avg_high_f":
-      return `a daytime high of ${threshold.toFixed(1)} °F ${dir}`;
     case "pressure_mb":
     case "min_pressure_mb":
-      return `a surface pressure of ${threshold.toFixed(1)} mb ${side === "low" ? "or lower" : "or higher"}`;
+      return `a surface pressure of ${threshold.toFixed(1)} mb ${side === "low" ? "or lower" : "or higher"} over ${place}`;
     case "residual_max_ft":
     case "residual_min_ft":
-      return `a tide residual of ${threshold.toFixed(2)} ft ${side === "low" ? "or lower" : "or higher"}`;
+      return `a tide residual of ${threshold.toFixed(2)} ft ${side === "low" ? "or lower" : "or higher"} at ${place}`;
     default:
-      return `a reading of ${threshold} ${side === "low" ? "or lower" : "or higher"}`;
+      return `a reading of ${threshold} ${side === "low" ? "or lower" : "or higher"} at ${place}`;
   }
 }
 
-/** "the coldest 5% of days at this time of year" — what the band IS, in words. */
-export function bandPhrase(band: number, side: TailSide): string {
+/** "coldest 5%" / "wettest 5%" — the band's name, two words, for a chip. */
+export function bandLabel(metric: string, band: number, side: TailSide): string {
   const pct = band < 0.01 ? (band * 100).toFixed(1) : String(Math.round(band * 1000) / 10);
-  return `the ${side === "low" ? "coldest" : "warmest"} ${pct}% of days at this time of year`;
+  const sup = CARD_METRIC_BY_ID[metric]?.superlative[side].sup ?? (side === "low" ? "lowest" : "highest");
+  return `${sup} ${pct}%`;
+}
+
+/** "the coldest 5% of days at this time of year" — what the band IS, in words. */
+export function bandPhrase(metric: string, band: number, side: TailSide): string {
+  const noun = CARD_METRIC_BY_ID[metric]?.superlative[side].noun ?? "days";
+  return `the ${bandLabel(metric, band, side)} of ${noun} at this time of year`;
 }

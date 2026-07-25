@@ -6,8 +6,8 @@ import { US_STATES, isGroundState, useYourGround } from "@/hooks/useYourGround";
 import { stateFullName } from "@/lib/board/frameStore";
 import SeasonBlock from "@/components/season/SeasonBlock";
 import ComingLine from "@/components/season/ComingLine";
-import FrequencyCard from "@/components/season/FrequencyCard";
-import type { SeriesColumnRow } from "@/lib/board/frequency";
+import FrequencyCard, { type MetricAvailability } from "@/components/season/FrequencyCard";
+import { CARD_METRICS, type SeriesColumnRow } from "@/lib/board/frequency";
 import {
   COMING_WINDOW_DAYS,
   ComingModel,
@@ -77,6 +77,14 @@ export default function SeasonPage() {
   const [coming, setComing] = useState<Load<ComingModel>>({ s: "loading" });
   const [laneLastRun, setLaneLastRun] = useState<Load<string | null>>({ s: "loading" });
   const [column, setColumn] = useState<Load<SeriesColumnRow | null>>({ s: "loading" });
+  const [metricMenu, setMetricMenu] = useState<Load<MetricAvailability[]>>({ s: "loading" });
+
+  // Which question the card is answering. `?metric=` so a card is linkable, and
+  // the daytime high stays the default because it is the one that shipped.
+  const metricParam = params.get("metric");
+  const metric = CARD_METRICS.some((m) => m.metric === metricParam)
+    ? (metricParam as string)
+    : "avg_high_f";
 
   useEffect(() => {
     document.title = `The season — ${stateName} — Duck Countdown`;
@@ -211,13 +219,59 @@ export default function SeasonPage() {
     };
   }, [st]);
 
-  // ── READ 4 — this state's whole temperature column, one row (plan §3 option
-  // c). ~108 KB of hex for 76 years of daily readings; the counting then happens
-  // in the browser over the ~1,600 days inside the doy window. An explicit column
+  // ── READ 4 — WHICH QUESTIONS this state's record can answer. Deliberately
+  // WITHOUT `readings`: this is the menu, seven small rows, and it is the read
+  // that lets the card name a metric as "not held here" instead of showing a chip
+  // that leads nowhere. Pulling every blob to build a menu would be ~750 KB on a
+  // phone to render seven labels.
+  useEffect(() => {
+    if (!supabase) {
+      setMetricMenu({ s: "error" });
+      return;
+    }
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), READ_TIMEOUT_MS);
+    setMetricMenu({ s: "loading" });
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("board_series_columns")
+          .select("metric,n_present,first_year,last_year")
+          .eq("instrument_id", `ghcn-${st.toLowerCase()}`)
+          .abortSignal(ctrl.signal);
+        if (cancelled) return;
+        if (error || !data) {
+          setMetricMenu({ s: "error" });
+          return;
+        }
+        setMetricMenu({ s: "ok", v: data as MetricAvailability[] });
+      } catch {
+        if (!cancelled) setMetricMenu({ s: "error" });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [st]);
+
+  // ── READ 5 — the selected metric's whole column, one row (plan §3 option c).
+  // ~108 KB of hex for 76 years of daily readings; the counting then happens in
+  // the browser over the ~1,600 days inside the doy window. An explicit column
   // list, not `*`: `readings` is the largest thing this page ever pulls and the
   // select is where that stays visible.
   //
-  // `ok` with a null value is a real answer — the column is not baked for this
+  // Keyed on the metric as well as the state, so switching question re-reads ONE
+  // column rather than the page pre-loading all seven. Mobile-first means the
+  // hunter who only ever asks about the cold pays for the cold.
+  //
+  // `ok` with a null value is a real answer — this column is not baked for this
   // state — and it is NOT the same as an error. The card renders them apart.
   useEffect(() => {
     if (!supabase) {
@@ -237,7 +291,7 @@ export default function SeasonPage() {
             "instrument_id,metric,first_day,n_days,scale,readings,n_present,first_year,last_year,source",
           )
           .eq("instrument_id", `ghcn-${st.toLowerCase()}`)
-          .eq("metric", "avg_high_f")
+          .eq("metric", metric)
           .maybeSingle()
           .abortSignal(ctrl.signal);
         if (cancelled) return;
@@ -258,7 +312,7 @@ export default function SeasonPage() {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [st]);
+  }, [st, metric]);
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
@@ -280,7 +334,7 @@ export default function SeasonPage() {
           value={st}
           onChange={(e) => {
             setGround(e.target.value);
-            setParams({ state: e.target.value }, { replace: true });
+            setParams(withParam(params, "state", e.target.value), { replace: true });
           }}
           className="rounded border border-white/10 bg-gray-900 px-2 py-1.5 font-mono text-[12px] text-gray-200 outline-none focus:border-cyan-300/40"
         >
@@ -301,10 +355,29 @@ export default function SeasonPage() {
           load={coming}
           laneLastRun={laneLastRun}
         />
-        <FrequencyCard stateName={stateName} on={cardOn} load={column} />
+        <FrequencyCard
+          stateName={stateName}
+          on={cardOn}
+          menu={metricMenu}
+          metric={metric}
+          onMetric={(m) => setParams(withParam(params, "metric", m), { replace: true })}
+          load={column}
+        />
       </main>
 
       <InnerFooter current="season" />
     </div>
   );
+}
+
+/**
+ * Change one search param, keep the rest. The picker used to replace the whole
+ * query string, which silently dropped `?on=` — and would now also drop the
+ * metric, so a hunter switching state would land back on the temperature card
+ * having asked about rain.
+ */
+function withParam(params: URLSearchParams, key: string, value: string): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.set(key, value);
+  return next;
 }
