@@ -48,6 +48,15 @@ function degreesToCompass(deg: number): string {
   return 'NW';
 }
 
+// A missing reading is not a zero. Open-Meteo's 16-day forecast carries only 15
+// non-null days, so the trailing null used to coerce to 0 and fabricate a full
+// slate of events on every run — a 1021mb pressure "drop" to vacuum, a high
+// "falling" to 0F, a first freeze at 0F, all stamped severity high. Reading
+// absent means the day is not evaluated at all.
+function reading(v: number | null | undefined): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 function detectEvents(
   stateAbbr: string,
   daily: DailyForecast,
@@ -64,38 +73,42 @@ function detectEvents(
     const date = dates[i];
 
     // Cold front: temp drop >15F between consecutive days
-    const hi = highs[i] ?? 0;
-    const hiPrev = highs[i - 1] ?? 0;
-    const tempDrop = hiPrev - hi;
-    if (tempDrop > 15) {
-      events.push({
-        state_abbr: stateAbbr,
-        event_type: 'cold_front',
-        event_date: date,
-        details: `High drops ${Math.round(tempDrop)}F: ${Math.round(hiPrev)}F -> ${Math.round(hi)}F`,
-        severity: tempDrop > 25 ? 'high' : 'medium',
-        metadata: { temp_drop_f: Math.round(tempDrop), prev_high: Math.round(hiPrev), new_high: Math.round(hi) },
-      });
+    const hi = reading(highs[i]);
+    const hiPrev = reading(highs[i - 1]);
+    if (hi !== null && hiPrev !== null) {
+      const tempDrop = hiPrev - hi;
+      if (tempDrop > 15) {
+        events.push({
+          state_abbr: stateAbbr,
+          event_type: 'cold_front',
+          event_date: date,
+          details: `High drops ${Math.round(tempDrop)}F: ${Math.round(hiPrev)}F -> ${Math.round(hi)}F`,
+          severity: tempDrop > 25 ? 'high' : 'medium',
+          metadata: { temp_drop_f: Math.round(tempDrop), prev_high: Math.round(hiPrev), new_high: Math.round(hi) },
+        });
+      }
     }
 
     // Pressure drop: >3mb between consecutive days
-    const pCur = pressures[i] ?? 0;
-    const pPrev = pressures[i - 1] ?? 0;
-    const pressureDrop = pPrev - pCur;
-    if (pressureDrop > 3) {
-      events.push({
-        state_abbr: stateAbbr,
-        event_type: 'pressure_drop',
-        event_date: date,
-        details: `Pressure drops ${pressureDrop.toFixed(1)}mb: ${pPrev.toFixed(0)}mb -> ${pCur.toFixed(0)}mb`,
-        severity: pressureDrop > 6 ? 'high' : 'medium',
-        metadata: { pressure_drop_mb: Math.round(pressureDrop * 10) / 10, prev_pressure: Math.round(pPrev), new_pressure: Math.round(pCur) },
-      });
+    const pCur = reading(pressures[i]);
+    const pPrev = reading(pressures[i - 1]);
+    if (pCur !== null && pPrev !== null) {
+      const pressureDrop = pPrev - pCur;
+      if (pressureDrop > 3) {
+        events.push({
+          state_abbr: stateAbbr,
+          event_type: 'pressure_drop',
+          event_date: date,
+          details: `Pressure drops ${pressureDrop.toFixed(1)}mb: ${pPrev.toFixed(0)}mb -> ${pCur.toFixed(0)}mb`,
+          severity: pressureDrop > 6 ? 'high' : 'medium',
+          metadata: { pressure_drop_mb: Math.round(pressureDrop * 10) / 10, prev_pressure: Math.round(pPrev), new_pressure: Math.round(pCur) },
+        });
+      }
     }
 
     // High wind: >20mph any day
-    const wind = winds[i] ?? 0;
-    if (wind > 20) {
+    const wind = reading(winds[i]);
+    if (wind !== null && wind > 20) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'high_wind',
@@ -107,9 +120,9 @@ function detectEvents(
     }
 
     // First freeze: temp_low drops below 32F when previous day was above
-    const lo = lows[i] ?? 0;
-    const loPrev = lows[i - 1] ?? 0;
-    if (lo < 32 && loPrev >= 32) {
+    const lo = reading(lows[i]);
+    const loPrev = reading(lows[i - 1]);
+    if (lo !== null && loPrev !== null && lo < 32 && loPrev >= 32) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'first_freeze',
@@ -121,8 +134,8 @@ function detectEvents(
     }
 
     // Heavy precip: >10mm any day
-    const pp = precip[i] ?? 0;
-    if (pp > 10) {
+    const pp = reading(precip[i]);
+    if (pp !== null && pp > 10) {
       events.push({
         state_abbr: stateAbbr,
         event_type: 'heavy_precip',
