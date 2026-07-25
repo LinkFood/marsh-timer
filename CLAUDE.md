@@ -2,9 +2,15 @@
 
 > **This is the single source of truth.** If it's not in this document, it doesn't exist yet. Every session starts here.
 >
-> 🎯 **SPRINT ACTIVE: READ `docs/THE-WEEK.md` FIRST** — one-goal week ending in judgment 2026-07-12. It is the single source of truth until then; follow its pickup protocol.
+> 🎯 **CURRENT: READ `docs/PLAN-V1-2026-07-25.md` FIRST.** As of 2026-07-25 the project refocused on what the domain name always promised — **a hunter's tool**. Country → state → zone → your ground. Ship target is the first week of September 2026, the teal and resident-goose openers.
 >
-> ⭐ **Then `docs/THE-VISION-AND-ROADMAP.md`.** As of 2026-07-05 the project pivoted: the old convergence *predictor* is dead (proven, demolished) and the product is now a **living, honest map of the ground you stand on** — fact-only, denominator-always, no guessing. That doc holds the vision, architecture, build rungs, and where we stopped. The sections below are legacy reference (the archive, infra, gotchas still apply); the *product direction* lives in the vision doc.
+> **The product is three blocks on one page:** the season block and its countdown, an "is something coming" line off `hunt_weather_events`, and a **frequency card** — *"a pressure fall this size over Maryland in the second week of October has happened 34 times since 1979."* Count, recency, decade distribution. **No forward join, no outcome sentence, no prediction anywhere in v1** — gates 1 and 2 both died on prediction; counting has never failed. v1a is the page, v1b is the national map.
+>
+> **The rulings that bind implementation** live in `DCD-VISION-SPEC.md` + Amendments 1.1, 1.2 and 1.3, summarized in §10 of the plan. The load-bearing ones: match in percentile space and display in physical units; the doy half-window is one shared constant (±10); count episodes, not days; provisional season dates are a **displayed** field, not internal metadata; the map is drawn from live data at live resolution and the card from the archive at state level, **never blended**.
+>
+> ⭐ **`docs/RECON-COUNTRY-MAP.md` is the measured ground truth** of what this codebase actually is (12-agent read-only audit, 2026-07-24). Where a spec and the recon disagree, the recon wins.
+>
+> 📕 **Superseded, kept for history:** `docs/THE-WEEK.md` (sprint ended 2026-07-12; still the best narrative record of how the archive was built) and `docs/THE-VISION-AND-ROADMAP.md` (the almanac framing — its honesty doctrine still binds, its product direction does not). The gate-1 and gate-2 verdicts in those docs are real results: the lineup precedent carries no information, and the fusion metric was invalid. Do not re-run them.
 
 ---
 
