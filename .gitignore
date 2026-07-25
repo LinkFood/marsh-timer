@@ -49,6 +49,8 @@ scripts/.dedupe-v2-storms-checkpoint.json
 scripts/frames/.frame-cache/
 scripts/frames/.frame-checkpoint.json
 scripts/frames/.lut-checkpoint.json
+scripts/era5/.era5-checkpoint.json
+scripts/era5/.era5-embed-checkpoint.json
 scripts/board/.uri-cache/
 scripts/mine/out/
 scripts/mine/.retro-cache/
