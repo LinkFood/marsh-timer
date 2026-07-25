@@ -869,27 +869,43 @@ export default function TodayPage() {
           )}
         </div>
 
-        {/* THE RHYME — only when the archive holds one; never a placeholder */}
+        {/* THE RHYME — only when the archive holds one; never a placeholder.
+            Withheld under the same gate as the depth: a rhyme is a similarity
+            between two frame VECTORS, and today's vector carries the same
+            centroid-vs-station-network bytes the depth is withheld for. The
+            match is not merely described wrongly, it is COMPUTED from the
+            mismatch — so the sentence and the ranking go together. */}
         {selected && rhyme && (
           <div className="mx-auto mt-8 max-w-xl text-center">
             {/* Honest scope: the rhyme is the NATIONAL board's, not your ground's */}
             <p className="font-mono text-[10px] tracking-[0.2em] text-gray-600">THE NATIONAL BOARD</p>
-            <p className="mt-1 font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
-              {isNewest ? "Today reads" : "This day read"} most like{" "}
-              <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
-              same instruments, deep the same way.
-            </p>
-            <p className="mt-1 font-body text-[14px] leading-relaxed text-gray-400">
-              {rhyme.followed
-                ? followedLine(rhyme.followed)
-                : "A quiet week followed — that's on the record too."}
-            </p>
-            <Link
-              to={`/atlas?date=${rhyme.rhyme_day}`}
-              className="mt-1.5 inline-block font-mono text-[11px] tracking-wide text-cyan-300/80 transition-colors hover:text-cyan-200"
-            >
-              read that day &rarr;
-            </Link>
+            {TAIL_DEPTH_IS_COMPARABLE ? (
+              <>
+                <p className="mt-1 font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
+                  {isNewest ? "Today reads" : "This day read"} most like{" "}
+                  <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
+                  same instruments, deep the same way.
+                </p>
+                <p className="mt-1 font-body text-[14px] leading-relaxed text-gray-400">
+                  {rhyme.followed
+                    ? followedLine(rhyme.followed)
+                    : "A quiet week followed — that's on the record too."}
+                </p>
+                <Link
+                  to={`/atlas?date=${rhyme.rhyme_day}`}
+                  className="mt-1.5 inline-block font-mono text-[11px] tracking-wide text-cyan-300/80 transition-colors hover:text-cyan-200"
+                >
+                  read that day &rarr;
+                </Link>
+              </>
+            ) : (
+              <p className="mt-1 font-body text-[15px] leading-relaxed text-gray-400 sm:text-base">
+                Which day this one reads like is withheld for the same reason the shading is. A rhyme
+                is a similarity between two days&rsquo; instruments, and today&rsquo;s thermometers are
+                not measured the way the record&rsquo;s were — so the match would be between a day and a
+                yardstick, not between two days. It returns with the depth.
+              </p>
+            )}
           </div>
         )}
       </section>
