@@ -134,6 +134,26 @@ under foreign keys**.
 2. **Offset pagination requires a total order.** Every table declares a key that is unique
    across the table, and the dump orders by it. Without that, Postgres may legally return
    the same row on two pages and no row on a third — and the count check would still pass.
+3. **`ALTER TABLE … ADD COLUMN` in a later migration** (fixed 2026-07-24). The drill builds
+   its target schema by scanning `supabase/migrations/` for `CREATE TABLE <name>`, and it
+   *returned at the first match*. Any table widened after its birth migration was therefore
+   rebuilt at its **original** width — and because the INSERT's column list comes from the
+   same parse, the dumped values for the newer columns were **silently dropped**. Row counts
+   matched. Contiguity matched. The data was gone. This is the identical failure mode as the
+   corrupt-`board_frames` finding above, one layer up.
+
+   **It was already live, on three tables, before ERA5 temperature existed:**
+
+   | table | columns the drill was silently discarding |
+   |---|---|
+   | `board_pool_luts` | `days`, `years_list`, `episodes`, `last_occurrence`, `episode_gap_days` — the frequency dictionary, i.e. everything the frequency card counts |
+   | `hunt_seasons` | `status`, `provisional`, `provisional_note`, `fetched_at`, `confidence`, `recheck_after`, `source_records`, `superseded_at` — the entire opener-capture layer |
+   | `planting_climatology` | `receipts` |
+
+   `restore-drill.ts` now also collects `ADD COLUMN` clauses from every later migration and
+   applies them after `CREATE TABLE`, and prints which tables were widened. **A `DROP COLUMN`
+   or `ALTER … TYPE` would still be invisible** — neither has been used on a backed-up table,
+   and the per-row digest comparison is the check that would catch it.
 
 ### One honest limitation
 

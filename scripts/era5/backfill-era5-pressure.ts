@@ -1,6 +1,6 @@
 /**
- * backfill-era5-pressure.ts — TRACK A: the per-state daily surface-pressure
- * series, 1979-forward, from ERA5 via Open-Meteo's archive API.
+ * backfill-era5-pressure.ts — TRACK A: the per-state daily surface series
+ * (pressure AND temperature), 1979-forward, from ERA5 via Open-Meteo's archive.
  *
  * WHY THIS EXISTS (Amendment 1.3 Ruling 3). The v1 card counts pressure falls.
  * No such series exists in the archive: `ghcn-daily` carries no pressure field at
@@ -10,6 +10,33 @@
  * defect underneath the temperature analysis and no downstream statistics fix
  * it; changing the source removes it at the root.
  *
+ * ── WHY TEMPERATURE IS HERE TOO (widened 2026-07-24) ─────────────────────────
+ * The rarity map on `/` shades every state by how unusual today is against that
+ * state's own record. It was ranking two different KINDS of measurement against
+ * each other and calling the result a percentile:
+ *
+ *   • the live day-0 value is `hunt_weather_history.temp_high_f`, ONE Open-Meteo
+ *     grid point at the state's geographic centroid (_shared/states.ts);
+ *   • the 72-year pool is GHCN `avg_high_f`, a multi-station statewide MEAN —
+ *     362 stations in AK, 146 in NY, 424 in TX.
+ *
+ * A point has far more variance than an areal mean, so it saturates the pool's
+ * tails BY CONSTRUCTION. Measured 2026-07-23: AK centroid 48.4 °F against a pool
+ * of statewide means running 55.2–77.1, i.e. off the bottom of a 72-year record
+ * on an ordinary July day. 26 of the last 30 days had at least one state pinned
+ * at depth exactly 1.0000. The map was reporting "Alaska at the cold edge of its
+ * record" when it had detected that a centroid is not a state.
+ *
+ * A rank means something only when the live value and the pool are the same kind
+ * of measurement. So this script now also lays down a 1979+ per-state daily
+ * temperature series built by the SAME frozen 5-point construction a live
+ * reading can use — the same arithmetic on both sides of the comparison. It does
+ * NOT change what the map reads; it makes the honest comparison possible.
+ *
+ * It costs nothing. Open-Meteo's weight is locations × (days/14) × max(1,
+ * vars/10) — see weightedCalls(). Three variables and six variables both weigh
+ * 1.0. The call budget below did not move by one call.
+ *
  * SCOPE — binding, do not widen without a ruling:
  *   • 1979-forward ONLY. ERA5's 1940-1978 back-extension is materially less
  *     observation-constrained and is explicitly out of v1 (Ruling 3). The script
@@ -18,9 +45,16 @@
  *   • 5 sample points per state, averaged, from the frozen scheme in
  *     ./sampling.ts (Ruling 3a). A centroid would claim one grid point as a
  *     state; this does not.
- *   • Daily pressure_msl_mean / _min / _max. All three verified live against the
- *     archive API. Costs nothing extra: Open-Meteo's weighting only surcharges
- *     past TEN variables, and a *fall* is the product metric, so the min matters.
+ *   • Daily pressure_msl_mean / _min / _max, and temperature_2m_max / _min /
+ *     _mean. All six verified live against the archive API back to 1979-01-01.
+ *     Six is under the TEN-variable surcharge line, so the extra three are free,
+ *     and a *fall* is the product metric so the pressure min matters.
+ *   • Temperature is requested in FAHRENHEIT (`temperature_unit=fahrenheit`).
+ *     Verified live that this changes only the temperature units — pressure
+ *     still comes back in hPa. Every other temperature in this archive is
+ *     already °F (`temp_high_f`, `avg_high_f`), and the entire point of the
+ *     widening is to remove a mismatch from a comparison; adding a unit
+ *     conversion to one side of it would be the same bug in a new coat.
  *
  * ── THE CALL BUDGET, WHICH IS THE WHOLE PROBLEM ──────────────────────────────
  * Open-Meteo counts a call as (locations) × (days / 14) × (variables / 10, min 1).
@@ -91,7 +125,50 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "https://rvhyotvklfowklzjahdd.s
 
 /** Ruling 3. Not a default — a floor. */
 const ERA5_V1_FLOOR_YEAR = 1979;
-const DAILY_VARS = ["pressure_msl_mean", "pressure_msl_min", "pressure_msl_max"] as const;
+
+/**
+ * The variable set. SIX, which is under Open-Meteo's ten-variable surcharge line,
+ * so this costs exactly what three cost. Order is cosmetic; membership is not.
+ *
+ * Why `temperature_2m_mean` is here and not deferred. It is not (max+min)/2 —
+ * ERA5's daily mean is the integral of the 24 hourly values, and the difference
+ * from the midpoint is 0.5–2 °F and is itself climatologically structured
+ * (it tracks how long a day spends near its extremes). It cannot be
+ * reconstructed from the other two later. "We can add it in a second pass" is
+ * false here: a second pass is another ~310,000 weighted calls, five weeks of
+ * free-tier trickle or a paid month. The cost of taking it now is zero and the
+ * cost of taking it later is the whole backfill again. That asymmetry decides it.
+ */
+const DAILY_VARS = [
+  "pressure_msl_mean", "pressure_msl_min", "pressure_msl_max",
+  "temperature_2m_max", "temperature_2m_min", "temperature_2m_mean",
+] as const;
+
+/** The three pressure fields, split out so the averaging path can name its own. */
+const PRESSURE_VARS = ["pressure_msl_mean", "pressure_msl_min", "pressure_msl_max"] as const;
+const TEMP_VARS = ["temperature_2m_max", "temperature_2m_min", "temperature_2m_mean"] as const;
+
+/**
+ * VARS_VERSION — the checkpoint invalidator, same idea as bake-luts.ts's
+ * DICT_VERSION and for the same reason.
+ *
+ *   v1 = pressure only (the original three)
+ *   v2 = + temperature_2m_max / _min / _mean, in °F
+ *
+ * A "done" mark written under an older VARS_VERSION is a LIE: that state-year's
+ * rows exist but their temperature columns are NULL, and nothing in the data
+ * says so. A half-populated archive that is silently trusted is the exact defect
+ * class this project keeps getting bitten by, so the run resets the job list
+ * loudly rather than resuming over the top of it. The daily spend ledger is NOT
+ * reset — the budget is a real-world fact about Open-Meteo's quota and does not
+ * care why we are re-fetching.
+ *
+ * This is deliberately NOT the frozen-scheme guard. That one EXITS, because
+ * moved sample points make old and new rows incomparable and unfixable. This one
+ * RESETS, because the points did not move: the same days simply need re-fetching
+ * with a wider `daily=` list, and the upsert merges them in place.
+ */
+const VARS_VERSION = 2;
 const OM_HOST = process.env.OM_HOST || (process.env.OM_API_KEY ? "customer-api.open-meteo.com" : "archive-api.open-meteo.com");
 const OM_KEY = process.env.OM_API_KEY || null;
 const DAILY_CALL_BUDGET = process.env.DAILY_CALL_BUDGET ? Number(process.env.DAILY_CALL_BUDGET) : 8000;
@@ -149,6 +226,8 @@ async function fetchWithRetry(url: string, init: RequestInit, label: string, att
 type Checkpoint = {
   samplingVersion: number;
   schemeHash: number;
+  /** Which variable set the "done" marks below were written under. See VARS_VERSION. */
+  varsVersion: number;
   /** "MD:1979" → true. The unit of work is one state-year. */
   done: Record<string, true>;
   /** "2026-07-25" → weighted calls spent that UTC day. */
@@ -156,12 +235,14 @@ type Checkpoint = {
   rowsWritten: number;
 };
 function emptyCheckpoint(): Checkpoint {
-  return { samplingVersion: SAMPLING_VERSION, schemeHash: schemeHash(), done: {}, spend: {}, rowsWritten: 0 };
+  return { samplingVersion: SAMPLING_VERSION, schemeHash: schemeHash(), varsVersion: VARS_VERSION, done: {}, spend: {}, rowsWritten: 0 };
 }
 function loadCheckpoint(): Checkpoint {
   if (existsSync(CHECKPOINT_FILE)) {
     try {
-      const cp = JSON.parse(readFileSync(CHECKPOINT_FILE, "utf-8")) as Checkpoint;
+      // varsVersion defaults to 1 (not 0): every checkpoint that predates the
+      // field was written by the pressure-only script, which IS v1.
+      const cp = { varsVersion: 1, ...JSON.parse(readFileSync(CHECKPOINT_FILE, "utf-8")) } as Checkpoint;
       // THE FROZEN-SCHEME GUARD. If the points moved, every number computed after
       // this moment is incomparable to every number computed before it, and
       // nothing in the data would say so. Hard stop.
@@ -184,6 +265,46 @@ function loadCheckpoint(): Checkpoint {
   return emptyCheckpoint();
 }
 function saveCheckpoint(cp: Checkpoint) { writeFileSync(CHECKPOINT_FILE, JSON.stringify(cp, null, 2) + "\n"); }
+
+/**
+ * THE VARIABLE-SET GUARD. Called once at the top of the run, before any fetch.
+ *
+ * If the checkpoint's marks were written under a narrower `daily=` list, those
+ * state-years are on disk with NULL temperature columns. Leaving them marked
+ * done would leave the archive permanently, invisibly half-populated — a series
+ * that answers "how unusual is today" for 49 states and silently returns nothing
+ * for the 1 that ran early. So: reset the job list, say so loudly, and persist
+ * the reset immediately so a crash cannot resurrect the stale marks.
+ *
+ * Deliberately preserved across the reset:
+ *   • `spend` — the per-UTC-day budget ledger. Open-Meteo's quota does not
+ *     forgive us for changing our minds.
+ *   • `samplingVersion` / `schemeHash` — the points did not move, and the
+ *     frozen-scheme guard above has already checked that they did not.
+ * Reset alongside `done`: `rowsWritten`, which is a tally of this backfill's
+ * writes and would otherwise double-count every re-fetched row.
+ */
+function invalidateIfVarsChanged(cp: Checkpoint): Checkpoint {
+  if (cp.varsVersion === VARS_VERSION) return cp;
+  const stale = Object.keys(cp.done).length;
+  const total = ERA5_STATES.length * (YEAR_TO - YEAR_FROM + 1);
+  console.log("");
+  console.log(`  ↻ VARIABLE SET WIDENED — checkpoint varsVersion ${cp.varsVersion} ≠ current ${VARS_VERSION}.`);
+  console.log(`    Those ${stale} state-year(s) were fetched with daily=${PRESSURE_VARS.join(",")}`);
+  console.log(`    and are on disk with NULL temperature columns. A "done" mark for them is a lie.`);
+  console.log(`    Resetting the job list: ${stale} unit(s) → 0 of ${total}. They will be re-fetched`);
+  console.log(`    with all ${DAILY_VARS.length} variables and upserted in place (PK state_abbr,day,sampling_version),`);
+  console.log(`    so no row is duplicated and none is orphaned — the temperature columns fill in.`);
+  console.log(`    Re-fetch cost: ${Math.round(weightedCalls(POINTS_PER_STATE, stale * 365, DAILY_VARS.length)).toLocaleString()} weighted calls (${(stale / total * 100).toFixed(1)}% of the backfill).`);
+  console.log(`    KEPT: the daily spend ledger (${Object.keys(cp.spend).length} day(s)) — the quota is a fact about the API, not about us.`);
+  console.log(`    KEPT: sampling v${cp.samplingVersion} / scheme_hash ${cp.schemeHash} — the points did not move.`);
+  console.log("");
+  cp.done = {};
+  cp.rowsWritten = 0;
+  cp.varsVersion = VARS_VERSION;
+  saveCheckpoint(cp);
+  return cp;
+}
 
 const utcDay = () => new Date().toISOString().slice(0, 10);
 
@@ -225,6 +346,12 @@ function buildUrl(points: SamplePoint[], startDate: string, endDate: string): st
     start_date: startDate, end_date: endDate,
     daily: DAILY_VARS.join(","),
     timezone: "UTC",
+    // Verified live: this sets ONLY the temperature units. `daily_units` still
+    // reports pressure_msl_* in hPa. Every other temperature in this archive is
+    // already °F, and the comparison this series exists to make is a comparison
+    // of temperatures — putting a unit conversion in the middle of it would
+    // re-introduce the class of defect the widening is fixing.
+    temperature_unit: "fahrenheit",
   });
   if (OM_KEY) p.set("apikey", OM_KEY);
   return `https://${OM_HOST}/v1/archive?${p.toString()}`;
@@ -265,22 +392,54 @@ function parseLocations(json: any, points: SamplePoint[], label: string): PointS
 
 type StateDay = {
   day: string;
+  /** hPa — the mean across points of each point's daily mean / min / max. */
   mean: number | null;
   min: number | null;
   max: number | null;
   nPoints: number;
   spread: number | null;
+  /** °F — same construction, applied to 2 m temperature. */
+  tMax: number | null;
+  tMin: number | null;
+  tMean: number | null;
+  tPoints: number;
+  tSpread: number | null;
 };
+
+/** Finite values of one variable across the points on day `i`. Nulls do not vote. */
+function pointValues(series: PointSeries[], v: string, i: number): number[] {
+  const out: number[] = [];
+  for (const s of series) {
+    const x = s.vals[v][i];
+    if (x !== null && Number.isFinite(x)) out.push(x);
+  }
+  return out;
+}
+const meanOf = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const spreadOf = (xs: number[]) => (xs.length > 1 ? r2(Math.max(...xs) - Math.min(...xs)) : null);
 
 /**
  * The 5-point average. Ruling 3a: a state number is the mean of its five points,
- * not a reading at one of them.
+ * not a reading at one of them. Both blocks below are the SAME arithmetic — that
+ * sameness is the whole product claim, because a live 5-point reading can only be
+ * ranked against this pool if it was built the same way.
  *
- * `spread` is the max-minus-min of the five points' daily means — the receipt for
- * the words "Maryland statewide" on the card. A 2 hPa spread across Maryland on a
- * frontal day is the field genuinely tilting; a 12 hPa spread would mean the
+ * `spread` is the max-minus-min across the five points on that day — the receipt
+ * for the words "Maryland statewide". A 2 hPa pressure spread across Maryland on
+ * a frontal day is the field genuinely tilting; a 12 hPa spread would mean the
  * average is describing two different weather systems and the label is lying.
- * Stored so that claim can be audited later instead of assumed now.
+ *
+ * The temperature spread is the same receipt for a variable that needs it far
+ * more. MSL pressure is a smooth synoptic field with no coastline or elevation
+ * discontinuity; 2 m temperature has both. Alaska's five points span 11° of
+ * latitude and one of them sits at 906 m on Unimak Island — measured 33.9 °F of
+ * spread on 2026-07-18. That number is not a defect to hide, it is the honest
+ * width of the thing the word "statewide" is averaging over, and it is stored so
+ * a reader can see it rather than infer it. See docs/ERA5-SAMPLING-SCHEME.md §3
+ * for why a wide spread does not invalidate the RANK this series exists to serve.
+ *
+ * Pressure and temperature carry SEPARATE point counts. A point that reports one
+ * and not the other must not be able to inflate the other's denominator.
  */
 function averagePoints(series: PointSeries[], label: string): StateDay[] {
   const time = series[0].time;
@@ -290,25 +449,43 @@ function averagePoints(series: PointSeries[], label: string): StateDay[] {
     }
   }
   return time.map((day, i) => {
-    const means: number[] = [], mins: number[] = [], maxs: number[] = [];
+    // ── pressure (hPa) ──
+    // A point with no daily mean does not vote at all — its min/max are dropped
+    // too, so all three columns describe the same set of points.
+    const pMeans: number[] = [], pMins: number[] = [], pMaxs: number[] = [];
     for (const s of series) {
       const m = s.vals.pressure_msl_mean[i];
-      if (m === null || !Number.isFinite(m)) continue; // a point with no mean does not vote
-      means.push(m);
+      if (m === null || !Number.isFinite(m)) continue;
+      pMeans.push(m);
       const lo = s.vals.pressure_msl_min[i];
       const hi = s.vals.pressure_msl_max[i];
-      if (lo !== null && Number.isFinite(lo)) mins.push(lo);
-      if (hi !== null && Number.isFinite(hi)) maxs.push(hi);
+      if (lo !== null && Number.isFinite(lo)) pMins.push(lo);
+      if (hi !== null && Number.isFinite(hi)) pMaxs.push(hi);
     }
-    const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
-    const mean = avg(means);
+    const pMean = meanOf(pMeans);
+
+    // ── temperature (°F) ──
+    // The daily HIGH is the primary metric: it is what the map's live day-0
+    // reading is (`temp_high_f`) and what the GHCN pool it is ranked against is
+    // (`avg_high_f`). So temperature's point count and spread are both measured
+    // on the maxima, exactly as pressure's are measured on its means.
+    const tMaxs = pointValues(series, "temperature_2m_max", i);
+    const tMins = pointValues(series, "temperature_2m_min", i);
+    const tMeans = pointValues(series, "temperature_2m_mean", i);
+    const tMax = meanOf(tMaxs);
+
     return {
       day,
-      mean: mean === null ? null : r2(mean),
-      min: mins.length ? r2(avg(mins)!) : null,
-      max: maxs.length ? r2(avg(maxs)!) : null,
-      nPoints: means.length,
-      spread: means.length > 1 ? r2(Math.max(...means) - Math.min(...means)) : null,
+      mean: pMean === null ? null : r2(pMean),
+      min: pMins.length ? r2(meanOf(pMins)!) : null,
+      max: pMaxs.length ? r2(meanOf(pMaxs)!) : null,
+      nPoints: pMeans.length,
+      spread: spreadOf(pMeans),
+      tMax: tMax === null ? null : r2(tMax),
+      tMin: tMins.length ? r2(meanOf(tMins)!) : null,
+      tMean: tMeans.length ? r2(meanOf(tMeans)!) : null,
+      tPoints: tMaxs.length,
+      tSpread: spreadOf(tMaxs),
     };
   });
 }
@@ -316,10 +493,17 @@ function averagePoints(series: PointSeries[], label: string): StateDay[] {
 // ─── Row builder ─────────────────────────────────────────────────────────────
 
 /**
- * Rows for one state-year. `lead` is the day BEFORE Jan 1, fetched so that
- * pressure_delta_24h is exact at the year boundary instead of null every
- * January 1 — 48 extra location-days across the whole backfill, 0.06% of the
- * budget, and it removes a systematic hole from the metric the card counts.
+ * Rows for one state-year. `lead` is the day BEFORE Jan 1, fetched so that both
+ * 24h deltas are exact at the year boundary instead of null every January 1 —
+ * 48 extra location-days across the whole backfill, 0.06% of the budget, and it
+ * removes a systematic hole from the metric the card counts.
+ *
+ * The row-existence gate is still the PRESSURE mean, unchanged. ERA5 defines
+ * both fields everywhere, every hour, so "pressure present but temperature
+ * absent" does not occur in practice; keeping the gate where it was means the
+ * widening cannot change which DAYS exist, only which COLUMNS are populated on
+ * them. If temperature is ever missing on a day that has pressure, the row is
+ * written with NULL temperature and `n_points_temp = 0` — visible, not invented.
  */
 function buildRows(state: string, days: StateDay[], yearStart: string, url: string, hash: number) {
   const rows: Record<string, unknown>[] = [];
@@ -327,8 +511,10 @@ function buildRows(state: string, days: StateDay[], yearStart: string, url: stri
     const d = days[i];
     if (d.day < yearStart) continue; // the lead day is context, not a row
     if (d.mean === null) continue;   // no point reported: write nothing, do not fabricate
-    const prev = i > 0 ? days[i - 1] : null;
-    const delta = prev && prev.mean !== null && prev.day === isoMinus1(d.day) ? r2(d.mean - prev.mean) : null;
+    const prev = i > 0 && days[i - 1].day === isoMinus1(d.day) ? days[i - 1] : null;
+    const delta = prev && prev.mean !== null ? r2(d.mean - prev.mean) : null;
+    // Same construction as the pressure delta, on the metric the rarity map ranks.
+    const tDelta = prev && prev.tMax !== null && d.tMax !== null ? r2(d.tMax - prev.tMax) : null;
     rows.push({
       state_abbr: state,
       day: d.day,
@@ -338,9 +524,15 @@ function buildRows(state: string, days: StateDay[], yearStart: string, url: stri
       pressure_delta_24h: delta,
       n_points: d.nPoints,
       spread_hpa: d.spread,
+      temp_2m_max_f: d.tMax,
+      temp_2m_min_f: d.tMin,
+      temp_2m_mean_f: d.tMean,
+      temp_delta_24h_f: tDelta,
+      n_points_temp: d.tPoints,
+      temp_spread_f: d.tSpread,
       sampling_version: SAMPLING_VERSION,
       scheme_hash: hash,
-      source: "ERA5 (0.25°) via Open-Meteo archive-api, 5-point state mean",
+      source: "ERA5 (0.25°) via Open-Meteo archive-api, 5-point state mean (MSL pressure hPa, 2 m temperature °F)",
       source_url: url,
       source_event_id: `era5-pressure:v${SAMPLING_VERSION}:${state}:${d.day}`,
     });
@@ -395,10 +587,11 @@ function plan() {
   const locDays = totalDays * POINTS_PER_STATE;
   const calls = weightedCalls(POINTS_PER_STATE, totalDays, DAILY_VARS.length);
 
-  console.log(`=== ERA5 PRESSURE BACKFILL — PLAN (offline, no network, no DB) ===`);
-  console.log(`  sampling v${SAMPLING_VERSION}, scheme_hash ${schemeHash()}, ${POINTS_PER_STATE} points/state`);
+  console.log(`=== ERA5 STATE BACKFILL — PLAN (offline, no network, no DB) ===`);
+  console.log(`  sampling v${SAMPLING_VERSION}, scheme_hash ${schemeHash()}, ${POINTS_PER_STATE} points/state, vars v${VARS_VERSION}`);
   console.log(`  states ${states.length} | window ${from} … ${to} | units (state-year) ${units}`);
-  console.log(`  variables: ${DAILY_VARS.join(", ")} (${DAILY_VARS.length} ≤ 10 → no variable surcharge)`);
+  console.log(`  variables (${DAILY_VARS.length}): ${DAILY_VARS.join(", ")}`);
+  console.log(`  surcharge factor max(1, ${DAILY_VARS.length}/10) = ${Math.max(1, DAILY_VARS.length / 10).toFixed(1)} → the ${TEMP_VARS.length} temperature vars cost ZERO`);
   console.log(`  archive rows: ${totalDays.toLocaleString()}`);
   console.log(`  location-days: ${locDays.toLocaleString()}`);
   console.log(`\n  --- Open-Meteo weighted calls (locations × days/14) ---`);
@@ -428,7 +621,7 @@ async function dryRun() {
   const url = buildUrl(points, lead, `${year}-12-31`);
 
   console.log(`=== DRY RUN — ${state} ${year} — NO DATABASE WRITES, NO DATABASE READS ===`);
-  console.log(`  sampling v${SAMPLING_VERSION}  scheme_hash ${hash}`);
+  console.log(`  sampling v${SAMPLING_VERSION}  scheme_hash ${hash}  vars v${VARS_VERSION} (${DAILY_VARS.length}: ${DAILY_VARS.join(", ")})`);
   console.log(`  points:`);
   for (const p of points) console.log(`    ${p.idx} ${p.role.padEnd(3)} ${String(p.lon).padStart(10)},${String(p.lat).padStart(8)}  ${p.resolution}${p.repair_rings ? ` (ring ${p.repair_rings})` : ""}`);
   console.log(`  weighted calls for this slice: ${r1(weightedCalls(POINTS_PER_STATE, 366, DAILY_VARS.length))}`);
@@ -441,6 +634,9 @@ async function dryRun() {
 
   const series = parseLocations(json, points, `${state}/${year}`);
   console.log(`\n  ✓ ${series.length} locations parsed in ${ms} ms`);
+  const loc0 = (Array.isArray(json) ? json : [json])[0];
+  console.log(`  daily_units as returned: ${JSON.stringify(loc0.daily_units)}`);
+  console.log(`  ← the unit receipt: temperature_unit=fahrenheit changed ONLY the temperature fields.`);
   for (let i = 0; i < series.length; i++) {
     const loc = (Array.isArray(json) ? json : [json])[i];
     console.log(`    ${points[i].role.padEnd(3)} requested ${points[i].lat},${points[i].lon} → snapped ${loc.latitude},${loc.longitude} elev ${loc.elevation} m, ${series[i].time.length} days`);
@@ -483,6 +679,41 @@ async function dryRun() {
   spreads.sort((a, b) => a - b);
   console.log(`  median ${spreads[spreads.length >> 1]}  p90 ${spreads[Math.floor(spreads.length * 0.9)]}  max ${spreads[spreads.length - 1]}`);
   console.log(`  n_points = 5 on ${rows.filter((r) => r.n_points === 5).length}/${rows.length} days`);
+
+  // ── TEMPERATURE — the whole reason for the widening ────────────────────────
+  console.log(`\n  --- per-point DAILY HIGH vs the state average, °F (first 5 days of ${year}) ---`);
+  console.log(`  day         ${points.map((p) => p.role.padStart(8)).join("")}   →   high     low    mean  spread  n`);
+  for (let j = idxOfJan1; j < idxOfJan1 + 5 && j < days.length; j++) {
+    const per = series.map((s) => String(s.vals.temperature_2m_max[j] ?? "—").padStart(8)).join("");
+    const d = days[j];
+    console.log(`  ${d.day}${per}   →  ${String(d.tMax).padStart(6)} ${String(d.tMin).padStart(7)} ${String(d.tMean).padStart(7)} ${String(d.tSpread).padStart(6)}  ${d.tPoints}`);
+  }
+
+  const rawT = series.map((s) => s.vals.temperature_2m_max[k]!).filter((v) => Number.isFinite(v));
+  const handT = rawT.reduce((a, b) => a + b, 0) / rawT.length;
+  const okT = Math.abs(handT - days[k].tMax!) < 0.005;
+  console.log(`\n  temperature averaging check ${days[k].day}: hand mean of highs [${rawT.join(", ")}] = ${handT.toFixed(4)} vs stored ${days[k].tMax} → ${okT ? "✓ MATCH" : "✗ MISMATCH"}`);
+
+  // temperature_2m_mean is NOT (max+min)/2 — this is the receipt for pulling it
+  // as its own variable rather than deriving it and calling that the same thing.
+  const midpoints = rows
+    .filter((r) => r.temp_2m_max_f !== null && r.temp_2m_min_f !== null && r.temp_2m_mean_f !== null)
+    .map((r) => Math.abs(((r.temp_2m_max_f as number) + (r.temp_2m_min_f as number)) / 2 - (r.temp_2m_mean_f as number)));
+  midpoints.sort((a, b) => a - b);
+  console.log(`\n  --- why temperature_2m_mean is its own variable ---`);
+  console.log(`  |(max+min)/2 − mean| over ${midpoints.length} days: median ${midpoints[midpoints.length >> 1].toFixed(2)} °F, p90 ${midpoints[Math.floor(midpoints.length * 0.9)].toFixed(2)}, max ${midpoints[midpoints.length - 1].toFixed(2)}`);
+  console.log(`  the midpoint is not the mean, so the mean cannot be reconstructed later without re-fetching everything.`);
+
+  const highs = rows.map((r) => r.temp_2m_max_f as number).filter((v) => v !== null);
+  const tSpreads = rows.map((r) => r.temp_spread_f as number).filter((v) => v !== null).sort((a, b) => a - b);
+  console.log(`\n  --- "${state} statewide" audit: daily high, °F ---`);
+  console.log(`  range over ${year}: ${Math.min(...highs)} … ${Math.max(...highs)}`);
+  console.log(`  spread across the 5 points: median ${tSpreads[tSpreads.length >> 1]}  p90 ${tSpreads[Math.floor(tSpreads.length * 0.9)]}  max ${tSpreads[tSpreads.length - 1]}`);
+  console.log(`  n_points_temp = 5 on ${rows.filter((r) => r.n_points_temp === 5).length}/${rows.length} days`);
+  console.log(`  NOTE: a wide temperature spread is expected and is NOT a defect — 2 m temperature,`);
+  console.log(`  unlike MSL pressure, has real coastline and elevation structure. It does not weaken`);
+  console.log(`  the RANK this series exists for, because the live reading it will be ranked against`);
+  console.log(`  is built by this identical construction. See docs/ERA5-SAMPLING-SCHEME.md §3.`);
 
   console.log(`\n  --- one row exactly as it would be written ---`);
   console.log(JSON.stringify({ ...rows[280], source_url: (rows[280].source_url as string).slice(0, 90) + "…" }, null, 2));
@@ -530,7 +761,10 @@ async function run() {
     process.exit(1);
   }
   bootstrapKeys();
-  const cp = loadCheckpoint();
+  // Order matters: invalidate BEFORE the job list is built, and before a single
+  // call is spent, so a widened variable set can never produce one more
+  // half-populated state-year.
+  const cp = invalidateIfVarsChanged(loadCheckpoint());
   await freezePoints();
   const hash = cp.schemeHash;
   const states = roster();
@@ -545,8 +779,9 @@ async function run() {
   }
   const remaining = units.reduce((n, u) => n + weightedCalls(POINTS_PER_STATE, u.days, DAILY_VARS.length), 0);
 
-  console.log(`=== ERA5 PRESSURE BACKFILL === sampling v${SAMPLING_VERSION} hash ${hash}`);
+  console.log(`=== ERA5 STATE BACKFILL === sampling v${SAMPLING_VERSION} hash ${hash} vars v${VARS_VERSION}`);
   console.log(`  host ${OM_HOST}${OM_KEY ? " (paid key)" : " (free tier)"}`);
+  console.log(`  daily=${DAILY_VARS.join(",")} (${DAILY_VARS.length} vars, surcharge ×${Math.max(1, DAILY_VARS.length / 10).toFixed(1)})`);
   console.log(`  ${units.length} unit(s) remaining, ~${Math.round(remaining).toLocaleString()} weighted calls`);
   console.log(`  budget today: ${cp.spend[today]} / ${OM_KEY ? "unlimited" : DAILY_CALL_BUDGET}`);
   if (!OM_KEY && remaining > DAILY_CALL_BUDGET) {
@@ -627,16 +862,21 @@ async function emitCache() {
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
   const states = roster();
   console.log(`=== EMIT FRAME CACHE === ${states.length} state(s) → ${CACHE_DIR}`);
+  // The emitted metrics. `temp_2m_max_f` is the one the rarity map needs: it is
+  // the same quantity as the live day-0 `temp_high_f`, built the same way.
+  const CACHE_FIELDS = [
+    "pressure_msl_mean", "pressure_msl_min", "pressure_msl_max", "pressure_delta_24h",
+    "temp_2m_max_f", "temp_2m_min_f", "temp_2m_mean_f", "temp_delta_24h_f",
+  ] as const;
   for (const s of states) {
-    const fields: Record<string, Record<string, number>> = {
-      pressure_msl_mean: {}, pressure_msl_min: {}, pressure_msl_max: {}, pressure_delta_24h: {},
-    };
+    const fields: Record<string, Record<string, number>> = {};
+    for (const f of CACHE_FIELDS) fields[f] = {};
     let offset = 0, n = 0;
     while (true) {
       const res = await fetchWithRetry(
         `${SUPABASE_URL}/rest/v1/era5_state_pressure?state_abbr=eq.${s}` +
         `&sampling_version=eq.${SAMPLING_VERSION}` +
-        `&select=day,pressure_msl_mean,pressure_msl_min,pressure_msl_max,pressure_delta_24h` +
+        `&select=day,${CACHE_FIELDS.join(",")}` +
         `&limit=1000&offset=${offset}`,
         { headers: supaHeaders() }, `era5 read ${s}`,
       );
@@ -705,7 +945,14 @@ function status() {
   const cp = loadCheckpoint();
   const total = ERA5_STATES.length * (YEAR_TO - YEAR_FROM + 1);
   console.log(`sampling v${cp.samplingVersion} hash ${cp.schemeHash} (live ${schemeHash()})`);
+  console.log(`vars v${cp.varsVersion} (live v${VARS_VERSION}: ${DAILY_VARS.join(", ")})`);
   console.log(`units done: ${Object.keys(cp.done).length}/${total}`);
+  // --status never mutates the checkpoint; it only tells the truth about it.
+  if (cp.varsVersion !== VARS_VERSION) {
+    console.log(`  ⚠ STALE — those ${Object.keys(cp.done).length} unit(s) were fetched under vars v${cp.varsVersion}`);
+    console.log(`    and are missing columns the current variable set writes. The next real run`);
+    console.log(`    will reset them to 0 and re-fetch. The spend ledger below survives that reset.`);
+  }
   console.log(`rows written: ${cp.rowsWritten.toLocaleString()}`);
   console.log(`spend ledger (weighted calls per UTC day):`);
   for (const [d, v] of Object.entries(cp.spend).sort()) console.log(`  ${d}  ${r1(v)}`);
