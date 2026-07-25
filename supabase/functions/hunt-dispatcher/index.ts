@@ -297,7 +297,11 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
       .from('hunt_seasons')
       .select('season_type, dates')
       .eq('species_id', species)
-      .eq('state_abbr', stateAbbr);
+      .eq('state_abbr', stateAbbr)
+      // 2026-07-25: the 2025-26 rows are superseded, not deleted, and the 2026-27
+      // rows are OPENERS ONLY — one date per species, no close. Without this filter
+      // chat reads both eras at once and answers from last season.
+      .is('superseded_at', null);
 
     if (!seasons || seasons.length === 0) return { isOpen: false, status: 'no data' };
 
@@ -1305,7 +1309,8 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
       .from('hunt_seasons')
       .select('*')
       .eq('species_id', species)
-      .eq('state_abbr', stateAbbr),
+      .eq('state_abbr', stateAbbr)
+      .is('superseded_at', null),
     searchBrain({
       query: `${species} seasonal patterns regulations ${stateAbbr} ${query}`,
       content_types: undefined,  // Search full brain — cross-domain discovery
@@ -1790,6 +1795,7 @@ async function handleSearch(query: string, species: string = 'all', stateAbbr?: 
         supabase.from('hunt_seasons')
           .select('species_id, state_abbr, state_name, season_type, zone, notes')
           .or(`notes.ilike.%${escapedQuery}%,state_name.ilike.%${escapedQuery}%`)
+          .is('superseded_at', null)
           .limit(5),
         factsQuery,
       ]);
