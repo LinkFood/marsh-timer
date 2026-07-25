@@ -88,7 +88,47 @@ const TABLES: TableSpec[] = [
   { name: "hunt_zones",           key: "id",                                    page: 1000, note: "zone geography (empty today)" },
   { name: "hunt_claims",          key: "id",                                    page: 1000, note: "the court's registered claims — pre-registration is worthless if losable" },
   { name: "hunt_claim_fires",     key: "id",                                    page: 1000, note: "the court's graded fires — the grade record itself" },
+  // Added 2026-07-25 by the closure check below, which caught all four on its first
+  // run. None is an FK parent of anything above, so FK closure alone would have
+  // missed every one — they are PRODUCT dependencies. board_series_columns is the
+  // sharpest case: it was created three hours before this check ran, is what the
+  // frequency card counts, and was already unbacked.
+  { name: "board_series_columns", key: "instrument_id,metric",                  page: 50,   note: "the card's counting substrate — one whole series per row, wide" },
+  { name: "hunt_weather_history", key: "state_abbr,date",                       page: 1000, note: "day-0 readings — the card's live edge and the atlas" },
+  { name: "hunt_weather_events",  key: "id",                                    page: 1000, note: "forward-dated detections — /season's 'is something coming'" },
+  { name: "hunt_regulation_links",key: "id",                                    page: 1000, note: "243 official state URLs — Amendment 1.5 ruling 2 made these load-bearing: the card links out rather than transcribing bag limits" },
+  // Caught by the gate on its second run, after the first four were added. Both are
+  // USER data — the only rows here nothing can reconstruct. hunt_conversations holds
+  // 148 real chat exchanges. hunt_profiles is empty today, which is exactly why it
+  // would have gone on being forgotten until it wasn't.
+  { name: "hunt_conversations",   key: "id",                                    page: 500,  note: "chat history — user-authored, unreconstructible" },
+  { name: "hunt_profiles",        key: "id",                                    page: 1000, note: "accounts (empty today) — user data, backed up before there is any to lose" },
 ];
+
+// ─── THE CLOSURE CHECK ──────────────────────────────────────────────────────────
+// Ruling: "Compute the closure rather than curating the list by hand; a curated
+// list drifts every time a table is added."
+//
+// It drifts in TWO directions, and only one of them is foreign keys:
+//
+//   1. FK parents. The 2026-07-25 restore drill died on hunt_species/hunt_states —
+//      5 and 51 rows of reference data whose absence made the season table
+//      unloadable. Structural, catchable from pg_constraint.
+//
+//   2. PRODUCT dependencies. Tables the client reads that no FK points at. The same
+//      check's first run found four, including board_series_columns — created that
+//      afternoon, counting the card, already unbacked. No FK graph would ever have
+//      caught it.
+//
+// So the set must be closed under both, and the check must FAIL rather than warn.
+// A backup set that silently drifts is the thing being defended against.
+const CLIENT_SRC = join(import.meta.dirname, "..", "..", "src");
+
+/** Tables the client reads but we deliberately do not back up, each with its reason. */
+const EXCLUDED: Record<string, string> = {
+  hunt_knowledge: "~10M rows / 68 GB — REST pagination provably cannot reach it (offset probes at 5.05M and 10.1M both 500 on statement timeout). Covered by the Supabase physical backup; pg_dump is the real path. See docs/DISASTER-RECOVERY.md.",
+  hunt_nws_alerts: "live-only by construction — hunt-nws-monitor deletes rows 24h past expiry, so there is no history to lose. Rebuilds itself within the hour.",
+};
 
 // ─── keys ───────────────────────────────────────────────────────────────────────
 function bootstrapKeys() {
@@ -280,6 +320,46 @@ async function huntKnowledgePlan() {
 }
 
 // ─── run ────────────────────────────────────────────────────────────────────────
+/** Every `.from("table")` the browser bundle issues. Walks src/ rather than trusting a list. */
+function clientReadSet(dir: string, found = new Set<string>()): Set<string> {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) { clientReadSet(p, found); continue; }
+    if (!/\.(ts|tsx)$/.test(e.name)) continue;
+    for (const m of readFileSync(p, "utf-8").matchAll(/\.from\(\s*["'`]([a-z0-9_]+)["'`]\s*\)/g)) found.add(m[1]);
+  }
+  return found;
+}
+
+/**
+ * Fails the run if the manifest is not closed under FK parentage or client reads.
+ * Loud and blocking on purpose: a backup set that quietly drifts is precisely the
+ * failure this whole script exists to prevent.
+ */
+function checkClosure(): boolean {
+  const inSet = new Set(TABLES.map((t) => t.name));
+  let ok = true;
+
+  for (const t of [...clientReadSet(CLIENT_SRC)].sort()) {
+    if (inSet.has(t) || t in EXCLUDED) continue;
+    console.error(`  ✗ CLIENT READS BUT NOT BACKED UP: ${t}`);
+    ok = false;
+  }
+
+  if (ok) console.log(`  ✓ client-read closure clean — ${TABLES.length} tables, ${Object.keys(EXCLUDED).length} excluded with a stated reason`);
+  return ok;
+}
+// The FK half is deliberately NOT re-implemented here. PostgREST cannot reach
+// pg_constraint, and a hand-maintained edge list would be the same drifting curation
+// this check exists to kill. It is verified where it actually bites instead:
+// scripts/backup/restore-drill.ts builds the schema from the repo's own migrations
+// and fails on a missing parent — which is exactly how hunt_species/hunt_states were
+// caught. An FK gap is a restore-time failure, so the restore is the honest gate.
+// To audit it by hand:
+//   select c.conrelid::regclass::text child, c.confrelid::regclass::text parent
+//     from pg_constraint c join pg_namespace n on n.oid = c.connamespace
+//    where c.contype = 'f' and n.nspname = 'public' order by 1;
+
 async function main() {
   const argv = process.argv.slice(2);
   const dryRun = argv.includes("--dry-run");
@@ -295,6 +375,17 @@ async function main() {
 
   console.log(`\n  DCD board-stack dump — ${SUPABASE_URL}`);
   console.log(`  destination: ${BACKUP_ROOT}${dryRun ? "  (DRY RUN — no bytes written)" : ""}\n`);
+
+  // Gate the dump on the manifest still covering what the product reads. Runs on
+  // every invocation including --dry-run, and blocks: a set that drifts silently is
+  // the failure mode. `--only` runs a partial set by design, so the gate is advisory
+  // there. Override with --skip-closure only if you know why.
+  if (!checkClosure() && !only && !argv.includes("--skip-closure")) {
+    console.error(`\n  ✗ REFUSING TO DUMP — the manifest no longer covers what the client reads.`);
+    console.error(`    Add the table above to TABLES, or add it to EXCLUDED with a reason.`);
+    process.exit(1);
+  }
+  console.log("");
 
   if (dryRun) {
     let total = 0;
