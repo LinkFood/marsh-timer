@@ -283,23 +283,30 @@ async function floodPrecedents(
 function floodCopy(
   state: string,
   live: FloodLive,
-  precedents: Record<string, unknown> | null,
   inScope: boolean,
 ): string {
   const name = stateName(state);
   const head = live.watchCount === 1
     ? `A Flood Watch is live over ${name}`
     : `${live.watchCount} Flood Watches are live over ${name}`;
-  if (!precedents) {
-    return `${head} — the live record here is too short to count how often a watch escalated. This is a standing NWS fact, not a forecast.`;
-  }
-  const n = Number(precedents.watch_days);
-  const k = Number(precedents.escalated_within_3d);
-  const record = `of the last ${n} days a watch stood here, ${k} saw a Flood Warning within 3 days`;
+  // Amendment 1.3 Ruling 4 took the forward join out of v1: an outcome rate only
+  // earns its place at a population where the interval means something, and then
+  // only as a separate labeled sentence carrying its own n.
+  //
+  // This one carried neither. It shipped "of the last 12 days a watch stood here,
+  // 10 saw a Flood Warning within 3 days" on the front door — a live-era count at
+  // n=12, whose own next clause conceded the control yardstick could not grade it.
+  // A 10-of-12 rate reads as authority no matter what follows it; at n=12 a 95%
+  // Wilson band spans roughly 55 to 98 points, which is not a claim.
+  //
+  // The live fact stays, because it IS a fact: NWS has a watch up right now. Where
+  // the escalation is genuinely registered and control-matched, the court is where
+  // that lives and is graded win or lose — so we point there instead of restating
+  // an ungraded number beside it.
   if (inScope) {
-    return `${head} — ${record}. A graded claim on this board.`;
+    return `${head} — this ground carries a registered claim in the court, graded win or lose.`;
   }
-  return `${head} — ${record}. This ground floods too often for our control yardstick to grade the escalation; the record is shown, not graded.`;
+  return `${head} — a standing NWS fact, not a forecast. This ground floods too often for our control yardstick to grade the escalation, so we do not put a number on what follows.`;
 }
 
 /** The court's own fire for this state, if the daily court has already fired
@@ -755,7 +762,7 @@ serve(async (req) => {
             as_of: new Date().toISOString(),
           },
           precedents,
-          copy: floodCopy(state, live, precedents, inScope),
+          copy: floodCopy(state, live, inScope),
           claim_fire_id: fireIds.get(state) ?? null,
         });
       } catch (err) {
