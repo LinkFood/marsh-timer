@@ -769,6 +769,14 @@ Deno.serve(async (req: Request) => {
         .in('content_type', LIVE_TYPES)
         .eq('state_abbr', stateParam)
         .eq('effective_date', todayIso)
+        // Never chip a fabricated detection. hunt-weather-watchdog coerced the
+        // trailing null forecast day to 0 until 2026-07-25 and embedded 1,257
+        // weather-event rows claiming things like a 1021mb pressure fall to
+        // vacuum (migration 20260725150000). They are marked and unembedded, but
+        // this layer selects by content_type, not by vector search, so it needs
+        // the filter of its own. Rows run to 2026-08-08, so they surface as
+        // "on file today" until then.
+        .is('metadata->artifact', null)
         .limit(LIVE_LIMIT);
       if (liveErr) console.error('live query failed:', liveErr.message);
       const byTitle = new Map<string, { type: string; title: string; count: number }>();
