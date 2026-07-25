@@ -37,8 +37,22 @@ const APIKEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 const VIEW_W = ATLAS_PROJECTION.width;
 const VIEW_H = ATLAS_PROJECTION.height;
 
+// A dossier fetch that cannot hang and cannot render a lie.
+//
+// Without the timeout, a socket that never settles leaves the panel on
+// "descending into <state>…" forever — measured responses run 2–28s, which is
+// already indistinguishable from dead. Without the res.ok check the failure is
+// worse than a hang: every field of the adapter's response is optional, so a
+// 400 or a 5xx with a JSON body parses happily into an all-null SpotData and
+// renders an EMPTY card, bypassing the error branch entirely.
+const DOSSIER_TIMEOUT_MS = 20000;
+
 async function getJson(url: string): Promise<Record<string, unknown>> {
-  const res = await fetch(url, { headers: { apikey: APIKEY, Authorization: `Bearer ${APIKEY}` } });
+  const res = await fetch(url, {
+    headers: { apikey: APIKEY, Authorization: `Bearer ${APIKEY}` },
+    signal: AbortSignal.timeout(DOSSIER_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
   return res.json();
 }
 
@@ -285,6 +299,7 @@ export default function AtlasPage() {
   // Camera state. `descended` flips the grammar (dim periphery, sentence).
   const [viewBox, setViewBox] = useState<ViewBox>(FULL_VIEW);
   const [descended, setDescended] = useState(false);
+  const dossierReq = useRef(0);
   const vbRef = useRef<ViewBox>(FULL_VIEW);
   const rafRef = useRef<number | null>(null);
 
@@ -382,15 +397,26 @@ export default function AtlasPage() {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       requestAnimationFrame(() => mapCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
+    // Every state selection gets a token. Descents run 2–28s and a user can
+    // click a second state while the first is still in flight — without this a
+    // slow earlier response lands last and overwrites the newer state's dossier.
+    const myReq = ++dossierReq.current;
+    const isCurrent = () => dossierReq.current === myReq;
+
     const c = STATE_CENTROIDS[abbr]; // [lng, lat]
     getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-storms?state=${abbr}`)
-      .then((raw) => setStorms(parseStorms(raw)))
-      .catch(() => setStorms(null));
+      .then((raw) => { if (isCurrent()) setStorms(parseStorms(raw)); })
+      .catch(() => { if (isCurrent()) setStorms(null); });
     try {
-      const [spot, sol] = await Promise.all([
-        getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-spot?state=${abbr}${dateParam ? `&date=${dateParam}` : ""}`),
-        c ? getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-solunar?lat=${c[1]}&lng=${c[0]}`) : Promise.resolve({}),
-      ]);
+      // Solunar is pure math and returns in ~0.2s; the spot dossier is the slow
+      // one. Start both together but never let solunar's failure sink the
+      // dossier — it degrades to {} and SpotDossier renders every field nullable.
+      const solP = c
+        ? getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-solunar?lat=${c[1]}&lng=${c[0]}`).catch(() => ({}))
+        : Promise.resolve({});
+      const spot = await getJson(`${SUPABASE_FUNCTIONS_URL}/hunt-atlas-spot?state=${abbr}${dateParam ? `&date=${dateParam}` : ""}`);
+      const sol = await solP;
+      if (!isCurrent()) return;
       setDossier(toSpotData(spot, sol, abbr));
       // Gate-3 §0: a dated visit (?date=) whose dossier actually landed is a
       // completed date lookup. The Born flow renders here — its handoff
@@ -399,9 +425,13 @@ export default function AtlasPage() {
         trackDateLookup(consumeBornDoor() ? "born" : "atlas");
       }
     } catch {
-      setDossier(null);
+      // A timeout, a non-2xx, or a dead socket all land here and clear the
+      // banner into the existing "Couldn't read {state} right now." card.
+      if (isCurrent()) setDossier(null);
     } finally {
-      setLoading(false);
+      // Only the newest selection may stop the spinner; a superseded one
+      // clearing it would strand the current descent with no banner.
+      if (isCurrent()) setLoading(false);
     }
   }
 
