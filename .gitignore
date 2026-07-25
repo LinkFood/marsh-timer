@@ -57,3 +57,6 @@ scripts/mine/.retro-cache/
 
 # Research scans — large binaries, not build inputs
 scratch-almanac/
+
+# Agent worktrees — transient, never part of history
+.claude/worktrees/
