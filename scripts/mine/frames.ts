@@ -4,7 +4,7 @@
  * Loads the full board substrate into RAM for the mine's in-memory sweep:
  *   - board_layout      (the slot manifest — THE decode authority)
  *   - board_instruments (display metadata + slot_offset/slot_count)
- *   - board_frames      (~27,952 days × 142 packed bytes)
+ *   - board_frames      (~27,952 days × one packed byte per manifest slot)
  *   - board_pool_luts   (32,208 rows — the doy-quantile tables, for INVERSION:
  *                        percentile → raw units, because a percentile is not a
  *                        product sentence)
@@ -13,7 +13,9 @@
  * Slot offsets come ONLY from board_layout.slot_manifest. They are NEVER rebuilt
  * by counting instruments or metrics in this module or any caller. Read a byte
  * via slotOffset() / the manifest — nothing else. The bake-film bug was exactly
- * a re-derived offset drifting from the stored manifest.
+ * a re-derived offset drifting from the stored manifest. The slot COUNT obeys the
+ * same law: it is `store.slots.length`, never a literal. A hardcoded 142 outlived
+ * needle-pna landing at offsets 142–143 and broke this file's own --check.
  *
  * Byte semantics (board_frame_store migration): 255 = null/unreadable;
  * else pct = byte / 254, pct ∈ [0,1] = depth into the slot's danger tail.
@@ -32,7 +34,6 @@
 import { execSync } from "child_process";
 
 export const SUPABASE_URL = "https://rvhyotvklfowklzjahdd.supabase.co";
-export const NSLOT = 142;
 
 // ─── key + headers (rhyme.ts idiom, made lazy so importing this module does no IO) ─
 let KEY: string | null = null;
@@ -78,7 +79,7 @@ export async function fetchLayout(): Promise<{ version: number; slots: SlotDef[]
   const rows = await res.json();
   if (!Array.isArray(rows) || rows.length === 0) throw new Error("no board_layout row");
   const manifest = rows[0].slot_manifest as SlotDef[];
-  const slots = new Array(NSLOT);
+  const slots = new Array(manifest.length);
   for (const s of manifest) slots[s.offset] = s;
   LAYOUT = { version: rows[0].version, slots };
   METRIC_SIDES = new Map();
@@ -348,9 +349,11 @@ async function check() {
   console.log(`\nstore loaded in ${loadS}s — layout v${store.version}, ` +
     `${store.instruments.size} instruments, ${store.days.length} frames, ${store.luts.size} LUT rows\n`);
 
-  // 142 slots — every offset 0..141 filled from the manifest.
+  // Every manifest offset filled, contiguously from 0 — an offset outside
+  // 0..n-1 stretches the array, so this still catches a gap or a duplicate.
   const filled = store.slots.filter(Boolean).length;
-  assert(filled === NSLOT, `manifest fills all ${NSLOT} slots`, `filled=${filled}`);
+  assert(filled === store.slots.length,
+    `manifest fills all ${store.slots.length} slots contiguously`, `filled=${filled}`);
 
   // ≥27,900 frames.
   assert(store.days.length >= 27_900, "≥27,900 frames", `${store.days.length}`);

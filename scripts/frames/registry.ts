@@ -8,13 +8,14 @@
  * deviations (buoy count, AO daily source, direct avg_high_f field).
  */
 
+import { DOY_HALF_WINDOW } from "../board/tailDepth.ts";
 import { project, PROJ_VERSION } from "../board/projection.ts";
 import { STATE_CENTROIDS } from "../../supabase/functions/_shared/states.ts";
 
 export type MetricDef = { field: string; direction: "low" | "high" | "two-sided"; n_days: number; min_years: number; label: string };
 
 export const STATE_METRICS: MetricDef[] = [
-  { field: "avg_high_f", direction: "two-sided", n_days: 10, min_years: 10, label: "air temperature" },
+  { field: "avg_high_f", direction: "two-sided", n_days: DOY_HALF_WINDOW, min_years: 10, label: "air temperature" },
 ];
 export const TIDE_METRICS: MetricDef[] = [
   { field: "residual_max_ft", direction: "high", n_days: 15, min_years: 10, label: "surge" },

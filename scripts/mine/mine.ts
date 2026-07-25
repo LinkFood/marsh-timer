@@ -3,7 +3,7 @@
  * LOOKOUT MINE / THE NEAR-MISS LAW / THE SENTRY).
  *
  * Outcome-first retrodiction: anchor on every stitched OUTCOME (anchors.ts),
- * walk every board column (frames.ts — 142 RAW manifest slots + 2 moon
+ * walk every board column (frames.ts — every RAW manifest slot + 2 moon
  * pseudo-slots + 1 board-energy depth column; per-slot secular trends are
  * MEASURED for the report but not removed — v1.2) backward through D-30..D0 vs
  * seeded epoch-matched controls, with CIRCULAR WHOLE-YEAR TIME-SHIFT nulls
@@ -36,12 +36,12 @@ import { loadAnchors, EffectiveAnchor } from "./anchors";
 import {
   loadFrameStore,
   FrameStore,
-  NSLOT,
   SYNODIC_DAYS,
   doyOfIso,
   invertPct,
   moonPhase,
 } from "./frames";
+import { DOY_HALF_WINDOW } from "../board/tailDepth.ts";
 import {
   benjaminiHochberg,
   fisherExactOneSided,
@@ -85,7 +85,6 @@ const NEAR_BAND_DEPTH = 3; // count analog of the 0.05 band for the depth column
 const EPISODE_GAP = 7; // fire days >7d apart = separate episodes
 const FOLLOW_LO = 2;
 const FOLLOW_HI = 30; // "followed" = same-family anchor begins +2..+30d after a fire day
-const SEASON_HALF = 15; // matched season = doy within ±15 of any cell anchor doy
 const EXCLUDE_DAYS = 45; // control windows: no same-family (scoped) anchor within ±45d
 const LABELED_START = "1990-01-01";
 
@@ -236,7 +235,7 @@ const COL_CLASSES: ColClass[] = ["daily", "monthly", "moon", "depth"];
 // needle-ao is DAILY (CPC daily series 1950+) and stays in class 1.
 const MONTHLY_NEEDLES = new Set(["needle-nao", "needle-pdo", "needle-enso"]);
 
-// ─── columns: 142 slots + 2 moon pseudo-slots + 1 depth column = 145 ─────────────
+// ─── columns: every manifest slot + 2 moon pseudo-slots + 1 depth column ─────────
 interface Column {
   id: string;
   kind: "slot" | "moon" | "depth";
@@ -248,6 +247,7 @@ interface Column {
   taus: { tau: number; thr: number }[]; // tau = pct (slot/moon) or count (depth); thr = byte or count
   vals: Int16Array; // per dayIdx; -1 = null/unreadable
   scale: number; // 254 for slot/moon; 1 for depth (thr already in value units)
+  denom?: number; // depth column only: the slot count its counts are out of
 }
 
 // ─── slot trend DIAGNOSTICS (v1.2 — measured, NOT removed) ─────────────────────────
@@ -305,8 +305,9 @@ function measureSlotTrends(slotCols: Column[]): TrendDiag[] {
 function buildColumns(store: FrameStore): { cols: Column[]; trendDiags: TrendDiag[] } {
   const cols: Column[] = [];
   const slotTaus = TAU_PCT.map((t, i) => ({ tau: t, thr: TAU_BYTE[i] }));
+  const nslot = store.slots.length; // THE LAW: the manifest says how many slots there are
 
-  for (let off = 0; off < NSLOT; off++) {
+  for (let off = 0; off < nslot; off++) {
     const s = store.slots[off];
     const inst = store.instruments.get(s.inst_id);
     cols.push({
@@ -325,7 +326,7 @@ function buildColumns(store: FrameStore): { cols: Column[]; trendDiags: TrendDia
   for (const [day, bytes] of store.frames) {
     const idx = idxOfIso(day);
     if (idx < 0 || idx >= TOTAL_DAYS) continue;
-    for (let off = 0; off < NSLOT; off++) {
+    for (let off = 0; off < nslot; off++) {
       const b = bytes[off];
       if (b !== 255) cols[off].vals[idx] = b;
     }
@@ -355,7 +356,7 @@ function buildColumns(store: FrameStore): { cols: Column[]; trendDiags: TrendDia
   for (let d = 0; d < TOTAL_DAYS; d++) {
     let c = 0;
     let readable = false;
-    for (let off = 0; off < NSLOT; off++) {
+    for (let off = 0; off < nslot; off++) {
       const v = cols[off].vals[d];
       if (v >= 0) {
         readable = true;
@@ -373,6 +374,7 @@ function buildColumns(store: FrameStore): { cols: Column[]; trendDiags: TrendDia
     taus: DEPTH_TAU.map((t) => ({ tau: t, thr: t })),
     vals: depth,
     scale: 1,
+    denom: nslot,
   });
   return { cols, trendDiags };
 }
@@ -676,7 +678,7 @@ function bhQValues(pvals: number[]): number[] {
 
 // ─── per-cell deep-dive context ────────────────────────────────────────────────────
 interface CellCtx {
-  matchedDoy: Uint8Array; // [367] — 1 if doy within ±15 of any member-anchor doy
+  matchedDoy: Uint8Array; // [367] — 1 if doy within ±DOY_HALF_WINDOW of any member-anchor doy
   followed: Uint8Array; // per dayIdx — 1 if a scoped anchor begins in [d+2, d+30]
   anchorIdxs: number[]; // scoped anchor d0 indexes, sorted
   anchorLabels: string[]; // parallel: "family d0 — title"
@@ -690,7 +692,7 @@ function buildCellCtx(cd: CellData): CellCtx {
   const matchedDoy = new Uint8Array(367);
   const doys = cd.members.map((a) => doyOfIso(a.d0));
   for (const doy of doys) {
-    for (let o = -SEASON_HALF; o <= SEASON_HALF; o++) {
+    for (let o = -DOY_HALF_WINDOW; o <= DOY_HALF_WINDOW; o++) {
       matchedDoy[((doy - 1 + o + 366) % 366) + 1] = 1;
     }
   }
@@ -952,7 +954,7 @@ function buildSentence(
     const which = col.id === "moon:new" ? "new" : "full";
     return { sentence: `Moon within ${daysOut.toFixed(1)}d of ${which} ${persist} → ${cellStr}`, rawValue: null };
   }
-  return { sentence: `Board energy: ≥${thr} of 142 slots at ≥0.98 depth ${persist} → ${cellStr}`, rawValue: null };
+  return { sentence: `Board energy: ≥${thr} of ${col.denom} slots at ≥0.98 depth ${persist} → ${cellStr}`, rawValue: null };
 }
 
 // ─── G1: AO rediscovery ─────────────────────────────────────────────────────────────
@@ -1118,7 +1120,7 @@ async function main() {
   // 3. columns
   t0 = Date.now();
   let { cols, trendDiags } = buildColumns(store);
-  phase(`built ${cols.length} columns (142 slots + 2 moon + 1 depth), RAW; trends measured (Theil–Sen per slot)`, t0);
+  phase(`built ${cols.length} columns (${store.slots.length} slots + 2 moon + 1 depth), RAW; trends measured (Theil–Sen per slot)`, t0);
   // G2 (--shuffle): same circular-shift discipline as the calibration nulls — the
   // "real" data becomes one seeded whole-year rotation of the store; nulls then
   // rotate it further. Anchors and every other machine stay untouched.
@@ -1350,7 +1352,7 @@ async function main() {
       bhQ: BH_Q,
       episodeGapDays: EPISODE_GAP,
       followWindow: [FOLLOW_LO, FOLLOW_HI],
-      seasonHalfWidthDays: SEASON_HALF,
+      seasonHalfWidthDays: DOY_HALF_WINDOW,
       controlExclusionDays: EXCLUDE_DAYS,
     },
     coverage: [

@@ -19,6 +19,16 @@
 export type Direction = "low" | "high" | "two-sided";
 
 export const FULL_SWELL_MIN_YEARS = 10; // spine §2.5, matches morning-line n_years≥10
+/**
+ * Half-width in days of the same-doy matching window on the state temperature /
+ * pressure path — ONE constant, consumed by BOTH the registry (the pool the byte
+ * is baked against) and the Lookout Mine (its matched-season scan). Amendment 1.3
+ * Ruling 1: the value is ±10, which is what production already bakes. The Mine
+ * held ±15 for the same concept and that disagreement silently invalidated a whole
+ * analysis — never two of these again. Instrument-specific windows (tide, buoy and
+ * needle at ±15) are a different metric's config and stay declared in the registry.
+ */
+export const DOY_HALF_WINDOW = 10;
 const LOW_CONFIDENCE_CAP = 0.6; // a thin baseline may never claim "deepest in history"
 
 /** Calendar-day distance ignoring year, with Dec/Jan wrap (Rung 1's doyOffset). */
