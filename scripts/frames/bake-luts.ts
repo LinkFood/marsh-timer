@@ -75,11 +75,14 @@ function cacheGet<T>(name: string): T | null {
   return null;
 }
 // Load one instrument's per-field series from the warm cache (Map<field, Map<date,value>>).
+// backfill-frames.ts writes the { endYear, fields } envelope (its SeriesCache type);
+// read through `fields` or every metric lookup returns undefined.
 function loadCachedSeries(inst: Instrument): Map<string, Map<string, number>> {
-  const cached = cacheGet<Record<string, Record<string, number>>>(`series-${inst.id}.json`);
+  const cached = cacheGet<{ endYear: number; fields: Record<string, Record<string, number>> }>(`series-${inst.id}.json`);
   if (!cached) { console.error(`  ✗ cache miss series-${inst.id}.json — run backfill-frames.ts first (it warms the cache).`); process.exit(1); }
+  if (!cached.fields) { console.error(`  ✗ series-${inst.id}.json is not a { endYear, fields } envelope — re-warm it with backfill-frames.ts.`); process.exit(1); }
   const m = new Map<string, Map<string, number>>();
-  for (const [f, obj] of Object.entries(cached)) m.set(f, new Map(Object.entries(obj)));
+  for (const [f, obj] of Object.entries(cached.fields)) m.set(f, new Map(Object.entries(obj)));
   return m;
 }
 
