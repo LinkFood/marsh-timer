@@ -591,7 +591,16 @@ async function run() {
       if (e instanceof FatalHttpError) { console.error(`  ✗ ${u.state}/${u.year} 4xx (not retried, not marked done): ${e.message}`); continue; }
       console.error(`  ✗ ${u.state}/${u.year} failed after retries (not marked done): ${e.message ?? e}`);
     }
-    await sleep(300); // stay far under the 600/min ceiling
+    // Pace against the WEIGHTED cost, not the unit count. A flat delay here was
+    // the bug that killed the first unattended run after 45 seconds: one unit is
+    // ~130 weighted calls (5 points × ~365 days ÷ 14), so 300ms/unit is ~26,000
+    // weighted calls per minute against a 600/min ceiling.
+    //
+    // Free tier ceilings are 600/min and 5,000/hr. Per weighted call that is
+    // 100ms and 720ms respectively, so the HOURLY ceiling binds — pace on it,
+    // with headroom for the ~222/day the live crons already spend.
+    // A paid key lifts both, so only the free path pays this.
+    if (!OM_KEY) await sleep(Math.ceil(cost * 800));
   }
 
   console.log(`\n=== ${wrote.toLocaleString()} rows this session; ${cp.rowsWritten.toLocaleString()} total ===`);
