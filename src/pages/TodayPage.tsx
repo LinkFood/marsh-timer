@@ -5,6 +5,7 @@ import { drawFrame, fitCanvas, hitTest, type BoardModel } from "@/lib/boardPlaye
 import { BOARD_PROJECTION, CONUS_BORDERS } from "@/data/board/conusBorders";
 import { InnerFooter } from "@/components/InnerNav";
 import RarityMap from "@/components/map/RarityMap";
+import { TAIL_DEPTH_IS_COMPARABLE } from "@/lib/board/tailDepthGate";
 import TodayFitted from "@/components/TodayFitted";
 import { useYourGround } from "@/hooks/useYourGround";
 import { dayOfYear, fetchGroundSky, loreLine, seasonCounter, type GroundSky } from "@/lib/almanac";
@@ -20,6 +21,7 @@ import {
   medDate,
   porchLine,
   resolveDay,
+  stateFullName,
   todayIso,
   isoDaysBefore,
   type BoardRhyme,
@@ -31,6 +33,17 @@ import {
   type RhymeFollowed,
   type StateAlert,
 } from "@/lib/board/frameStore";
+import { supabase } from "@/lib/supabase";
+import {
+  READ_TIMEOUT_MS,
+  currentSeasonYear,
+  nextOpenerNationally,
+  seasonYearLabel,
+  shortDate as openerDate,
+  weekday,
+  type NextOpener,
+  type SeasonRow,
+} from "@/lib/season";
 
 /**
  * TODAY — THE FRONT DOOR (`/`). One room, one true sentence per screen.
@@ -39,11 +52,19 @@ import {
  * before a single row arrives; the page never opens on a bare black screen.
  * Then the porch: today's frame spoken in one honest, kind-aware sentence.
  *
- * Under it, THE RARITY MAP — the primary map since 2026-07-25. Every weather
- * map on the internet answers what is happening; this one answers how unusual
- * is this, here, against each state's own record, which is the question the
- * frequency card answers. The map is the index, the card is the product, so a
- * state is a door: tapping one lands on /season?state=XX.
+ * Under it, THE COUNTRY MAP — the primary map since 2026-07-25. It is the
+ * index, the card is the product, so a state is a door: tapping one lands on
+ * /season?state=XX.
+ *
+ * WHAT THE PORCH AND THE MAP MAY SAY CHANGED ON 2026-07-25. Both used to lead
+ * with a percentile off the frame store's tail-depth byte — "California is
+ * running hotter than 99% of its July record". That byte ranks a live one-point
+ * centroid forecast against a multi-station archive pool: two constructions,
+ * landing in different shade bands 43% of the time. It is withheld through one
+ * flag (src/lib/board/tailDepthGate.ts) with the reason printed on the page.
+ * In its place the headline is the next season opener anywhere in the country —
+ * a date a state agency published, with its regulation one tap away — and the
+ * map shades by what is live on each state's ground right now.
  *
  * Then the rhyme (the day today reads most like, and what followed), then THE
  * INSTRUMENTS — the breathing dot board, which used to hold the hero. It moved
@@ -74,7 +95,14 @@ type LoadState =
   | { status: "empty" }
   | { status: "error" };
 
-/** Honest reading for a tapped instrument. */
+/**
+ * Honest reading for a tapped instrument.
+ *
+ * The `state-temp` branch is gated. Its percentile is the same claim the map is
+ * withholding — a live one-point centroid reading ranked against a
+ * station-network pool — and a tap card is not a loophole. The other lanes are
+ * ranked against pools of their own construction and keep their numbers.
+ */
 function readingText(r: ResolvedInstrument): string {
   if (!r.hasData || r.pct === null) return "no reading on file today";
   const p = Math.round(r.pct * 100);
@@ -85,6 +113,9 @@ function readingText(r: ResolvedInstrument): string {
         ? `riding higher than ${p}% of its recorded days`
         : `sunk lower than ${p}% of its recorded days`;
     case "state-temp":
+      if (!TAIL_DEPTH_IS_COMPARABLE) {
+        return "reported today — where that reading sits in this state's record is withheld";
+      }
       return high ? `hotter than ${p}% of its recorded days` : `colder than ${p}% of its recorded days`;
     case "tide":
       return high
@@ -166,6 +197,190 @@ function SkeletonGround() {
   return <canvas ref={ref} className="block h-full w-full" />;
 }
 
+// ── The lanes, counted: which instruments actually reported ────────────────────
+
+/**
+ * A dead instrument and a calm one look identical on the board — `drawDot`
+ * paints a no-reading dot at pct 0.03, which is a real and ordinary depth. 22
+ * of the 72 instruments have carried no byte at all since mid-July, and the
+ * board was quietly drawing all 22 as quiet ground.
+ *
+ * So the lanes are counted here, per kind, off the same resolved frame the
+ * canvas draws — never off a hardcoded roster, so the number cannot go stale
+ * the way "72 of them" did.
+ */
+interface LaneReport {
+  kind: string;
+  one: string;
+  many: string;
+  total: number;
+  reported: number;
+  /** The newest day in the ledger on which anything in this lane reported. */
+  lastSeen: string | null;
+}
+
+const LANE_WORDS: Record<string, { one: string; many: string }> = {
+  needle: { one: "climate needle", many: "climate needles" },
+  "state-temp": { one: "state thermometer", many: "state thermometers" },
+  tide: { one: "harbor", many: "harbors" },
+  buoy: { one: "Gulf buoy", many: "Gulf buoys" },
+};
+
+const laneWords = (kind: string) => LANE_WORDS[kind] ?? { one: kind, many: `${kind}s` };
+
+/** "5 climate needles" / "1 harbor" — the count with its own noun. */
+const laneCount = (n: number, l: { one: string; many: string }) => `${n} ${n === 1 ? l.one : l.many}`;
+
+/**
+ * Count each lane on the selected day, and find the last day it said anything.
+ * `days` is newest-first, so the first hit is the answer; a lane silent through
+ * the whole ledger reports `null` rather than a date we do not hold.
+ */
+function laneReports(selected: DayEntry, days: DayEntry[]): LaneReport[] {
+  const order = ["state-temp", "needle", "tide", "buoy"];
+  const byKind = new Map<string, LaneReport>();
+  for (const r of selected.resolved) {
+    const kind = r.inst.kind;
+    const w = laneWords(kind);
+    const cur = byKind.get(kind) ?? { kind, one: w.one, many: w.many, total: 0, reported: 0, lastSeen: null };
+    cur.total += 1;
+    if (r.hasData) cur.reported += 1;
+    byKind.set(kind, cur);
+  }
+  for (const lane of byKind.values()) {
+    if (lane.reported > 0) {
+      lane.lastSeen = selected.frame.day;
+      continue;
+    }
+    for (const d of days) {
+      if (d.resolved.some((r) => r.inst.kind === lane.kind && r.hasData)) {
+        lane.lastSeen = d.frame.day;
+        break;
+      }
+    }
+  }
+  const rank = (k: string) => (order.indexOf(k) === -1 ? order.length : order.indexOf(k));
+  return [...byKind.values()].sort((a, b) => rank(a.kind) - rank(b.kind) || a.kind.localeCompare(b.kind));
+}
+
+/**
+ * WHY THE DARK LANES ARE DARK — named, with the real reason for each, because a
+ * gauge that stopped reporting is a true and interesting fact about the
+ * instrument and not an error message. The date each lane last spoke is read
+ * off the ledger this page already holds, so it corrects itself the day a lane
+ * comes back.
+ *
+ * The buoy paragraph is the load-bearing one. A live `ocean-buoy` lane exists
+ * and covers these four stations; pointing the board at it is a one-line change
+ * and would be the same defect the tail-depth gate exists for. That lane writes
+ * a single instantaneous pressure, and the board's pool holds daily means and
+ * daily minima — and a daily minimum is by definition at or below any single
+ * reading of that day, so every rank would come out low by construction.
+ */
+function DarkLanesNote({ lanes }: { lanes: LaneReport[] }) {
+  const WHY: Record<string, string> = {
+    tide: "The harbors stopped because nothing is scheduled to read them — there is no cron for the tide lane at all, and there never has been. Not a failure: an instrument nobody wound.",
+    needle:
+      "The climate needles stopped at daily resolution. The index feed still runs and still succeeds, but what it writes now is monthly — one number for all of December. A month is not a day, and standing a month where a day belongs would be the quietest kind of lie.",
+    buoy:
+      "The Gulf buoys are dark on purpose. A live buoy feed exists and covers these exact stations, and pointing the board at it is a one-line change. It writes a single instantaneous pressure; the record it would be ranked against holds daily means and daily lows. A day's low is at or under any one reading from that day, so every rank would come back deep whether or not anything happened — the same mismatch the map's depth is withheld for, one dimension over. They stay dark rather than read low for free.",
+    "state-temp":
+      "The state thermometers are dark, which is the lane the rest of this page depends on.",
+  };
+  return (
+    <details className="mx-auto mt-4 max-w-xl rounded-xl border border-white/10 bg-gray-900/30 px-4 py-3 open:bg-gray-900/50">
+      <summary className="cursor-pointer list-none font-mono text-[11px] tracking-wide text-gray-400 transition-colors hover:text-cyan-200">
+        Why {lanes.reduce((n, l) => n + l.total, 0)} of these instruments are dark{" "}
+        <span className="text-cyan-400/70">&rarr;</span>
+      </summary>
+      <div className="mt-3 space-y-3 font-body text-[13px] leading-relaxed text-gray-400">
+        {lanes.map((l) => (
+          <p key={l.kind}>
+            <span className="font-mono text-[11px] uppercase tracking-wide text-gray-500">
+              {l.many} &middot;{" "}
+              {l.lastSeen ? `last reported ${longDate(l.lastSeen)}` : "silent through this whole ledger"}
+            </span>
+            <br />
+            {WHY[l.kind] ?? `The ${l.many} have stopped writing rows.`}
+          </p>
+        ))}
+        <p className="border-t border-white/5 pt-3 text-gray-500">
+          They are drawn hatched rather than dim. The renderer paints a missing reading at the same
+          faint depth an ordinary calm day earns, so left alone a dead gauge and a quiet one are the
+          same mark — and of the two, only one of them is telling you anything.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+// ── The headline: the next opener anywhere in the country ──────────────────────
+
+/**
+ * The one number the domain name promises, sourced from `hunt_seasons` at the
+ * current season year and `status = 'ok'`. Every part of it is either a date a
+ * state published or a count of those dates. The state's own zone label rides
+ * along, because the earliest legal day is often a special early season and
+ * saying "goose season" flat would be the state's sentence, not ours. A
+ * provisional row says provisional; PLAN §10.1 makes that a displayed field.
+ *
+ * An absence renders as an absence and names what we hold instead. It never
+ * counts down to a date we do not have.
+ */
+function OpenerHeadline({ opener, read }: { opener: NextOpener | null; read: boolean }) {
+  if (!read) return null;
+  if (!opener) {
+    return (
+      <p className="mx-auto mt-2 max-w-xl font-display text-[1.35rem] leading-snug text-gray-400 sm:text-[1.7rem]">
+        We hold no {seasonYearLabel(currentSeasonYear(todayIso()))} opener yet — the states are still
+        publishing.
+      </p>
+    );
+  }
+  const { daysOut, opensOn } = opener;
+  const when =
+    daysOut === 0 ? "opens today" : daysOut === 1 ? "opens tomorrow" : `opens in ${daysOut} days`;
+  return (
+    <div className="mx-auto mt-2 max-w-2xl">
+      <h2 className="font-display text-[1.55rem] font-medium leading-[1.26] text-gray-50 sm:text-[2.1rem]">
+        {stateFullName(opener.stateAbbr)}&rsquo;s first {opener.speciesLabel.toLowerCase()} season{" "}
+        {when} &mdash; {weekday(opensOn)}, {openerDate(opensOn)}.
+      </h2>
+      <p className="mt-2 font-mono text-[11px] leading-relaxed text-gray-500">
+        {opener.zone ?? "statewide"}
+        {opener.sameDay > 0 && (
+          <span className="text-gray-600">
+            {" "}
+            &middot; {opener.sameDay} more {opener.sameDay === 1 ? "opener" : "openers"} share that day
+          </span>
+        )}
+        {opener.aheadCount > 0 && (
+          <span className="text-gray-600"> &middot; {opener.aheadCount} still ahead nationwide</span>
+        )}
+      </p>
+      <p className="mt-1 font-mono text-[10px] leading-relaxed text-gray-600">
+        {opener.provisional
+          ? "state-published, provisional — the state has not called it final"
+          : "as the state published it"}
+        {opener.sourceUrl && (
+          <>
+            {" "}
+            &middot;{" "}
+            <a
+              href={opener.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-cyan-300/70 underline-offset-2 transition-colors hover:text-cyan-200 hover:underline"
+            >
+              read the regulation
+            </a>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 // ── A film card: the site's best artifacts, promoted ───────────────────────────
 
 function FilmCard({ to, era, title }: { to: string; era: string; title: string }) {
@@ -237,8 +452,13 @@ export default function TodayPage() {
   const { ground, groundName, setGround } = useYourGround(searchParams.get("state"));
   const [sky, setSky] = useState<GroundSky | null>(null);
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
-  const [alerts, setAlerts] = useState<Map<string, StateAlert>>(new Map());
-  const [watches, setWatches] = useState<FormationWatch[]>([]);
+  // `null` on either of these means THE LANE DID NOT ANSWER — distinct from an
+  // empty answer, because the map now shades from them and "fifty quiet states"
+  // must never be drawn out of a dropped connection.
+  const [alerts, setAlerts] = useState<Map<string, StateAlert> | null>(null);
+  const [watches, setWatches] = useState<FormationWatch[] | null>(null);
+  const [opener, setOpener] = useState<NextOpener | null>(null);
+  const [openerRead, setOpenerRead] = useState(false);
   const [rhymes, setRhymes] = useState<Map<string, BoardRhyme>>(new Map());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [card, setCard] = useState<CardState | null>(null);
@@ -298,8 +518,8 @@ export default function TodayPage() {
         const days = frames.map((frame, i) => {
           const isNow = i === 0 && frame.day >= isoDaysBefore(today, 1);
           const resolved = resolveDay(frame, instruments);
-          const live = isNow ? liveAlerts : undefined;
-          const liveForming = isNow ? liveWatches : undefined;
+          const live = isNow ? liveAlerts ?? undefined : undefined;
+          const liveForming = isNow ? liveWatches ?? undefined : undefined;
           return { frame, resolved, porch: porchLine(frame.day, resolved, frame, live, liveForming) };
         });
         setAlerts(liveAlerts);
@@ -318,6 +538,48 @@ export default function TodayPage() {
     };
   }, []);
 
+  // ── THE HEADLINE — the next opener anywhere in the country.
+  // It replaced a percentile (see src/lib/board/tailDepthGate.ts). One bounded
+  // read of the current season year's `ok` rows; the model does the rest and is
+  // total over them. No rows, a stale year, or a failed read all land on the
+  // same honest absence rather than a countdown to last season.
+  useEffect(() => {
+    if (!supabase) {
+      setOpenerRead(true);
+      return;
+    }
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), READ_TIMEOUT_MS);
+    const today = todayIso();
+    const seasonYear = currentSeasonYear(today);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("hunt_seasons")
+          .select("id,species_id,state_abbr,season_type,zone,dates,notes,source_url,season_year,status,provisional,provisional_note")
+          .eq("season_year", seasonYear)
+          .eq("status", "ok")
+          .in("species_id", ["duck", "goose"])
+          .abortSignal(ctrl.signal);
+        if (cancelled) return;
+        if (!error && data) {
+          setOpener(nextOpenerNationally(data as SeasonRow[], today, seasonYear));
+        }
+      } catch {
+        /* honest absence — the headline falls back to what is live on the board */
+      } finally {
+        if (!cancelled) setOpenerRead(true);
+        clearTimeout(timer);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, []);
+
   const data = load.status === "ready" ? load.data : null;
 
   const selected = useMemo(() => {
@@ -328,10 +590,10 @@ export default function TodayPage() {
   // Active alerts + forming rings mark only the live board — the newest frame,
   // while it's current.
   const isLiveNow = isNewest && !!selected && selected.frame.day >= isoDaysBefore(todayIso(), 1);
-  const alertsApply = isLiveNow && alerts.size > 0;
-  const formingApply = isLiveNow && watches.length > 0;
+  const alertsApply = isLiveNow && (alerts?.size ?? 0) > 0;
+  const formingApply = isLiveNow && (watches?.length ?? 0) > 0;
 
-  const formingMap = useMemo(() => formingByState(watches), [watches]);
+  const formingMap = useMemo(() => formingByState(watches ?? []), [watches]);
 
   const model: BoardModel | null = useMemo(
     () =>
@@ -339,7 +601,7 @@ export default function TodayPage() {
         ? compileDayFilm(
             selected.frame.day,
             selected.resolved,
-            alertsApply ? alerts : undefined,
+            alertsApply ? alerts ?? undefined : undefined,
             formingApply ? formingMap : undefined,
           )
         : null,
@@ -347,6 +609,20 @@ export default function TodayPage() {
   );
 
   const rhyme = selected ? rhymes.get(selected.frame.day) : undefined;
+
+  // The lanes, counted off the frame the canvas is actually drawing.
+  const lanes = useMemo(
+    () => (selected && data ? laneReports(selected, data.days) : []),
+    [selected, data],
+  );
+  const reportedCount = lanes.reduce((n, l) => n + l.reported, 0);
+  const instrumentCount = lanes.reduce((n, l) => n + l.total, 0);
+  const darkLanes = lanes.filter((l) => l.reported === 0);
+  /** Every instrument with no byte on file — the ones the renderer draws quiet. */
+  const darkInstruments = useMemo(
+    () => (selected ? selected.resolved.filter((r) => !r.hasData) : []),
+    [selected],
+  );
 
   const resolvedById = useMemo(() => {
     const m = new Map<string, ResolvedInstrument>();
@@ -480,9 +756,22 @@ export default function TodayPage() {
             </p>
           )}
 
+          {/* THE HEADLINE — the next opener anywhere in the country. It stands
+              in for the percentile sentence the porch used to lead with, and it
+              is a transcription of a state agency's own published date with its
+              URL one tap away: no pool, no rank, nothing to mismatch. It speaks
+              only on the live board — a countdown is a statement about NOW. */}
+          {isLiveNow && <OpenerHeadline opener={opener} read={openerRead} />}
+
           {selected && (
             <>
-              <h2 className="mx-auto mt-2 max-w-2xl font-display text-[1.55rem] font-medium leading-[1.26] text-gray-50 sm:text-[2.1rem]">
+              <h2
+                className={
+                  isLiveNow
+                    ? "mx-auto mt-3 max-w-2xl font-display text-lg font-normal leading-snug text-gray-300 sm:text-xl"
+                    : "mx-auto mt-2 max-w-2xl font-display text-[1.55rem] font-medium leading-[1.26] text-gray-50 sm:text-[2.1rem]"
+                }
+              >
                 {selected.porch.lead}
               </h2>
 
@@ -553,16 +842,21 @@ export default function TodayPage() {
 
         </div>
 
-        {/* THE RARITY MAP — the index. Not "what is happening": how unusual is
-            this, here, against each state's own record — the card's question,
-            drawn nationally. A state is a door to its card. Skeleton ground
-            until the frame lands, so the page never opens on bare black. */}
+        {/* THE COUNTRY MAP — the index. A state is a door to its card, by
+            touch, by mouse and by keyboard. What it shades by is gated; what it
+            is FOR is not. Skeleton ground until the frame lands, so the page
+            never opens on bare black. */}
         <div ref={stageRef} className="mt-6 scroll-mt-6">
           {selected ? (
             <RarityMap
               resolved={selected.resolved}
               day={selected.frame.day}
               day0Source={selected.frame.day0_source}
+              // The live lanes describe NOW. A past ledger day is handed empty
+              // lanes rather than today's, so the map never dresses July 3 in
+              // this evening's watches.
+              alerts={isLiveNow ? alerts : new Map()}
+              watches={isLiveNow ? watches : []}
               onPick={(abbr) => navigate(`/season?state=${abbr}`)}
             />
           ) : (
@@ -608,10 +902,22 @@ export default function TodayPage() {
         <p className="text-center font-mono text-[10px] tracking-[0.24em] text-gray-500">
           THE INSTRUMENTS
         </p>
+        {/* THE COUNT — what actually reported, not the roster. The old line said
+            "72 of them"; 50 of the 72 carry a byte and the other 22 were being
+            drawn at the renderer's dim minimum, which is the same mark a genuinely
+            quiet instrument gets. A dark gauge must not look like a calm one. */}
         <p className="mx-auto mt-2 max-w-lg text-center font-body text-[13px] leading-relaxed text-gray-500">
-          The same day, gauge by gauge{data ? ` — ${data.instruments.length} of them` : ""}: climate
-          needles, state thermometers, harbors and Gulf buoys, each lit by how deep it sits in its own
-          history.
+          The same day, gauge by gauge
+          {instrumentCount > 0 ? ` — ${reportedCount} of ${instrumentCount} reported` : ""}
+          {TAIL_DEPTH_IS_COMPARABLE ? ": each one lit by how deep it sits in its own history." : "."}
+          {darkLanes.length > 0 && (
+            <>
+              {" "}
+              <span className="text-gray-400">
+                The {darkLanes.map((l) => laneCount(l.total, l)).join(", the ")} are dark.
+              </span>
+            </>
+          )}
         </p>
         <div
           ref={boardStageRef}
@@ -628,6 +934,50 @@ export default function TodayPage() {
           ) : (
             <SkeletonGround />
           )}
+
+          {/* THE DARK GAUGES — drawn OVER the canvas, in the same hatch the
+              country map uses for "no reading on file", because the renderer
+              has no mark for absence: `drawDot` paints a null reading at pct
+              0.03, which is a perfectly ordinary depth. Rather than reach into
+              the film engine, the absence is stamped on top in the same Albers
+              space the canvas draws in, so the two register exactly.
+
+              These are decoration only — pointer-events off — so the canvas
+              keeps its hit test and a tap still opens the card, which already
+              says "no reading on file today" in the instrument's own name. */}
+          {model && darkInstruments.length > 0 && (
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              viewBox={`0 0 ${BOARD_PROJECTION.width} ${BOARD_PROJECTION.height}`}
+              aria-hidden="true"
+            >
+              <defs>
+                <pattern
+                  id="board-dark"
+                  width="3.5"
+                  height="3.5"
+                  patternUnits="userSpaceOnUse"
+                  patternTransform="rotate(45)"
+                >
+                  <rect width="3.5" height="3.5" fill="#0d1217" />
+                  <line x1="0" y1="0" x2="0" y2="3.5" stroke="rgba(255,255,255,0.34)" strokeWidth="1" />
+                </pattern>
+              </defs>
+              {darkInstruments.map((r) => (
+                <circle
+                  key={r.inst.id}
+                  cx={r.inst.albers_x}
+                  cy={r.inst.albers_y}
+                  r={5.5}
+                  fill="url(#board-dark)"
+                  stroke="rgba(255,255,255,0.22)"
+                  strokeWidth={0.8}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+          )}
+
           {card && (
             <>
               <button
@@ -660,9 +1010,19 @@ export default function TodayPage() {
           )}
         </div>
         <p className="mt-2.5 text-center font-mono text-[10px] leading-relaxed text-gray-600">
-          each light is an instrument deep in its own history —{" "}
-          <span className="text-amber-300/80">amber hot</span> &middot;{" "}
-          <span className="text-sky-300/80">ice cold</span> &middot; size = depth
+          {TAIL_DEPTH_IS_COMPARABLE ? (
+            <>
+              each light is an instrument deep in its own history —{" "}
+              <span className="text-amber-300/80">amber hot</span> &middot;{" "}
+              <span className="text-sky-300/80">ice cold</span> &middot; size = depth
+            </>
+          ) : (
+            /* The lights used to be sized and tinted by tail depth. That is the
+               withheld claim drawn instead of written, so every thermometer that
+               reported now carries the same mark and no hue. */
+            <>every state thermometer that reported, marked the same &mdash; the depth that used to
+              size them is withheld</>
+          )}
           {alertsApply && (
             <>
               {" "}
@@ -675,7 +1035,15 @@ export default function TodayPage() {
               &middot; <span className="text-slate-300/80">dashed ring = forming</span>
             </>
           )}
+          {darkInstruments.length > 0 && (
+            <>
+              {" "}
+              &middot; <span className="text-gray-500">hatched = no reading on file</span>
+            </>
+          )}
         </p>
+
+        {darkLanes.length > 0 && <DarkLanesNote lanes={darkLanes} />}
       </section>
 
       {/* THE FILMS — the site's best artifacts, given their own cards */}

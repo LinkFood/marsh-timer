@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSeasonModel, leadSentences, type SeasonRow } from "./season";
+import { buildSeasonModel, leadSentences, nextOpenerNationally, type SeasonRow } from "./season";
 
 /**
  * The model's job is to refuse. These tests pin the refusals: a row from another
@@ -177,5 +177,74 @@ describe("leadSentences", () => {
 
   it("treats no reason as no reason", () => {
     expect(leadSentences(null)).toEqual({ text: null, trimmed: false });
+  });
+});
+
+/**
+ * THE FRONT DOOR'S HEADLINE. It replaced a percentile the archive could not
+ * support, so what is worth pinning is that it refuses in exactly the places
+ * the state model refuses: a stale season year, a row the state has not
+ * published, and a date already behind us are none of them a countdown.
+ */
+describe("nextOpenerNationally", () => {
+  const rows: SeasonRow[] = [
+    row({ id: "sd", state_abbr: "SD", species_id: "goose", zone: "August Goose Management Take", dates: [{ open: "2026-08-15" }] }),
+    row({ id: "md", state_abbr: "MD", species_id: "goose", dates: [{ open: "2026-09-01" }] }),
+    row({ id: "va", state_abbr: "VA", species_id: "goose", dates: [{ open: "2026-09-01" }] }),
+    row({ id: "al", state_abbr: "AL", species_id: "duck", dates: [{ open: "2026-11-27" }] }),
+  ];
+
+  it("names the soonest opener in the country and counts the days to it", () => {
+    const n = nextOpenerNationally(rows, TODAY, YEAR)!;
+    expect(n.stateAbbr).toBe("SD");
+    expect(n.opensOn).toBe("2026-08-15");
+    expect(n.daysOut).toBe(22);
+    expect(n.zone).toBe("August Goose Management Take");
+    expect(n.sameDay).toBe(0);
+    expect(n.aheadCount).toBe(4);
+  });
+
+  it("counts the other openers sharing that same first day", () => {
+    const n = nextOpenerNationally(rows.slice(1), TODAY, YEAR)!;
+    expect(n.opensOn).toBe("2026-09-01");
+    expect(n.stateAbbr).toBe("MD"); // ties break to the abbreviation, deterministically
+    expect(n.sameDay).toBe(1);
+  });
+
+  it("refuses a row from another season year", () => {
+    expect(nextOpenerNationally([row({ id: "x", season_year: "2025-2026" })], TODAY, YEAR)).toBeNull();
+  });
+
+  it("refuses a row the state has not published as ok", () => {
+    expect(
+      nextOpenerNationally([row({ id: "x", status: "not_published", dates: null })], TODAY, YEAR),
+    ).toBeNull();
+  });
+
+  it("never counts down to a date already behind us", () => {
+    const past = row({ id: "p", state_abbr: "ZZ", dates: [{ open: "2026-07-01" }] });
+    const n = nextOpenerNationally([past, ...rows], TODAY, YEAR)!;
+    expect(n.stateAbbr).toBe("SD");
+    expect(n.aheadCount).toBe(4);
+  });
+
+  it("counts an opener that is today as today, not as gone", () => {
+    const n = nextOpenerNationally([row({ id: "t", dates: [{ open: TODAY }] })], TODAY, YEAR)!;
+    expect(n.daysOut).toBe(0);
+  });
+
+  it("carries the state's own provisional label and its source url", () => {
+    const n = nextOpenerNationally(
+      [row({ id: "nj", provisional: true, provisional_note: "proposed", source_url: "https://dep.nj.gov/x" })],
+      TODAY,
+      YEAR,
+    )!;
+    expect(n.provisional).toBe(true);
+    expect(n.provisionalNote).toBe("proposed");
+    expect(n.sourceUrl).toBe("https://dep.nj.gov/x");
+  });
+
+  it("holds nothing when there is nothing to hold", () => {
+    expect(nextOpenerNationally([], TODAY, YEAR)).toBeNull();
   });
 });

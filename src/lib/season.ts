@@ -481,3 +481,89 @@ export function buildComingModel(rows: EventRow[]): ComingModel {
   events.sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
   return { events, dropped };
 }
+
+/* ──────────────────────── the national next opener ──────────────────────── */
+
+/**
+ * THE FRONT DOOR'S HEADLINE (2026-07-25).
+ *
+ * The front door used to lead with a percentile — "California is running hotter
+ * than 99% of its July record" — computed from a byte whose day and whose
+ * record are two different measurements (`src/lib/board/tailDepthGate.ts`). It
+ * had to stop. This is what replaced it, and the argument for it is that it is
+ * the opposite kind of statement in every way that mattered:
+ *
+ *  - it is a TRANSCRIPTION, not a construction. The number is a date a state
+ *    wildlife agency published, and every row carries the `source_url` a reader
+ *    can open in one tap. There is no pool, no denominator and no rank, so
+ *    there is nothing that can be mismatched against anything.
+ *  - it is the question the domain name asks. On a July morning the one thing a
+ *    waterfowler wants off a front door is how long until he can hunt.
+ *  - it is falsifiable in three seconds against a regs booklet, which is the
+ *    strongest honesty guarantee any line on this site has.
+ *  - it carries its own decay: `provisional` is the state's own label, and a
+ *    row that says so says so on the page (PLAN §10.1).
+ *
+ * THE RULE: the earliest `open` at or after `today`, over rows stamped with the
+ * current season year at `status = 'ok'`. Ties break to the state abbreviation
+ * then the species, so the sentence is stable between renders. `null` when we
+ * hold nothing — the caller renders the absence, never a countdown to last
+ * season, which is the same law `buildSeasonModel` enforces one level down.
+ *
+ * Like everything else in this module it is a total function over rows plus one
+ * `today` string. No clock, no network.
+ */
+export interface NextOpener {
+  stateAbbr: string;
+  species: string;
+  speciesLabel: string;
+  /** The winning row's own zone or special-season label. Displayed, never inferred. */
+  zone: string | null;
+  opensOn: string;
+  daysOut: number;
+  provisional: boolean | null;
+  provisionalNote: string | null;
+  sourceUrl: string | null;
+  /** How many OTHER state-species openers fall on that same first day. */
+  sameDay: number;
+  /** How many openers in the whole country are still ahead of today. */
+  aheadCount: number;
+}
+
+export function nextOpenerNationally(
+  rows: SeasonRow[],
+  today: string,
+  seasonYear: string,
+): NextOpener | null {
+  const ahead: { row: SeasonRow; opensOn: string }[] = [];
+  for (const row of rows) {
+    if (row.season_year !== seasonYear) continue;
+    if ((row.status ?? "ok") !== "ok") continue;
+    const opensOn = earliestOpen(row);
+    if (!opensOn || daysBetween(today, opensOn) < 0) continue;
+    ahead.push({ row, opensOn });
+  }
+  if (!ahead.length) return null;
+
+  ahead.sort(
+    (a, b) =>
+      a.opensOn.localeCompare(b.opensOn) ||
+      a.row.state_abbr.localeCompare(b.row.state_abbr) ||
+      a.row.species_id.localeCompare(b.row.species_id),
+  );
+
+  const first = ahead[0];
+  return {
+    stateAbbr: first.row.state_abbr,
+    species: first.row.species_id,
+    speciesLabel: speciesLabel(first.row.species_id),
+    zone: first.row.zone,
+    opensOn: first.opensOn,
+    daysOut: daysBetween(today, first.opensOn),
+    provisional: first.row.provisional ?? null,
+    provisionalNote: first.row.provisional_note ?? null,
+    sourceUrl: first.row.source_url,
+    sameDay: ahead.filter((a) => a.opensOn === first.opensOn).length - 1,
+    aheadCount: ahead.length,
+  };
+}
