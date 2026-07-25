@@ -1,8 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { InnerHeader, InnerFooter } from "@/components/InnerNav";
-import { STATE_SHAPES, ATLAS_PROJECTION } from "@/data/atlas/stateShapesAlbers";
-import { fetchStateAnomalyResponse } from "@/lib/atlas/stateChoropleth";
+import { STATE_GEO, STATE_GEO_LIST, STATE_VIEW, hitState } from "@/lib/atlas/stateGeo";
+import {
+  fetchFrames,
+  fetchInstruments,
+  isoDaysBefore,
+  longDate,
+  resolveDay,
+  todayIso,
+} from "@/lib/board/frameStore";
+import {
+  ABSENT_FILL,
+  depthClause,
+  depthWord,
+  fetchPoolYears,
+  fillFor,
+  freshnessNote,
+  monthPlural,
+  rarityClause,
+  stateRarities,
+  type StateRarity,
+} from "@/lib/board/rarity";
 import { STATE_CENTROIDS } from "@/data/atlas/stateCentroids";
 import { STATE_NAMES } from "@/data/atlas/stateBBoxes";
 import SpotDossier, { type SpotData } from "@/components/atlas/SpotDossier";
@@ -15,27 +34,32 @@ import { consumeBornDoor, trackDateLookup } from "@/lib/analytics";
  * ATLAS — the ground you stand on (docs/THE-VISION-AND-ROADMAP.md).
  *
  * ONE grammar with the front door: the same 975x610 Albers USA ground the
- * board films use (src/data/atlas/stateShapesAlbers.ts registers exactly with
- * conusBorders), each state tinted by what it's doing NOW — amber running
- * hot, ice running cold, near-invisible when normal. Same hue discipline as
- * boardPlayer's ember tints.
+ * board films use, shaded by the SAME number the front door's rarity map and
+ * the frequency card use — the packed tail-depth byte out of board_frames
+ * (src/lib/board/rarity.ts). Amber running hot, ice running cold, quiet inside
+ * a state's own middle half.
+ *
+ * THE SOURCE CHANGED (2026-07-25). This page used to shade from
+ * hunt-atlas-anomaly's z-scores. That is parametric where the card counts rank,
+ * and it is a YEAR STALE — ghcn-daily stops 2025-12-31, so the function answers
+ * a 2026-07-25 request with as_of_date 2025-07-25, and it had this page calling
+ * New York "+1.7σ hot" on a day the frame store has New York at the very bottom
+ * of its July record. One number, one meaning, or the surfaces lie to each other.
  *
  * THE DESCENT: tapping a state moves a CAMERA — the SVG viewBox rAF-tweens
  * (ease-out cubic) into the state's real geography while the other states dim.
  * Neighbors stay visible as map geography, not letter tiles. The reading lands
- * as a composed sentence under the map ("Maryland is about normal today —
- * +0.3σ against its own 76 Julys"), speaking the porch-clause vocabulary
- * (pinned / deep / leaning / about normal) so the two surfaces sound the same.
- * One recorded storm surfaces as a quiet caption with its denominator; the
- * dossier lands as a consequence. Esc or tapping outside surfaces back out.
- * prefers-reduced-motion: instant cut.
+ * as a composed sentence under the map ("Maryland sits deep in its cold tail —
+ * colder than 96% of its 72 Julys"). One recorded storm surfaces as a quiet
+ * caption with its denominator; the dossier lands as a consequence. Esc or
+ * tapping outside surfaces back out. prefers-reduced-motion: instant cut.
  *
  * Reliable SVG (no WebGL). Read-only. The hunter operates it; the kid marvels.
  */
 const APIKEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 
-const VIEW_W = ATLAS_PROJECTION.width;
-const VIEW_H = ATLAS_PROJECTION.height;
+const VIEW_W = STATE_VIEW.width;
+const VIEW_H = STATE_VIEW.height;
 
 // A dossier fetch that cannot hang and cannot render a lie.
 //
@@ -54,127 +78,6 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
   });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
   return res.json();
-}
-
-// ---------------------------------------------------------------------------
-// Ground geometry — per-state paths, bboxes, centers (module-level, computed once)
-// ---------------------------------------------------------------------------
-interface StateGeo {
-  abbr: string;
-  d: string; // SVG path
-  rings: readonly (readonly number[])[];
-  bbox: [number, number, number, number]; // minX, minY, maxX, maxY
-  cx: number;
-  cy: number;
-}
-
-const STATE_GEO: Record<string, StateGeo> = {};
-for (const [abbr, rings] of Object.entries(STATE_SHAPES)) {
-  let d = "";
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const ring of rings) {
-    d += `M${ring[0]} ${ring[1]}`;
-    for (let i = 2; i < ring.length; i += 2) d += `L${ring[i]} ${ring[i + 1]}`;
-    d += "Z";
-    for (let i = 0; i < ring.length; i += 2) {
-      if (ring[i] < minX) minX = ring[i];
-      if (ring[i] > maxX) maxX = ring[i];
-      if (ring[i + 1] < minY) minY = ring[i + 1];
-      if (ring[i + 1] > maxY) maxY = ring[i + 1];
-    }
-  }
-  STATE_GEO[abbr] = {
-    abbr,
-    d,
-    rings,
-    bbox: [minX, minY, maxX, maxY],
-    cx: (minX + maxX) / 2,
-    cy: (minY + maxY) / 2,
-  };
-}
-
-/** Even-odd point-in-polygon across all of a state's rings. */
-function pointInState(geo: StateGeo, x: number, y: number): boolean {
-  const [minX, minY, maxX, maxY] = geo.bbox;
-  if (x < minX || x > maxX || y < minY || y > maxY) return false;
-  let inside = false;
-  for (const ring of geo.rings) {
-    const n = ring.length;
-    for (let i = 0, j = n - 2; i < n; j = i, i += 2) {
-      const xi = ring[i], yi = ring[i + 1];
-      const xj = ring[j], yj = ring[j + 1];
-      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-  }
-  return inside;
-}
-
-/** Which state a projection-space point lands in; falls back to the nearest
- *  state center within `near` projection px (small-state tap forgiveness). */
-function hitState(x: number, y: number, near: number): string | null {
-  for (const geo of Object.values(STATE_GEO)) {
-    if (pointInState(geo, x, y)) return geo.abbr;
-  }
-  let best: string | null = null;
-  let bestD = near;
-  for (const geo of Object.values(STATE_GEO)) {
-    const d = Math.hypot(geo.cx - x, geo.cy - y);
-    if (d < bestD) {
-      bestD = d;
-      best = geo.abbr;
-    }
-  }
-  return best;
-}
-
-// ---------------------------------------------------------------------------
-// The ember tint — same hue discipline as boardPlayer (amber hot, ice cold),
-// near-invisible when normal so the quiet ground stays quiet.
-// ---------------------------------------------------------------------------
-const Z_FLOOR = 0.35; // below this a state shows nothing
-const Z_CEIL = 3;
-const QUIET_FILL = "rgba(255,255,255,0.015)";
-
-function fillForZ(z: number | undefined): string {
-  if (z === undefined) return QUIET_FILL;
-  const mag = Math.min(Z_CEIL, Math.abs(z));
-  if (mag < Z_FLOOR) return QUIET_FILL;
-  const t = (mag - Z_FLOOR) / (Z_CEIL - Z_FLOOR);
-  const a = 0.07 + t * 0.48;
-  return z > 0 ? `rgba(255,176,96,${a.toFixed(3)})` : `rgba(148,196,255,${a.toFixed(3)})`;
-}
-
-// ---------------------------------------------------------------------------
-// The porch-clause vocabulary — the atlas speaks like the front door.
-// ---------------------------------------------------------------------------
-const FULL_MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-function sigmaStr(z: number): string {
-  return `${z >= 0 ? "+" : "−"}${Math.abs(z).toFixed(1)}σ`;
-}
-
-/** "is pinned hot today" / "sits deep in its cold tail today" / ... */
-function magnitudeClause(z: number): string {
-  const warm = z >= 0;
-  const mag = Math.abs(z);
-  if (mag >= 2.5) return `is pinned ${warm ? "hot" : "cold"} today`;
-  if (mag >= 1.5) return `sits deep in its ${warm ? "warm" : "cold"} tail today`;
-  if (mag >= 0.75) return `is leaning ${warm ? "warm" : "cool"} today`;
-  return "is about normal today";
-}
-
-/** Short form for the hover readout. */
-function magnitudeWord(z: number | undefined): string {
-  if (z === undefined) return "no reading today";
-  const warm = z >= 0;
-  const mag = Math.abs(z);
-  if (mag >= 2.5) return `pinned ${warm ? "hot" : "cold"}`;
-  if (mag >= 1.5) return `deep in its ${warm ? "warm" : "cold"} tail`;
-  if (mag >= 0.75) return `leaning ${warm ? "warm" : "cool"}`;
-  return "about normal";
 }
 
 // ---------------------------------------------------------------------------
@@ -264,13 +167,16 @@ function titleCase(s: string): string {
 
 // ---------------------------------------------------------------------------
 
-interface StateReading {
-  z: number;
-  years: number | null;
+/** The shaded day: which frame we actually read, and how fresh it was. */
+interface GroundDay {
+  day: string;
+  day0Source: string | null;
+  rarities: Map<string, StateRarity>;
+  years: Map<string, number>;
 }
 
 export default function AtlasPage() {
-  const [readings, setReadings] = useState<Record<string, StateReading>>({});
+  const [groundDay, setGroundDay] = useState<GroundDay | null>(null);
   const [readingsLoaded, setReadingsLoaded] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -303,23 +209,40 @@ export default function AtlasPage() {
   const vbRef = useRef<ViewBox>(FULL_VIEW);
   const rafRef = useRef<number | null>(null);
 
+  // The shading, from the frame store — the SAME packed tail-depth byte the
+  // front door's rarity map and the frequency card read. With ?date= we read
+  // that exact day; without it we take the newest frame in the last four days,
+  // and whatever day that turns out to be is the day this page names. It never
+  // claims a currency the store does not have.
   useEffect(() => {
-    fetchStateAnomalyResponse()
-      .then((res) => {
-        const out: Record<string, StateReading> = {};
-        for (const s of res.states) {
-          if (s.z !== null && Number.isFinite(s.z)) {
-            out[s.state] = { z: s.z, years: s.n_years > 0 ? s.n_years : null };
-          }
+    let cancelled = false;
+    (async () => {
+      try {
+        const target = dateParam ?? todayIso();
+        const from = dateParam ?? isoDaysBefore(target, 3);
+        const [instruments, frames] = await Promise.all([fetchInstruments(), fetchFrames(from, target)]);
+        if (cancelled) return;
+        const frame = frames[0]; // fetchFrames returns newest-first
+        if (!frame || !instruments.length) {
+          setReadingsLoaded(true);
+          return;
         }
-        setReadings(out);
+        const rarities = stateRarities(resolveDay(frame, instruments));
+        setGroundDay({ day: frame.day, day0Source: frame.day0_source, rarities, years: new Map() });
         setReadingsLoaded(true);
-      })
-      .catch(() => setReadingsLoaded(true));
+        // The denominator rides in behind the shading; an empty map degrades
+        // every clause to "its Julys on file", never to an invented year count.
+        const years = await fetchPoolYears(frame.day);
+        if (!cancelled) setGroundDay((g) => (g && g.day === frame.day ? { ...g, years } : g));
+      } catch {
+        if (!cancelled) setReadingsLoaded(true);
+      }
+    })();
     return () => {
+      cancelled = true;
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, []);
+  }, [dateParam]);
 
   // Auto-descend when arriving with ?state=XX (e.g. the Born flow), or — with
   // no param — into the visitor's chosen ground (§2e: the atlas reads
@@ -487,22 +410,31 @@ export default function AtlasPage() {
 
   // --- the composed sentence (only meaningful while descended) ---
   const stateName = selected ? STATE_NAMES[selected] ?? selected : "";
-  const reading = selected ? readings[selected] : undefined;
-  const monthName = FULL_MONTHS[new Date().getMonth()];
+  const reading = selected ? groundDay?.rarities.get(selected) : undefined;
+  const readDay = groundDay?.day ?? null;
   let sentenceLead = "";
   let sentenceTail = "";
   if (selected) {
     if (!readingsLoaded) {
       sentenceLead = `${stateName} — reading the ground…`;
-    } else if (reading === undefined) {
-      sentenceLead = `${stateName} has no temperature reading on file today.`;
+    } else if (!readDay || reading === undefined || reading.depth === null) {
+      sentenceLead = `${stateName} has no temperature reading on file${readDay ? ` for ${longDate(readDay)}` : ""}.`;
     } else {
-      sentenceLead = `${stateName} ${magnitudeClause(reading.z)}`;
-      sentenceTail = ` — ${sigmaStr(reading.z)} against its own ${
-        reading.years ? `${reading.years} ${monthName}s` : "record"
-      }.`;
+      sentenceLead = `${stateName} ${depthClause(reading)}`;
+      sentenceTail = ` — ${rarityClause(reading, readDay, groundDay?.years.get(selected) ?? null)}.`;
     }
   }
+
+  // The pool span, MEASURED. This page used to claim "76 years" for every
+  // state; the pools are 72 deep for 49 of them and 76 only for Texas.
+  const yearSpan = (() => {
+    const vals = [...(groundDay?.years.values() ?? [])];
+    if (!vals.length) return null;
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    return lo === hi ? `${lo}` : `${lo}–${hi}`;
+  })();
+  const freshNote = freshnessNote(groundDay?.day0Source ?? null);
 
   // --- the recorded-storm caption, denominator mandatory ---
   const event = storms?.event ?? null;
@@ -524,7 +456,7 @@ export default function AtlasPage() {
       : "";
 
   const hoveredName = hovered ? STATE_NAMES[hovered] ?? hovered : null;
-  const hoveredReading = hovered ? readings[hovered] : undefined;
+  const hoveredReading = hovered ? groundDay?.rarities.get(hovered) : undefined;
 
   return (
     <div className="min-h-screen w-full bg-gray-950 text-gray-100">
@@ -554,9 +486,17 @@ export default function AtlasPage() {
         <div className="lg:flex-1">
           <h1 className="font-display text-2xl font-medium text-gray-50 sm:text-3xl">The ground you stand on</h1>
           <p className="mt-1.5 max-w-md font-body text-sm leading-relaxed text-gray-400">
-            Each state shaded by what it&rsquo;s doing today, measured against its own 76&nbsp;years.
+            Each state shaded by how far into its own record {dateParam ? "that day’s" : "today’s"} reading
+            sits
+            {yearSpan ? ` — against its own ${yearSpan} ${readDay ? monthPlural(readDay) : "years"}` : ""}.
             Tap one to fall in.
           </p>
+          {readDay && (
+            <p className="mt-1 font-mono text-[10px] leading-relaxed text-gray-600">
+              reading of {longDate(readDay)}
+              {freshNote && <span> &middot; {freshNote}</span>}
+            </p>
+          )}
 
           <div ref={mapCardRef} className="mt-5 scroll-mt-4 rounded-lg bg-gray-900/40 p-3 ring-1 ring-white/5">
             <div className="overflow-hidden rounded-md" style={{ background: "#0a0f14" }}>
@@ -576,21 +516,31 @@ export default function AtlasPage() {
                 onPointerMove={onPointerMove}
                 onPointerLeave={() => setHovered(null)}
               >
-                {Object.values(STATE_GEO).map((geo) => {
-                  const z = readings[geo.abbr]?.z;
+                <defs>
+                  {/* Absence is a hatch, never a colour on the ramp — a state
+                      the archive is silent about must not read as "normal". */}
+                  <pattern
+                    id="atlas-absent"
+                    width="8"
+                    height="8"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width="8" height="8" fill={ABSENT_FILL} />
+                    <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255,255,255,0.16)" strokeWidth="1.5" />
+                  </pattern>
+                </defs>
+                {STATE_GEO_LIST.map((geo) => {
+                  const r = groundDay?.rarities.get(geo.abbr);
                   const isSel = selected === geo.abbr;
                   const isHov = hovered === geo.abbr && !descended;
                   const dimmed = descended && !isSel;
-                  // The state you fell into always reads as present ground —
-                  // a whisper of fill even when its reading is dead normal.
-                  const tint = fillForZ(z);
-                  const fill =
-                    isSel && descended && tint === QUIET_FILL ? "rgba(255,255,255,0.045)" : tint;
+                  const tint = fillFor(r);
                   return (
                     <path
                       key={geo.abbr}
                       d={geo.d}
-                      fill={fill}
+                      fill={tint ?? "url(#atlas-absent)"}
                       fillRule="evenodd"
                       stroke={
                         isSel && descended
@@ -608,7 +558,7 @@ export default function AtlasPage() {
                       aria-label={
                         dimmed
                           ? "surface back to the full map"
-                          : `${STATE_NAMES[geo.abbr] ?? geo.abbr} — ${magnitudeWord(z)}`
+                          : `${STATE_NAMES[geo.abbr] ?? geo.abbr} — ${depthWord(r)}`
                       }
                       style={{
                         opacity: dimmed ? 0.28 : 1,
@@ -657,16 +607,20 @@ export default function AtlasPage() {
               <div className="mt-2 px-1">
                 <p className="font-mono text-[10px] leading-relaxed text-gray-600">
                   <span className="text-amber-300/80">amber</span> running hot &middot;{" "}
-                  <span className="text-sky-300/80">ice</span> running cold &middot; measured against each
-                  state&rsquo;s own 76 years
+                  <span className="text-sky-300/80">ice</span> running cold &middot; deeper shade =
+                  further into that state&rsquo;s own tail &middot; hatched = no reading on file
                 </p>
                 <div className="mt-1 min-h-[1rem] font-mono text-[11px] text-gray-400">
                   {hoveredName ? (
                     <span>
                       <span className="text-gray-200">{hoveredName}</span> &middot;{" "}
-                      {magnitudeWord(hoveredReading?.z)}
-                      {hoveredReading !== undefined && (
-                        <span className="text-gray-600"> &middot; {sigmaStr(hoveredReading.z)}</span>
+                      {depthWord(hoveredReading)}
+                      {readDay && hoveredReading?.depth != null && (
+                        <span className="text-gray-600">
+                          {" "}
+                          &middot;{" "}
+                          {rarityClause(hoveredReading, readDay, groundDay?.years.get(hovered) ?? null)}
+                        </span>
                       )}
                     </span>
                   ) : (

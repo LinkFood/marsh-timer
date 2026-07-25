@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useSearchParams } from "react-router-dom";
 import { drawFrame, fitCanvas, hitTest, type BoardModel } from "@/lib/boardPlayer";
 import { BOARD_PROJECTION, CONUS_BORDERS } from "@/data/board/conusBorders";
 import { InnerFooter } from "@/components/InnerNav";
+import RarityMap from "@/components/map/RarityMap";
 import TodayFitted from "@/components/TodayFitted";
 import { useYourGround } from "@/hooks/useYourGround";
 import { dayOfYear, fetchGroundSky, loreLine, seasonCounter, type GroundSky } from "@/lib/almanac";
@@ -36,14 +37,22 @@ import {
  *
  * Identity first — brand, thesis, and a dim US skeleton render statically
  * before a single row arrives; the page never opens on a bare black screen.
- * Then the porch: today's frame spoken in one honest, kind-aware sentence
- * over the live board (hot states glow amber, cold states ice; tides and
- * buoys keep the ember teal). Under it, when the archive holds one, the
- * rhyme: the day today reads most like, and what followed then. Scroll down
- * and the past days read as a typographic ledger — a diary, not dot-blobs —
- * and tapping any row loads that day's full board into the hero. The films
- * get their own cards; the doors footer is the same one every sibling page
- * shares.
+ * Then the porch: today's frame spoken in one honest, kind-aware sentence.
+ *
+ * Under it, THE RARITY MAP — the primary map since 2026-07-25. Every weather
+ * map on the internet answers what is happening; this one answers how unusual
+ * is this, here, against each state's own record, which is the question the
+ * frequency card answers. The map is the index, the card is the product, so a
+ * state is a door: tapping one lands on /season?state=XX.
+ *
+ * Then the rhyme (the day today reads most like, and what followed), then THE
+ * INSTRUMENTS — the breathing dot board, which used to hold the hero. It moved
+ * rather than died: a state choropleth cannot draw the climate needles, tide
+ * gauges and Gulf buoys, and it is still the only surface that shows them.
+ *
+ * Scroll down and the past days read as a typographic ledger — a diary, not
+ * dot-blobs — and tapping any row loads that day into BOTH maps. The films get
+ * their own cards; the doors footer is the same one every sibling page shares.
  */
 
 const DAYS_BACK = 30;
@@ -222,6 +231,7 @@ interface CardState {
 }
 
 export default function TodayPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // The one ground choice — ?state=XX overrides and persists (§2e).
   const { ground, groundName, setGround } = useYourGround(searchParams.get("state"));
@@ -234,7 +244,10 @@ export default function TodayPage() {
   const [card, setCard] = useState<CardState | null>(null);
 
   const heroRef = useRef<HTMLDivElement | null>(null);
+  /** The rarity map — the front door's primary map, and the scroll target. */
   const stageRef = useRef<HTMLDivElement | null>(null);
+  /** The instrument board, one section down; it sizes its own canvas. */
+  const boardStageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cssWRef = useRef(0);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
@@ -346,7 +359,7 @@ export default function TodayPage() {
   // Reduced-motion visitors get the single still frame.
   const refit = useCallback(() => {
     const canvas = canvasRef.current;
-    const stage = stageRef.current;
+    const stage = boardStageRef.current;
     if (!canvas || !stage || !model) return;
     const cssW = stage.clientWidth;
     if (cssW <= 0) return;
@@ -538,35 +551,71 @@ export default function TodayPage() {
             />
           )}
 
-          {/* THE RHYME — only when the archive holds one; never a placeholder */}
-          {selected && rhyme && (
-            <div className="mx-auto mt-5 max-w-xl">
-              {/* Honest scope: the rhyme is the NATIONAL board's, not your ground's */}
-              <p className="font-mono text-[10px] tracking-[0.2em] text-gray-600">THE NATIONAL BOARD</p>
-              <p className="mt-1 font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
-                {isNewest ? "Today reads" : "This day read"} most like{" "}
-                <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
-                same instruments, deep the same way.
-              </p>
-              <p className="mt-1 font-body text-[14px] leading-relaxed text-gray-400">
-                {rhyme.followed
-                  ? followedLine(rhyme.followed)
-                  : "A quiet week followed — that's on the record too."}
-              </p>
-              <Link
-                to={`/atlas?date=${rhyme.rhyme_day}`}
-                className="mt-1.5 inline-block font-mono text-[11px] tracking-wide text-cyan-300/80 transition-colors hover:text-cyan-200"
-              >
-                read that day &rarr;
-              </Link>
+        </div>
+
+        {/* THE RARITY MAP — the index. Not "what is happening": how unusual is
+            this, here, against each state's own record — the card's question,
+            drawn nationally. A state is a door to its card. Skeleton ground
+            until the frame lands, so the page never opens on bare black. */}
+        <div ref={stageRef} className="mt-6 scroll-mt-6">
+          {selected ? (
+            <RarityMap
+              resolved={selected.resolved}
+              day={selected.frame.day}
+              day0Source={selected.frame.day0_source}
+              onPick={(abbr) => navigate(`/season?state=${abbr}`)}
+            />
+          ) : (
+            <div
+              className="w-full overflow-hidden rounded-2xl"
+              style={{ background: "#0a0f14", aspectRatio: "975 / 610" }}
+            >
+              <SkeletonGround />
             </div>
           )}
         </div>
 
-        {/* THE GROUND — skeleton until the frame lands, never a bare black screen */}
+        {/* THE RHYME — only when the archive holds one; never a placeholder */}
+        {selected && rhyme && (
+          <div className="mx-auto mt-8 max-w-xl text-center">
+            {/* Honest scope: the rhyme is the NATIONAL board's, not your ground's */}
+            <p className="font-mono text-[10px] tracking-[0.2em] text-gray-600">THE NATIONAL BOARD</p>
+            <p className="mt-1 font-body text-[15px] leading-relaxed text-gray-300 sm:text-base">
+              {isNewest ? "Today reads" : "This day read"} most like{" "}
+              <strong className="font-medium text-gray-100">{longDate(rhyme.rhyme_day)}</strong> — the
+              same instruments, deep the same way.
+            </p>
+            <p className="mt-1 font-body text-[14px] leading-relaxed text-gray-400">
+              {rhyme.followed
+                ? followedLine(rhyme.followed)
+                : "A quiet week followed — that's on the record too."}
+            </p>
+            <Link
+              to={`/atlas?date=${rhyme.rhyme_day}`}
+              className="mt-1.5 inline-block font-mono text-[11px] tracking-wide text-cyan-300/80 transition-colors hover:text-cyan-200"
+            >
+              read that day &rarr;
+            </Link>
+          </div>
+        )}
+      </section>
+
+      {/* THE INSTRUMENTS — the breathing board, displaced from the hero by the
+          rarity map but not diminished: it is the only surface that shows the
+          non-areal lanes (climate needles, tide gauges, Gulf buoys) a state
+          choropleth cannot draw, and it keeps its tap-card verbatim. */}
+      <section className="mx-auto mt-14 w-full max-w-3xl px-5 sm:px-8">
+        <p className="text-center font-mono text-[10px] tracking-[0.24em] text-gray-500">
+          THE INSTRUMENTS
+        </p>
+        <p className="mx-auto mt-2 max-w-lg text-center font-body text-[13px] leading-relaxed text-gray-500">
+          The same day, gauge by gauge{data ? ` — ${data.instruments.length} of them` : ""}: climate
+          needles, state thermometers, harbors and Gulf buoys, each lit by how deep it sits in its own
+          history.
+        </p>
         <div
-          ref={stageRef}
-          className="relative mt-6 w-full overflow-hidden rounded-2xl"
+          ref={boardStageRef}
+          className="relative mt-4 w-full overflow-hidden rounded-2xl"
           style={{ background: "#0a0f14", aspectRatio: "975 / 610" }}
         >
           {model ? (
