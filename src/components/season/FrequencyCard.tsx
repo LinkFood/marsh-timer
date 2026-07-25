@@ -2,18 +2,22 @@ import { useMemo, useState } from "react";
 import { BarChart3 } from "lucide-react";
 import { Load, longDate } from "@/lib/season";
 import {
+  CARD_METRICS,
+  CARD_METRIC_BY_ID,
   DEFAULT_EPISODE_GAP_DAYS,
   DOY_HALF_WINDOW,
   MIN_MATCHES,
   MIN_DISTINCT_YEARS,
   bandCensus,
+  bandLabel,
   bandPhrase,
   decodeSeriesColumn,
   mmddLabel,
   poolForDoy,
-  thresholdPhrase,
+  subjectPhrase,
   windowPhrase,
   type BandCensus,
+  type CardMetric,
   type DecadeBar,
   type SeriesColumnRow,
 } from "@/lib/board/frequency";
@@ -29,12 +33,24 @@ import {
  *   [decade bars, per-year normalized]
  *   Maryland statewide. Not your marsh.
  *
- * THIS IS THE TEMPERATURE CARD, AND IT SAYS SO. The v1 card in the plan counts a
- * PRESSURE fall off an ERA5 backfill that is still landing. This one counts a
- * temperature tail off 76 complete years of GHCN that are already here.
- * Amendment 1.3 Ruling 3 sanctions exactly that — "the cold-snap card is a
- * separate later card on a separate variable from a separate source, each
- * labeled. Two sources is fine. Two sources silently blended into one number is
+ * …and now the same sentence about the two other things a duck hunter actually
+ * asks — the water and the freeze (measured, Maryland, ±10 days of October 10,
+ * wettest/coldest 5%):
+ *
+ *   0.65 in of rain or more, averaged across Maryland, within 10 days of
+ *   October 10, has happened 66 times since 1950. Most recently October 1, 2022.
+ *
+ *   An overnight low of 35.2 °F or colder over Maryland, within 10 days of
+ *   October 10, has happened 54 times since 1950. Most recently October 18, 2015.
+ *
+ * All seven metrics come off `ghcn-daily` rows that were already in the archive.
+ * No new ingest, no new content type, and — because `board_series_columns` has no
+ * `layout_version` — no board layout change and no re-bake of the 27,964 frames.
+ *
+ * THIS IS THE GHCN CARD, AND IT SAYS SO. The v1 card in the plan counts a PRESSURE
+ * fall off an ERA5 backfill that is still landing. This one counts the state
+ * weather record that is already here. Amendment 1.3 Ruling 3 sanctions exactly
+ * that — "two sources is fine. Two sources silently blended into one number is
  * not." Nothing on this card may imply it is the pressure card.
  *
  * WHAT IS FIXED HERE, and must survive whoever edits it next:
@@ -47,36 +63,58 @@ import {
  *  - Decade bars PER-YEAR NORMALIZED, 1980s forward (Ruling 10.4). 1979 and
  *    earlier count toward the headline and the denominator, never a bar; the
  *    2020s bar is marked partial.
- *  - FLOORS ARE REFUSALS, NOT TARGETS (Ruling 6). Under 5 matches, or under 10
- *    distinct years, the card says so instead of printing a number.
+ *  - FLOORS ARE REFUSALS, NOT TARGETS (Ruling 6). Under 5 matches, under 10
+ *    distinct years, or a band whose edge is a mass of identical readings, the
+ *    card says so instead of printing a number.
  *  - THE BAND IS AN INPUT, NOT A CONSTANT. Ruling 1a leaves it deliberately
- *    undecided until it can be set from data. A band hidden inside this component
- *    would be a decision made by taste, so all three candidates are on the face
- *    of the card with what each one yields.
+ *    undecided until it can be set from data, so all three candidates are on the
+ *    face of the card with what each one yields.
+ *  - THE DIRECTION IS PER METRIC AND IT IS NOT A DEFAULT. A hunter asks the cold
+ *    question of temperature and the wet question of rain. `CARD_METRICS` names
+ *    the tail each metric counts and the receipts say which one was used.
  */
 
 /** Ruling 1a: undecided on purpose. The reader picks, and sees the consequence. */
 const BANDS = [0.01, 0.02, 0.05];
 
+/** What `board_series_columns` says this state holds, without pulling any blob. */
+export interface MetricAvailability {
+  metric: string;
+  n_present: number;
+  first_year: number;
+  last_year: number;
+}
+
 interface Props {
   stateName: string;
   /** The anchor day, ISO. "This time of year" means within ±10 days of it. */
   on: string;
-  /** `ok` with a null value means the column has not been baked for this state. */
+  /** Which metrics the archive holds for this state. One tiny read, no `readings`. */
+  menu: Load<MetricAvailability[]>;
+  /** The metric on display, owned by the page so the read can follow it. */
+  metric: string;
+  onMetric: (metric: string) => void;
+  /** `ok` with a null value means this metric's column has not been baked here. */
   load: Load<SeriesColumnRow | null>;
 }
 
-export default function FrequencyCard({ stateName, on, load }: Props) {
+export default function FrequencyCard({ stateName, on, menu, metric, onMetric, load }: Props) {
   const [band, setBand] = useState(0.05);
   const mmdd = on.slice(5);
   const w = useMemo(() => windowPhrase(mmdd), [mmdd]);
 
+  const cm = CARD_METRIC_BY_ID[metric] ?? CARD_METRICS[0];
   const row = load.s === "ok" ? load.v : null;
-  const column = useMemo(() => (row ? decodeSeriesColumn(row) : null), [row]);
+  // Only decode the blob when it is the metric being asked for. A stale row from
+  // the previous metric would render a rain threshold under a temperature label.
+  const column = useMemo(
+    () => (row && row.metric === metric ? decodeSeriesColumn(row) : null),
+    [row, metric],
+  );
   const pool = useMemo(() => (column ? poolForDoy(column, mmdd) : null), [column, mmdd]);
   const byBand = useMemo(
-    () => (pool ? BANDS.map((b) => bandCensus(pool, b, "low")) : null),
-    [pool],
+    () => (pool ? BANDS.map((b) => bandCensus(pool, b, cm.side)) : null),
+    [pool, cm.side],
   );
 
   const census = byBand?.find((c) => c.band === band) ?? null;
@@ -90,10 +128,12 @@ export default function FrequencyCard({ stateName, on, load }: Props) {
         HOW OFTEN THIS HAPPENS HERE
       </div>
       <div className="mt-1.5 font-mono text-[11px] text-gray-500">
-        {stateName} &middot; air temperature &middot; counting only &middot; no forward join
+        {stateName} &middot; {cm.label} &middot; counting only &middot; no forward join
       </div>
 
       <div className="mt-6 max-w-3xl">
+        <MetricPicker menu={menu} selected={metric} onSelect={onMetric} />
+
         {load.s === "loading" && (
           <p className="font-mono text-xs text-gray-600">reading the archive&hellip;</p>
         )}
@@ -105,22 +145,23 @@ export default function FrequencyCard({ stateName, on, load }: Props) {
           </p>
         )}
 
-        {load.s === "ok" && !column && <NotBaked stateName={stateName} />}
+        {load.s === "ok" && !column && <NotBaked stateName={stateName} metric={cm} />}
 
         {load.s === "ok" && column && byBand && census && (
           <>
-            <BandPicker bands={byBand} selected={band} onSelect={setBand} />
+            <BandPicker metric={metric} bands={byBand} selected={band} onSelect={setBand} />
 
             {census.refusal ? (
-              <Refusal census={census} stateName={stateName} window={w} since={since} />
+              <Refusal census={census} metric={cm} stateName={stateName} window={w} since={since} />
             ) : (
-              <Answer census={census} stateName={stateName} window={w} since={since} />
+              <Answer census={census} metric={cm} stateName={stateName} window={w} since={since} />
             )}
 
-            <Decades census={census} />
+            {!census.refusal && <Decades census={census} />}
 
             <Receipts
               stateName={stateName}
+              metric={cm}
               census={census}
               window={w}
               mmdd={mmdd}
@@ -135,6 +176,61 @@ export default function FrequencyCard({ stateName, on, load }: Props) {
   );
 }
 
+/* ────────────────────── which question, on the face ──────────────────────── */
+
+/**
+ * The archive has carried these seven fields for every state since 1950 and the
+ * card counted one of them. Water and the freeze are a duck hunter's other two
+ * real questions, so they belong on the face in the same idiom as the band: the
+ * choice is visible, and a metric the archive does not hold for this state is
+ * named as absent rather than quietly missing.
+ */
+function MetricPicker({
+  menu,
+  selected,
+  onSelect,
+}: {
+  menu: Load<MetricAvailability[]>;
+  selected: string;
+  onSelect: (m: string) => void;
+}) {
+  const held = new Map((menu.s === "ok" ? menu.v : []).map((m) => [m.metric, m]));
+  return (
+    <div className="mb-7">
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-gray-600">
+        which question
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {CARD_METRICS.map((m) => {
+          const have = menu.s !== "ok" || held.has(m.metric);
+          const active = m.metric === selected;
+          return (
+            <button
+              key={m.metric}
+              type="button"
+              disabled={!have}
+              onClick={() => onSelect(m.metric)}
+              aria-pressed={active}
+              className={`rounded border px-3 py-1.5 text-left font-mono text-[11px] leading-tight transition-colors ${
+                !have
+                  ? "cursor-not-allowed border-white/5 bg-gray-900/40 text-gray-700"
+                  : active
+                    ? "border-cyan-300/50 bg-cyan-300/10 text-cyan-100"
+                    : "border-white/10 bg-gray-900/60 text-gray-400 hover:border-white/25 hover:text-gray-200"
+              }`}
+            >
+              <span className="block">{m.label}</span>
+              <span className="block text-[10px] text-gray-600">
+                {have ? `${m.side === "low" ? "cold" : "high"} end · ${m.unit}` : "not held here"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────────── the band, on the face ───────────────────────── */
 
 /**
@@ -143,10 +239,12 @@ export default function FrequencyCard({ stateName, on, load }: Props) {
  * moves with a choice we have not finished making — and which choices refuse.
  */
 function BandPicker({
+  metric,
   bands,
   selected,
   onSelect,
 }: {
+  metric: string;
   bands: BandCensus[];
   selected: number;
   onSelect: (b: number) => void;
@@ -171,7 +269,7 @@ function BandPicker({
                   : "border-white/10 bg-gray-900/60 text-gray-400 hover:border-white/25 hover:text-gray-200"
               }`}
             >
-              <span className="block">coldest {Math.round(c.band * 1000) / 10}%</span>
+              <span className="block">{bandLabel(metric, c.band, c.side)}</span>
               <span className={`block text-[10px] ${c.refusal ? "text-gray-600" : "text-gray-500"}`}>
                 {c.refusal ? "refuses" : `${c.count} times`}
               </span>
@@ -187,11 +285,13 @@ function BandPicker({
 
 function Answer({
   census,
+  metric,
   stateName,
   window: w,
   since,
 }: {
   census: BandCensus;
+  metric: CardMetric;
   stateName: string;
   window: { short: string; span: string };
   since: number | null;
@@ -199,7 +299,7 @@ function Answer({
   return (
     <>
       <h2 className="font-display text-[1.45rem] leading-[1.3] text-gray-50 sm:text-[2rem]">
-        {capitalize(thresholdPhrase("avg_high_f", census.side, census.threshold))} over {stateName},{" "}
+        {capitalize(subjectPhrase(metric.metric, census.side, census.threshold, stateName))},{" "}
         {w.short}, has happened {census.count} times since {since}.
       </h2>
       {census.lastOccurrence && (
@@ -215,27 +315,56 @@ function Answer({
  * The refusal, written as content. A count under the floors says more about
  * chance than about the ground, and a number chosen anyway would be a guess
  * wearing a count's clothes.
+ *
+ * Two different refusals, because they have two different remedies. Too little
+ * history is answered by widening the band. A band whose edge is a MASS of
+ * identical readings is not: widening it only swallows more of the same value,
+ * and the honest thing to say is that this state's record does not carry the
+ * question — which is what a snowfall card in Louisiana is.
  */
 function Refusal({
   census,
+  metric,
   stateName,
   window: w,
   since,
 }: {
   census: BandCensus;
+  metric: CardMetric;
   stateName: string;
   window: { short: string; span: string };
   since: number | null;
 }) {
+  const tieRefusal = /share the band's edge value/.test(census.refusal ?? "");
   const tooFew = census.count < MIN_MATCHES;
+
+  if (tieRefusal) {
+    const pct = Math.round((100 * census.edge.ties) / Math.max(census.poolN, 1));
+    return (
+      <>
+        <h2 className="font-display text-[1.45rem] leading-[1.3] text-gray-300 sm:text-[2rem]">
+          {stateName}&rsquo;s record can&rsquo;t answer this one.
+        </h2>
+        <p className="mt-3 font-body text-[15px] leading-relaxed text-gray-500">
+          {capitalize(census.edge.ties.toLocaleString())} of the {census.poolN.toLocaleString()} days
+          in this window &mdash; {pct}% of them &mdash; read exactly the same value, so a
+          &ldquo;{bandLabel(metric.metric, census.band, census.side)}&rdquo; band is a rank drawn
+          through a pile of identical readings. Which days landed inside it would be decided by the
+          sort order, not by the weather. Widening the band makes that worse, not better, so we
+          don&rsquo;t print a count.
+        </p>
+      </>
+    );
+  }
+
   return (
     <>
       <h2 className="font-display text-[1.45rem] leading-[1.3] text-gray-300 sm:text-[2rem]">
         Not enough history to put a number on that one.
       </h2>
       <p className="mt-3 font-body text-[15px] leading-relaxed text-gray-500">
-        {capitalize(bandPhrase(census.band, census.side))} over {stateName} {w.short} has come around{" "}
-        {census.count} {census.count === 1 ? "time" : "times"} since {since}, in{" "}
+        {capitalize(bandPhrase(metric.metric, census.band, census.side))} over {stateName} {w.short}{" "}
+        has come around {census.count} {census.count === 1 ? "time" : "times"} since {since}, in{" "}
         {census.years.length} separate {census.years.length === 1 ? "year" : "years"}.{" "}
         {tooFew
           ? `Under ${MIN_MATCHES} occasions we don't print a count at all.`
@@ -246,16 +375,16 @@ function Refusal({
   );
 }
 
-function NotBaked({ stateName }: { stateName: string }) {
+function NotBaked({ stateName, metric }: { stateName: string; metric: CardMetric }) {
   return (
     <>
       <h2 className="font-display text-[1.45rem] leading-[1.3] text-gray-300 sm:text-[2rem]">
         We can&rsquo;t count this yet.
       </h2>
       <p className="mt-3 font-body text-[15px] leading-relaxed text-gray-500">
-        The archive holds no temperature column for {stateName}. The record exists &mdash; it just
-        has not been transposed into the form this card reads. Rather than count something adjacent
-        and call it {stateName}, we say nothing.
+        The archive holds no {metric.label} column for {stateName}. The record may exist &mdash; it
+        just has not been transposed into the form this card reads. Rather than count something
+        adjacent and call it {stateName}, we say nothing.
       </p>
     </>
   );
@@ -342,6 +471,7 @@ function Bar({ bar, peak }: { bar: DecadeBar; peak: number }) {
 
 function Receipts({
   stateName,
+  metric,
   census,
   window: w,
   mmdd,
@@ -350,6 +480,7 @@ function Receipts({
   source,
 }: {
   stateName: string;
+  metric: CardMetric;
   census: BandCensus;
   window: { short: string; span: string };
   mmdd: string;
@@ -363,8 +494,14 @@ function Receipts({
         {stateName} statewide. Not your marsh.
       </p>
       <p className="font-mono text-[10px] leading-relaxed text-gray-600">
-        air temperature, not pressure &mdash; this is the cold-snap card, not the front card, and the
-        two count different things off different records.
+        {metric.label} &mdash; {metric.note}. This is not the pressure card: that one counts a
+        different variable off a different record, and the two are never blended.
+      </p>
+      <p className="font-mono text-[10px] leading-relaxed text-gray-600">
+        counted at the {census.side === "low" ? "low" : "high"} end &mdash; {metric.sideWhy}
+        {metric.zeroInflated
+          ? " · most days here read 0, so only the high end is a tail at all; the other end is the mass, and a rank inside it would be the sort order"
+          : ""}
       </p>
       <p className="font-mono text-[10px] leading-relaxed text-gray-600">
         {source} &middot; daily state means, {since}&ndash;{through} &middot; a state mean is an
@@ -380,8 +517,10 @@ function Receipts({
       <p className="font-mono text-[10px] leading-relaxed text-gray-600">
         &ldquo;times&rdquo; means occasions, not days: {census.matchedDays} matched days merge into{" "}
         {census.count} {census.count === 1 ? "occasion" : "occasions"} at a{" "}
-        {DEFAULT_EPISODE_GAP_DAYS}-day gap tolerance &middot; the band is not settled &mdash; all
-        three candidates are above, with what each one yields &middot; census, so no interval
+        {DEFAULT_EPISODE_GAP_DAYS}-day gap tolerance &middot; {census.edge.ties} of the window share
+        the band&rsquo;s edge value, {census.edge.tiesInBand} of them inside it &middot; the band is
+        not settled &mdash; all three candidates are above, with what each one yields &middot;
+        census, so no interval
       </p>
     </div>
   );

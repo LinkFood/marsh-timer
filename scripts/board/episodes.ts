@@ -144,7 +144,50 @@ export function decadeDistribution(
 export const MIN_DISTINCT_YEARS = 10; // floor 1 — fewer than this and we do not state a frequency
 export const MIN_MATCHES = 5;         // floor 4 — under this we refuse outright
 
-export function refusalReason(matchCount: number, distinctYearCount: number): string | null {
+/**
+ * THE TIE FLOOR — added 2026-07-25 when the card gained precipitation and snow.
+ *
+ * A band is a RANK slice over a value-sorted pool. That is only meaningful when the
+ * pool's values are distinguishable at the edge. When the value AT the band's edge
+ * repeats outside the slice, which of those tied days landed inside was decided by
+ * the sort's day tiebreak — not by the weather. The count is then an artifact of
+ * the sort order.
+ *
+ * One or two ties move a count by one or two and the sentence still holds. A MASS
+ * of ties does not, and precipitation is made of exactly that mass: most days
+ * everywhere are 0.00 in, and in Louisiana essentially every day is 0.0 in of snow.
+ * On those series a percentile is a lie wearing a rank's clothes — the same class
+ * of error as the byte-quantization finding, where a number looked like a
+ * measurement and was really a rounding.
+ *
+ * So: when more than this fraction of the band is one repeated value AND that value
+ * also sits outside the band, we refuse. This is what makes a Louisiana snowfall
+ * card refuse itself, computed from the distribution rather than hard-coded from a
+ * list of snowy states.
+ */
+export const MAX_EDGE_TIE_FRACTION = 0.5;
+
+/** What the band's edge looks like, for the tie floor. */
+export type EdgeTies = {
+  /** Pool members whose value equals the band's edge value. */
+  ties: number;
+  /** How many of those are inside the band. `ties === tiesInBand` ⇒ a clean cut. */
+  tiesInBand: number;
+  /** The band's width in matched days — the denominator of the tie fraction. */
+  take: number;
+};
+
+export function refusalReason(
+  matchCount: number,
+  distinctYearCount: number,
+  edge?: EdgeTies,
+): string | null {
+  // The tie floor comes FIRST: it says the band is not a band. A count under a
+  // degenerate band is not "too small", it is not a measurement at all, and
+  // "widen the band" — the remedy the other two floors invite — makes it worse.
+  if (edge && edge.take > 0 && edge.ties > edge.tiesInBand && edge.ties > MAX_EDGE_TIE_FRACTION * edge.take) {
+    return `${edge.ties} days in this window share the band's edge value — more than half of a ${edge.take}-day band is one repeated reading, so the rank is the sort order, not the record`;
+  }
   if (matchCount < MIN_MATCHES) return `only ${matchCount} match(es) — under the ${MIN_MATCHES}-match floor`;
   if (distinctYearCount < MIN_DISTINCT_YEARS) return `only ${distinctYearCount} distinct year(s) — under the ${MIN_DISTINCT_YEARS}-year floor`;
   return null;
