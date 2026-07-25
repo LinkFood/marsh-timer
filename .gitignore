@@ -54,3 +54,6 @@ scripts/era5/.era5-embed-checkpoint.json
 scripts/board/.uri-cache/
 scripts/mine/out/
 scripts/mine/.retro-cache/
+
+# Research scans — large binaries, not build inputs
+scratch-almanac/
