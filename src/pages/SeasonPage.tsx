@@ -7,6 +7,7 @@ import { stateFullName } from "@/lib/board/frameStore";
 import SeasonBlock from "@/components/season/SeasonBlock";
 import ComingLine from "@/components/season/ComingLine";
 import FrequencyCard from "@/components/season/FrequencyCard";
+import type { SeriesColumnRow } from "@/lib/board/frequency";
 import {
   COMING_WINDOW_DAYS,
   ComingModel,
@@ -31,8 +32,13 @@ import {
  *                        domain name makes.
  *   2. IS SOMETHING COMING   the forward-dated event lane, rendered for the
  *                        first time on this site.
- *   3. HOW OFTEN THIS HAPPENS HERE   the frequency card — a placeholder until
- *                        the ERA5 backfill lands and the band is set.
+ *   3. HOW OFTEN THIS HAPPENS HERE   the frequency card, counting the state's
+ *                        own temperature record: 76 complete years of GHCN,
+ *                        already here. It is labeled as the temperature card and
+ *                        never implies it is the pressure card the plan's
+ *                        exemplar describes — that one waits on the ERA5
+ *                        backfill, and Ruling 3 makes them two separate cards on
+ *                        two separate variables from two separate sources.
  *
  * Reads follow `PlantPage.tsx`: independent, bounded, each with its own
  * `cancelled` flag and an explicit honest-absence branch. Two differences from
@@ -58,9 +64,19 @@ export default function SeasonPage() {
   const seasonYear = useMemo(() => currentSeasonYear(today), [today]);
   const horizon = useMemo(() => addDays(today, COMING_WINDOW_DAYS), [today]);
 
+  // The card's anchor. "This time of year" means within ±10 days of THIS day, so
+  // it has to be a day the reader can see. Defaults to today; `?on=MM-DD` moves
+  // it, which is how you read October's card in July without inventing anything.
+  const onParam = params.get("on");
+  const cardOn = useMemo(
+    () => (onParam && /^\d{2}-\d{2}$/.test(onParam) ? `${today.slice(0, 4)}-${onParam}` : today),
+    [onParam, today],
+  );
+
   const [seasons, setSeasons] = useState<Load<SeasonModel>>({ s: "loading" });
   const [coming, setComing] = useState<Load<ComingModel>>({ s: "loading" });
   const [laneLastRun, setLaneLastRun] = useState<Load<string | null>>({ s: "loading" });
+  const [column, setColumn] = useState<Load<SeriesColumnRow | null>>({ s: "loading" });
 
   useEffect(() => {
     document.title = `The season — ${stateName} — Duck Countdown`;
@@ -193,6 +209,55 @@ export default function SeasonPage() {
     };
   }, [st]);
 
+  // ── READ 4 — this state's whole temperature column, one row (plan §3 option
+  // c). ~108 KB of hex for 76 years of daily readings; the counting then happens
+  // in the browser over the ~1,600 days inside the doy window. An explicit column
+  // list, not `*`: `readings` is the largest thing this page ever pulls and the
+  // select is where that stays visible.
+  //
+  // `ok` with a null value is a real answer — the column is not baked for this
+  // state — and it is NOT the same as an error. The card renders them apart.
+  useEffect(() => {
+    if (!supabase) {
+      setColumn({ s: "error" });
+      return;
+    }
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), READ_TIMEOUT_MS);
+    setColumn({ s: "loading" });
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("board_series_columns")
+          .select(
+            "instrument_id,metric,first_day,n_days,scale,readings,n_present,first_year,last_year,source",
+          )
+          .eq("instrument_id", `ghcn-${st.toLowerCase()}`)
+          .eq("metric", "avg_high_f")
+          .maybeSingle()
+          .abortSignal(ctrl.signal);
+        if (cancelled) return;
+        if (error) {
+          setColumn({ s: "error" });
+          return;
+        }
+        setColumn({ s: "ok", v: (data as SeriesColumnRow | null) ?? null });
+      } catch {
+        if (!cancelled) setColumn({ s: "error" });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [st]);
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-950 px-5 py-7 text-gray-100 sm:px-10 sm:py-9">
       <InnerHeader
@@ -234,7 +299,7 @@ export default function SeasonPage() {
           load={coming}
           laneLastRun={laneLastRun}
         />
-        <FrequencyCard stateName={stateName} data={null} />
+        <FrequencyCard stateName={stateName} on={cardOn} load={column} />
       </main>
 
       <InnerFooter current="season" />
