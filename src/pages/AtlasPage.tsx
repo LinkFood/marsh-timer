@@ -12,6 +12,8 @@ import {
 } from "@/lib/board/frameStore";
 import {
   ABSENT_FILL,
+  DEPTH_WITHHELD,
+  TAIL_DEPTH_IS_COMPARABLE,
   depthClause,
   depthWord,
   fetchPoolYears,
@@ -34,10 +36,18 @@ import { consumeBornDoor, trackDateLookup } from "@/lib/analytics";
  * ATLAS — the ground you stand on (docs/THE-VISION-AND-ROADMAP.md).
  *
  * ONE grammar with the front door: the same 975x610 Albers USA ground the
- * board films use, shaded by the SAME number the front door's rarity map and
- * the frequency card use — the packed tail-depth byte out of board_frames
+ * board films use, shaded by the SAME number the front door's map and the
+ * frequency card use — the packed tail-depth byte out of board_frames
  * (src/lib/board/rarity.ts). Amber running hot, ice running cold, quiet inside
  * a state's own middle half.
+ *
+ * WHICH MEANS IT INHERITED THE SAME DEFECT, and loses the same claim. Since
+ * 2026-07-25 that byte is a live one-point centroid reading ranked against a
+ * multi-station pool — two constructions, disagreeing about the shade band 43%
+ * of the time. `TAIL_DEPTH_IS_COMPARABLE` is false and this page's shading, its
+ * depth words and its percentile sentence are all withheld through the same
+ * flag, with the reason on the page. The descent, the located memory and the
+ * dossier — everything that is not a rank — are untouched.
  *
  * THE SOURCE CHANGED (2026-07-25). This page used to shade from
  * hunt-atlas-anomaly's z-scores. That is parametric where the card counts rank,
@@ -419,6 +429,10 @@ export default function AtlasPage() {
       sentenceLead = `${stateName} — reading the ground…`;
     } else if (!readDay || reading === undefined || reading.depth === null) {
       sentenceLead = `${stateName} has no temperature reading on file${readDay ? ` for ${longDate(readDay)}` : ""}.`;
+    } else if (!TAIL_DEPTH_IS_COMPARABLE) {
+      // One sentence, not two halves of the same withholding.
+      sentenceLead = `${stateName} has a reading on file for ${longDate(readDay)}.`;
+      sentenceTail = ` Its place in that record is withheld until the day and the record are measured the same way.`;
     } else {
       sentenceLead = `${stateName} ${depthClause(reading)}`;
       sentenceTail = ` — ${rarityClause(reading, readDay, groundDay?.years.get(selected) ?? null)}.`;
@@ -478,7 +492,11 @@ export default function AtlasPage() {
       <div className="mx-auto max-w-6xl px-4 pt-6 sm:pt-7">
         <InnerHeader
           title="THE ATLAS"
-          subtitle="the ground you stand on, state by state · measured against each state's own record"
+          subtitle={
+            TAIL_DEPTH_IS_COMPARABLE
+              ? "the ground you stand on, state by state · measured against each state's own record"
+              : "the ground you stand on, state by state · what the record holds, and what it does not"
+          }
         />
       </div>
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 lg:flex-row lg:gap-10 lg:py-10">
@@ -486,10 +504,21 @@ export default function AtlasPage() {
         <div className="lg:flex-1">
           <h1 className="font-display text-2xl font-medium text-gray-50 sm:text-3xl">The ground you stand on</h1>
           <p className="mt-1.5 max-w-md font-body text-sm leading-relaxed text-gray-400">
-            Each state shaded by how far into its own record {dateParam ? "that day’s" : "today’s"} reading
-            sits
-            {yearSpan ? ` — against its own ${yearSpan} ${readDay ? monthPlural(readDay) : "years"}` : ""}.
-            Tap one to fall in.
+            {TAIL_DEPTH_IS_COMPARABLE ? (
+              <>
+                Each state shaded by how far into its own record{" "}
+                {dateParam ? "that day’s" : "today’s"} reading sits
+                {yearSpan ? ` — against its own ${yearSpan} ${readDay ? monthPlural(readDay) : "years"}` : ""}.
+                Tap one to fall in.
+              </>
+            ) : (
+              <>
+                Every state has a reading on file
+                {yearSpan ? ` and a record ${yearSpan} ${readDay ? monthPlural(readDay) : "years"} deep` : ""}.
+                Where the one sits in the other is withheld — the two are not measured the same way.
+                Tap a state to fall in; what it holds is still there.
+              </>
+            )}
           </p>
           {readDay && (
             <p className="mt-1 font-mono text-[10px] leading-relaxed text-gray-600">
@@ -509,7 +538,9 @@ export default function AtlasPage() {
                 aria-label={
                   descended
                     ? `${stateName} — press Escape or tap outside to surface`
-                    : "US map, states shaded by today's reading — pick a state"
+                    : TAIL_DEPTH_IS_COMPARABLE
+                      ? "US map, states shaded by today's reading — pick a state"
+                      : "US map — pick a state. The shading is withheld: today's reading and the record it would be ranked against are not the same measurement."
                 }
                 onPointerDown={onPointerDown}
                 onPointerUp={onPointerUp}
@@ -605,11 +636,24 @@ export default function AtlasPage() {
               </div>
             ) : (
               <div className="mt-2 px-1">
-                <p className="font-mono text-[10px] leading-relaxed text-gray-600">
-                  <span className="text-amber-300/80">amber</span> running hot &middot;{" "}
-                  <span className="text-sky-300/80">ice</span> running cold &middot; deeper shade =
-                  further into that state&rsquo;s own tail &middot; hatched = no reading on file
-                </p>
+                {TAIL_DEPTH_IS_COMPARABLE ? (
+                  <p className="font-mono text-[10px] leading-relaxed text-gray-600">
+                    <span className="text-amber-300/80">amber</span> running hot &middot;{" "}
+                    <span className="text-sky-300/80">ice</span> running cold &middot; deeper shade =
+                    further into that state&rsquo;s own tail &middot; hatched = no reading on file
+                  </p>
+                ) : (
+                  /* THE GATE (src/lib/board/tailDepthGate.ts). This page shades
+                     from the SAME byte the front door did, so it inherited the
+                     same defect and loses the same claim. Flat = a reading is on
+                     file and we are not ranking it; hatched = no reading at all.
+                     The two are different facts and must not look alike. */
+                  <p className="font-mono text-[10px] leading-relaxed text-gray-600">
+                    flat = a reading is on file, unranked &middot; hatched = no reading on file
+                    &middot; the shade is withheld until the day and the record are measured the same
+                    way
+                  </p>
+                )}
                 <div className="mt-1 min-h-[1rem] font-mono text-[11px] text-gray-400">
                   {hoveredName ? (
                     <span>
@@ -628,6 +672,21 @@ export default function AtlasPage() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* WHY THE SHADE IS GONE — the same copy deck the front door reads
+                from, so the two pages cannot drift into different reasons. */}
+            {!TAIL_DEPTH_IS_COMPARABLE && (
+              <details className="mt-3 rounded-md border border-white/10 bg-gray-900/40 px-3 py-2 open:bg-gray-900/60">
+                <summary className="cursor-pointer list-none font-mono text-[10px] tracking-wide text-gray-400 transition-colors hover:text-cyan-200">
+                  {DEPTH_WITHHELD.summary} <span className="text-cyan-400/70">&rarr;</span>
+                </summary>
+                <div className="mt-2 space-y-2 font-body text-[12px] leading-relaxed text-gray-400">
+                  {DEPTH_WITHHELD.body.map((p) => (
+                    <p key={p.slice(0, 24)}>{p}</p>
+                  ))}
+                </div>
+              </details>
             )}
           </div>
         </div>

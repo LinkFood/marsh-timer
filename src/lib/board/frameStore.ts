@@ -18,6 +18,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { compileFilm, type BoardFilm } from "@/lib/boardPlayer";
+import { TAIL_DEPTH_IS_COMPARABLE, WITHHELD_MARK_PCT } from "@/lib/board/tailDepthGate";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -159,35 +160,40 @@ export function alertTempDirection(eventType: string): "high" | "low" | null {
   return null;
 }
 
-let alertsPromise: Promise<Map<string, StateAlert>> | null = null;
+let alertsPromise: Promise<Map<string, StateAlert> | null> | null = null;
 
 /**
  * Active severe/extreme NWS alerts grouped by state, cached for the session.
  * hunt_nws_alerts is anon-readable; we pull only (states, event_type, severity)
- * for unexpired Severe/Extreme rows — a few dozen rows, one round trip. A failed
- * fetch resolves empty (the board just renders without corroboration) and does
- * not poison the cache.
+ * for unexpired Severe/Extreme rows — a few dozen rows, one round trip.
+ *
+ * **`null` means the lane could not be read**, and it is not the same as an
+ * empty map. Since 2026-07-25 the front-door map shades from this lane, so
+ * "nothing live anywhere" is now a CLAIM about the country rather than the
+ * absence of decoration. A failure that resolved to an empty map would draw
+ * fifty quiet states out of a dropped connection. A failure does not poison
+ * the cache.
  */
-export function fetchActiveAlerts(): Promise<Map<string, StateAlert>> {
+export function fetchActiveAlerts(): Promise<Map<string, StateAlert> | null> {
   if (!alertsPromise) {
     alertsPromise = loadActiveAlerts().catch(() => {
       alertsPromise = null;
-      return new Map<string, StateAlert>();
+      return null;
     });
   }
   return alertsPromise;
 }
 
-async function loadActiveAlerts(): Promise<Map<string, StateAlert>> {
+async function loadActiveAlerts(): Promise<Map<string, StateAlert> | null> {
   const out = new Map<string, StateAlert>();
-  if (!supabase) return out;
+  if (!supabase) return null;
   const { data, error } = await supabase
     .from("hunt_nws_alerts")
     .select("states,event_type,severity")
     .in("severity", ["Severe", "Extreme"])
     .gt("expires", new Date().toISOString())
     .limit(1000);
-  if (error || !data) return out;
+  if (error || !data) return null;
   // Tally (state → event type → { best severity, count }), then pick per state:
   // Extreme beats Severe; ties break to the most common event type, then A→Z.
   const tally = new Map<string, Map<string, { sev: number; n: number }>>();
@@ -243,12 +249,13 @@ export interface FormationWatch {
 }
 
 /**
- * Open formation watches, newest first. A failed fetch or an absent table
- * resolves empty — the surfaces simply render nothing for "forming", never
- * a placeholder.
+ * Open formation watches, newest first. **`null` means the lane could not be
+ * read** — same reason as `fetchActiveAlerts`: this lane now shades a map, so
+ * an unreadable lane must not render as a country with nothing forming on it.
+ * An empty array is a real answer: no watches are open.
  */
-export async function fetchFormingWatches(): Promise<FormationWatch[]> {
-  if (!supabase) return [];
+export async function fetchFormingWatches(): Promise<FormationWatch[] | null> {
+  if (!supabase) return null;
   try {
     const { data, error } = await supabase
       .from("formation_watches")
@@ -256,10 +263,10 @@ export async function fetchFormingWatches(): Promise<FormationWatch[]> {
       .eq("status", "forming")
       .order("opened_at", { ascending: false })
       .limit(60);
-    if (error || !data) return [];
+    if (error || !data) return null;
     return data as FormationWatch[];
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -330,6 +337,13 @@ export function resolveDay(frame: DayFrame, instruments: Instrument[]): Resolved
  * is passed (the live board only — active alerts corroborate NOW, never a past
  * day), state dots under an active severe NWS alert carry it into the renderer,
  * which marks them with the slow amber alert ring.
+ *
+ * THE GATE REACHES IN HERE TOO. Ember size and brightness ARE the tail depth —
+ * a depth ranking drawn rather than written — so while the depth is withheld
+ * every reporting `state-temp` dot is handed the same flat `WITHHELD_MARK_PCT`
+ * and no side. Fifty identical marks assert only that fifty thermometers
+ * reported. The other lanes are untouched: a tide gauge's depth is ranked
+ * against tide gauges of the same construction and was never the defect.
  */
 export function buildDayFilm(
   day: string,
@@ -347,18 +361,20 @@ export function buildDayFilm(
       const st = alerts || forming ? instrumentState(r.inst) : null;
       const alert = (st && alerts?.get(st)) || null;
       const leads = (st && forming?.get(st)) || null;
+      const withheld = !TAIL_DEPTH_IS_COMPARABLE && r.inst.kind === "state-temp" && r.hasData;
+      const pct = withheld ? WITHHELD_MARK_PCT : r.pct;
       return {
         id: r.inst.id,
         label: r.inst.label,
         sublabel: r.inst.sublabel ?? undefined,
         kind: r.inst.kind,
-        side: r.side,
+        side: withheld ? null : r.side,
         alert: alert ? { eventType: alert.eventType, severity: alert.severity } : null,
         forming: leads && leads.length > 0 ? leads : null,
         x: r.inst.albers_x,
         y: r.inst.albers_y,
         series: {
-          [day]: { v: r.pct, pct: r.pct },
+          [day]: { v: pct, pct },
         },
       };
     }),
@@ -516,6 +532,15 @@ function statesAbbrSummary(states: string[]): string {
  * clause (sentence-grade, for when it leads the porch) and a compact fragment
  * for the strip ("flood over TX +3").
  */
+/** The one noun each lead is allowed to be called, everywhere on the site. */
+export const FORMING_LEAD_WORD: Record<string, string> = {
+  "flood-forming": "flood",
+  "precip-flood-forming": "flood ground",
+  "smoke-forming": "smoke",
+  "aqi-ramp-forming": "degrading air",
+  "drought-fire-forming": "fire ground",
+};
+
 const FORMING_LEADS: { id: string; long: (s: string) => string; short: (s: string) => string }[] = [
   { id: "flood-forming", long: (s) => `flood is forming over ${s} (live NWS watches)`, short: (s) => `flood over ${s}` },
   { id: "precip-flood-forming", long: (s) => `flood ground is forming over ${s} (three days of rain)`, short: (s) => `flood ground over ${s}` },
@@ -544,6 +569,36 @@ function formingGroups(watches: FormationWatch[]): { long: string; short: string
 const asSentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1) + ".";
 
 /**
+ * The live NWS lane counted, never ranked: how many states carry a severe or
+ * extreme product right now. A count of unexpired rows is not a comparison
+ * against anything, which is why it survives the tail-depth gate.
+ */
+function liveAlertClause(alerts: Map<string, StateAlert> | undefined): string | null {
+  const n = alerts?.size ?? 0;
+  if (!alerts || n === 0) return null;
+  let extreme = 0;
+  for (const a of alerts.values()) if (a.severity === "Extreme") extreme += 1;
+  const head =
+    n === 1
+      ? "one state carries a live severe NWS product"
+      : `${n} states carry live severe NWS products`;
+  if (extreme === 0) return head;
+  return `${head}, ${extreme === 1 ? "one of them" : `${extreme} of them`} at Extreme severity`;
+}
+
+/**
+ * The frame itself, counted. A byte is either on file or it is 255; saying how
+ * many instruments reported claims nothing about what they read. It is the one
+ * true, day-varying thing a past ledger row can still say while depth is
+ * withheld.
+ */
+function reportedClause(reported: number, total: number): string {
+  if (total === 0) return "the board is dark — no instrument has reported";
+  if (reported === 0) return "the board is dark — no instrument reported this day";
+  return `${reported} of ${total} instruments reported`;
+}
+
+/**
  * Derive the porch reading for a day. Deep = tail depth >= 0.85. Selection law:
  * a state whose temp sits at EXTREME depth (byte >= 249) while the state is
  * under an active severe NWS alert is a CORROBORATED EXTREME — it outranks
@@ -555,6 +610,11 @@ const asSentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
  * The coda stays honest: with a corroborated extreme or a live watch
  * standing, "nothing forming" never renders — the coda names what is
  * actually standing.
+ *
+ * ALL OF THAT IS CURRENTLY GATED. While `TAIL_DEPTH_IS_COMPARABLE` is false the
+ * function short-circuits into a depth-free voice: formation watches, the live
+ * NWS count, the count of instruments that reported. The law above is left
+ * whole because it is not what broke — the byte's denominator is.
  */
 export function porchLine(
   day: string,
@@ -589,12 +649,44 @@ export function porchLine(
     return match ? { ...a, eventType: match } : null;
   };
 
-  const corroborated = deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && corroboratingAlert(r) !== null);
+  const corroborated = TAIL_DEPTH_IS_COMPARABLE
+    ? deep.filter((r) => (r.pct ?? 0) >= EXTREME_DEPTH && corroboratingAlert(r) !== null)
+    : [];
 
   const formingAll = formingGroups(watches ?? []);
 
   const forming = (frame.strings && Object.keys(frame.strings).length > 0) || (frame.blooms?.length ?? 0) > 0;
   const watchCount = watches?.length ?? 0;
+
+  // ── THE GATE ────────────────────────────────────────────────────────────────
+  // While tail depth is not comparable (see tailDepthGate.ts), NOTHING derived
+  // from a byte's depth may be spoken: not the corroborated-extreme lead, not
+  // the "sits deep in its cold tail" fallback, not the percentile in the strip.
+  // What is left is what was never a comparison — the formation watches, the
+  // live NWS count, and how many instruments reported. Flip the flag and the
+  // block below is skipped entirely; the original selection law resumes intact.
+  if (!TAIL_DEPTH_IS_COMPARABLE) {
+    const alertClause = liveAlertClause(alerts);
+    const lead = formingAll.length > 0
+      ? asSentence(formingAll[0].long)
+      : alertClause
+        ? asSentence(alertClause)
+        : asSentence(reportedClause(withData.length, resolved.length));
+    const formingStripOnly = formingAll.length > 0 ? formingAll.slice(1).map((g) => g.short) : [];
+    const codaBits: string[] = [];
+    if (alertClause && formingAll.length > 0) codaBits.push(asSentence(alertClause));
+    if (watchCount > 0) {
+      codaBits.push(`${watchCount} formation ${watchCount === 1 ? "watch" : "watches"} standing.`);
+    }
+    codaBits.push("Tail depth is withheld — the day and the record are not yet measured the same way.");
+    return {
+      lead,
+      coda: codaBits.join(" "),
+      swollen: [],
+      active: [],
+      forming: formingStripOnly,
+    };
+  }
 
   let lead: string;
   let named: ResolvedInstrument[] = [];

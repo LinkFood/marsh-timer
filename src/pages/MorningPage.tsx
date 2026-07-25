@@ -237,8 +237,10 @@ export default function MorningPage() {
       return;
     }
     let cancelled = false;
+    // `null` = the lane did not answer. This page renders nothing for forming
+    // either way, so an unreadable lane and an empty one land the same here.
     fetchFormingWatches().then((rows) => {
-      if (!cancelled) setForming(rows);
+      if (!cancelled) setForming(rows ?? []);
     });
     return () => {
       cancelled = true;

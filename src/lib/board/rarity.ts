@@ -22,10 +22,23 @@
  * `ghcn-daily` stops at 2025-12-31, which had /atlas calling New York hot on a
  * day the frame store has it at the bottom of its July record. The frame store
  * is current (`day0_source: live`) and is the card's own quantity.
+ *
+ * WITHHELD SINCE 2026-07-25 — see THE TAIL-DEPTH GATE below. Everything in this
+ * module still computes; nothing in it is currently allowed to speak.
  */
 
 import { supabase } from "@/lib/supabase";
 import { instrumentState, type ResolvedInstrument } from "@/lib/board/frameStore";
+import { TAIL_DEPTH_IS_COMPARABLE, DEPTH_WITHHELD, WITHHELD_FILL } from "@/lib/board/tailDepthGate";
+
+// ── THE TAIL-DEPTH GATE ───────────────────────────────────────────────────────
+//
+// The flag, the measurement that killed it, and the four conditions that bring
+// it back live in `tailDepthGate.ts` — one file, no imports, nothing to hunt
+// for. Re-exported here so every existing consumer of this module keeps one
+// import line.
+
+export { TAIL_DEPTH_IS_COMPARABLE, DEPTH_WITHHELD, WITHHELD_FILL } from "@/lib/board/tailDepthGate";
 
 // ── The reading ───────────────────────────────────────────────────────────────
 
@@ -87,13 +100,18 @@ export const QUIET_FILL = "#141b22";
 /** Absence is a hatch, never a colour on the ramp — see RarityMap's <pattern>. */
 export const ABSENT_FILL = "#0d1217";
 
-const COLD_RAMP = ["#22384f", "#3d7cb3", "#9ccdff"] as const;
-const HOT_RAMP = ["#5c3f21", "#a86a24", "#ffb060"] as const;
+/** Exported so the live-lane shading speaks the same two hues — the site has
+ *  exactly one word for hot and one for cold, on every surface. */
+export const COLD_RAMP = ["#22384f", "#3d7cb3", "#9ccdff"] as const;
+export const HOT_RAMP = ["#5c3f21", "#a86a24", "#ffb060"] as const;
 
 /** The fill for one state. `null` depth returns null — the caller must draw the
- *  absence hatch rather than any fill on the ramp. */
+ *  absence hatch rather than any fill on the ramp. Under the gate a state that
+ *  HAS a reading gets the withheld fill, which is not the hatch: the difference
+ *  between "the archive is silent" and "we are". */
 export function fillFor(r: StateRarity | undefined): string | null {
   if (!r || r.depth === null) return null;
+  if (!TAIL_DEPTH_IS_COMPARABLE) return WITHHELD_FILL;
   const band = bandOf(r.depth);
   if (band === null || band === 0) return QUIET_FILL;
   const ramp = r.side === "high" ? HOT_RAMP : COLD_RAMP;
@@ -129,6 +147,7 @@ export function monthPlural(day: string): string {
 /** Short direction-aware word for a hover readout: "deep in its cold tail". */
 export function depthWord(r: StateRarity | undefined): string {
   if (!r || r.depth === null) return "no reading on file";
+  if (!TAIL_DEPTH_IS_COMPARABLE) return DEPTH_WITHHELD.short;
   const hot = r.side === "high";
   switch (bandOf(r.depth)) {
     case 3: return `at the ${hot ? "hot" : "cold"} edge of its record`;
@@ -141,6 +160,7 @@ export function depthWord(r: StateRarity | undefined): string {
 /** The same reading as a verb phrase: "sits deep in its cold tail". */
 export function depthClause(r: StateRarity | undefined): string {
   if (!r || r.depth === null) return "has no reading on file";
+  if (!TAIL_DEPTH_IS_COMPARABLE) return "has a reading on file that we are not ranking";
   const hot = r.side === "high";
   switch (bandOf(r.depth)) {
     case 3: return `is at the ${hot ? "hot" : "cold"} edge of its record`;
@@ -158,6 +178,9 @@ export function depthClause(r: StateRarity | undefined): string {
  */
 export function rarityClause(r: StateRarity | undefined, day: string, years: number | null): string {
   if (!r || r.depth === null) return "no reading on file for this day";
+  if (!TAIL_DEPTH_IS_COMPARABLE) {
+    return "its place in that record is withheld until the day and the record are measured the same way";
+  }
   const hot = r.side === "high";
   const of = years ? `its ${years} ${monthPlural(day)}` : `its ${monthPlural(day)} on file`;
   if (r.depth >= 1 - 1e-9) return `as ${hot ? "hot" : "cold"} as ${of} have ever run`;
