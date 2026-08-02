@@ -61,7 +61,17 @@ export default tseslint.config(
       // leaving them uncovered would put the whole offline path outside the
       // boundary that exists to protect it.
       "src/components/field/**/*.{ts,tsx}",
+      // The offline pack: the IndexedDB store and the pure readers both run at
+      // the ramp with the phone already dark.
+      "src/lib/pack/**/*.{ts,tsx}",
     ],
+    // The wire files, by convention rather than by path. Every module that is
+    // ALLOWED to touch the network in this tree ends in `Fetch.ts`, so this
+    // exemption maintains itself: a future `foo.ts` under an offline glob is
+    // covered the moment it is created, and a future `fooFetch.ts` announces in
+    // its own name that it is the seam. Tests are exempt because the offline
+    // gate installs a counted throwing `globalThis.fetch` of its own.
+    ignores: ["src/lib/pack/*Fetch.ts", "src/lib/pack/*.test.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

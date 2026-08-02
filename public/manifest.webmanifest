@@ -1,0 +1,19 @@
+{
+  "name": "Duck Countdown — Field",
+  "short_name": "Field",
+  "description": "The clock, the water and the wind at your blind, with the radio off. There is no signal in a marsh.",
+  "start_url": "/hunt",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#04060b",
+  "theme_color": "#04060b",
+  "categories": ["utilities", "weather"],
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}
