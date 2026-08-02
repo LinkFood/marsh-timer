@@ -60,3 +60,4 @@ scratch-almanac/
 
 # Agent worktrees — transient, never part of history
 .claude/worktrees/
+.scratch/

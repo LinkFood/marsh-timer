@@ -95,6 +95,8 @@ export interface DawnTideStation {
 }
 
 const DOSSIER = "docs/MOONLIGHT-AND-THE-MORNING-2026-08-01.md §4.1";
+/** Rows measured directly, reproducible by re-running the script. */
+const SCRIPT = "scripts/measure-dawn-tide.ts, 2026-08-01";
 
 /**
  * THE TABLE. One row. That is not an oversight — it is the measured extent of
@@ -128,7 +130,108 @@ export const DAWN_TIDE_STATIONS: readonly DawnTideStation[] = [
     cite: DOSSIER,
     verified: "2026-08-01",
   },
+
+  // ── Measured 2026-08-01 with scripts/measure-dawn-tide.ts ──────────────────
+  // The script was validated against the row above before it was trusted on
+  // anything new: it returns -0.08 (n=140) / -0.07 (n=139) / 1.54 (n=130) for
+  // Bishops Head against the dossier's -0.08/141, -0.07/140, 1.51/128. Same
+  // lunar theory as the app (src/lib/sky.ts), so both sides of the comparison
+  // are one construction.
+  //
+  // THE SIGN FLIPS INSIDE A SINGLE BAY, which is stronger than the dossier
+  // claimed. Cambridge is 20 miles from Bishops Head, same sign, FOUR TIMES
+  // smaller. Tolchester is the same Chesapeake and reverses outright. Any
+  // regional rule would tell an Ocean City hunter the full moon brings low
+  // water at dawn when it brings the HIGHEST water of the cycle.
+  {
+    stationId: "8571892",
+    stationName: "Cambridge",
+    dawnHourLocal: 7,
+    nearFullFt: 0.55, nearFullN: 140,
+    nearNewFt: 0.56, nearNewN: 139,
+    quarterFt: 0.99, quarterN: 130,
+    // 0.43 ft of clock against 0.64 ft of weather. The clock is REAL here and
+    // ILLEGIBLE — a hunter will never see it through the wind. The resolver is
+    // expected to refuse to draw it, which is what this field is for.
+    windResidualSdFt: 0.64, windResidualN: 6624,
+    windResidualWindow: "Nov–Jan 2022–2025",
+    datum: "MLLW", units: "english",
+    window: "Oct 15 – Jan 31, ten seasons 2015-16 → 2024-25",
+    source: "NOAA CO-OPS harmonic predictions",
+    cite: SCRIPT,
+    verified: "2026-08-01",
+  },
+  {
+    stationId: "8573364",
+    stationName: "Tolchester Beach",
+    dawnHourLocal: 7,
+    nearFullFt: 0.86, nearFullN: 140,
+    nearNewFt: 0.84, nearNewN: 139,
+    quarterFt: 0.10, quarterN: 130,
+    // 0.75 against 0.71 — barely above the weather. Marginal, and the resolver
+    // should treat it as such rather than rounding it up into a claim.
+    windResidualSdFt: 0.71, windResidualN: 6624,
+    windResidualWindow: "Nov–Jan 2022–2025",
+    datum: "MLLW", units: "english",
+    window: "Oct 15 – Jan 31, ten seasons 2015-16 → 2024-25",
+    source: "NOAA CO-OPS harmonic predictions",
+    cite: SCRIPT,
+    verified: "2026-08-01",
+  },
+  {
+    stationId: "8570283",
+    stationName: "Ocean City Inlet",
+    dawnHourLocal: 7,
+    // THE REVERSAL, measured rather than inherited. Springs put 2.43 ft here at
+    // the same hour they put -0.08 at Bishops Head, 110 miles away.
+    nearFullFt: 2.43, nearFullN: 140,
+    nearNewFt: 2.40, nearNewN: 139,
+    quarterFt: 0.34, quarterN: 130,
+    windResidualSdFt: 0.60, windResidualN: 6624,
+    windResidualWindow: "Nov–Jan 2022–2025",
+    datum: "MLLW", units: "english",
+    window: "Oct 15 – Jan 31, ten seasons 2015-16 → 2024-25",
+    source: "NOAA CO-OPS harmonic predictions",
+    cite: SCRIPT,
+    verified: "2026-08-01",
+  },
+  {
+    stationId: "8632200",
+    stationName: "Kiptopeke",
+    dawnHourLocal: 7,
+    nearFullFt: 2.66, nearFullN: 140,
+    nearNewFt: 2.65, nearNewN: 139,
+    quarterFt: 0.52, quarterN: 130,
+    windResidualSdFt: 0.55, windResidualN: 6624,
+    windResidualWindow: "Nov–Jan 2022–2025",
+    datum: "MLLW", units: "english",
+    window: "Oct 15 – Jan 31, ten seasons 2015-16 → 2024-25",
+    source: "NOAA CO-OPS harmonic predictions",
+    cite: SCRIPT,
+    verified: "2026-08-01",
+  },
 ];
+
+/**
+ * THE FULL-MINUS-NEW CONTROL, measured at every station above.
+ *
+ * Full and new moon are tidally identical and opposite in moonlight, so the
+ * difference between them is the clean separation of the tide from the light —
+ * the experiment the dossier says nobody has run. Measured here it is 0.007 ft
+ * at Bishops Head, 0.010 at Cambridge, 0.020 at Tolchester, 0.027 at Ocean
+ * City, 0.010 at Kiptopeke. Two hundredths of a foot, everywhere.
+ *
+ * So: any difference a hunter reports between a full moon and a new moon at
+ * these stations is NOT the water. That does not make it the light — it makes
+ * it something this table cannot see, and the honest surface says exactly that.
+ *
+ * This is a BOUND, deliberately looser than the largest measured value (0.03 ft
+ * at Ocean City). A constant pinned to the exact maximum fails on floating-point
+ * epsilon the moment a row equals it — 2.43 − 2.40 is 0.030000000000000249 — and
+ * a guard that trips on arithmetic noise teaches the next reader to loosen it
+ * rather than to look at the data.
+ */
+export const FULL_MINUS_NEW_MAX_FT = 0.05;
 
 /** The row for a station, or `null`. No fallback, by construction. */
 export function dawnTideStation(stationId: string | null | undefined): DawnTideStation | null {

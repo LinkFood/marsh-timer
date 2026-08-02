@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { DAWN_TIDE_STATIONS, dawnTideStation } from "@/data/dawnTide";
+import { DAWN_TIDE_STATIONS, dawnTideStation, FULL_MINUS_NEW_MAX_FT } from "@/data/dawnTide";
 import { dawnTideClock, dawnTideSentence, hourLabel, type DawnTideClock } from "./dawnTide";
 
 /** The reference spot's bound station. Nobody has measured it. */
@@ -63,10 +63,15 @@ describe("the sign flips by station, so the lookup never falls back", () => {
   it("has no default row and no nearest-station fallback", () => {
     expect(dawnTideStation("0000000")).toBeNull();
     expect(dawnTideStation(null)).toBeNull();
-    // Ocean City Inlet is deliberately absent: the dossier gives its high-water
-    // CLOCK (07:57 on springs) but not its dawn LEVELS, and a row with a known
-    // sign and invented feet renders at full confidence while being fiction.
-    expect(dawnTideStation("8570283")).toBeNull();
+    // Woolford 8571807 is the probe that matters: it is the station the
+    // reference spot BINDS TO, it sits 7 miles from Blackwater, and Bishops
+    // Head and Cambridge — both measured, both in the table — are its nearest
+    // neighbours. If a fallback ever appears, this is the lookup that would
+    // silently take one. It is absent because NOAA marks it subordinate and
+    // serves it hi/lo only, so it has a measured CLOCK and no dawn LEVEL, and
+    // a row with a real sign and interpolated feet renders at full confidence
+    // while being fiction.
+    expect(dawnTideStation("8571807")).toBeNull();
   });
 });
 
@@ -111,8 +116,36 @@ describe("the measured station reads back exactly what the dossier measured", ()
       expect(s.quarterN).toBeGreaterThan(0);
       expect(s.windResidualN).toBeGreaterThan(0);
       expect(s.window.trim()).not.toBe("");
-      expect(s.cite).toMatch(/MOONLIGHT-AND-THE-MORNING/);
+      // Every row names where its numbers came from — the dossier for the row
+      // it measured, the script for the rows measured since. What is asserted
+      // is that a citation EXISTS and resolves to something in the repo, not
+      // that it is any one document.
+      expect(s.cite).toMatch(/MOONLIGHT-AND-THE-MORNING|measure-dawn-tide\.ts/);
     }
+  });
+
+  it("the full-minus-new control holds at every station — the tide cannot explain it", () => {
+    // Full and new are tidally identical and opposite in moonlight, which is
+    // what makes the pair the clean separation of water from light. Measured,
+    // the gap is two hundredths of a foot everywhere. If a future row breaks
+    // this, that row's bins are wrong — not the physics.
+    for (const s of DAWN_TIDE_STATIONS) {
+      expect(Math.abs(s.nearFullFt - s.nearNewFt)).toBeLessThanOrEqual(FULL_MINUS_NEW_MAX_FT);
+    }
+  });
+
+  it("carries stations whose clock REVERSES, which is why there is a table at all", () => {
+    const springMinusQuarter = (s: (typeof DAWN_TIDE_STATIONS)[number]) =>
+      (s.nearFullFt * s.nearFullN + s.nearNewFt * s.nearNewN) / (s.nearFullN + s.nearNewN) -
+      s.quarterFt;
+    const signs = DAWN_TIDE_STATIONS.map((s) => Math.sign(springMinusQuarter(s)));
+    // Both signs must be present. Bishops Head and Cambridge run negative,
+    // Tolchester, Ocean City and Kiptopeke positive — and Cambridge is twenty
+    // miles from Bishops Head inside the same bay. A regional rule would tell
+    // an Ocean City hunter the full moon brings low water at dawn when it
+    // brings the highest water of the cycle.
+    expect(signs).toContain(-1);
+    expect(signs).toContain(1);
   });
 });
 

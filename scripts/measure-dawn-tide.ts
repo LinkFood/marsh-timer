@@ -220,7 +220,58 @@ async function runSubordinate(): Promise<void> {
   console.log(`\n  Springs put the morning low ${shift < 0 ? "EARLIER" : "LATER"} here than quarters.\n`);
 }
 
+/**
+ * WIND RESIDUAL — observed minus predicted, in feet.
+ *
+ * Why the table carries it: wind setup shifts the water LEVEL but not its
+ * PHASE, so it does not erase the lunar clock. But a phase difference smaller
+ * than the weather noise is a difference the hunter will never see through the
+ * weather, and the resolver has to be able to say so rather than printing a
+ * number that is real and illegible. A station's clock is only worth rendering
+ * when it is large against this.
+ */
+async function measureWindResidual(): Promise<{ sd: number; n: number; window: string }> {
+  const diffs: number[] = [];
+  const years = [2022, 2023, 2024];
+  for (const y of years) {
+    for (const [from, to] of [[`${y}1101`, `${y}1130`], [`${y}1201`, `${y}1231`], [`${y + 1}0101`, `${y + 1}0131`]]) {
+      const base = `${COOPS}?begin_date=${from}&end_date=${to}&station=${stationId}&datum=MLLW&units=english&time_zone=lst_ldt&format=json`;
+      const [obsRes, predRes] = await Promise.all([
+        fetch(`${base}&product=water_level`),
+        fetch(`${base}&product=predictions&interval=60`),
+      ]);
+      const obs = await obsRes.json();
+      const pred = await predRes.json();
+      if (!obs?.data || !pred?.predictions) continue;
+      const p = new Map<string, number>();
+      for (const r of pred.predictions) {
+        if (typeof r?.t !== "string" || typeof r?.v !== "string") continue;
+        const v = Number(r.v);
+        if (Number.isFinite(v)) p.set(r.t, v);
+      }
+      for (const r of obs.data) {
+        if (typeof r?.t !== "string" || typeof r?.v !== "string") continue;
+        const v = Number(r.v);
+        const q = p.get(r.t);
+        if (!Number.isFinite(v) || q === undefined) continue;
+        diffs.push(v - q);
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  if (diffs.length === 0) return { sd: NaN, n: 0, window: "Nov–Jan 2022–2025 (no observations)" };
+  const m = mean(diffs);
+  const sd = Math.sqrt(mean(diffs.map((d) => (d - m) ** 2)));
+  return { sd, n: diffs.length, window: "Nov–Jan 2022–2025" };
+}
+
 (async () => {
+  if (process.argv.includes("--residual")) {
+    const r = await measureWindResidual();
+    console.log(`\n=== ${stationName} (${stationId}) — wind residual ===`);
+    console.log(`  observed − predicted SD = ${Number.isFinite(r.sd) ? r.sd.toFixed(2) : "NO OBSERVATIONS"} ft   n=${r.n}   ${r.window}\n`);
+    return;
+  }
   if (isSubordinate) { await runSubordinate(); return; }
 
   const rows: Row[] = [];
