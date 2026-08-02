@@ -85,8 +85,13 @@ export default function DatePage() {
   const navigate = useNavigate();
   const today = todayStr();
 
-  // URL is the source of truth
-  const dateStr = isValidDateStr(rawDateStr) ? rawDateStr : today;
+  // URL is the source of truth — but it is the ONLY entry point that was unbounded.
+  // `goTo` refuses out-of-range dates and the picker carries min/max; a hand-typed or
+  // linked URL bypassed both, and this page renders forward-dated forecast rows under a
+  // NOAA byline as "THE RECORD". Clamp the range here, where the date enters.
+  const dateStr = isValidDateStr(rawDateStr)
+    ? (rawDateStr > today ? today : rawDateStr < MIN_DATE ? MIN_DATE : rawDateStr)
+    : today;
   const stateParam = searchParams.get('state')?.toUpperCase() || null;
   const state = stateParam && US_STATES.some(s => s.abbr === stateParam) ? stateParam : null;
   // The shared ground choice — a chip pick here persists it (§2e); the chosen
