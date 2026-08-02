@@ -1392,6 +1392,7 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     cards,
     systemPrompt: `You are a species behavior and regulatory expert. Summarize the season information briefly. Include key dates. 2-3 sentences.
 ONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don't have that specific data" rather than guessing.
+Do NOT state or imply that a season is open or closed, and do NOT compute it by comparing the opener date to today. These rows are OPENERS ONLY — one date per species per state, with no closing date — so open/closed is not derivable from them. Give the opener date and say the open/closed status is not available here. Season dates, zone boundaries and shooting hours are state law; point the hunter at their state's own migratory game bird booklet.
 ${BRAIN_RULES}`,
     userContent: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
