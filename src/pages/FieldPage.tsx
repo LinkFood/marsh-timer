@@ -270,6 +270,11 @@ export default function FieldPage({ now: fixedNow }: FieldPageProps = {}) {
               moonSet={moon?.set ?? null}
               night={night}
               day={day}
+              /* The dawn tide clock is read PER STATION and its sign reverses
+                 between stations on this coast, so the rail is handed the bound
+                 station rather than inferring one. `null` is a real value: a
+                 spot with no station gets a refusal by name, not silence. */
+              stationId={spot.coops_station_id ?? null}
             />
             <BagRail day={day} species={light.season.species} />
           </>
