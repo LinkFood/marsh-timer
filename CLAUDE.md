@@ -2,25 +2,45 @@
 
 > **This is the single source of truth.** If it's not in this document, it doesn't exist yet. Every session starts here.
 >
-> 🎯 **CURRENT: READ `docs/PLAN-V1-2026-07-25.md` FIRST.** As of 2026-07-25 the project refocused on what the domain name always promised — **a hunter's tool**. Country → state → zone → your ground. Ship target is the first week of September 2026, the teal and resident-goose openers.
+> 🎯 **CURRENT — READ `docs/INVENTORY-AND-PIVOT-PLAN-2026-08-01.md` FIRST.** As of 2026-08-01 this is **a phone-first waterfowl hunting app**, built on the six gates. James's own field test is **2026-09-01**, the MD early resident Canada goose opener at Blackwater NWR, with a gun in his other hand. That date is a target, not a deadline — **DCD is no longer timeboxed.**
 >
-> **The product is three blocks on one page:** the season block and its countdown, an "is something coming" line off `hunt_weather_events`, and a **frequency card** — *"a pressure fall this size over Maryland in the second week of October has happened 34 times since 1979."* Count, recency, decade distribution. **No forward join, no outcome sentence, no prediction anywhere in v1** — gates 1 and 2 both died on prediction; counting has never failed. v1a is the page, v1b is the national map.
+> **THE SIX GATES.** Waterfowl success is a **CONJUNCTION, not a sum** — all six must be open; any one shut takes the day to zero. **1 BIRDS** are they here · **2 FOOD** anything to eat · **3 WATER** huntable depth · **4 MOON** did they feed all night · **5 PRESSURE** been shot at · **6 GEOMETRY** does wind/sun work for *your* blind. This is why the old convergence engine failed: it **summed** 8 weighted domains into a 0–135 score, and summing destroys a conjunction. The postmortem's "no signal at index altitude" was an *operator* problem, not a data problem.
 >
-> **The rulings that bind implementation** live in `DCD-VISION-SPEC.md` + Amendments 1.1, 1.2 and 1.3, summarized in §10 of the plan. The load-bearing ones: match in percentile space and display in physical units; the doy half-window is one shared constant (±10); count episodes, not days; provisional season dates are a **displayed** field, not internal metadata; the map is drawn from live data at live resolution and the card from the archive at state level, **never blended**.
+> **ONE SCREEN. NOTHING HIDDEN.** No tabs, no scroll in the field state, no "tap for detail." The mode (plan / prep / field) is chosen by **time-to-hunt**, which the app already knows — never by a control the user has to touch. The reference is a cockpit PFD, not a minimal app: dense periphery, dominant center, hierarchy by size and position. **This is structural, not taste:** a hunter cannot evaluate an AND if he has to navigate to see the operands.
 >
-> ⭐ **`docs/RECON-COUNTRY-MAP.md` is the measured ground truth** of what this codebase actually is (12-agent read-only audit, 2026-07-24). Where a spec and the recon disagree, the recon wins.
+> **COUNT, NEVER PREDICT.** Every surface is a measurement or a cited regulation. Anything else is refused out loud, by name, with the reason. Four prediction theses died here and none is resurrected — convergence (no signal), lineup precedent (**Δ −0.19pp over 1.35M paired days**, retired 2026-07-17), the fusion metric (invalid), tail-depth comparability (43% band disagreement, no bias to subtract).
 >
-> 📕 **Superseded, kept for history:** `docs/THE-WEEK.md` (sprint ended 2026-07-12; still the best narrative record of how the archive was built) and `docs/THE-VISION-AND-ROADMAP.md` (the almanac framing — its honesty doctrine still binds, its product direction does not). The gate-1 and gate-2 verdicts in those docs are real results: the lineup precedent carries no information, and the fusion metric was invalid. Do not re-run them.
+> ⚖️ **LEGAL SURFACES ARE DIFFERENT.** Shooting hours and bag limits are state law and being wrong is a citation for the hunter. The rule is **season-scoped**: MD's regular season ends at **sunset**, but the September resident goose season ends at **sunset+30** (COMAR 08.03.07.13). Resolution is `state + species + date → season → cited rule`. When ambiguous, **always show the NARROWER window** and say why. Erring short costs thirty minutes; erring long puts a man in an illegal shoot. `src/data/regs/shootingHours.ts` enforces this in the type system — the refusal branch has no `rule` property, so an untranscribed state cannot compile into a clock.
+>
+> 📕 **Superseded, kept for history:** `docs/PLAN-V1-2026-07-25.md` (the hunter pivot's first plan — its rulings on measurement mismatch still bind), `docs/THE-WEEK.md`, `docs/THE-VISION-AND-ROADMAP.md` (almanac framing — honesty doctrine binds, product direction does not). `docs/RECON-COUNTRY-MAP.md` remains the measured ground truth of the codebase as of 2026-07-24. `docs/COMPETITIVE-LANDSCAPE-2026-08-01.md` is the 45-product sweep: nobody has built this, the planning horizon past 15 days is empty because everyone else built a *weather* product, and tides in a waterfowl app do not exist anywhere.
 
 ---
 
 ## What This Is
 
-Duck Countdown is a pattern recognition engine with a self-learning feedback loop. It embeds every public environmental data source into one 512-dimensional vector space — weather, water, seismic, fire, crop, drought, climate indices, satellite, wildlife migration, acoustic, tidal, geomagnetic, phenological — and finds cross-domain connections that no single data source reveals.
+**Duck Countdown is a waterfowl hunting app.** It shows a hunter the six gates on his own ground and lets him conjoin them himself. It never scores, rates, or predicts.
 
-The brain doesn't predict. It recognizes. "The last N times these conditions aligned, here's what happened." Then it tracks whether the pattern played out, grades itself, and adjusts confidence for next time. The grading loop is the intelligence. Without it, this is just a search engine.
+Three modes, chosen by time-to-hunt rather than by navigation:
 
-**This is not a hunting app.** Hunting was the first lens. The brain is domain-agnostic. It works for agriculture, disaster preparedness, ecology, fishing, forestry — any domain where environmental patterns matter. The name "Duck Countdown" stays because it's the brand and the domain.
+- **PLAN** — weeks out. Tide, moon, sun, season dates, day-of-week. All **deterministic**, computable years ahead. Every competitor caps at 7–15 days because they all built weather products and a weather horizon structurally cannot exceed two weeks. **This is the open lane.**
+- **PREP** — the night before. Wind locks in, so the blind and spread geometry resolve; recent bird reports; water and food status.
+- **FIELD** — in the blind, **OFFLINE**. There is no signal in a marsh, and that constraint drives the architecture: the app syncs a package before the truck leaves and then computes everything on device. A whole season of tide packs to ~2 KB gzipped.
+
+The signature object is a count against history with its denominator and its station named:
+
+> *A tide this steep through the shooting window has happened **15 of the last 21 September 1sts** at Bishops Head, and only four dropped harder than this one.*
+
+**Read that as receipts and context, never as forward guidance.** Our own retrodiction says precedent carries no forward information. The count tells a hunter what the record looks like; it does not tell him what tomorrow will do, and the copy must never imply otherwise.
+
+### Superseded: the brain
+
+DCD spent months as a pattern-recognition engine embedding every environmental source into one 512-dim vector space to find cross-domain connections. **That thesis is measured dead.** Its only three consumers — the rhyme, `scanBrainOnWrite` pattern links, and the convergence scan — are all retired. The 30 GB IVFFlat index was built for 7M rows against 10.1M present, its `probes` were tuned for an index that was never built, and vector search returns `unavailable` for **Maryland**, the ship state.
+
+**THE EMBEDDING LAW IS RETIRED (James's ruling, 2026-08-01).** It is replaced by:
+
+> **THE FINDABILITY LAW.** Every lane must answer a bounded query on `content_type + state + date`. Measured: **0.25 s**. Embedding is a *tool* for the regulations assistant, not a *law* for the gates.
+
+Sections below describing the brain, convergence scoring, and the 8-component index are **archeology**. They document what was built and disproven. Do not treat them as live architecture, and do not rebuild them.
 
 ---
 
@@ -293,7 +313,9 @@ npx tsx scripts/orchestrator-v2.ts --only PIPE                  # Run one pipe s
 ## Rules
 
 ### Absolute Rules (Break These and Things Die)
-- **THE EMBEDDING LAW:** Every piece of data MUST be embedded via Voyage AI → hunt_knowledge. No exceptions.
+- **THE FINDABILITY LAW** (replaced the Embedding Law, 2026-08-01): every lane must answer a bounded query on `content_type + state + date` — measured 0.25 s. Embedding is a tool for the regs assistant, not a law for the gates. **Do not embed new lanes by default.**
+- **NEVER `?? 0` on a reading.** `Number(null)`, `Number("")` and `Number([])` are all a finite `0`, so `Number.isFinite` alone does not save you — guard on `typeof` first. A missing tide is not a 0.0 ft tide; at MLLW that fabrication is invisible on screen. This bug once invented 1,095 weather events.
+- **The offline path is enforced by ESLint, not by convention.** `src/lib/sky.ts`, `tide.ts`, `geometry.ts`, `gates/**` and `FieldPage.tsx` cannot import the Supabase client or call bare `fetch`. Fetching lives in sibling `*Fetch.ts` files. A boundary a reviewer must verify by reading is a boundary that decays.
 - All hunt_ tables share Supabase project with JAC Agent OS — **NEVER touch JAC tables.**
 - Pin `supabase-js@2.84.0` in edge functions. Pin `std@0.168.0`.
 - NEVER retry 4xx errors — only 5xx and network errors.
