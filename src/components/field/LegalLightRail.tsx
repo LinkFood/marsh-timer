@@ -87,7 +87,7 @@ function Boundaries({ openAt, closeAt }: { openAt: Date | null; closeAt: Date | 
   const closeIso = isoOf(closeAt);
 
   return (
-    <div className="mt-2 flex items-baseline justify-between gap-2">
+    <div className="mt-0.5 flex items-baseline justify-between gap-2">
       <span className="flex items-baseline gap-1.5">
         <RailLabel>open</RailLabel>
         {open !== null && openIso !== null ? (
@@ -129,10 +129,14 @@ function DaysToOpen({ nextOpen }: { nextOpen: NextOpen | null }) {
         <Reading size="hero">{nextOpen.daysAway}</Reading>
         <Reading size="lg">{nextOpen.daysAway === 1 ? "day" : "days"}</Reading>
       </div>
-      <Claim className="mt-1 text-[13px] !text-amber-300/70">
+      <Claim className="mt-0.5 text-[13px] !text-amber-300/70">
         until the next day Maryland publishes an open season
       </Claim>
-      <Receipt items={[`next open day ${nextOpen.day}`, "counted forward through the transcribed digest, not forecast"]} className="mt-1" />
+      {/* The DAY is a denominator — it is the thing the count resolves to and he
+          can check it against a booklet. HOW it was counted (forward through the
+          transcribed digest, never forecast) is provenance and prints at the
+          foot. */}
+      <Receipt items={[`next open day ${nextOpen.day}`]} className="mt-0.5" />
     </div>
   );
 }
@@ -150,9 +154,9 @@ export function LegalLightRail({
   /* ---- 1. A CLOSED DAY OUTRANKS EVERYTHING. No clock. ------------------- */
   if (light.closedDay !== null) {
     return (
-      <Rail first className="py-4">
+      <Rail first className="py-2">
         <RailLabel>legal shooting light</RailLabel>
-        <div className="mt-2">
+        <div className="mt-1">
           <Refusal
             headline={light.closedDay.headline}
             message={light.closedDay.message}
@@ -168,20 +172,25 @@ export function LegalLightRail({
   if (light.window.status === "refused") {
     const extra = light.season.closedMessages.filter((m) => m !== light.window.message);
     return (
-      <Rail first className="py-4">
+      <Rail first className="py-2">
         <RailLabel>legal shooting light</RailLabel>
         <DaysToOpen nextOpen={nextOpen} />
-        <div className="mt-2">
+        <div className="mt-1">
           <Refusal
             headline="No shooting light is shown for this day."
             message={light.window.message}
           />
+          {/* BOTH species' refusals, separately, in the regs module's own words.
+              Two different absences — no season at all, versus a season the
+              state grants but has not dated — and one tidy summary would lose
+              the distinction. They are refusals, so they render in every mode
+              at reading weight. */}
           {extra.map((m) => (
-            <p key={m} className="mt-2 font-mono text-[11px] leading-[1.5] text-amber-300/85">
+            <p key={m} className="mt-1 font-mono text-[11px] leading-[1.35] text-amber-300/85">
               {m}
             </p>
           ))}
-          <Receipt items={[`reason: ${light.window.reason}`, "no clock is shown rather than a wrong one"]} className="mt-1.5" />
+          <Receipt items={[`reason: ${light.window.reason}`]} className="mt-1" />
         </div>
       </Rail>
     );
@@ -220,7 +229,7 @@ export function LegalLightRail({
   return (
     <Rail
       first
-      className={`py-2.5 ${running ? "border-l-2 border-l-amber-400 pl-3.5" : "border-l-2 border-l-transparent pl-3.5"}`}
+      className={`py-2 ${running ? "border-l-2 border-l-amber-400 pl-3.5" : "border-l-2 border-l-transparent pl-3.5"}`}
     >
       <div className="flex items-baseline justify-between gap-2">
         <RailLabel>legal shooting light</RailLabel>
@@ -229,20 +238,37 @@ export function LegalLightRail({
         </RailLabel>
       </div>
 
-      <div className="mt-1">
-        <Reading size="hero" className={warn ? "!text-red-400" : ""}>
+      {/* THE HERO DID NOT SHRINK. It is still 56px and it is still the largest
+          thing on the surface by an order of magnitude — everything around it
+          got smaller instead, which is what "shrink around it" means.
+
+          The subject moved from a band UNDER the hero into the dead air BESIDE
+          it. A seven-character countdown at 56px is ~235px wide on a 343px
+          measure, so there were a hundred-odd pixels of nothing to the right of
+          the number and a full text row underneath it. The sentence now wraps
+          into that space and the row is gone. `items-end` keeps it sitting on
+          the hero's baseline rather than floating at the cap height. */}
+      <div className="mt-0.5 flex items-end justify-between gap-3">
+        <Reading size="hero" className={`shrink-0 ${warn ? "!text-red-400" : ""}`}>
           {hero}
         </Reading>
+        <Claim className="min-w-0 flex-1 pb-1 text-right text-[12px] !text-amber-300/70">
+          {subject}
+        </Claim>
       </div>
-      <Claim className="mt-1 text-[13px] !text-amber-300/70">{subject}</Claim>
 
       <Boundaries openAt={light.openAt} closeAt={light.closeAt} />
 
+      {/* WHAT STAYS: the rule as a sentence he can check, and its citation. This
+          is a legal surface — the cite is a denominator of the clock, not a
+          note about where the clock came from, and it prints in every mode.
+          WHAT LEFT: `verified …, booklet check pending`, which is a fact about
+          our transcription process rather than about his morning. It prints at
+          the foot with the rest of the provenance. */}
       <Receipt
         items={[
           `${rule.start} → ${rule.end}`,
           citeLabel(rule.cite),
-          `verified ${rule.verified}, booklet check pending`,
           speciesLabel,
           light.season.basis === "sole-open-season"
             ? "species read off the season calendar"
@@ -252,13 +278,13 @@ export function LegalLightRail({
                 ? "both seasons open, same hours"
                 : null,
         ]}
-        className="mt-1.5"
+        className="mt-0.5"
       />
 
       {narrowed && light.window.status === "narrowed" ? (
-        <div className="mt-2.5 border-l-2 border-l-amber-400/70 pl-2.5">
+        <div className="mt-1.5 border-l-2 border-l-amber-400/70 pl-2.5">
           <Claim className="text-[13px]">This is the SHORTER window.</Claim>
-          <p className="mt-0.5 font-mono text-[11px] leading-[1.5] text-amber-300/85">
+          <p className="mt-0.5 font-mono text-[11px] leading-[1.35] text-amber-300/85">
             {light.window.message}
           </p>
         </div>

@@ -35,13 +35,32 @@
  * you cannot read out of the corner of your eye.
  *
  * ═════════════════════════════════════════════════════════════════════════════
- * 3. THE RECEIPT IS NEVER BEHIND A TAP.
+ * 3. THE RECEIPT IS NEVER BEHIND A TAP — AND A DENOMINATOR IS NOT A METHOD.
  * ═════════════════════════════════════════════════════════════════════════════
  *
- * Every reading on this surface carries its provenance directly underneath, in
- * the dot-separated mono line the rest of the site already uses. A citation
- * behind a disclosure triangle is a citation nobody reads, and on a legal
- * surface that is the one unforgivable design decision available here.
+ * Nothing on this surface is behind a disclosure triangle. A citation behind a
+ * triangle is a citation nobody reads, and on a legal surface that is the one
+ * unforgivable design decision available here.
+ *
+ * But "receipt" was one word doing two jobs, and separating them is what got six
+ * gates onto a 635px phone:
+ *
+ *   A DENOMINATOR IS PART OF THE READING. `22% of 162 season days`, `8.9 of 11.0
+ *   dark hrs`, `1.4 ft MLLW`, `COMAR 08.03.07.13`. These are what make a number
+ *   honest, and a hunter reads them IN THE MOMENT, against the number they sit
+ *   under. They stay on the rail, at reading weight, in every mode. `Receipt` is
+ *   for these.
+ *
+ *   METHODOLOGY IS PROVENANCE. `NOAA solar, Schlyter lunar`, `illumination only
+ *   — hours-up is the same variable (r = 0.988)`, `95% CI −9% to +9%`, the
+ *   dossier path. This is read ONCE, at the kitchen table, to decide whether to
+ *   trust the instrument at all — never at 05:15 with a gun in the other hand.
+ *   It is hoisted into ONE block at the foot of the surface (`FieldProvenance`),
+ *   because printing the same six sources six times on a screen read in the dark
+ *   is not rigour, it is 250px of the only screen there is.
+ *
+ * That is a MOVE, not a deletion. Every source, every interval and every stated
+ * unknown is still on the glass, still without a tap.
  *
  * ═════════════════════════════════════════════════════════════════════════════
  * 4. AN ABSENCE IS SET AT THE WEIGHT OF A READING.
@@ -188,6 +207,13 @@ export function Receipt({
  * Deliberately NOT dimmed and deliberately NOT prefixed with an apology. The
  * serif carries the short claim, the mono carries the reason, exactly as a
  * present reading would.
+ *
+ * THE MESSAGE STAYS AT 11px — `Reading size="sm"` — in every mode, on every
+ * face. That is the floor and it is not negotiable: the moment a refusal is set
+ * smaller than a reading, a hunter learns to skim past absence, and absence is
+ * the thing this product exists to say out loud. The headline came down from
+ * 17px to 15px and the leading tightened, which costs a refusal a few pixels and
+ * costs it no weight — the serif is still the loudest thing in the slot.
  */
 export function Refusal({
   headline,
@@ -200,9 +226,46 @@ export function Refusal({
 }) {
   return (
     <div>
-      <Claim className="text-[17px]">{headline}</Claim>
-      <p className={`mt-1 font-mono text-[11px] leading-[1.45] ${INK_READING}`}>{message}</p>
-      {cite ? <Receipt items={cite} className="mt-1" /> : null}
+      <Claim className="text-[15px]">{headline}</Claim>
+      <p className={`mt-0.5 font-mono text-[11px] leading-[1.35] ${INK_READING}`}>{message}</p>
+      {cite ? <Receipt items={cite} className="mt-0.5" /> : null}
     </div>
+  );
+}
+
+/**
+ * THE FOOT BLOCK. One dot-separated paragraph, at the bottom of the surface,
+ * carrying every method, source, interval and stated unknown on the page.
+ *
+ * Same 9.5px as `Receipt` — this is the same layer of the instrument, not a
+ * quieter one, and `Instrument.tsx` has already argued at length that 9.5px is
+ * the smallest this can be and stay legible. It is NOT smaller than a receipt
+ * and it is NOT dimmer.
+ *
+ * `overflow-wrap: anywhere` is on it because the block carries file paths and
+ * station identifiers that are longer than a 375px mono line, and a citation
+ * that pushes a horizontal scrollbar onto the field surface has broken the one
+ * layout rule this screen has.
+ */
+export function Provenance({
+  items,
+  className = "",
+}: {
+  items: readonly (string | null | undefined)[];
+  className?: string;
+}) {
+  const kept = items.filter((s): s is string => typeof s === "string" && s.trim() !== "");
+  if (kept.length === 0) return null;
+  return (
+    <p
+      className={`font-mono text-[9.5px] leading-[1.35] [overflow-wrap:anywhere] ${INK_RECEIPT} ${className}`}
+    >
+      {kept.map((s, i) => (
+        <span key={i}>
+          {i === 0 ? "" : " · "}
+          {s}
+        </span>
+      ))}
+    </p>
   );
 }

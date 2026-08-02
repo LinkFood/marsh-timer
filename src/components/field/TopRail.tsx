@@ -29,7 +29,7 @@
  * has not moved with him.
  */
 
-import { Rail, RailLabel, Reading, Receipt, Refusal } from "./Instrument";
+import { Rail, RailLabel, Reading, Refusal } from "./Instrument";
 import type { FieldMode } from "./fieldSeason";
 import type { Spot } from "@/lib/spot";
 
@@ -96,7 +96,7 @@ export function TopRail({
 
   if (spot === null) {
     return (
-      <Rail first className="py-3">
+      <Rail first className="py-2">
         <Refusal
           headline="No spot is saved."
           message={
@@ -110,26 +110,43 @@ export function TopRail({
   }
 
   return (
-    <Rail first className="py-1.5">
+    <Rail first className="py-1">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-display text-[17px] leading-tight text-amber-400">
+          {/* The coordinates are a DENOMINATOR — every number below this rail
+              was computed from them, and a hunter who moved his blind can only
+              see that the app did not move with him by reading them. They stay
+              on the glass in every mode. */}
+          <p className="truncate font-display text-[16px] leading-tight text-amber-400">
             {spot.name}
           </p>
-          <Receipt
-            items={[
-              `${spot.lat.toFixed(4)}, ${spot.lng.toFixed(4)}`,
-              spot.county_name,
-              spot.state,
-            ]}
-          />
-          {/* THE ANNUNCIATOR. It reports the mode the app derived from
-              time-to-hunt; the two words beside it force it for this session
-              only. Session-only is the load-bearing part — a forced PLAN that
-              persisted would still be forced at 05:15 on the opener, which is
-              the one morning it must not be. */}
-          <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-amber-500/45">
-            <span>{mode}</span>
+          {/* MEASURED, NOT ASSUMED: these two lines cannot be merged. The day
+              controls on the right take 186px of a 375px rail — three 44px tap
+              targets and the date — so this column is about 150px wide, and
+              `38.4436, -76.0722 · Dorchester County · MD` is 245px of 9.5px
+              mono on its own. Putting the annunciator on the same line either
+              wraps it (no saving) or truncates the coordinates, and the
+              coordinates are the denominator of every number below this rail.
+
+              THE ANNUNCIATOR reports the mode the app derived from time-to-hunt;
+              the two words beside it force it for this session only. Session-
+              only is the load-bearing part — a forced PLAN that persisted would
+              still be forced at 05:15 on the opener, which is the one morning it
+              must not be. */}
+          <p className="flex flex-wrap items-center gap-x-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-amber-500/45">
+            {/* THE COORDINATES AND THE STATE — the two things every number
+                below was actually computed FROM. `sky.ts` takes the pair,
+                `shootingHours.ts` takes the state, and a hunter who has moved
+                his blind checks the pair. THE COUNTY NAME CAME OFF: it is a
+                label rather than an input, nothing on this surface is derived
+                from it, and it was the difference between one line and two in a
+                150px column — the day controls take 186px of a 375px rail and
+                that is not negotiable, they are three 44px tap targets. */}
+            <span className="w-full normal-case tracking-normal text-amber-500/50">
+              {`${spot.lat.toFixed(4)}, ${spot.lng.toFixed(4)}`}
+              {spot.state ? ` · ${spot.state}` : ""}
+            </span>
+            <span className="shrink-0">{mode}</span>
             {(["field", "prep", "plan"] as const)
               .filter((m) => m !== mode)
               .map((m) => (
@@ -137,12 +154,18 @@ export function TopRail({
                   key={m}
                   type="button"
                   onClick={() => onForce(m)}
-                  /* `py-2 -my-2` buys a ~30px hit area without spending a single
-                     pixel of layout height. This control stays visually tiny on
-                     purpose — it is never the way to the right answer — but a
-                     14px target that a gloved thumb genuinely cannot hit is a
-                     control that does not exist. */
-                  className="-my-2 py-2 text-amber-500/30 underline underline-offset-2"
+                  /* An ABSOLUTELY POSITIONED hit area, not padding. This used
+                     to be `py-2 -my-2` with a comment claiming it cost no
+                     layout height — measured at 375px, it cost seventeen. A
+                     negative margin does collapse the box, but it does not
+                     collapse the line box of a WRAPPED flex row, and this row
+                     wraps. `before:-inset-y-2` puts a ~30px target over a 13px
+                     word and takes exactly zero pixels of the column.
+
+                     The control stays visually tiny on purpose — it is never
+                     the way to the right answer — but a 13px target a gloved
+                     thumb cannot hit is a control that does not exist. */
+                  className="relative text-amber-500/30 underline underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']"
                 >
                   {m}
                 </button>
@@ -151,7 +174,7 @@ export function TopRail({
               <button
                 type="button"
                 onClick={() => onForce(null)}
-                className="-my-2 py-2 text-amber-500/30 underline underline-offset-2"
+                className="relative text-amber-500/30 underline underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']"
               >
                 auto
               </button>

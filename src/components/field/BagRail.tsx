@@ -64,11 +64,9 @@ function buzz() {
 
 export function BagRail({
   day,
-  species,
 }: {
   /** The calendar day the tally belongs to. Per-date, always. */
   day: string;
-  species: readonly string[];
 }) {
   const [bag, setBag] = useState<BagCount>({ status: "counted", taps: 0 });
   const [confirming, setConfirming] = useState(false);
@@ -110,32 +108,34 @@ export function BagRail({
 
   if (bag.status === "unreadable") {
     return (
-      <Rail className="py-3">
+      <Rail className="py-2">
         <RailLabel>bag</RailLabel>
-        <div className="mt-1.5">
+        <div className="mt-1">
           <Refusal headline="Today's tally could not be read." message={bag.message} />
         </div>
       </Rail>
     );
   }
 
-  const what = species.length > 0 ? species.join(" + ") : null;
-
   return (
     <Rail className="py-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <RailLabel>bag · taps today</RailLabel>
-        <RailLabel>{what ?? "no open season"}</RailLabel>
-      </div>
-
-      <div className="mt-1 flex items-stretch gap-2">
-        {/* The target. Full width, 72px, bottom of the glass, under the thumb. */}
+      {/* THE LABEL ROW IS GONE and the label is not. It was `bag · taps today`
+          on the left and the SPECIES on the right; the species is already
+          printed twice above — verbatim as a zone on the season rail and again
+          in the legal-light receipt — and the word `bag` now leads the line
+          directly under the counter. A number still has its subject named on
+          the glass; it is named once, below, instead of once above and once
+          below. */}
+      <div className="flex items-stretch gap-2">
+        {/* The target. Full width, 64px, bottom of the glass, under the thumb.
+            72px was generous rather than necessary; 64 is the floor a wet glove
+            needs and it is the floor this button now sits exactly on. */}
         <button
           type="button"
           onClick={() => bump(1)}
           aria-label="Add one to today's tally"
           className={[
-            "flex min-h-[72px] flex-1 items-center justify-center gap-4 rounded-md border-2 transition-colors duration-150",
+            "flex min-h-[64px] flex-1 items-center justify-center gap-4 rounded-md border-2 transition-colors duration-150",
             confirming
               ? "border-amber-400 bg-amber-500/15"
               : "border-amber-500/25 bg-amber-500/[0.04]",
@@ -162,18 +162,22 @@ export function BagRail({
       </div>
 
       {writeFailed ? (
-        <p className="mt-1.5 font-mono text-[11px] leading-[1.5] text-amber-300/85">
+        <p className="mt-1 font-mono text-[11px] leading-[1.35] text-amber-300/85">
           That tap did not save — this browser is refusing to store it, so the number above is not
           being kept. Count on your fingers.
         </p>
       ) : null}
 
+      {/* WHAT THIS NUMBER IS stays here, because it is what the number MEANS and
+          he reads it against the number: the date it belongs to, that it counts
+          taps rather than birds, and that no limit is being shown. WHY no limit
+          is shown — that Maryland's limits are species-and-sex specific and that
+          this app cannot know his earlier take — is the reasoning behind the
+          policy, and it prints once at the foot. Removing the sentence entirely
+          would have turned an argued refusal into a silent omission. */}
       <Receipt
-        items={[
-          `for ${day} · your taps, not birds, and not a legal count`,
-          "no limit shown — limits are species and sex specific and this app cannot know your earlier take",
-        ]}
-        className="mt-1"
+        items={[`bag ${day} · your taps, not birds, and not a legal count · no limit shown`]}
+        className="mt-0.5"
       />
     </Rail>
   );

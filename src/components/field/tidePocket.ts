@@ -299,8 +299,12 @@ export function loadTidePocket(stationId?: string | null): TideResult<PocketCurv
   if (!raw) {
     return refuse(
       "no-data",
-      "No tide is saved for this spot. Tides are downloaded at PREP, with signal, and read " +
-        "here with none — so there is nothing to show and this app will not invent water.",
+      // Two lines rather than four, saying the same two things: nothing is
+      // saved, and nothing will be made up. The clause about downloading at
+      // PREP with signal is instrument provenance and prints once at the foot
+      // of the surface with the rest of it.
+      "No tide is saved for this spot, and this app will not invent water. Save one at PREP, " +
+        "with signal.",
     );
   }
 

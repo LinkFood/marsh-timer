@@ -92,8 +92,13 @@ export function dawnTideClock(stationId: string | null | undefined): DawnTideClo
       status: "refused",
       stationId: id,
       message:
+        // THE MECHANISM STAYS IN THE REFUSAL. `dawnTide.test.ts` holds this to
+        // it by name — an absence that does not teach the confound is an
+        // absence a hunter reads as "nothing much today". What came out was the
+        // trailing "on some marshes", which generalised across a coast whose
+        // sign reverses, and it cost a whole line of a 375px screen to do it.
         "The moon sets the hour of high water, not just its height — feet of water at shooting " +
-        "time on some marshes, with no light in it. None is packed for this one.",
+        "time, no light in it. None is packed for this one.",
     };
   }
 

@@ -1,9 +1,10 @@
 /**
- * SkyRail.tsx — sun and moon, side by side, both as MEASUREMENTS.
+ * SkyRail.tsx — sun and moon, one line each, both as MEASUREMENTS.
  *
- * Two columns because they are read together and because two columns is how six
- * readings fit above the fold without a scrollbar. Hierarchy on this surface
- * comes from size and position, never from a door.
+ * A rise and a set fit side by side on a 375px line with room to spare, so the
+ * rail is a stack of full-width label-and-reading rows rather than two columns
+ * of stacked pairs. Same readings, two thirds of the height, no door. Hierarchy
+ * on this surface comes from size and position, never from a control.
  *
  * ═════════════════════════════════════════════════════════════════════════════
  * THE MOON STAYS, AND IT STAYS AS A MEASUREMENT.
@@ -46,12 +47,42 @@
  *                       lengthens night feeding. Lameris 2021: +3.6 min foraging
  *                       per hour of moon above the horizon. That half is solid.
  *   THE DISCLOSURE      says, at reading weight and in the product's own voice,
- *   (mono)              that the next link is unmeasured, and the receipt
- *                       carries the one estimate with its interval.
+ *   (mono)              that the next link is unmeasured, and carries the one
+ *                       estimate with its interval.
  *
  * The claim never reaches this morning. It cannot: nothing on this rail knows
  * anything about this morning, and the previous copy's implication that it did
  * is the exact failure this product was built to refuse.
+ *
+ * ═════════════════════════════════════════════════════════════════════════════
+ * WHERE EACH HALF LIVES NOW, AND WHY THEY LIVE APART.
+ * ═════════════════════════════════════════════════════════════════════════════
+ *
+ * THE READINGS ARE FIELD. The lit fraction, the phase, the rise and set, the
+ * hours above the horizon over the dark window, the base rate with its n, and
+ * the dawn tide with its inches. All of them print in every mode, unchanged.
+ * Every one of those carries its DENOMINATOR inline, because a denominator is
+ * part of reading the number and he reads it in the moment.
+ *
+ * THE MECHANISM SENTENCE IS PREP. *"Enough moon, up most of the dark. Light like
+ * that lengthens night feeding."* is a true statement about a night that has
+ * already happened, and there is nothing a man standing in the water with a gun
+ * can do with it. It belongs to the kitchen table the evening before, so it
+ * renders when `mode` is not `"field"`. The same goes for the dawn-tide sentence
+ * — the INCHES stay on the glass in every mode, the paragraph explaining which
+ * way this particular station leans does not.
+ *
+ * THE DISCLOSURE IS EVERY MODE, and it moved to the foot of the surface —
+ * `./provenance.ts`, `NEVER_MEASURED`. It is NOT gone and it is NOT behind
+ * a tap; it is on the same screen, below, printed once instead of beside a claim
+ * that is itself only shown half the time. That is deliberate: the disclosure
+ * has to outlive the claim, because the moon NUMBERS print in FIELD whether the
+ * sentence does or not, and a number is where the inference actually starts.
+ *
+ * REFUSALS DO NOT MOVE. `night.status === "unknown"`, `rate.status ===
+ * "unknown"` and every branch of `dawnTideClock` that is not `ok` print their
+ * reason right here, at reading weight, in every mode. A stated absence is a
+ * reading and it keeps its slot.
  *
  * ═════════════════════════════════════════════════════════════════════════════
  * THE THREE THINGS THIS RAIL MUST NEVER DO. (dossier §5)
@@ -68,8 +99,8 @@
  *    van Hasselt found the same sign flip in geese. Near Cambridge, Easton,
  *    Annapolis or Baltimore a cloud-subtracts rule is a known-wrong physical
  *    model. There is no cloud gate on this rail at all — cloud is an input this
- *    phone does not have, the receipt says so, and it says which way the missing
- *    input can cut.
+ *    phone does not have, the foot provenance block says so, and it says which
+ *    way the missing input can cut.
  *
  * 3. NEVER show the moon on a tidal site without the dawn tide beside it. At
  *    Bishops Head the spring-vs-quarter difference at 07:00 is 1.59 ft — 19
@@ -82,9 +113,10 @@
 
 import type { ReactNode } from "react";
 import { moonState } from "@/lib/sky";
-import { Claim, Rail, RailLabel, Reading, Receipt } from "./Instrument";
+import { Claim, Rail, RailLabel, Reading } from "./Instrument";
 import { INK_LABEL } from "./ink";
 import { dawnTideClock, dawnTideSentence } from "./dawnTide";
+import type { FieldMode } from "./fieldSeason";
 import { formatClock, formatHours, skyDayFor } from "./fieldTime";
 import { formatBaseRatePercent, moonBaseRate } from "./moonBaseRate";
 import type { NightMoon } from "./moonNight";
@@ -101,21 +133,6 @@ const FEED_LIGHT_FRACTION = 0.5;
 
 /** And the moon has to have been up for most of the dark, not just some of it. */
 const FEED_NIGHT_FRACTION = 0.8;
-
-/**
- * THE DISCLOSURE. One string, one place, rendered on every branch that makes a
- * claim about the night.
- *
- * It is a constant rather than a line inside each branch ON PURPOSE: a per-branch
- * copy is a per-branch opportunity to forget it, and the forgetting would be
- * silent and would look exactly like the old rail.
- */
-const NEVER_MEASURED =
-  "Whether that changes this morning has never been measured — not in ducks, not in anything.";
-
-function Col({ children }: { children: ReactNode }) {
-  return <div className="min-w-0 flex-1">{children}</div>;
-}
 
 /** `↑ 6:33 AM` / `↓ 7:38 PM`, or a stated absence. Never a blank. */
 function Event({ mark, at, label }: { mark: string; at: Date | null; label: string }) {
@@ -135,7 +152,7 @@ function Event({ mark, at, label }: { mark: string; at: Date | null; label: stri
 /** A label-and-reading pair on its own line. The rail's own idiom, reused. */
 function Line({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="mt-0.5 flex items-baseline gap-1.5">
+    <div className="flex items-baseline gap-1.5">
       <RailLabel>{label}</RailLabel>
       {children}
     </div>
@@ -167,6 +184,7 @@ export function SkyRail({
   night,
   day,
   stationId,
+  mode = "prep",
 }: {
   sunrise: Date | null;
   sunset: Date | null;
@@ -176,6 +194,16 @@ export function SkyRail({
   night: NightMoon;
   /** The calendar day these readings are for. Computed on device from it. */
   day: string;
+  /**
+   * How far he is from the hunt. Not a style flag — it is the difference between
+   * a man at a kitchen table and a man in the water, and only the prose changes.
+   * Readings, denominators and refusals are identical in all three.
+   *
+   * Defaults to `"prep"`, the fuller render, so a caller that has not been
+   * taught about the mode gets MORE prose rather than less. Losing a sentence
+   * has to be a decision somebody made.
+   */
+  mode?: FieldMode;
   /**
    * The CO-OPS station this spot is bound to, off the frozen spot.
    *
@@ -209,12 +237,15 @@ export function SkyRail({
   // Renders on every path. See rule 3.
   const tide = dawnTideClock(stationId);
 
-  // The claim states the MECHANISM and stops at what is measured. It does not
-  // restate the lit fraction or the hours-up, because both are printed directly
-  // above it, and it does not reach this morning, because nothing here knows
-  // anything about this morning.
+  // PREP-WEIGHT. The claim states the MECHANISM and stops at what is measured.
+  // It does not restate the lit fraction or the hours-up, because both are
+  // printed directly above it, and it does not reach this morning, because
+  // nothing here knows anything about this morning. It is not computed at all in
+  // FIELD — see the header: there is nothing a man in the water does with a
+  // statement about a night that is already over.
+  const prose = mode !== "field";
   let mechanism: string | null = null;
-  if (night.status === "ok" && litPct !== null) {
+  if (prose && night.status === "ok" && litPct !== null) {
     if (litEnough && night.allNight) {
       mechanism = "Up all night and over half lit. Light like that lengthens night feeding.";
     } else if (litEnough && upEnough) {
@@ -230,40 +261,46 @@ export function SkyRail({
 
   return (
     <Rail className="py-1">
-      {/* Two columns, because sun and moon are read together and because two
-          columns is how six readings and the overnight span fit above the fold
-          without a scrollbar. Nothing here moved behind a control. */}
-      <div className="flex gap-4">
-        <Col>
-          <RailLabel>sun</RailLabel>
-          <div className="mt-0.5 flex flex-col">
-            <Event mark="↑" at={sunrise} label="Sunrise" />
-            <Event mark="↓" at={sunset} label="Sunset" />
-          </div>
-          {polar && polar !== "none" ? (
-            <p className="mt-0.5 font-mono text-[10px] leading-tight text-amber-300/85">
-              {polar === "midnight-sun"
-                ? "the sun does not set here today"
-                : "the sun does not rise here today"}
-            </p>
-          ) : null}
-        </Col>
+      {/* SUN AND MOON WERE TWO COLUMNS OF STACKED PAIRS. They are now two full
+          -width lines, and it is the same readings in less than two thirds of
+          the height with no door added.
 
-        <Col>
-          <div className="flex items-baseline justify-between gap-1">
-            <RailLabel>moon</RailLabel>
-            <span className={`truncate font-mono text-[9px] uppercase tracking-[0.08em] ${INK_LABEL}`}>
-              {moon.phase}
-            </span>
-          </div>
-          <div className="mt-0.5 flex items-baseline gap-2">
-            <Reading size="lg">{litPct !== null ? `${litPct}%` : "—"}</Reading>
-            <span className="flex flex-col">
-              <Event mark="↑" at={moonRise} label="Moonrise" />
-              <Event mark="↓" at={moonSet} label="Moonset" />
-            </span>
-          </div>
-        </Col>
+          The old shape stacked rise over set inside a half-width column, so the
+          block was two label rows plus four reading rows deep. At 375px a rise
+          and a set fit side by side on ONE line with room to spare — `↑ 6:33 AM
+          ↓ 7:34 PM` is about 170px of a 343px measure — so the stack was buying
+          nothing but height. Nothing was dropped, nothing shrank: the lit
+          fraction is still the 20px reading it was, the times are still 14px,
+          and the phase still rides beside the moon label. */}
+      <div className="flex items-baseline gap-2">
+        <RailLabel>sun</RailLabel>
+        <span className="flex items-baseline gap-3">
+          <Event mark="↑" at={sunrise} label="Sunrise" />
+          <Event mark="↓" at={sunset} label="Sunset" />
+        </span>
+      </div>
+      {polar && polar !== "none" ? (
+        <p className="font-mono text-[10px] leading-tight text-amber-300/85">
+          {polar === "midnight-sun"
+            ? "the sun does not set here today"
+            : "the sun does not rise here today"}
+        </p>
+      ) : null}
+
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <RailLabel>moon</RailLabel>
+          <Reading size="lg">{litPct !== null ? `${litPct}%` : "—"}</Reading>
+          <span className="flex items-baseline gap-3">
+            <Event mark="↑" at={moonRise} label="Moonrise" />
+            <Event mark="↓" at={moonSet} label="Moonset" />
+          </span>
+        </span>
+        <span
+          className={`shrink-0 truncate font-mono text-[9px] uppercase tracking-[0.08em] ${INK_LABEL}`}
+        >
+          {moon.phase}
+        </span>
       </div>
 
       {/* The reading almost nobody prints: hours actually above the horizon,
@@ -277,11 +314,11 @@ export function SkyRail({
         )}
       </Line>
 
-      {night.status === "unknown" ? <Note>{night.message}</Note> : null}
-
-      {/* THE BASE RATE — what turns a number into a receipt. "80% lit" places
+      {/* THE BASE RATE — what turns a number into a reading. "80% lit" places
           nothing; "one morning in five" places it against the only population
-          the hunter is actually in. Counted on illumination alone. */}
+          the hunter is actually in. Counted on illumination alone. THE
+          DENOMINATOR IS ON THE GLASS IN EVERY MODE — it is part of reading the
+          number, not a note about how the number was made. */}
       <Line label={rate.status === "ok" && rate.tail === "dark" ? "this dark or darker" : "at least this lit"}>
         {rate.status === "ok" ? (
           <Reading size="md">{`${formatBaseRatePercent(rate)} of ${rate.n} season days`}</Reading>
@@ -289,16 +326,6 @@ export function SkyRail({
           <Reading size="md">no denominator</Reading>
         )}
       </Line>
-
-      {rate.status === "unknown" ? <Note>{rate.message}</Note> : null}
-
-      {mechanism ? (
-        <>
-          <Claim className="mt-1 text-[12px] leading-snug !text-amber-300/80">{mechanism}</Claim>
-          {/* THE DISCLOSURE. Reading weight, never dimmed, never a branch. */}
-          <Note>{NEVER_MEASURED}</Note>
-        </>
-      ) : null}
 
       {/* RULE 3. Present or refused — never absent. The moon's largest measured
           effect on a tidal marsh is water, not light. */}
@@ -315,34 +342,17 @@ export function SkyRail({
           </Reading>
         )}
       </Line>
-      {tide.status === "ok" ? (
-        <Note>{dawnTideSentence(tide)}</Note>
-      ) : (
-        <Note>{tide.message}</Note>
-      )}
 
-      <Receipt
-        items={[
-          "on device · NOAA solar, Schlyter lunar · illumination only — hours-up is the same variable (r = 0.988)",
-          // The estimate and its interval. This is the finding the old copy's
-          // implication was standing on, and it is a zero. It rides in the
-          // receipt because a number with an n and a CI on it IS a citation,
-          // and the receipt is this surface's citation line — always visible,
-          // never behind a tap (`Instrument.tsx`, rule 3).
-          "one direct test of last night on next morning: −0.4%, 95% CI −9% to +9% · 105 GPS ducks, 1,984 bird-days · same ducks moved 23% MORE on bright clear nights, no less next day",
-          rate.status === "ok"
-            ? `base rate over ${rate.n} published MD duck + goose season days, ${rate.firstDay} → ${rate.lastDay}`
-            : null,
-          // The stated absence, and WHICH WAY it can cut. Cloud is not coded as
-          // a subtraction anywhere on this rail — see rule 2.
-          "overnight cloud cover is NOT known here — and cloud does not simply subtract; near a town it reflects light back down",
-          tide.status === "ok"
-            ? `${tide.station.stationName} ${tide.station.stationId} · n = ${tide.station.nearFullN} full / ${tide.station.nearNewN} new / ${tide.station.quarterN} quarter · ${tide.station.window}`
-            : "dawn tide read per station, never generalised — the spring sign at dawn reverses between stations here",
-          "MOONLIGHT-AND-THE-MORNING-2026-08-01.md §2(c) §4.1 §5",
-        ]}
-        className="mt-1"
-      />
+      {/* ── THE REFUSALS. Every mode, no exceptions, at reading weight. ────── */}
+      {night.status === "unknown" ? <Note>{night.message}</Note> : null}
+      {rate.status === "unknown" ? <Note>{rate.message}</Note> : null}
+      {tide.status !== "ok" ? <Note>{tide.message}</Note> : null}
+
+      {/* ── PREP PROSE. Read at the kitchen table, never with a gun in hand. ─ */}
+      {mechanism ? (
+        <Claim className="mt-1 text-[12px] leading-snug !text-amber-300/80">{mechanism}</Claim>
+      ) : null}
+      {prose && tide.status === "ok" ? <Note>{dawnTideSentence(tide)}</Note> : null}
     </Rail>
   );
 }

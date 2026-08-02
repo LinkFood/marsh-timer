@@ -181,10 +181,14 @@ export function closedDayFor(state: string | null, localDay: string): ClosedDay 
 
   return {
     headline: "Sunday. No waterfowl hunting in Maryland today.",
+    // The DENOMINATOR stays — 69 calendar days against 60 huntable ones is the
+    // whole point and it is checkable. The closing flourish about the sun still
+    // coming up was rhetoric restating the headline, and on a screen that must
+    // hold six gates a sentence that repeats the sentence above it is a sentence
+    // that costs a gate.
     message:
       "This is a closed DAY, not different hours — so no shooting light is shown. It is why " +
-      "Maryland's 69 calendar days of duck season span 60 huntable ones. The sun will still " +
-      "come up; you cannot hunt waterfowl under it here.",
+      "Maryland's 69 calendar days of duck season span 60 huntable ones.",
     cite: SUNDAY_CLOSURE.cite,
   };
 }

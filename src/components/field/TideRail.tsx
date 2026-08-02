@@ -72,14 +72,15 @@ export function TideRail({
 }) {
   if (pocket.status !== "ok") {
     return (
-      <Rail className="py-3">
+      <Rail className="py-2">
         <RailLabel>tide</RailLabel>
-        <div className="mt-1.5">
-          <Refusal
-            headline="No water is shown."
-            message={pocket.message}
-            cite={["NOAA CO-OPS", "downloaded at PREP, read here with no signal"]}
-          />
+        <div className="mt-1">
+          {/* The refusal keeps its full weight and its own words. What left is
+              the SOURCE line — `NOAA CO-OPS`, `downloaded at PREP` — which is
+              provenance about the instrument, not a reason this slot is empty,
+              and it now prints once at the foot instead of here and again under
+              the reading it would have replaced. */}
+          <Refusal headline="No water is shown." message={pocket.message} />
         </div>
       </Rail>
     );
@@ -94,9 +95,13 @@ export function TideRail({
   // A pocket that ran out yesterday says so; it does not draw yesterday's water.
   if (motion.status !== "ok") {
     return (
-      <Rail className="py-3">
+      <Rail className="py-2">
         <RailLabel>tide</RailLabel>
-        <div className="mt-1.5">
+        <div className="mt-1">
+          {/* The station and the age STAY on this one, because here they are not
+              provenance — they are the reason. "The saved water does not reach
+              this moment" is only checkable if he can see which pack it was and
+              how old. That is a denominator. */}
           <Refusal
             headline="The saved water does not reach this moment."
             message={motion.message}
@@ -137,15 +142,22 @@ export function TideRail({
         </span>
       </div>
 
+      {/* THE RATE AND THE SLACK THRESHOLD ARE A DENOMINATOR, not a method. The
+          rail prints the word FALLING; the threshold is what makes that word
+          checkable, and without it SLACK is an opinion. It stays on the glass in
+          every mode.
+
+          The station name, the pack's age and the prediction disclaimer moved to
+          the foot block. The word `predicted` is still in the label row above —
+          which one is under his thumb is a reading, the paragraph about wind and
+          barometric pressure moving real water is provenance. */}
       <Receipt
         items={[
           `${motion.value.ratePerHour >= 0 ? "+" : ""}${motion.value.ratePerHour.toFixed(2)} ${
             curve.provenance.units === "english" ? "ft" : "m"
           }/h, slack under ${motion.value.slackThresholdPerHour}`,
-          `${stationName ?? `station ${curve.provenance.stationId}`}${age !== null ? `, saved ${age}d ago` : ""}`,
-          "NOAA harmonic PREDICTION, not an observed level — wind and pressure move real water a foot",
         ]}
-        className="mt-1"
+        className="mt-0.5"
       />
     </Rail>
   );

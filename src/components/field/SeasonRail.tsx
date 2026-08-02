@@ -24,6 +24,16 @@
  * clock off dates the state itself has flagged as unapproved, without saying so,
  * is claiming a certainty the source does not have.
  *
+ * THE FLAG AND THE PARAGRAPH ARE NOW TWO DIFFERENT THINGS, and separating them
+ * is the whole of what changed here. `season · dates provisional` is a FLAG — it
+ * rides on the rail label, in every mode, and it is the part a man in the water
+ * can act on, because it tells him the clock above is standing on unapproved
+ * dates. DNR's full sentence about Fish and Wildlife Service approval and
+ * checking the website in September is a PARAGRAPH, verbatim, and it is the
+ * night-before half: it prints once at the foot of the surface with the rest of
+ * the provenance rather than four lines deep in the middle of the glass. Nothing
+ * about it is hidden, dimmed or behind a tap. It moved down, and it moved once.
+ *
  * The species override rides on the HEADER ROW, so it costs no vertical band of
  * its own. It is a repair tool, not a setting: `./fieldSeason.ts` derives the
  * species off the season calendar and on every date in the transcribed table
@@ -47,10 +57,9 @@ export function SeasonRail({
 }) {
   const lookup = season.lookup;
   const provisional = lookup.status === "transcribed" ? lookup.season.provisional : false;
-  const provisionalNote = lookup.status === "transcribed" ? lookup.season.provisionalNote : null;
 
   return (
-    <section className="px-4 pb-2">
+    <section className="px-4 pb-1">
       <RailLabel>{provisional ? "season · dates provisional" : "season"}</RailLabel>
 
       {/* Zones and the repair tool share ONE row. The zones take the space they
@@ -96,13 +105,15 @@ export function SeasonRail({
         </div>
       </div>
 
-      <Receipt
-        items={[
-          provisionalNote,
-          override === null ? "bird read off the calendar" : "bird set by you — tap again to clear",
-        ]}
-        className="mt-0.5"
-      />
+      {/* Only when he has overridden. `bird read off the calendar` was the same
+          fact the legal-light receipt already states as `species read off the
+          season calendar`, one rail up and eighteen pixels away — printing it
+          twice is the exact duplication this pass exists to remove. The
+          override's own affordance is not duplication: nothing else on the
+          surface says how to undo it. */}
+      {override !== null ? (
+        <Receipt items={["bird set by you — tap again to clear"]} className="mt-0.5" />
+      ) : null}
     </section>
   );
 }

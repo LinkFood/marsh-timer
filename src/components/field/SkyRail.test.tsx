@@ -114,40 +114,73 @@ describe("the claim states what is measured and stops there", () => {
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 
-describe("the disclosure is a constant, not a branch", () => {
-  const EXPECTED =
-    "Whether that changes this morning has never been measured — not in ducks, not in anything.";
+describe("the mechanism sentence is PREP, and FIELD keeps every reading", () => {
+  /**
+   * The claim is about a night that is already over. There is nothing a man
+   * standing in the water with a gun in his other hand does with it, so it does
+   * not print in FIELD. The DISCLOSURE that used to sit under it did not become
+   * PREP-only with it — it moved to the foot of the surface and prints in every
+   * mode, which `provenance.test.ts` pins. That is the stronger arrangement:
+   * the moon NUMBERS print in FIELD whether the sentence does or not, and a
+   * number is where the inference actually starts.
+   */
+  it("drops the mechanism claim in FIELD and keeps it in PREP", () => {
+    const { unmount } = render(
+      <SkyRail
+        sunrise={SUNRISE}
+        sunset={SUNSET}
+        polar="none"
+        moonRise={SUNSET}
+        moonSet={SUNRISE}
+        night={night()}
+        day={BRIGHT}
+        stationId={WOOLFORD}
+        mode="field"
+      />,
+    );
+    expect(screen.queryByText(/lengthens night feeding/i)).not.toBeInTheDocument();
+    unmount();
 
-  it("renders on every path that makes a claim about the night", () => {
-    for (const day of [BRIGHT, DARK]) {
-      for (const n of [
-        night(),
-        night({ allNight: true, aboveMs: DARK_MS }),
-        night({ neverUp: true, aboveMs: 0, spans: [] }),
-        night({ aboveMs: DARK_MS * 0.3 }),
-      ]) {
-        const { unmount } = draw(day, n);
-        expect(screen.getByText(EXPECTED)).toBeInTheDocument();
-        unmount();
-      }
-    }
+    draw(BRIGHT, night()); // default mode is prep
+    expect(screen.getByText(/lengthens night feeding/i)).toBeInTheDocument();
   });
 
-  it("carries the one direct estimate WITH its interval, and the opposite-signed finding", () => {
+  it("keeps every READING and every REFUSAL in FIELD — only prose is spent", () => {
+    render(
+      <SkyRail
+        sunrise={SUNRISE}
+        sunset={SUNSET}
+        polar="none"
+        moonRise={SUNSET}
+        moonSet={SUNRISE}
+        night={night()}
+        day={BRIGHT}
+        stationId={WOOLFORD}
+        mode="field"
+      />,
+    );
+    // The four readings, with their denominators, unchanged.
+    expect(screen.getByText("up overnight")).toBeInTheDocument();
+    expect(screen.getByText(/of .* dark hrs/)).toBeInTheDocument();
+    expect(screen.getByText("at least this lit")).toBeInTheDocument();
+    expect(screen.getByText(/\d+% of 162 season days/)).toBeInTheDocument();
+    expect(screen.getByText("dawn tide")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sunrise")).toBeInTheDocument();
+    expect(screen.getByLabelText("Moonset")).toBeInTheDocument();
+    // And the dawn-tide refusal, at reading weight, in FIELD.
+    expect(screen.getByText(/The moon sets the hour of high water/)).toBeInTheDocument();
+  });
+
+  it("carries no source, interval or dossier path any more — those moved to the foot", () => {
+    // The regression this guards: somebody "restores" a citation to the rail and
+    // the surface prints the same six sources six times again. The foot block is
+    // the one place they live, and `provenance.test.ts` proves they are there.
     const { container } = draw(BRIGHT, night());
     const text = container.textContent ?? "";
-    expect(text).toContain("one direct test of last night on next morning: −0.4%");
-    expect(text).toContain("95% CI −9% to +9%");
-    expect(text).toContain("105 GPS ducks, 1,984 bird-days");
-    // The half that cuts against the belief has to be there too, or the card is
-    // quoting only the convenient direction of its own source.
-    expect(text).toContain("23% MORE on bright clear nights");
-    expect(text).toContain("no less next day");
-  });
-
-  it("cites the dossier by path", () => {
-    const { container } = draw(BRIGHT, night());
-    expect(container.textContent ?? "").toContain("MOONLIGHT-AND-THE-MORNING-2026-08-01.md");
+    expect(text).not.toContain("MOONLIGHT-AND-THE-MORNING-2026-08-01.md");
+    expect(text).not.toContain("95% CI −9% to +9%");
+    expect(text).not.toContain("r = 0.988");
+    expect(text).not.toContain("Schlyter");
   });
 });
 
@@ -166,19 +199,26 @@ describe("the base rate gives the reading a denominator", () => {
     expect(screen.queryByText("at least this lit")).not.toBeInTheDocument();
   });
 
-  it("names the window the denominator came from", () => {
-    const { container } = draw(BRIGHT, night());
-    expect(container.textContent ?? "").toContain(
-      "162 published MD duck + goose season days, 2026-09-01 → 2027-03-10",
+  it("prints the denominator inline, in FIELD, where the number is", () => {
+    // THE DENOMINATOR IS NOT PROVENANCE. `22% of 162 season days` is what makes
+    // `80% lit` mean anything, and he reads it against the number in the moment
+    // — so it stays on the rail in every mode. Only the WINDOW those 162 days
+    // were drawn from, and the fact that one variable was counted, went to the
+    // foot. See `provenance.test.ts`.
+    render(
+      <SkyRail
+        sunrise={SUNRISE}
+        sunset={SUNSET}
+        polar="none"
+        moonRise={SUNSET}
+        moonSet={SUNRISE}
+        night={night()}
+        day={BRIGHT}
+        stationId={WOOLFORD}
+        mode="field"
+      />,
     );
-  });
-
-  it("says out loud that it counted ONE variable, and which", () => {
-    // Dossier §5 rule 1: illumination and hours-above-horizon are r = 0.988.
-    const { container } = draw(BRIGHT, night());
-    expect(container.textContent ?? "").toContain(
-      "illumination only — hours-up is the same variable (r = 0.988)",
-    );
+    expect(screen.getByText(/\d+% of 162 season days/)).toBeInTheDocument();
   });
 });
 
@@ -203,9 +243,14 @@ describe("the dawn tide is beside the moon on every path — dossier §5 rule 3"
     expect(screen.getByText("no station bound")).toBeInTheDocument();
   });
 
-  it("renders the reading, the sentence and the counts when the station IS packed", () => {
-    const { container } = draw(BRIGHT, night(), BISHOPS_HEAD);
-    const text = container.textContent ?? "";
+  it("renders the reading and the sentence when the station IS packed", () => {
+    draw(BRIGHT, night(), BISHOPS_HEAD);
+    // THE INCHES ARE THE READING and they print in every mode. The sentence
+    // that says which way THIS station leans is PREP-weight, so it prints here
+    // (the default mode is prep) and not in the blind. The station's sample
+    // counts are provenance and moved to the foot — `provenance.test.ts` holds
+    // them, including the trap of showing Bishops Head's counts under a
+    // Woolford spot.
     expect(screen.getByText('19" spring vs quarter')).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -213,8 +258,24 @@ describe("the dawn tide is beside the moon on every path — dossier §5 rule 3"
           "That is the tide, not the light.",
       ),
     ).toBeInTheDocument();
-    expect(text).toContain("n = 141 full / 140 new / 128 quarter");
-    expect(text).toContain("Oct 15 – Jan 31, ten seasons 2015-16 → 2024-25");
+  });
+
+  it("drops the per-station sentence in FIELD and keeps the inches", () => {
+    render(
+      <SkyRail
+        sunrise={SUNRISE}
+        sunset={SUNSET}
+        polar="none"
+        moonRise={SUNSET}
+        moonSet={SUNRISE}
+        night={night()}
+        day={BRIGHT}
+        stationId={BISHOPS_HEAD}
+        mode="field"
+      />,
+    );
+    expect(screen.getByText('19" spring vs quarter')).toBeInTheDocument();
+    expect(screen.queryByText(/That is the tide, not the light/)).not.toBeInTheDocument();
   });
 
   it("is present on EVERY branch, including the ones where the night refuses", () => {
@@ -253,15 +314,33 @@ describe("what the rail still refuses to become", () => {
     }
   });
 
-  it("states the missing sky, and does NOT code cloud as a subtraction — rule 2", () => {
-    const { container } = draw(BRIGHT, night());
-    const text = container.textContent ?? "";
-    expect(text).toContain("overnight cloud cover is NOT known here");
-    // Kyba 2011: cloud AMPLIFIES ground light near a town, 10.1× inside a city.
-    // A "cloud blocks the moon" rule is a known-wrong physical model over a
-    // large fraction of Maryland tidewater, so the card names both directions.
-    expect(text).toContain("cloud does not simply subtract");
-    expect(text).not.toMatch(/cloud blocks the moon/i);
+  it("never codes cloud as a subtraction, in any mode — rule 2", () => {
+    // The stated absence itself — `overnight cloud cover is NOT known here`, and
+    // which way it can cut — is provenance and lives at the foot of the surface
+    // now; `provenance.test.ts` pins both halves of it. What is pinned HERE is
+    // that the rail never acquires a cloud rule of its own, in either mode.
+    // Kyba 2011 measured cloud AMPLIFYING ground light 10.1× inside a city, so
+    // a "cloud blocks the moon" rule is a known-wrong physical model over a
+    // large fraction of Maryland tidewater.
+    for (const mode of ["field", "prep"] as const) {
+      const { container, unmount } = render(
+        <SkyRail
+          sunrise={SUNRISE}
+          sunset={SUNSET}
+          polar="none"
+          moonRise={SUNSET}
+          moonSet={SUNRISE}
+          night={night()}
+          day={BRIGHT}
+          stationId={WOOLFORD}
+          mode={mode}
+        />,
+      );
+      const text = container.textContent ?? "";
+      expect(text).not.toMatch(/cloud blocks the moon/i);
+      expect(text).not.toMatch(/cloud/i);
+      unmount();
+    }
   });
 
   it("still prints the hours-above-horizon reading it was built around", () => {

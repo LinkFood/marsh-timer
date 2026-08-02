@@ -78,6 +78,7 @@ import { useSpot } from "@/lib/spot";
 import type { TranscribedSpecies } from "@/data/regs/shootingHours";
 import { moonEvents } from "@/lib/sky";
 import { BagRail } from "@/components/field/BagRail";
+import { FieldProvenance } from "@/components/field/FieldProvenance";
 import { FIELD_BG } from "@/components/field/ink";
 import { LegalLightRail } from "@/components/field/LegalLightRail";
 import { SeasonRail } from "@/components/field/SeasonRail";
@@ -275,8 +276,27 @@ export default function FieldPage({ now: fixedNow }: FieldPageProps = {}) {
                  station rather than inferring one. `null` is a real value: a
                  spot with no station gets a refusal by name, not silence. */
               stationId={spot.coops_station_id ?? null}
+              /* THE MODE IS ALREADY DERIVED — the rail does not get to ask for
+                 it and does not get to decide it. It only decides how much PROSE
+                 to print: readings, denominators and refusals are identical in
+                 all three modes, and the mechanism sentence about a night that
+                 is already over is not something a man in the water reads. */
+              mode={mode}
             />
-            <BagRail day={day} species={light.season.species} />
+            <BagRail day={day} />
+            {/* THE FOOT. Every method, source, interval and stated unknown on
+                this surface, once, in the smallest legible mono, in the flow —
+                no tap, no accordion, no modal, no `aria-hidden`. It is last
+                because it is least urgent, which is the only kind of hierarchy
+                this screen has. */}
+            <FieldProvenance
+              light={light}
+              day={day}
+              stationId={spot.coops_station_id ?? null}
+              pocket={pocket}
+              now={now}
+              nextOpen={nextOpen}
+            />
           </>
         ) : null}
       </div>
