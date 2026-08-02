@@ -17,8 +17,10 @@ import { successResponse, errorResponse } from '../_shared/response.ts';
 //   {
 //     date, lat, lng,
 //     moon: { phase, illum, age, days_to_full },
-//     sun:  { sunrise, sunset, shooting_light_start, shooting_light_end,
-//             solar_noon },
+//     sun:  { sunrise, sunset, solar_noon },
+//           NOTE: no shooting_light_* here, deliberately. Legal shooting hours
+//           are state law, resolve per season, and are cited in
+//           src/data/regs/shootingHours.ts. See the long note at the SUN block.
 //     solunar: { major:[{start,end}], minor:[{start,end}], rating, score },
 //     note
 //   }
@@ -435,9 +437,37 @@ serve((req) => {
     const sunrise = sun.sunriseMin !== null ? isoFromMinutes(dateUTC, sun.sunriseMin) : null;
     const sunset = sun.sunsetMin !== null ? isoFromMinutes(dateUTC, sun.sunsetMin) : null;
     const solarNoon = isoFromMinutes(dateUTC, sun.solarNoonMin);
-    // Shooting light: ~30 min before sunrise to ~30 min after sunset
-    const shootingStart = sun.sunriseMin !== null ? isoFromMinutes(dateUTC, sun.sunriseMin - 30) : null;
-    const shootingEnd = sun.sunsetMin !== null ? isoFromMinutes(dateUTC, sun.sunsetMin + 30) : null;
+    // SHOOTING LIGHT IS NOT COMPUTED HERE, AND MUST NEVER BE ADDED BACK.
+    //
+    // This block used to emit, under the comment "~30 min before sunrise to
+    // ~30 min after sunset":
+    //
+    //     shooting_light_end = sunset + 30
+    //
+    // The back half of that is FALSE AND DANGEROUS. Maryland's regular duck and
+    // goose seasons — and the federal migratory-bird frameworks the state adopts
+    // — end legal shooting light AT SUNSET. Not sunset plus anything. This
+    // function served that extra half hour to every state, every species and
+    // every date, publicly. A hunter watching that clock run out is a hunter
+    // this app walked into a federal violation.
+    //
+    // Subtracting 30 is not the fix either. COMAR 08.03.07.13 (September
+    // resident Canada goose) and COMAR 08.03.07.12 (Light Goose Conservation
+    // Order) DO grant sunset+30 — for those two seasons only. Whoever wrote the
+    // original line generalised one season's rule to all of them. Neither number
+    // is universally right, because the rule resolves
+    //
+    //     state + species + date -> season -> cited rule
+    //
+    // and this function takes lat/lng/date. It has no state, no species and no
+    // season, so it has no basis on which to make a legal claim at all. What it
+    // can honestly publish is astronomy: sunrise, sunset, solar noon.
+    //
+    // The legal surface lives in `src/data/regs/shootingHours.ts` — cited,
+    // per-state, per-season, with a refusal branch that carries no rule so an
+    // untranscribed state cannot compile into a clock. That table consumes
+    // sunrise/sunset. Do not put an offset in this file. Not for one state, not
+    // "temporarily", not behind a flag.
 
     // --- SOLUNAR windows ---
     const ev = moonEvents(dateUTC, lat, lng);
@@ -466,8 +496,6 @@ serve((req) => {
       sun: {
         sunrise,
         sunset,
-        shooting_light_start: shootingStart,
-        shooting_light_end: shootingEnd,
         solar_noon: solarNoon,
       },
       solunar: {

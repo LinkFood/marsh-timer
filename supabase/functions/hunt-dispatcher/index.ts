@@ -289,8 +289,32 @@ async function getRecentEventContext(stateAbbr: string | null): Promise<string> 
   }
 }
 
-// Check if a season is currently open for a species/state
-async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ isOpen: boolean; nextOpen?: string; status: string }> {
+/**
+ * What the archive can honestly say about a species/state season. OPENER DATES
+ * ONLY — never open/closed.
+ *
+ * This function used to return `{ isOpen, nextOpen, status }` and decide
+ * openness by comparing `now` against `d.start` / `d.end`. Those keys exist in
+ * NEITHER stored shape: the live rows (superseded_at IS NULL) are 100 OPENER
+ * rows shaped [{ open: 'YYYY-MM-DD' }] with season_type 'opener', 10 of them
+ * carrying an empty dates array; the superseded 2025-26 rows used {open, close}.
+ * So `end` was Invalid Date on every live row, every comparison was false, and
+ * the function fell through to 'closed' permanently. On and after opening day,
+ * with no future opener left, it told a hunter the season was CLOSED on the
+ * exact morning it opened. Its sibling in `handleSeasonInfo` had the same root
+ * cause and was fixed on 2026-08-01; this is the same fix.
+ *
+ * Renaming the keys would NOT have fixed it. The live rows carry no closing date
+ * at all, so "is it open right now" is not answerable from this table by any
+ * key name. The honest move is to answer the weaker question the data does
+ * support — when the opener is — and say plainly that open/closed cannot be
+ * determined here. `isOpen` is gone from the return type on purpose: a caller
+ * cannot re-derive the wrong claim from what is left.
+ */
+async function getSeasonOpenerNote(species: string, stateAbbr: string): Promise<string> {
+  const CANNOT_SAY =
+    'This archive stores opener dates only, with no closing date, so whether the season ' +
+    'is open right now cannot be determined from it.';
   try {
     const supabase = createSupabaseClient();
     const { data: seasons } = await supabase
@@ -303,39 +327,50 @@ async function getSeasonStatus(species: string, stateAbbr: string): Promise<{ is
       // chat reads both eras at once and answers from last season.
       .is('superseded_at', null);
 
-    if (!seasons || seasons.length === 0) return { isOpen: false, status: 'no data' };
+    if (!seasons || seasons.length === 0) {
+      return `No ${species} season data on file for ${stateAbbr}.`;
+    }
 
-    const now = new Date();
+    // Today as a UTC calendar day, matching the ISO dates stored in the rows.
+    const todayMs = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    if (!Number.isFinite(todayMs)) return CANNOT_SAY;
+
+    const openerDays: number[] = [];
     for (const s of seasons) {
-      const dates = s.dates as Array<{ start?: string; end?: string; open?: string; close?: string }>;
+      const dates = (Array.isArray(s.dates) ? s.dates : []) as Array<{ open?: string }>;
       for (const d of dates) {
-        const start = new Date(d.start || d.open || '');
-        const end = new Date(d.end || d.close || '');
-        if (now >= start && now <= end) {
-          return { isOpen: true, status: `${s.season_type} open until ${end.toLocaleDateString()}` };
-        }
+        // `open` is the ONLY date key the live rows carry. A row with no readable
+        // opener contributes nothing — it is not day zero.
+        if (typeof d?.open !== 'string') continue;
+        const ms = Date.parse(`${d.open}T00:00:00Z`);
+        if (!Number.isFinite(ms)) continue;
+        openerDays.push(ms);
       }
     }
 
-    // Find next opening
-    let nextOpen: Date | null = null;
-    for (const s of seasons) {
-      const dates = s.dates as Array<{ start?: string; end?: string; open?: string; close?: string }>;
-      for (const d of dates) {
-        const start = new Date(d.start || d.open || '');
-        if (start > now && (!nextOpen || start < nextOpen)) {
-          nextOpen = start;
-        }
-      }
+    if (openerDays.length === 0) {
+      return `${stateAbbr} has not published a ${species} opener date in this archive. ${CANNOT_SAY}`;
     }
 
-    return {
-      isOpen: false,
-      nextOpen: nextOpen ? nextOpen.toLocaleDateString() : undefined,
-      status: nextOpen ? `closed, opens ${nextOpen.toLocaleDateString()}` : 'closed',
-    };
+    const asDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const daysFromToday = (ms: number) => Math.round((ms - todayMs) / 86400000);
+
+    const today = openerDays.filter((ms) => ms === todayMs);
+    if (today.length > 0) {
+      return `The ${species} opener in ${stateAbbr} is TODAY, ${asDay(todayMs)}. ${CANNOT_SAY}`;
+    }
+
+    const future = openerDays.filter((ms) => ms > todayMs).sort((a, b) => a - b);
+    if (future.length > 0) {
+      const n = daysFromToday(future[0]);
+      return `Next ${species} opener in ${stateAbbr}: ${asDay(future[0])}, ${n} day${n === 1 ? '' : 's'} from today. ${CANNOT_SAY}`;
+    }
+
+    const past = openerDays.sort((a, b) => b - a);
+    const n = -daysFromToday(past[0]);
+    return `The most recent ${species} opener on file for ${stateAbbr} was ${asDay(past[0])}, ${n} day${n === 1 ? '' : 's'} ago. ${CANNOT_SAY}`;
   } catch {
-    return { isOpen: false, status: 'unknown' };
+    return `Season data for ${species} in ${stateAbbr} could not be read. ${CANNOT_SAY}`;
   }
 }
 
@@ -1084,7 +1119,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
 
   // Fetch weather + real-event context + brain search + historical in parallel
   const weatherUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/hunt-weather`;
-  const [weatherRes, realEventContext, brainResults, patternLinks, seasonStatus, historicalResults] = await Promise.all([
+  const [weatherRes, realEventContext, brainResults, patternLinks, seasonOpenerNote, historicalResults] = await Promise.all([
     fetch(weatherUrl, {
       method: 'POST',
       headers: {
@@ -1104,7 +1139,7 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
       min_similarity: 0.4,
     }),
     getRecentPatternLinks(stateAbbr),
-    getSeasonStatus(species, stateAbbr),
+    getSeasonOpenerNote(species, stateAbbr),
     // Historical: what happened last time conditions looked like this?
     searchBrain({
       query: `historical pattern ${stateAbbr} ${state.name} weather precedent similar conditions`,
@@ -1205,7 +1240,13 @@ async function handleWeather(supabase: ReturnType<typeof createSupabaseClient>, 
     cards,
     systemPrompt: `Start with a 2-3 sentence assessment of current conditions and what they mean. You are an environmental weather analyst. Synthesize weather data into a situational intelligence briefing. Lead with what's unusual — front passages, pressure anomalies, temperature shifts. Connect weather events to downstream effects: migration, wildlife behavior, historical pattern matches. When historical precedents are provided, explain what happened last time these conditions aligned. Be specific with numbers and states.
 ${BRAIN_RULES}`,
-    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason status: ${seasonStatus.status}${seasonStatus.isOpen ? '' : ' — SEASON IS CLOSED. Note this in your response.'}${realEventContext}\n\nBrain data (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}${historicalInsight}\n\nQuery: ${query}`,
+    // The season line used to append a hard-coded ' — SEASON IS CLOSED. Note this
+    // in your response.' whenever getSeasonStatus said not-open, and it said
+    // not-open for every row in the table (see getSeasonOpenerNote). That string
+    // is gone: the archive holds openers with no closing date, so it cannot
+    // ground an open/closed claim, and the model is told so explicitly rather
+    // than left to infer one from a bare date.
+    userContent: `Live weather data:\nTemp: ${temp}°F, Wind: ${wind} mph, Precip: ${precip}mm\n\nSeason: ${seasonOpenerNote} Do NOT state or imply that the season is open or closed, and do NOT compute it from the opener date — give the opener date and say the open/closed status is not available here. Season dates and shooting hours are state law; point the hunter at their state's own migratory game bird booklet.${realEventContext}\n\nBrain data (${brainResults.length} matches):\n${patternInsight || 'No brain matches found.'}\n${linksInsight}${historicalInsight}\n\nQuery: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
@@ -1388,11 +1429,11 @@ async function handleCompare(state1: string, state2: string, query: string, spec
     return perType.flat();
   };
 
-  const [rows1, rows2, s1Status, s2Status] = await Promise.all([
+  const [rows1, rows2, s1Opener, s2Opener] = await Promise.all([
     fetchState(state1),
     fetchState(state2),
-    getSeasonStatus(species, state1),
-    getSeasonStatus(species, state2),
+    getSeasonOpenerNote(species, state1),
+    getSeasonOpenerNote(species, state2),
   ]);
 
   const groupByDomain = (rows: Entry[]) => {
@@ -1419,7 +1460,7 @@ async function handleCompare(state1: string, state2: string, query: string, spec
   if (allDomains.length === 0) {
     context += `No high-signal entries in the archive for either state in the last 7 days.\n`;
   }
-  context += `\nSeason status: ${state1}: ${s1Status.status} | ${state2}: ${s2Status.status}`;
+  context += `\nSeason openers — ${state1}: ${s1Opener}\nSeason openers — ${state2}: ${s2Opener}\nDo NOT state or imply that either season is open or closed; the archive holds opener dates with no closing date.`;
 
   const cards: unknown[] = [];
   if (rows1.length > 0 || rows2.length > 0) {
