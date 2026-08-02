@@ -493,7 +493,7 @@ serve(async (req) => {
     }
 
     // Rate limit
-    const rateCheck = await checkRateLimit(userId);
+    const rateCheck = await checkRateLimit(userId, req);
     if (!rateCheck.allowed) {
       return new Response(JSON.stringify({
         response: rateCheck.error || 'Rate limit exceeded',
@@ -1303,25 +1303,17 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     };
   }
 
-  // Fetch seasons + brain search in parallel
-  const [seasonsResult, brainResults] = await Promise.all([
-    supabase
-      .from('hunt_seasons')
-      .select('*')
-      .eq('species_id', species)
-      .eq('state_abbr', stateAbbr)
-      .is('superseded_at', null),
-    searchBrain({
-      query: `${species} seasonal patterns regulations ${stateAbbr} ${query}`,
-      content_types: undefined,  // Search full brain — cross-domain discovery
-      species: species,
-      state_abbr: stateAbbr,
-      recency_weight: 0.0,
-      exclude_du_report: false,
-      limit: 3,
-      min_similarity: 0.35,
-    }),
-  ]);
+  // Regulations come from hunt_seasons ONLY. A full-brain searchBrain used to
+  // run here and its top 3 hits were injected below as authority — unfiltered
+  // by content_type at 0.35 similarity, over a table holding 52k+ scraped DU
+  // hunter comments and hand-seeded prose. That let a stranger's field note
+  // ground a regulatory answer. Retrieval has no place on this path.
+  const seasonsResult = await supabase
+    .from('hunt_seasons')
+    .select('*')
+    .eq('species_id', species)
+    .eq('state_abbr', stateAbbr)
+    .is('superseded_at', null);
 
   const seasons = seasonsResult.data;
 
@@ -1333,45 +1325,34 @@ async function handleSeasonInfo(supabase: ReturnType<typeof createSupabaseClient
     };
   }
 
-  const now = new Date();
-  const cards: unknown[] = seasons.map((s: Record<string, unknown>) => {
-    const dates = s.dates as Array<{ start: string; end: string }>;
-    let status = 'closed';
-    for (const d of dates) {
-      const start = new Date(d.start);
-      const end = new Date(d.end);
-      if (now >= start && now <= end) { status = 'open'; break; }
-      if (now < start) {
-        const daysUntil = Math.ceil((start.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysUntil <= 30) status = 'soon';
-        else if (daysUntil <= 90) status = 'upcoming';
-      }
-    }
-    return {
-      type: 'season',
-      data: {
-        species,
-        state: stateAbbr,
-        season_type: s.season_type,
-        zone: s.zone,
-        status,
-        dates,
-        bag_limit: s.bag_limit,
-      },
-    };
-  });
-
-  let brainContext = '';
-  if (brainResults.length > 0) {
-    brainContext = `\n\nAdditional knowledge from the brain:\n${brainResults.map(v => `[${v.title}] ${v.content}`).join('\n')}`;
-  }
+  // No open/closed status is emitted, because none can be computed honestly.
+  // The live rows (superseded_at IS NULL) are 100 OPENER rows shaped
+  // [{ open: 'YYYY-MM-DD' }] with no close date at all, and 10 of them carry
+  // an empty dates array. This code read d.start / d.end — keys that exist in
+  // NEITHER the live shape nor the superseded {open, close} shape — so both
+  // comparisons ran against Invalid Date, every season reported 'closed'
+  // permanently, and it would have said CLOSED on opening morning. Renaming
+  // the keys is not a fix: with no end date the "is it open" comparison still
+  // cannot be answered. The stored dates are passed through as-is and the card
+  // states no status rather than a wrong one.
+  const cards: unknown[] = seasons.map((s: Record<string, unknown>) => ({
+    type: 'season',
+    data: {
+      species,
+      state: stateAbbr,
+      season_type: s.season_type,
+      zone: s.zone,
+      dates: s.dates,
+      bag_limit: s.bag_limit,
+    },
+  }));
 
   return {
     cards,
-    systemPrompt: `You are a species behavior and regulatory expert. Summarize the season information briefly. Include key dates and bag limits. 2-3 sentences.
+    systemPrompt: `You are a species behavior and regulatory expert. Summarize the season information briefly. Include key dates. 2-3 sentences.
 ONLY state facts directly from the provided JSON data. Never invent or assume zone names, dates, bag limits, or details not present in the data. If information is missing or incomplete, explicitly say "I don't have that specific data" rather than guessing.
 ${BRAIN_RULES}`,
-    userContent: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}${brainContext}`,
+    userContent: `${species} seasons in ${stateAbbr}: ${JSON.stringify(seasons.map((s: Record<string, unknown>) => ({ type: s.season_type, zone: s.zone, dates: s.dates, bag: s.bag_limit })))}. User asked: ${query}`,
     mapAction: { type: 'flyTo', target: stateAbbr },
   };
 }
