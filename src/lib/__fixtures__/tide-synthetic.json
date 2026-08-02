@@ -1,0 +1,98 @@
+{
+  "_readme": [
+    "SYNTHETIC — hand-built, NOT captured from NOAA. Every other tide-*.json in",
+    "this directory is a verbatim recording of a real CO-OPS response; this file",
+    "is the opposite and is named so nobody confuses the two.",
+    "",
+    "These are the corruptions a real response could plausibly arrive with and",
+    "that CO-OPS did not hand us on the day we captured. Each one exists to prove",
+    "src/lib/tide.ts REFUSES rather than substituting a number.",
+    "",
+    "nullHeight is the load-bearing one. Number(null) === 0, and 0.0 ft at MLLW is",
+    "an ordinary, believable tide, so a `?? 0` here fabricates a reading that no",
+    "reviewer would ever spot on screen. This project has already invented 1,095",
+    "high-severity weather events from that exact bug."
+  ],
+  "cases": {
+    "nullHeight": {
+      "why": "v is JSON null. Number(null) === 0 — the fabrication case.",
+      "body": {
+        "predictions": [
+          { "t": "2026-09-01 03:09", "v": "0.447", "type": "L" },
+          { "t": "2026-09-01 08:38", "v": null, "type": "H" },
+          { "t": "2026-09-01 15:11", "v": "0.279", "type": "L" }
+        ]
+      }
+    },
+    "emptyStringHeight": {
+      "why": "v is \"\". Number(\"\") === 0 — same fabrication, different shape.",
+      "body": {
+        "predictions": [{ "t": "2026-09-01 03:09", "v": "", "type": "L" }]
+      }
+    },
+    "missingHeightKey": {
+      "why": "v absent entirely. Number(undefined) is NaN, but a ?? would reach 0.",
+      "body": {
+        "predictions": [{ "t": "2026-09-01 03:09", "type": "L" }]
+      }
+    },
+    "numericZeroHeight": {
+      "why": "v is a real string \"0.000\". This one is VALID and must be accepted — 0.0 ft at MLLW is a genuine reading, which is exactly why the null case is invisible.",
+      "body": {
+        "predictions": [
+          { "t": "2026-09-01 03:09", "v": "0.000", "type": "L" },
+          { "t": "2026-09-01 08:38", "v": "2.190", "type": "H" }
+        ]
+      }
+    },
+    "nonNumericHeight": {
+      "why": "v is text. Number(\"n/a\") is NaN.",
+      "body": {
+        "predictions": [{ "t": "2026-09-01 03:09", "v": "n/a", "type": "L" }]
+      }
+    },
+    "badTimestamp": {
+      "why": "t is not a CO-OPS timestamp.",
+      "body": {
+        "predictions": [{ "t": "yesterday", "v": "0.447", "type": "L" }]
+      }
+    },
+    "impossibleDate": {
+      "why": "Date.UTC(2026, 1, 31) silently rolls over into March.",
+      "body": {
+        "predictions": [{ "t": "2026-02-31 03:09", "v": "0.447", "type": "L" }]
+      }
+    },
+    "missingType": {
+      "why": "hi/lo row with no H/L marker.",
+      "body": {
+        "predictions": [{ "t": "2026-09-01 03:09", "v": "0.447" }]
+      }
+    },
+    "outOfOrder": {
+      "why": "predictions descend. The pure readers binary-search and assume ascent.",
+      "body": {
+        "predictions": [
+          { "t": "2026-09-01 15:11", "v": "0.279", "type": "L" },
+          { "t": "2026-09-01 08:38", "v": "2.190", "type": "H" }
+        ]
+      }
+    },
+    "emptyPredictions": {
+      "why": "well-formed envelope, nothing in it.",
+      "body": { "predictions": [] }
+    },
+    "predictionsNotArray": {
+      "why": "shape drift at the service.",
+      "body": { "predictions": "none" }
+    },
+    "noPredictionsKey": {
+      "why": "an unrelated JSON document.",
+      "body": { "data": [] }
+    },
+    "notAnObject": {
+      "why": "valid JSON, wrong type.",
+      "body": []
+    }
+  }
+}

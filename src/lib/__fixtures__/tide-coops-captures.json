@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-08-02T01:17:23.200Z",
+  "scenarios": {
+    "bishopsHeadHiloSep1": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20260901&end_date=20260901&station=8571421&interval=hilo",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-09-01 03:09\", \"v\":\"0.447\", \"type\":\"L\"},{\"t\":\"2026-09-01 08:38\", \"v\":\"2.19\", \"type\":\"H\"},{\"t\":\"2026-09-01 15:11\", \"v\":\"0.279\", \"type\":\"L\"},{\"t\":\"2026-09-01 21:01\", \"v\":\"2.351\", \"type\":\"H\"}\n]}\n"
+    },
+    "bishopsHeadCurveSep1": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20260901&end_date=20260901&station=8571421&interval=60",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-09-01 00:00\", \"v\":\"1.206\"},{\"t\":\"2026-09-01 01:00\", \"v\":\"0.837\"},{\"t\":\"2026-09-01 02:00\", \"v\":\"0.569\"},{\"t\":\"2026-09-01 03:00\", \"v\":\"0.449\"},{\"t\":\"2026-09-01 04:00\", \"v\":\"0.526\"},{\"t\":\"2026-09-01 05:00\", \"v\":\"0.832\"},{\"t\":\"2026-09-01 06:00\", \"v\":\"1.319\"},{\"t\":\"2026-09-01 07:00\", \"v\":\"1.817\"},{\"t\":\"2026-09-01 08:00\", \"v\":\"2.133\"},{\"t\":\"2026-09-01 09:00\", \"v\":\"2.172\"},{\"t\":\"2026-09-01 10:00\", \"v\":\"1.964\"},{\"t\":\"2026-09-01 11:00\", \"v\":\"1.595\"},{\"t\":\"2026-09-01 12:00\", \"v\":\"1.155\"},{\"t\":\"2026-09-01 13:00\", \"v\":\"0.736\"},{\"t\":\"2026-09-01 14:00\", \"v\":\"0.424\"},{\"t\":\"2026-09-01 15:00\", \"v\":\"0.283\"},{\"t\":\"2026-09-01 16:00\", \"v\":\"0.356\"},{\"t\":\"2026-09-01 17:00\", \"v\":\"0.669\"},{\"t\":\"2026-09-01 18:00\", \"v\":\"1.188\"},{\"t\":\"2026-09-01 19:00\", \"v\":\"1.768\"},{\"t\":\"2026-09-01 20:00\", \"v\":\"2.2\"},{\"t\":\"2026-09-01 21:00\", \"v\":\"2.351\"},{\"t\":\"2026-09-01 22:00\", \"v\":\"2.229\"},{\"t\":\"2026-09-01 23:00\", \"v\":\"1.929\"}\n]}\n"
+    },
+    "bishopsHeadHiloOct17": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20261017&end_date=20261017&station=8571421&interval=hilo",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-10-17 05:17\", \"v\":\"0.654\", \"type\":\"L\"},{\"t\":\"2026-10-17 10:43\", \"v\":\"1.715\", \"type\":\"H\"},{\"t\":\"2026-10-17 16:59\", \"v\":\"0.547\", \"type\":\"L\"},{\"t\":\"2026-10-17 23:01\", \"v\":\"1.905\", \"type\":\"H\"}\n]}\n"
+    },
+    "bishopsHeadCurveOct17": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20261017&end_date=20261017&station=8571421&interval=60",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-10-17 00:00\", \"v\":\"1.74\"},{\"t\":\"2026-10-17 01:00\", \"v\":\"1.479\"},{\"t\":\"2026-10-17 02:00\", \"v\":\"1.192\"},{\"t\":\"2026-10-17 03:00\", \"v\":\"0.939\"},{\"t\":\"2026-10-17 04:00\", \"v\":\"0.754\"},{\"t\":\"2026-10-17 05:00\", \"v\":\"0.659\"},{\"t\":\"2026-10-17 06:00\", \"v\":\"0.694\"},{\"t\":\"2026-10-17 07:00\", \"v\":\"0.887\"},{\"t\":\"2026-10-17 08:00\", \"v\":\"1.192\"},{\"t\":\"2026-10-17 09:00\", \"v\":\"1.491\"},{\"t\":\"2026-10-17 10:00\", \"v\":\"1.676\"},{\"t\":\"2026-10-17 11:00\", \"v\":\"1.709\"},{\"t\":\"2026-10-17 12:00\", \"v\":\"1.602\"},{\"t\":\"2026-10-17 13:00\", \"v\":\"1.376\"},{\"t\":\"2026-10-17 14:00\", \"v\":\"1.084\"},{\"t\":\"2026-10-17 15:00\", \"v\":\"0.806\"},{\"t\":\"2026-10-17 16:00\", \"v\":\"0.614\"},{\"t\":\"2026-10-17 17:00\", \"v\":\"0.547\"},{\"t\":\"2026-10-17 18:00\", \"v\":\"0.627\"},{\"t\":\"2026-10-17 19:00\", \"v\":\"0.867\"},{\"t\":\"2026-10-17 20:00\", \"v\":\"1.225\"},{\"t\":\"2026-10-17 21:00\", \"v\":\"1.585\"},{\"t\":\"2026-10-17 22:00\", \"v\":\"1.827\"},{\"t\":\"2026-10-17 23:00\", \"v\":\"1.905\"}\n]}\n"
+    },
+    "woolfordHiloSep1": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20260901&end_date=20260901&station=8571807&interval=hilo",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-09-01 05:57\", \"v\":\"1.131\", \"type\":\"L\"},{\"t\":\"2026-09-01 10:36\", \"v\":\"1.97\", \"type\":\"H\"},{\"t\":\"2026-09-01 17:12\", \"v\":\"0.612\", \"type\":\"L\"},{\"t\":\"2026-09-01 23:31\", \"v\":\"2.518\", \"type\":\"H\"}\n]}\n"
+    },
+    "woolfordCurveSep1": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20260901&end_date=20260901&station=8571807&interval=60",
+      "httpStatus": 200,
+      "body": "{\"error\": {\"message\":\"No Predictions data was found. Please make sure the Datum input is valid.\"}}\n"
+    },
+    "woolfordHiloOct17": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20261017&end_date=20261017&station=8571807&interval=hilo",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-10-17 00:40\", \"v\":\"2.141\", \"type\":\"H\"},{\"t\":\"2026-10-17 08:21\", \"v\":\"1.094\", \"type\":\"L\"},{\"t\":\"2026-10-17 12:46\", \"v\":\"1.37\", \"type\":\"H\"},{\"t\":\"2026-10-17 18:27\", \"v\":\"0.781\", \"type\":\"L\"}\n]}\n"
+    },
+    "unknownStationHilo": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20260901&end_date=20260901&station=9999999&interval=hilo",
+      "httpStatus": 200,
+      "body": "{\"error\": {\"message\":\"No Predictions data was found. Please make sure the Datum input is valid.\"}}\n"
+    },
+    "badDateRange": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20260901&end_date=20200101&station=8571421&interval=hilo",
+      "httpStatus": 400,
+      "body": "\n{\"error\": {\"message\":\" Wrong Date: The requested begin/end date or range are not valid.  Wrong Date: The end date should be greater than the begin date \"}}\n\n\n"
+    },
+    "dstFallBackLstLdt": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=lst_ldt&format=json&begin_date=20261101&end_date=20261101&station=8571421&interval=60",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-11-01 00:00\", \"v\":\"0.701\"},{\"t\":\"2026-11-01 01:00\", \"v\":\"0.445\"},{\"t\":\"2026-11-01 02:00\", \"v\":\"0.644\"},{\"t\":\"2026-11-01 03:00\", \"v\":\"1.049\"},{\"t\":\"2026-11-01 04:00\", \"v\":\"1.5\"},{\"t\":\"2026-11-01 05:00\", \"v\":\"1.819\"},{\"t\":\"2026-11-01 06:00\", \"v\":\"1.922\"},{\"t\":\"2026-11-01 07:00\", \"v\":\"1.824\"},{\"t\":\"2026-11-01 08:00\", \"v\":\"1.576\"},{\"t\":\"2026-11-01 09:00\", \"v\":\"1.242\"},{\"t\":\"2026-11-01 10:00\", \"v\":\"0.894\"},{\"t\":\"2026-11-01 11:00\", \"v\":\"0.597\"},{\"t\":\"2026-11-01 12:00\", \"v\":\"0.403\"},{\"t\":\"2026-11-01 13:00\", \"v\":\"0.373\"},{\"t\":\"2026-11-01 14:00\", \"v\":\"0.57\"},{\"t\":\"2026-11-01 15:00\", \"v\":\"0.985\"},{\"t\":\"2026-11-01 16:00\", \"v\":\"1.487\"},{\"t\":\"2026-11-01 17:00\", \"v\":\"1.894\"},{\"t\":\"2026-11-01 18:00\", \"v\":\"2.097\"},{\"t\":\"2026-11-01 19:00\", \"v\":\"2.097\"},{\"t\":\"2026-11-01 20:00\", \"v\":\"1.944\"},{\"t\":\"2026-11-01 21:00\", \"v\":\"1.687\"},{\"t\":\"2026-11-01 22:00\", \"v\":\"1.372\"},{\"t\":\"2026-11-01 23:00\", \"v\":\"1.041\"}\n]}\n"
+    },
+    "dstFallBackGmt": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&begin_date=20261101&end_date=20261101&station=8571421&interval=60",
+      "httpStatus": 200,
+      "body": "{ \"predictions\" : [\n{\"t\":\"2026-11-01 00:00\", \"v\":\"1.963\"},{\"t\":\"2026-11-01 01:00\", \"v\":\"1.669\"},{\"t\":\"2026-11-01 02:00\", \"v\":\"1.333\"},{\"t\":\"2026-11-01 03:00\", \"v\":\"0.999\"},{\"t\":\"2026-11-01 04:00\", \"v\":\"0.701\"},{\"t\":\"2026-11-01 05:00\", \"v\":\"0.488\"},{\"t\":\"2026-11-01 06:00\", \"v\":\"0.445\"},{\"t\":\"2026-11-01 07:00\", \"v\":\"0.644\"},{\"t\":\"2026-11-01 08:00\", \"v\":\"1.049\"},{\"t\":\"2026-11-01 09:00\", \"v\":\"1.5\"},{\"t\":\"2026-11-01 10:00\", \"v\":\"1.819\"},{\"t\":\"2026-11-01 11:00\", \"v\":\"1.922\"},{\"t\":\"2026-11-01 12:00\", \"v\":\"1.824\"},{\"t\":\"2026-11-01 13:00\", \"v\":\"1.576\"},{\"t\":\"2026-11-01 14:00\", \"v\":\"1.242\"},{\"t\":\"2026-11-01 15:00\", \"v\":\"0.894\"},{\"t\":\"2026-11-01 16:00\", \"v\":\"0.597\"},{\"t\":\"2026-11-01 17:00\", \"v\":\"0.403\"},{\"t\":\"2026-11-01 18:00\", \"v\":\"0.373\"},{\"t\":\"2026-11-01 19:00\", \"v\":\"0.57\"},{\"t\":\"2026-11-01 20:00\", \"v\":\"0.985\"},{\"t\":\"2026-11-01 21:00\", \"v\":\"1.487\"},{\"t\":\"2026-11-01 22:00\", \"v\":\"1.894\"},{\"t\":\"2026-11-01 23:00\", \"v\":\"2.097\"}\n]}\n"
+    },
+    "unknownStationCurve": {
+      "url": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=20260901&end_date=20260901&station=9999999&product=predictions&datum=MLLW&units=english&time_zone=gmt&format=json&interval=60",
+      "httpStatus": 200,
+      "body": "{\"error\": {\"message\":\"No Predictions data was found. Please make sure the Datum input is valid.\"}}\n"
+    }
+  }
+}
