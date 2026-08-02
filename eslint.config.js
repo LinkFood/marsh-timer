@@ -56,6 +56,11 @@ export default tseslint.config(
       "src/lib/geometry.ts",
       "src/lib/gates/**/*.{ts,tsx}",
       "src/pages/FieldPage.tsx",
+      // The rails and their pure helpers. FieldPage alone was the tripwire's
+      // original target, but the surface it renders now lives in these files —
+      // leaving them uncovered would put the whole offline path outside the
+      // boundary that exists to protect it.
+      "src/components/field/**/*.{ts,tsx}",
     ],
     rules: {
       "no-restricted-imports": [
