@@ -33,13 +33,16 @@ import {
   type Spot,
 } from "@/lib/spot";
 
+/** The regular duck season, which is the general rule's own season. */
+const REGULAR = { species: "duck", date: "2026-10-10" } as const;
+
 describe("shootingHours — the table", () => {
   it("holds Maryland and nothing else", () => {
     expect(TRANSCRIBED_STATES).toEqual(["MD"]);
   });
 
-  it("ends Maryland legal light at sunset, not sunset+30", () => {
-    const l = lookupShootingHours("MD");
+  it("ends Maryland REGULAR-season legal light at sunset, not sunset+30", () => {
+    const l = lookupShootingHours("MD", REGULAR);
     expect(l.status).toBe("transcribed");
     if (l.status !== "transcribed") return;
     expect(l.rule.start).toBe("sunrise-30");
@@ -49,16 +52,34 @@ describe("shootingHours — the table", () => {
   });
 
   it("accepts lowercase and normalises", () => {
-    const l = lookupShootingHours("md");
+    const l = lookupShootingHours("md", REGULAR);
     expect(l.status).toBe("transcribed");
     if (l.status === "transcribed") expect(l.state).toBe("MD");
   });
 
-  it("records the two COMAR sunset+30 carve-outs as data, not behaviour", () => {
-    const l = lookupShootingHours("MD");
+  it("APPLIES the September carve-out instead of leaving it inert", () => {
+    // The whole point of the season-aware chain: on the September resident
+    // Canada goose opener the answer is sunset+30, and it is cited to the
+    // regulation that grants it.
+    const l = lookupShootingHours("MD", { species: "goose", date: "2026-09-01" });
+    expect(l.status).toBe("transcribed");
+    if (l.status !== "transcribed") return;
+    expect(l.rule.end).toBe("sunset+30");
+    expect(l.rule.cite).toBe("https://regs.maryland.gov/us/md/exec/comar/08.03.07.13");
+  });
+
+  it("still lists the two COMAR sunset+30 carve-outs on the general rule", () => {
+    const l = lookupShootingHours("MD", REGULAR);
     if (l.status !== "transcribed") throw new Error("MD must be transcribed");
     expect(l.rule.exceptions).toHaveLength(2);
     for (const e of l.rule.exceptions) expect(e.cite).toMatch(/^https:\/\//);
+  });
+
+  it("will not hand out a rule when the season is unknown", () => {
+    const l = lookupShootingHours("MD");
+    expect(l.status).not.toBe("transcribed");
+    if (l.status !== "narrowed") throw new Error("expected a narrowed answer");
+    expect(l.rule.end).toBe("sunset+0"); // the SHORTER window, never sunset+30
   });
 });
 
@@ -99,8 +120,8 @@ describe("shootingHours — the refusal", () => {
 });
 
 describe("shootingHours — the window", () => {
-  it("opens 30 minutes before sunrise and closes AT sunset", () => {
-    const w = resolveShootingWindow(lookupShootingHours("MD"), {
+  it("opens 30 minutes before sunrise and closes AT sunset in the regular season", () => {
+    const w = resolveShootingWindow(lookupShootingHours("MD", REGULAR), {
       sunriseMin: 400,
       sunsetMin: 1100,
     });
@@ -110,8 +131,19 @@ describe("shootingHours — the window", () => {
     expect(w.closeMin).toBe(1100); // NOT 1130
   });
 
+  it("closes 30 minutes AFTER sunset in the September resident goose season", () => {
+    const w = resolveShootingWindow(
+      lookupShootingHours("MD", { species: "goose", date: "2026-09-01" }),
+      { sunriseMin: 400, sunsetMin: 1100 },
+    );
+    expect(w.status).toBe("ok");
+    if (w.status !== "ok") return;
+    expect(w.openMin).toBe(370);
+    expect(w.closeMin).toBe(1130);
+  });
+
   it("refuses when sun times are missing or non-finite — never treats them as 0", () => {
-    const md = lookupShootingHours("MD");
+    const md = lookupShootingHours("MD", REGULAR);
     for (const sun of [
       null,
       undefined,
