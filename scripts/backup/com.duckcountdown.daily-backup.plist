@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Nightly DCD board-stack backup (scripts/backup/dump-tables.ts via run-daily-backup.sh).
+  Closes DISASTER-RECOVERY.md §9 item 2 — the script existed since 2026-07-25 but was
+  never registered, so the newest complete dump was 8 days old on 2026-08-01.
+
+  09:00 LOCAL is deliberate: launchd StartCalendarInterval is local time, so this is
+  13:00 UTC (EDT) / 14:00 UTC (EST) — after the 11:45 UTC bake, so each run contains
+  that day's board_frames row rather than missing it (§7).
+
+  RunAtLoad is false: registering the job must not fire an unattended dump.
+
+  Install:
+    cp scripts/backup/com.duckcountdown.daily-backup.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.duckcountdown.daily-backup.plist
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.duckcountdown.daily-backup
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.duckcountdown.daily-backup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jameschellis/marsh-timer/scripts/backup/run-daily-backup.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/dcd-daily-backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/dcd-daily-backup.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

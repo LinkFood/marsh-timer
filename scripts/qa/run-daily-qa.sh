@@ -31,14 +31,12 @@ fi
 
 cd "$REPO"
 
-SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd --output json 2>/dev/null \
-  | jq -r '.[] | select(.id=="service_role") | .api_key' || true)
-if [[ -z "$SUPABASE_SERVICE_ROLE_KEY" ]]; then
-  osascript -e 'display notification "Could not fetch service key — QA did not run" with title "🦆 DCD QA"' || true
-  echo "no service key; aborting"
-  exit 1
-fi
-export SUPABASE_SERVICE_ROLE_KEY
+# Service role key. Was a bare `npx supabase projects api-keys` call, which needs a
+# keychain prompt no launchd job can answer — it aborted every morning from
+# 2026-07-28. Now resolved from .env.local first.
+# shellcheck source=../lib/service-key.sh
+. /Users/jameschellis/marsh-timer/scripts/lib/service-key.sh
+_dcd_service_key_or_die "QA" /tmp/dcd-daily-qa.log || exit 1
 
 rm -f /tmp/dcd-qa-report.md /tmp/dcd-qa-verdict.txt
 

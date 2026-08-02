@@ -23,22 +23,12 @@ export NVM_DIR="$HOME/.nvm"
 
 cd /Users/jameschellis/marsh-timer
 
-# Get service role key from supabase CLI (JSON output; older CLI versions
-# printed a table — the old grep/awk parse silently returns empty now)
-SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd --output json 2>/dev/null \
-  | jq -r '.[] | select(.id=="service_role") | .api_key' || true)
-
-if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ "$SUPABASE_SERVICE_ROLE_KEY" = "null" ]; then
-  # Fallback for older jq shape { keys: [...] }
-  SUPABASE_SERVICE_ROLE_KEY=$(npx supabase projects api-keys --project-ref rvhyotvklfowklzjahdd --output json 2>/dev/null \
-    | jq -r '.keys[] | select(.id=="service_role") | .api_key' || true)
-fi
-
-if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ "$SUPABASE_SERVICE_ROLE_KEY" = "null" ]; then
-  echo "$(date): Failed to get service role key" >> /tmp/duck-daily-indices.log
-  exit 1
-fi
-export SUPABASE_SERVICE_ROLE_KEY
+# Service role key. Was a bare `npx supabase projects api-keys` call, which needs a
+# keychain prompt no launchd job can answer — it failed silently every morning from
+# 2026-07-28. Now resolved from .env.local first, and a failure is announced.
+# shellcheck source=lib/service-key.sh
+. /Users/jameschellis/marsh-timer/scripts/lib/service-key.sh
+_dcd_service_key_or_die "daily-indices" /tmp/duck-daily-indices.log || exit 1
 
 # DAYS=1 for the daily run; override with DAYS=N for catch-up after downtime
 DAYS="${DAYS:-1}" npx tsx scripts/push-daily-indices.ts >> /tmp/duck-daily-indices.log 2>&1
